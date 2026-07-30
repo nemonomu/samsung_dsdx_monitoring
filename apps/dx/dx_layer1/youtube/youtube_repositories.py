@@ -47,7 +47,7 @@ def get_youtube_expected(cursor):
         SELECT
             category,
             COUNT(*) AS expected_job_count,
-            COUNT(DISTINCT collection_country) AS expected_country_count,
+            COUNT(DISTINCT region_code) AS expected_country_count,
             COUNT(DISTINCT keyword) AS distinct_keyword_count
         FROM youtube_keywords
         WHERE status = 'active'
