@@ -3,6 +3,7 @@ NULL 검증 서비스 — 순수 비즈니스 로직 (DB cursor/conn을 받아 �
 """
 
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta
 from apps.common.db import execute_dx_query, dx_table
 from apps.common.response import log_error
@@ -17,6 +18,95 @@ _null_check_config_cache = None
 _null_check_config_cache_time = None
 EXCLUDED_RETAIL_TABLES = {'hhp_retail_com'}
 EXCLUDED_RETAIL_CATEGORIES = {'hhp_retail'}
+YOUTUBE_NULL_TABLES = {
+    'youtube_collection_logs',
+    'youtube_country_collection_runs',
+    'youtube_videos',
+    'youtube_comments',
+}
+
+
+def _youtube_column(check_type, display_columns):
+    return {
+        'check_type': check_type,
+        'display_columns': display_columns,
+        'query_columns': display_columns,
+        'query_days': 0,
+    }
+
+
+_YOUTUBE_RUN_COLUMNS = [
+    'id', 'batch_id', 'collection_date', 'collection_country', 'country_label',
+    'status', 'keyword_count', 'filtered_video_count', 'raw_video_count',
+    'comment_row_count', 'started_at', 'completed_at',
+]
+_YOUTUBE_VIDEO_COLUMNS = [
+    'id', 'collection_country', 'collection_batch_id', 'video_id', 'keyword',
+    'title', 'published_at', 'channel_country', 'created_at',
+]
+_YOUTUBE_COMMENT_COLUMNS = [
+    'id', 'collection_country', 'collection_batch_id', 'comment_id', 'video_id',
+    'comment_text_display', 'published_at', 'created_at',
+]
+
+_YOUTUBE_NULL_CONFIG = {
+    'display_name': 'YouTube',
+    'display_order': 3,
+    'has_retailer': False,
+    'checks': {
+        'youtube_country_runs': {
+            'display_name': 'Country Runs',
+            'table_name': 'youtube_country_collection_runs',
+            'date_column': 'collection_date',
+            'youtube_scope': 'runs',
+            'columns': {
+                'batch_id': _youtube_column('both', _YOUTUBE_RUN_COLUMNS),
+                'collection_date': _youtube_column('null', _YOUTUBE_RUN_COLUMNS),
+                'collection_country': _youtube_column('both', _YOUTUBE_RUN_COLUMNS),
+                'status': _youtube_column('both', _YOUTUBE_RUN_COLUMNS),
+                'keyword_count': _youtube_column('null', _YOUTUBE_RUN_COLUMNS),
+                'filtered_video_count': _youtube_column('null', _YOUTUBE_RUN_COLUMNS),
+                'raw_video_count': _youtube_column('null', _YOUTUBE_RUN_COLUMNS),
+                'comment_row_count': _youtube_column('null', _YOUTUBE_RUN_COLUMNS),
+                'started_at': _youtube_column('null', _YOUTUBE_RUN_COLUMNS),
+            },
+        },
+        'youtube_videos': {
+            'display_name': 'Videos',
+            'table_name': 'youtube_videos',
+            'date_column': 'created_at',
+            'scope_condition': "category = 'HHP'",
+            'youtube_scope': 'records',
+            'columns': {
+                'collection_country': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+                'collection_batch_id': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+                'video_id': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+                'keyword': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+                'title': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+                'published_at': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+                'channel_country': _youtube_column('both', _YOUTUBE_VIDEO_COLUMNS),
+            },
+        },
+        'youtube_comments': {
+            'display_name': 'Comments',
+            'table_name': 'youtube_comments',
+            'date_column': 'created_at',
+            'youtube_scope': 'records',
+            'columns': {
+                'collection_country': _youtube_column('both', _YOUTUBE_COMMENT_COLUMNS),
+                'collection_batch_id': _youtube_column('both', _YOUTUBE_COMMENT_COLUMNS),
+                'comment_id': _youtube_column('both', _YOUTUBE_COMMENT_COLUMNS),
+                'video_id': _youtube_column('both', _YOUTUBE_COMMENT_COLUMNS),
+                'comment_text_display': _youtube_column('both', _YOUTUBE_COMMENT_COLUMNS),
+                'published_at': _youtube_column('both', _YOUTUBE_COMMENT_COLUMNS),
+            },
+        },
+    },
+}
+_YOUTUBE_REVIEW_COLUMNS = {
+    check['table_name']: set(check['columns'])
+    for check in _YOUTUBE_NULL_CONFIG['checks'].values()
+}
 
 
 def load_null_check_config():
@@ -50,6 +140,7 @@ def load_null_check_config():
         return _null_check_config_cache
 
     result = {}
+    db_load_succeeded = False
 
     try:
         query = f"""
@@ -72,7 +163,12 @@ def load_null_check_config():
         for row in rows:
             category = row.get('category', '')
             table_name = row.get('table_name', '')
-            if category in EXCLUDED_RETAIL_CATEGORIES or table_name in EXCLUDED_RETAIL_TABLES:
+            if (
+                category in EXCLUDED_RETAIL_CATEGORIES
+                or table_name in EXCLUDED_RETAIL_TABLES
+                or str(category).lower() == 'youtube'
+                or table_name in YOUTUBE_NULL_TABLES
+            ):
                 continue
             check_name = row['check_name']
             check_column = row['check_column']
@@ -102,10 +198,22 @@ def load_null_check_config():
                 'query_days': int(row.get('query_days', 0) or 0)
             }
 
-        _null_check_config_cache = result
-        _null_check_config_cache_time = now
+        db_load_succeeded = True
+
     except Exception as e:
         log_error(e, 'db')
+
+    # DB 설정 조회 결과와 무관하게 구형 YouTube 설정을 신규 구조로 교체한다.
+    result['youtube'] = deepcopy(_YOUTUBE_NULL_CONFIG)
+    result = dict(sorted(
+        result.items(),
+        key=lambda item: item[1].get('display_order', 999),
+    ))
+
+    # DB 조회 실패 시 비-YouTube 설정을 60초간 빈 상태로 고정하지 않는다.
+    if db_load_succeeded:
+        _null_check_config_cache = result
+        _null_check_config_cache_time = now
 
     return result
 
@@ -193,8 +301,87 @@ def get_null_check_query_parts(category, check_name):
         'table_name': category_config['table_name'],
         'date_column': category_config['date_column'],
         'count_parts': count_parts,
-        'column_names': column_names
+        'column_names': column_names,
+        'scope_condition': category_config.get('scope_condition'),
+        'youtube_scope': category_config.get('youtube_scope'),
     }
+
+
+def _build_null_date_where(query_parts, target_date):
+    """날짜 기준과 신규 YouTube 국가·배치 범위를 함께 생성한다."""
+    table_name = query_parts['table_name']
+    date_column = query_parts['date_column']
+    youtube_scope = query_parts.get('youtube_scope')
+
+    if youtube_scope == 'runs':
+        return (
+            f"COALESCE({date_column}, DATE(started_at)) = %s",
+            [target_date],
+        )
+
+    if youtube_scope == 'records':
+        missing_country = f"""
+            ({table_name}.collection_country IS NULL
+             OR TRIM(CAST({table_name}.collection_country AS TEXT)) = '')
+        """
+        missing_batch = f"""
+            ({table_name}.collection_batch_id IS NULL
+             OR TRIM(CAST({table_name}.collection_batch_id AS TEXT)) = '')
+        """
+        return (
+            f"""
+                (
+                    EXISTS (
+                        SELECT 1
+                        FROM youtube_country_collection_runs matched_run
+                        WHERE matched_run.collection_date = %s
+                          AND matched_run.collection_country = {table_name}.collection_country
+                          AND matched_run.batch_id = {table_name}.collection_batch_id
+                    )
+                    OR (
+                        {missing_country}
+                        AND NOT {missing_batch}
+                        AND EXISTS (
+                            SELECT 1
+                            FROM youtube_country_collection_runs batch_run
+                            WHERE batch_run.collection_date = %s
+                              AND batch_run.batch_id = {table_name}.collection_batch_id
+                        )
+                    )
+                    OR (
+                        {missing_batch}
+                        AND NOT {missing_country}
+                        AND EXISTS (
+                            SELECT 1
+                            FROM youtube_country_collection_runs country_run
+                            WHERE country_run.collection_date = %s
+                              AND country_run.collection_country = {table_name}.collection_country
+                        )
+                    )
+                    OR (
+                        ({missing_country} OR {missing_batch})
+                        AND DATE({table_name}.{date_column}) = %s
+                        AND EXISTS (
+                            SELECT 1
+                            FROM youtube_country_collection_runs day_run
+                            WHERE day_run.collection_date = %s
+                        )
+                    )
+                )
+            """,
+            [target_date, target_date, target_date, target_date, target_date],
+        )
+
+    return f"DATE({date_column}) = %s", [target_date]
+
+
+def _apply_static_scope(date_where, params, query_parts):
+    """코드에 고정된 추가 범위 조건만 적용한다."""
+    scope_condition = query_parts.get('scope_condition')
+    if scope_condition:
+        date_where += f" AND ({scope_condition})"
+
+    return date_where, params
 
 
 
@@ -233,8 +420,12 @@ def get_null_stats(cursor, target_date):
 
             retailer_name = check_info['display_name']
 
-            date_where = f"DATE({query_parts['date_column']}) = %s"
-            params = [target_date]
+            date_where, params = _build_null_date_where(
+                query_parts, target_date
+            )
+            date_where, params = _apply_static_scope(
+                date_where, params, query_parts
+            )
 
             if has_retailer:
                 date_where += " AND account_name = %s"
@@ -341,6 +532,12 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     col_config = category_config['columns'][column]
     actual_table = category_config['table_name']
     date_col = category_config.get('date_column', 'created_at')
+    query_parts = {
+        'table_name': actual_table,
+        'date_column': date_col,
+        'scope_condition': category_config.get('scope_condition'),
+        'youtube_scope': category_config.get('youtube_scope'),
+    }
 
     # WHERE 조건: 해당 컬럼만
     check_type = col_config.get('check_type', 'both')
@@ -360,14 +557,19 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             params.append(retailer)
         query += f" ORDER BY {date_col}"
     else:
+        detail_where, params = _build_null_date_where(
+            query_parts, target_date
+        )
+        detail_where, params = _apply_static_scope(
+            detail_where, params, query_parts
+        )
         query = f"""
             SELECT *
             FROM {actual_table}
-            WHERE DATE({date_col}) = %s
+            WHERE {detail_where}
               AND {where_cond}
             ORDER BY {date_col} DESC
         """
-        params = [target_date]
 
     cursor.execute(query, params)
     select_cols = [desc[0] for desc in cursor.description]
@@ -477,7 +679,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
 # null_review 테이블 화이트리스트
 VALID_TABLES_UPDATE = {
     'tv_retail_com',
-    'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
+    'youtube_country_collection_runs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 }
 
@@ -501,9 +703,18 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if table_name not in VALID_TABLES_UPDATE:
         return {'error': '허용되지 않는 테이블', 'status_code': 400}
 
-    # 현재 값 + account_name + item 조회
+    youtube_columns = _YOUTUBE_REVIEW_COLUMNS.get(table_name)
+    if youtube_columns is not None and column_name not in youtube_columns:
+        return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+
+    # 신규 YouTube 테이블에는 account_name/item 컬럼이 없다.
+    if youtube_columns is not None:
+        select_columns = column_name
+    else:
+        select_columns = f"{column_name}, account_name, item"
+
     cursor.execute(
-        f"SELECT {column_name}, account_name, item FROM {table_name} WHERE id = %s",
+        f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
         (record_id,)
     )
     row = cursor.fetchone()
@@ -511,8 +722,11 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 
     old_value = row[0]
-    retailer = row[1]
-    item_value = str(row[2]) if row[2] else None
+    retailer = None if youtube_columns is not None else row[1]
+    item_value = (
+        None if youtube_columns is not None
+        else str(row[2]) if row[2] else None
+    )
 
     # 중복 정상처리 체크
     cursor.execute("""

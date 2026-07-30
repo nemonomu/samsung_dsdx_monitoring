@@ -17,12 +17,10 @@ from apps.dx.dx_layer2.common.context import get_status
 # table 파라미터 화이트리스트
 VALID_TABLES_FORMAT = {
     'tv_retail',
-    'youtube_logs', 'youtube_videos', 'youtube_comments', 'youtube',
     'market',
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',
-    'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
 }
@@ -1011,46 +1009,6 @@ def get_format_stats(cursor, target_date):
     total_format_issues += hhp_format_issue_total
     format_validation['tables'] = [t for t in format_validation['tables'] if t.get('table') != 'hhp_retail']
     total_format_issues -= hhp_format_issue_total
-
-    # YouTube 형식 검증
-    yt_tables = [
-        ('youtube_collection_logs', 'Logs', 'started_at'),
-        ('youtube_videos', 'Videos', 'created_at'),
-        ('youtube_comments', 'Comments', 'created_at'),
-    ]
-    yt_total_format_issues = 0
-    yt_total_format_checked = 0
-    youtube_format_retailers = []
-
-    for yt_table, yt_retailer, yt_date_col in yt_tables:
-        cursor.execute(f"SELECT COUNT(*) FROM {yt_table} WHERE DATE({yt_date_col}) = %s", (target_date,))
-        yt_total = cursor.fetchone()[0] or 0
-
-        error_where = build_format_error_sql(yt_table, 'ALL', yt_retailer)
-        if error_where != 'FALSE':
-            cursor.execute(f"SELECT COUNT(*) FROM {yt_table} WHERE DATE({yt_date_col}) = %s AND ({error_where})", (target_date,))
-            yt_issues = cursor.fetchone()[0] or 0
-        else:
-            yt_issues = 0
-
-        yt_total_format_checked += yt_total
-        yt_total_format_issues += yt_issues
-        youtube_format_retailers.append({
-            'retailer': yt_retailer,
-            'total': yt_total,
-            'issue_count': yt_issues,
-            'status': get_status(yt_issues),
-        })
-
-    format_validation['tables'].append({
-        'table': 'youtube',
-        'table_name': 'YouTube',
-        'total_checked': yt_total_format_checked,
-        'total_issues': yt_total_format_issues,
-        'status': get_status(yt_total_format_issues),
-        'retailers': youtube_format_retailers
-    })
-    total_format_issues += yt_total_format_issues
 
     # Market 형식 검증
     try:

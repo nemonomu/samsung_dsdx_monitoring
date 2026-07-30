@@ -320,7 +320,7 @@
                 if (isYouTube && retailer.retailer === 'Logs') {
                     detailText = 'keyword + category 중복';
                 } else if (isYouTube && retailer.retailer === 'Videos') {
-                    detailText = 'video_id + keyword 중복';
+                    detailText = '국가 + 배치 + video_id + keyword 중복';
                 } else if (isYouTube && retailer.retailer === 'Comments') {
                     detailText = 'video_id + comment_id 중복';
                 } else if (isMarket && retailer.retailer === 'Trend') {
@@ -993,7 +993,7 @@ WHERE id IN (${idInClause});`;
             } else if (tableParam === 'youtube_comments') {
                 html += '<th style="width: 50px;">No<div class="resize-handle"></div></th><th style="width: 120px;">Video ID<div class="resize-handle"></div></th><th style="width: 140px;">Comment ID<div class="resize-handle"></div></th><th style="width: 150px;">중복사유<div class="resize-handle"></div></th><th style="min-width: 300px;">댓글 내용<div class="resize-handle"></div></th><th style="width: 140px;">수집시각<div class="resize-handle"></div></th>';
             } else if (tableParam === 'youtube_videos') {
-                html += '<th style="width: 50px;">No<div class="resize-handle"></div></th><th style="width: 120px;">Video ID<div class="resize-handle"></div></th><th style="width: 100px;">Keyword<div class="resize-handle"></div></th><th style="width: 180px;">중복사유<div class="resize-handle"></div></th><th style="width: 80px;">ID<div class="resize-handle"></div></th><th style="min-width: 200px;">제목<div class="resize-handle"></div></th><th style="width: 140px;">수집시각<div class="resize-handle"></div></th>';
+                html += '<th style="width: 50px;">No<div class="resize-handle"></div></th><th style="width: 90px;">수집 국가<div class="resize-handle"></div></th><th style="width: 220px;">수집 배치<div class="resize-handle"></div></th><th style="width: 120px;">Video ID<div class="resize-handle"></div></th><th style="width: 100px;">Keyword<div class="resize-handle"></div></th><th style="width: 180px;">중복사유<div class="resize-handle"></div></th><th style="width: 80px;">ID<div class="resize-handle"></div></th><th style="min-width: 200px;">제목<div class="resize-handle"></div></th><th style="width: 140px;">수집시각<div class="resize-handle"></div></th>';
             } else if (tableParam === 'market_trend') {
                 html += '<th style="width: 50px;">No<div class="resize-handle"></div></th><th style="width: 150px;">Keyword<div class="resize-handle"></div></th><th style="width: 180px;">중복사유<div class="resize-handle"></div></th><th style="width: 80px;">ID<div class="resize-handle"></div></th><th style="width: 100px;">Article수<div class="resize-handle"></div></th><th style="width: 140px;">수집시각<div class="resize-handle"></div></th>';
             } else if (tableParam === 'market_product') {
@@ -1174,6 +1174,8 @@ WHERE id IN (${idInClause});`;
                         if (recIdx === 0) {
                             html += `
                                 <td rowspan="${rowspan}" style="text-align: center; font-weight: 500;">${rowNumber}</td>
+                                <td rowspan="${rowspan}">${escapeHtml(record.collection_country) || '-'}</td>
+                                <td rowspan="${rowspan}">${escapeHtml(record.collection_batch_id) || '-'}</td>
                                 <td rowspan="${rowspan}">${escapeHtml(record.video_id) || '-'}</td>
                                 <td rowspan="${rowspan}">${escapeHtml(record.keyword) || '-'}</td>
                                 <td rowspan="${rowspan}" style="color: #dc2626; font-size: 12px;">${escapeHtml(record.reason) || '-'}</td>

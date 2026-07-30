@@ -52,6 +52,8 @@ const DETAIL_COLUMNS = {
     dup_youtube_videos: {
         group: [
             { key: '_no', label: 'No', width: 50, align: 'center' },
+            { key: 'collection_country', label: '수집 국가', width: 90 },
+            { key: 'collection_batch_id', label: '수집 배치', width: 220 },
             { key: 'video_id', label: 'Video ID', width: 120 },
             { key: 'keyword', label: 'Keyword', width: 100 },
             { key: 'reason', label: '중복사유', width: 180 },

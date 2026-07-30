@@ -12,9 +12,12 @@ from apps.dx.dx_layer2.common.context import get_status
 
 # table 파라미터 화이트리스트
 VALID_TABLES_ANOMALY = {
-    'tv_retail', 'youtube_videos', 'youtube_logs',
+    'tv_retail', 'youtube_videos',
     'market_trend', 'market_product', 'market_event',
 }
+_YOUTUBE_VIDEO_DUP_KEYS = (
+    'video_id', 'keyword', 'collection_country', 'collection_batch_id'
+)
 
 # 테이블별 중복 키 / 날짜 컬럼 / 오전오후 구분 매핑
 _DUP_TABLE_CONFIG = {
@@ -27,15 +30,8 @@ _DUP_TABLE_CONFIG = {
     },
     'youtube_videos': {
         'actual': 'youtube_videos',
-        'dup_keys': 'video_id, keyword',
+        'dup_keys': ', '.join(_YOUTUBE_VIDEO_DUP_KEYS),
         'date_col': 'created_at',
-        'use_period': False,
-        'retailer_col': None,
-    },
-    'youtube_logs': {
-        'actual': 'youtube_collection_logs',
-        'dup_keys': None,  # JOIN 필요 — 별도 처리
-        'date_col': 'started_at',
         'use_period': False,
         'retailer_col': None,
     },
@@ -77,23 +73,6 @@ def _build_dup_delete_query(table, retailer=''):
     dup_keys = cfg['dup_keys']
     use_period = cfg['use_period']
     retailer_col = cfg['retailer_col']
-
-    # youtube_logs는 JOIN이 필요하므로 별도 처리
-    if table == 'youtube_logs':
-        sql = f"""
-            SELECT sub.id, row_to_json(sub.*) as record_data FROM (
-                SELECT l.*, k.keyword as _kw, k.category as _cat,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY k.keyword, k.category
-                           ORDER BY l.{date_col} DESC
-                       ) as rn
-                FROM {actual} l
-                JOIN youtube_keywords k ON l.keyword_id = k.id
-                WHERE DATE(l.{date_col}) = %s
-            ) sub
-            WHERE sub.rn > 1
-        """
-        return sql, None  # params: (target_date,)
 
     # 오전/오후 구분이 필요한 경우
     period_expr = ''
@@ -289,112 +268,120 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
         duplicates = list(dup_groups.values())
 
     elif table == 'youtube_videos':
-        select_cols = {'group': ['video_id', 'keyword', 'dup_count', 'reason'], 'record': ['id', 'title', 'created_at']}
+        select_cols = {
+            'group': [
+                'collection_country', 'collection_batch_id', 'video_id',
+                'keyword', 'dup_count', 'reason'
+            ],
+            'record': ['id', 'title', 'created_at']
+        }
         cursor.execute("""
             SELECT COUNT(*) FROM (
-                SELECT video_id, keyword
-                FROM youtube_videos
-                WHERE DATE(created_at) = %s
-                GROUP BY video_id, keyword
+                SELECT
+                    v.collection_country,
+                    v.collection_batch_id,
+                    v.video_id,
+                    v.keyword
+                FROM youtube_videos v
+                WHERE v.category = 'HHP'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM youtube_country_collection_runs r
+                      WHERE r.collection_date = %s
+                        AND r.collection_country = v.collection_country
+                        AND r.batch_id = v.collection_batch_id
+                  )
+                GROUP BY
+                    v.collection_country,
+                    v.collection_batch_id,
+                    v.video_id,
+                    v.keyword
                 HAVING COUNT(*) > 1
             ) sub
         """, (target_date,))
         total_groups = cursor.fetchone()[0]
 
-        # YouTube Videos 중복 그룹 찾기: video_id + keyword
+        # 동일 국가·배치 안에서 같은 video_id+keyword가 반복된 경우만 중복이다.
         cursor.execute("""
             WITH duplicate_groups AS (
-                SELECT video_id, keyword, COUNT(*) as dup_count
-                FROM youtube_videos
-                WHERE DATE(created_at) = %s
-                GROUP BY video_id, keyword
+                SELECT
+                    v.collection_country,
+                    v.collection_batch_id,
+                    v.video_id,
+                    v.keyword,
+                    COUNT(*) AS dup_count
+                FROM youtube_videos v
+                WHERE v.category = 'HHP'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM youtube_country_collection_runs r
+                      WHERE r.collection_date = %s
+                        AND r.collection_country = v.collection_country
+                        AND r.batch_id = v.collection_batch_id
+                  )
+                GROUP BY
+                    v.collection_country,
+                    v.collection_batch_id,
+                    v.video_id,
+                    v.keyword
                 HAVING COUNT(*) > 1
-                ORDER BY COUNT(*) DESC, video_id, keyword
+                ORDER BY
+                    COUNT(*) DESC,
+                    v.collection_country,
+                    v.collection_batch_id,
+                    v.video_id,
+                    v.keyword
                 LIMIT %s OFFSET %s
             )
-            SELECT d.video_id, d.keyword, d.dup_count,
-                   y.id, y.title, y.created_at
+            SELECT
+                d.collection_country,
+                d.collection_batch_id,
+                d.video_id,
+                d.keyword,
+                d.dup_count,
+                y.id,
+                y.title,
+                y.created_at
             FROM duplicate_groups d
-            JOIN youtube_videos y ON y.video_id = d.video_id
-                AND y.keyword = d.keyword
-                AND DATE(y.created_at) = %s
-            ORDER BY d.dup_count DESC, d.video_id, d.keyword, y.created_at
-        """, (target_date, page_size, offset, target_date))
+            JOIN youtube_videos y
+              ON y.collection_country = d.collection_country
+             AND y.collection_batch_id = d.collection_batch_id
+             AND y.video_id = d.video_id
+             AND y.keyword = d.keyword
+             AND y.category = 'HHP'
+            ORDER BY
+                d.dup_count DESC,
+                d.collection_country,
+                d.collection_batch_id,
+                d.video_id,
+                d.keyword,
+                y.created_at
+        """, (target_date, page_size, offset))
 
         rows = cursor.fetchall()
 
         dup_groups = {}
         for row in rows:
-            key = (row[0], row[1])  # video_id, keyword
+            key = (row[0], row[1], row[2], row[3])
             if key not in dup_groups:
                 dup_groups[key] = {
-                    'video_id': row[0],
-                    'keyword': row[1],
-                    'dup_count': row[2],
-                    'reason': f'동일 video_id+keyword가 {row[2]}건 수집됨',
+                    'collection_country': row[0],
+                    'collection_batch_id': str(row[1]) if row[1] else None,
+                    'video_id': row[2],
+                    'keyword': row[3],
+                    'dup_count': row[4],
+                    'reason': (
+                        f'동일 국가·배치의 video_id+keyword가 '
+                        f'{row[4]}건 수집됨'
+                    ),
                     'records': []
                 }
             # 제목 50자 제한
-            title = row[4][:50] + '...' if row[4] and len(row[4]) > 50 else row[4]
+            title = row[6][:50] + '...' if row[6] and len(row[6]) > 50 else row[6]
             dup_groups[key]['records'].append({
-                'id': row[3],
+                'id': row[5],
                 'title': title,
-                'created_at': str(row[5]) if row[5] else None
-            })
-
-        duplicates = list(dup_groups.values())
-
-    elif table == 'youtube_logs':
-        select_cols = {'group': ['keyword', 'category', 'dup_count', 'reason'], 'record': ['id', 'created_at']}
-        cursor.execute("""
-            SELECT COUNT(*) FROM (
-                SELECT k.keyword, k.category
-                FROM youtube_collection_logs l
-                JOIN youtube_keywords k ON l.keyword_id = k.id
-                WHERE DATE(l.started_at) = %s
-                GROUP BY k.keyword, k.category
-                HAVING COUNT(*) > 1
-            ) sub
-        """, (target_date,))
-        total_groups = cursor.fetchone()[0]
-
-        # YouTube Logs 중복 그룹 찾기: keyword + category (조인 필요)
-        cursor.execute("""
-            WITH duplicate_groups AS (
-                SELECT k.keyword, k.category, COUNT(*) as dup_count
-                FROM youtube_collection_logs l
-                JOIN youtube_keywords k ON l.keyword_id = k.id
-                WHERE DATE(l.started_at) = %s
-                GROUP BY k.keyword, k.category
-                HAVING COUNT(*) > 1
-                ORDER BY COUNT(*) DESC, k.keyword, k.category
-                LIMIT %s OFFSET %s
-            )
-            SELECT d.keyword, d.category, d.dup_count,
-                   l.id, l.started_at
-            FROM duplicate_groups d
-            JOIN youtube_keywords k ON k.keyword = d.keyword AND k.category = d.category
-            JOIN youtube_collection_logs l ON l.keyword_id = k.id
-                AND DATE(l.started_at) = %s
-            ORDER BY d.dup_count DESC, d.keyword, d.category, l.started_at
-        """, (target_date, page_size, offset, target_date))
-
-        rows = cursor.fetchall()
-
-        dup_groups = {}
-        for row in rows:
-            key = (row[0], row[1])  # keyword, category
-            if key not in dup_groups:
-                dup_groups[key] = {
-                    'keyword': row[0],
-                    'category': row[1],
-                    'dup_count': row[2],
-                    'reason': f'동일 keyword+category가 {row[2]}건 수집됨',
-                    'records': []
-                }
-            dup_groups[key]['records'].append({
-                'id': row[3],
-                'created_at': str(row[4]) if row[4] else None
+                'created_at': str(row[7]) if row[7] else None
             })
 
         duplicates = list(dup_groups.values())
@@ -724,6 +711,41 @@ def get_duplicate_count(cursor, table_name, date_col, dup_keys, target_date, use
         return cursor.fetchone()[0] or 0
 
 
+def _get_youtube_video_duplicate_stats(cursor, target_date):
+    """신규 국가·배치에 연결된 HHP 영상만 대상으로 중복 통계를 구한다."""
+    scope_sql = """
+        FROM youtube_videos v
+        WHERE v.category = 'HHP'
+          AND EXISTS (
+              SELECT 1
+              FROM youtube_country_collection_runs r
+              WHERE r.collection_date = %s
+                AND r.collection_country = v.collection_country
+                AND r.batch_id = v.collection_batch_id
+          )
+    """
+    params = (target_date,)
+
+    cursor.execute(f"SELECT COUNT(*) {scope_sql}", params)
+    total_records = cursor.fetchone()[0] or 0
+
+    cursor.execute(f"""
+        SELECT COUNT(*) FROM (
+            SELECT {', '.join('v.' + key for key in _YOUTUBE_VIDEO_DUP_KEYS)}
+            {scope_sql}
+            GROUP BY {', '.join('v.' + key for key in _YOUTUBE_VIDEO_DUP_KEYS)}
+            HAVING COUNT(*) > 1
+        ) duplicate_groups
+    """, params)
+    duplicate_groups = cursor.fetchone()[0] or 0
+
+    return {
+        'total_records': total_records,
+        'duplicate_groups': duplicate_groups,
+        'duplicate_keys': list(_YOUTUBE_VIDEO_DUP_KEYS),
+    }
+
+
 def get_anomaly_stats(cursor, target_date):
     """중복 검증 통계 — 대시보드용"""
     total_anomaly_issues = 0
@@ -846,51 +868,21 @@ def get_anomaly_stats(cursor, target_date):
     anomaly_validation['tables'] = [t for t in anomaly_validation['tables'] if t.get('table') != 'hhp_retail']
     total_anomaly_issues -= hhp_dup_total
 
-    # YouTube Videos 중복
-    ytv_dup_info = get_duplicate_key_columns('youtube_videos')
-    ytv_date_col = ytv_dup_info['date_column'] if ytv_dup_info else 'created_at'
-    ytv_dup_keys = ytv_dup_info['duplicate_keys'] if ytv_dup_info else ['video_id', 'keyword']
+    # YouTube 신규 10개국 영상 중복: 타 국가·타 배치는 서로 다른 정상 수집이다.
+    youtube_dup_stats = _get_youtube_video_duplicate_stats(cursor, target_date)
+    ytv_dup_keys = youtube_dup_stats['duplicate_keys']
+    ytv_total_records = youtube_dup_stats['total_records']
+    ytv_dup_total = youtube_dup_stats['duplicate_groups']
 
-    cursor.execute(f"SELECT COUNT(*) FROM youtube_videos WHERE DATE({ytv_date_col}) = %s", (target_date,))
-    ytv_total_records = cursor.fetchone()[0] or 0
-    ytv_dup_total = get_duplicate_count(cursor, 'youtube_videos', ytv_date_col, ytv_dup_keys, target_date)
-
-    # YouTube Logs 중복 (JOIN 필요)
-    ytl_dup_info = get_duplicate_key_columns('youtube_collection_logs')
-    ytl_date_col = ytl_dup_info['date_column'] if ytl_dup_info else 'started_at'
-    ytl_dup_keys = ytl_dup_info['duplicate_keys'] if ytl_dup_info else ['keyword', 'category']
-
-    cursor.execute(f"SELECT COUNT(*) FROM youtube_collection_logs WHERE DATE({ytl_date_col}) = %s", (target_date,))
-    ytl_total_records = cursor.fetchone()[0] or 0
-
-    cursor.execute("""
-        SELECT COUNT(*) FROM (
-            SELECT k.keyword, k.category
-            FROM youtube_collection_logs l
-            JOIN youtube_keywords k ON l.keyword_id = k.id
-            WHERE DATE(l.started_at) = %s
-            GROUP BY k.keyword, k.category
-            HAVING COUNT(*) > 1
-        ) sub
-    """, (target_date,))
-    ytl_dup_total = cursor.fetchone()[0] or 0
-
-    yt_total_issues = ytl_dup_total + ytv_dup_total
+    yt_total_issues = ytv_dup_total
     anomaly_validation['tables'].append({
         'table': 'youtube',
         'table_name': 'YouTube',
-        'total_records': ytl_total_records + ytv_total_records,
+        'total_records': ytv_total_records,
         'total_issues': yt_total_issues,
         'duplicate_groups': yt_total_issues,
         'status': get_status(yt_total_issues),
         'retailers': [
-            {
-                'retailer': 'Logs',
-                'total': ytl_total_records,
-                'duplicate_groups': ytl_dup_total,
-                'duplicate_keys': ytl_dup_keys,
-                'status': get_status(ytl_dup_total)
-            },
             {
                 'retailer': 'Videos',
                 'total': ytv_total_records,

@@ -30,33 +30,53 @@ def get_layer1_stats(cursor, target_date, now):
         youtube_expected_map = repo.get_youtube_expected(cursor)
         youtube_avg = repo.get_youtube_avg(cursor, target_date_str)
 
+        today_by_category = {
+            row[0]: {
+                'attempted_count': row[1] or 0,
+                'completed_count': row[2] or 0,
+                'video_count': row[3] or 0,
+                'comment_count': row[4] or 0,
+                'country_count': row[5] or 0,
+                'completed_country_count': row[6] or 0,
+            }
+            for row in youtube_today
+        }
+
         youtube_categories = []
         youtube_total_actual = 0
         youtube_total_expected = 0
         youtube_statuses = []
 
-        for row in youtube_today:
-            category = row[0]
+        category_names = set(youtube_expected_map) | set(today_by_category)
+        for category in category_names:
             if category == 'TV':
                 continue
-            log_count = row[1] or 0
-            success_count = row[2]
-            video_count = row[3] or 0
-            comment_count = row[4] or 0
 
-            expected = youtube_expected_map.get(category, 0)
+            today_data = today_by_category.get(category, {})
+            attempted_count = today_data.get('attempted_count', 0)
+            completed_count = today_data.get('completed_count', 0)
+            video_count = today_data.get('video_count', 0)
+            comment_count = today_data.get('comment_count', 0)
+            country_count = today_data.get('country_count', 0)
+            completed_country_count = today_data.get('completed_country_count', 0)
+
+            expected_data = youtube_expected_map.get(category, {})
+            expected = expected_data.get('expected_jobs', 0)
+            expected_country_count = expected_data.get('expected_countries', 0)
+            keywords_per_country_min = expected_data.get('keywords_per_country_min', 0)
+            keywords_per_country_max = expected_data.get('keywords_per_country_max', 0)
             avg_data = youtube_avg.get(category, {'avg_video': 0, 'avg_comment': 0})
             avg_7day = avg_data['avg_video']
 
             if expected > 0:
-                rate = (log_count / expected) * 100
+                rate = (completed_count / expected) * 100
             else:
-                rate = 100 if log_count > 0 else 0
+                rate = 100 if completed_count > 0 else 0
 
             if youtube_info['is_pending']:
                 status = 'PENDING'
             elif expected == 0:
-                status = 'OK' if log_count > 0 else 'WARNING'
+                status = 'OK' if completed_count > 0 else 'WARNING'
             elif rate >= 100:
                 status = 'OK'
             elif youtube_info['is_collecting']:
@@ -67,15 +87,21 @@ def get_layer1_stats(cursor, target_date, now):
                 status = 'CRITICAL'
 
             youtube_statuses.append(status)
-            youtube_total_actual += log_count
+            youtube_total_actual += completed_count
             youtube_total_expected += expected
 
             youtube_categories.append({
                 'name': category,
-                'log_count': log_count,
+                'log_count': completed_count,
+                'attempted_count': attempted_count,
                 'video_count': video_count,
                 'comment_count': comment_count,
                 'expected': expected,
+                'country_count': country_count,
+                'completed_country_count': completed_country_count,
+                'expected_country_count': expected_country_count,
+                'keywords_per_country_min': keywords_per_country_min,
+                'keywords_per_country_max': keywords_per_country_max,
                 'avg_7day': round(avg_7day),
                 'rate': round(rate, 1),
                 'status': status
@@ -139,16 +165,22 @@ def get_youtube_raw_data(category, data_type, target_date):
         target_date_str = target_date.strftime('%Y-%m-%d')
         with dx_connection() as (conn, cursor):
             if data_type == 'logs':
-                columns, rows = repo.get_youtube_logs(cursor, target_date_str, category)
+                columns, rows, total_count = repo.get_youtube_logs(
+                    cursor, target_date_str, category
+                )
             elif data_type == 'videos':
-                columns, rows = repo.get_youtube_videos(cursor, target_date_str, category)
+                columns, rows, total_count = repo.get_youtube_videos(
+                    cursor, target_date_str, category
+                )
             elif data_type == 'comments':
-                columns, rows = repo.get_youtube_comments(cursor, target_date_str, category)
+                columns, rows, total_count = repo.get_youtube_comments(
+                    cursor, target_date_str, category
+                )
             else:
-                columns, rows = [], []
+                columns, rows, total_count = [], [], 0
 
         results['columns'] = columns
-        results['total_count'] = len(rows)
+        results['total_count'] = total_count
         results['data'] = rows
 
     except Exception as e:

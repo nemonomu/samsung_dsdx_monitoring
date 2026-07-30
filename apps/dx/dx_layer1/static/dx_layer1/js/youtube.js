@@ -17,8 +17,12 @@ function renderYoutubeStatCard(catName, typeKey, typeLabel, typeDataType, value,
     let statsHtml = '';
 
     if (extraInfo) {
-        // 로그: count/expected, rate%, 상태배지
-        statsHtml = '<span class="sentiment-retailer-count">' + extraInfo.count + '/' + extraInfo.expected + '</span>' +
+        // 수집 작업: 완료/예상, 시도 건수, 완료율, 상태배지
+        const attemptedHtml = extraInfo.attempted !== undefined
+            ? '<span class="sentiment-retailer-count">시도 ' + extraInfo.attempted + '</span>'
+            : '';
+        statsHtml = '<span class="sentiment-retailer-count">완료 ' + extraInfo.count + '/' + extraInfo.expected + '</span>' +
+            attemptedHtml +
             '<span class="sentiment-retailer-rate ' + statusClass + '">' + extraInfo.rate + '%</span>' +
             getStatusBadge(status);
     } else {
@@ -68,11 +72,27 @@ function renderYoutubeColumn(cat) {
     const logExtraInfo = {
         count: cat.log_count.toLocaleString(),
         expected: (cat.expected || 0).toLocaleString(),
+        attempted: (cat.attempted_count || 0).toLocaleString(),
         rate: cat.rate || 0
     };
 
+    const expectedCountries = cat.expected_country_count || 0;
+    const completedCountries = cat.completed_country_count || 0;
+    const keywordMin = cat.keywords_per_country_min || 0;
+    const keywordMax = cat.keywords_per_country_max || 0;
+    let keywordScope = '';
+    if (keywordMin > 0) {
+        keywordScope = keywordMin === keywordMax
+            ? '국가별 고유 키워드 ' + keywordMin + '개'
+            : '국가별 고유 키워드 ' + keywordMin + '~' + keywordMax + '개';
+    }
+    const countryScope = expectedCountries > 0
+        ? '완료 국가 ' + completedCountries + '/' + expectedCountries + '개국'
+        : '';
+    const scopeLabel = [countryScope, keywordScope].filter(Boolean).join(' · ');
+
     const retailersHtml =
-        renderYoutubeStatCard(cat.name, 'log_count', '로그', 'logs', cat.log_count, logStatus, logExtraInfo) +
+        renderYoutubeStatCard(cat.name, 'log_count', '수집 작업', 'logs', cat.log_count, logStatus, logExtraInfo) +
         renderYoutubeStatCard(cat.name, 'video_count', '비디오', 'videos', cat.video_count, videoStatus, null) +
         renderYoutubeStatCard(cat.name, 'comment_count', '댓글', 'comments', cat.comment_count, commentStatus, null);
 
@@ -80,6 +100,7 @@ function renderYoutubeColumn(cat) {
         '<div class="sentiment-column-header">' +
             '<span class="sentiment-column-title">' + cat.name + '</span>' +
             '<div class="sentiment-column-stats">' +
+                (scopeLabel ? '<span class="sentiment-retailer-count">' + scopeLabel + '</span>' : '') +
                 getStatusBadge(overallStatus) +
             '</div>' +
         '</div>' +
