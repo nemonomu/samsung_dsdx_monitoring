@@ -207,7 +207,11 @@ def load_null_check_config():
     result['youtube'] = deepcopy(_YOUTUBE_NULL_CONFIG)
     result = dict(sorted(
         result.items(),
-        key=lambda item: item[1].get('display_order', 999),
+        key=lambda item: (
+            item[1].get('display_order')
+            if isinstance(item[1].get('display_order'), (int, float))
+            else 999
+        ),
     ))
 
     # DB 조회 실패 시 비-YouTube 설정을 60초간 빈 상태로 고정하지 않는다.
@@ -386,7 +390,7 @@ def _apply_static_scope(date_where, params, query_parts):
 
 
 
-def get_null_stats(cursor, target_date):
+def get_null_stats(cursor, target_date, include_youtube=True):
     """NULL 검증 통계 — 대시보드용"""
     total_null_issues = 0
 
@@ -402,6 +406,8 @@ def get_null_stats(cursor, target_date):
     config = load_null_check_config()
 
     for category, cat_info in config.items():
+        if not include_youtube and str(category).lower() == 'youtube':
+            continue
         if not cat_info['checks']:
             continue
 

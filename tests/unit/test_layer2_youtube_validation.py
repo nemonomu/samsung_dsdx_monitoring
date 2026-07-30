@@ -107,6 +107,42 @@ class YouTubeNullValidationTests(unittest.TestCase):
         self.assertEqual(2, attempts['count'])
         self.assertIsNone(self.service._null_check_config_cache)
 
+    def test_missing_display_order_does_not_hide_existing_tv_config(self):
+        self.service.execute_dx_query = lambda _query: [{
+            'category': 'tv',
+            'cat_display_name': 'TV Retail',
+            'display_order': None,
+            'has_retailer': True,
+            'check_name': 'amazon',
+            'group_display_name': 'Amazon',
+            'table_name': 'tv_retail_com',
+            'date_column': 'crawl_datetime',
+            'check_column': 'item',
+            'check_type': 'both',
+            'display_columns': 'id|item',
+            'query_columns': 'id|item',
+            'query_days': 0,
+        }]
+
+        config = self.service.load_null_check_config()
+
+        self.assertIn('tv', config)
+        self.assertIn('youtube', config)
+
+    def test_null_stats_can_skip_only_youtube_for_transaction_recovery(self):
+        self.service.load_null_check_config = lambda: {
+            'youtube': self.service._YOUTUBE_NULL_CONFIG,
+        }
+        cursor = ScriptedCursor([])
+
+        validation, total = self.service.get_null_stats(
+            cursor, date(2026, 7, 29), include_youtube=False
+        )
+
+        self.assertEqual([], validation['tables'])
+        self.assertEqual(0, total)
+        self.assertEqual([], cursor.calls)
+
     def test_run_scope_can_count_null_collection_date_by_started_at(self):
         where_sql, params = self.service._build_null_date_where({
             'table_name': 'youtube_country_collection_runs',
@@ -224,8 +260,8 @@ class YouTubeDuplicateValidationTests(unittest.TestCase):
         self.assertEqual('batch-a', duplicate['collection_batch_id'])
         self.assertEqual('video-a', duplicate['video_id'])
         self.assertEqual(2, duplicate['dup_count'])
-        self.assertIn('collection_country', result['select_cols']['group'])
-        self.assertIn('collection_batch_id', result['select_cols']['group'])
+        self.assertNotIn('collection_country', result['select_cols']['group'])
+        self.assertNotIn('collection_batch_id', result['select_cols']['group'])
         count_sql, count_params = cursor.calls[0]
         detail_sql, detail_params = cursor.calls[1]
         self.assertIn('GROUP BY v.collection_country', count_sql)
@@ -240,6 +276,14 @@ class YouTubeDuplicateValidationTests(unittest.TestCase):
             'youtube_logs', self.service.VALID_TABLES_ANOMALY
         )
         self.assertNotIn('youtube_logs', self.service._DUP_TABLE_CONFIG)
+
+    def test_anomaly_stats_has_youtube_only_fallback_switch(self):
+        source = inspect.getsource(self.service.get_anomaly_stats)
+        self.assertIn('include_youtube=True', str(inspect.signature(
+            self.service.get_anomaly_stats
+        )))
+        self.assertIn('if include_youtube:', source)
+        self.assertIn('_get_youtube_video_duplicate_stats', source)
 
 
 class YouTubeFormatValidationTests(unittest.TestCase):

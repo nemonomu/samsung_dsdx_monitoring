@@ -270,8 +270,7 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
     elif table == 'youtube_videos':
         select_cols = {
             'group': [
-                'collection_country', 'collection_batch_id', 'video_id',
-                'keyword', 'dup_count', 'reason'
+                'video_id', 'keyword', 'dup_count', 'reason'
             ],
             'record': ['id', 'title', 'created_at']
         }
@@ -746,7 +745,7 @@ def _get_youtube_video_duplicate_stats(cursor, target_date):
     }
 
 
-def get_anomaly_stats(cursor, target_date):
+def get_anomaly_stats(cursor, target_date, include_youtube=True):
     """중복 검증 통계 — 대시보드용"""
     total_anomaly_issues = 0
     anomaly_validation = {
@@ -868,31 +867,34 @@ def get_anomaly_stats(cursor, target_date):
     anomaly_validation['tables'] = [t for t in anomaly_validation['tables'] if t.get('table') != 'hhp_retail']
     total_anomaly_issues -= hhp_dup_total
 
-    # YouTube 신규 10개국 영상 중복: 타 국가·타 배치는 서로 다른 정상 수집이다.
-    youtube_dup_stats = _get_youtube_video_duplicate_stats(cursor, target_date)
-    ytv_dup_keys = youtube_dup_stats['duplicate_keys']
-    ytv_total_records = youtube_dup_stats['total_records']
-    ytv_dup_total = youtube_dup_stats['duplicate_groups']
+    if include_youtube:
+        # 타 국가·타 배치는 서로 다른 정상 수집이므로 동일 범위만 비교한다.
+        youtube_dup_stats = _get_youtube_video_duplicate_stats(
+            cursor, target_date
+        )
+        ytv_dup_keys = youtube_dup_stats['duplicate_keys']
+        ytv_total_records = youtube_dup_stats['total_records']
+        ytv_dup_total = youtube_dup_stats['duplicate_groups']
 
-    yt_total_issues = ytv_dup_total
-    anomaly_validation['tables'].append({
-        'table': 'youtube',
-        'table_name': 'YouTube',
-        'total_records': ytv_total_records,
-        'total_issues': yt_total_issues,
-        'duplicate_groups': yt_total_issues,
-        'status': get_status(yt_total_issues),
-        'retailers': [
-            {
-                'retailer': 'Videos',
-                'total': ytv_total_records,
-                'duplicate_groups': ytv_dup_total,
-                'duplicate_keys': ytv_dup_keys,
-                'status': get_status(ytv_dup_total)
-            }
-        ]
-    })
-    total_anomaly_issues += yt_total_issues
+        yt_total_issues = ytv_dup_total
+        anomaly_validation['tables'].append({
+            'table': 'youtube',
+            'table_name': 'YouTube',
+            'total_records': ytv_total_records,
+            'total_issues': yt_total_issues,
+            'duplicate_groups': yt_total_issues,
+            'status': get_status(yt_total_issues),
+            'retailers': [
+                {
+                    'retailer': 'Videos',
+                    'total': ytv_total_records,
+                    'duplicate_groups': ytv_dup_total,
+                    'duplicate_keys': ytv_dup_keys,
+                    'status': get_status(ytv_dup_total)
+                }
+            ]
+        })
+        total_anomaly_issues += yt_total_issues
 
     # Market 중복
     mt_dup_info = get_duplicate_key_columns('market_trend')

@@ -28,7 +28,6 @@ def get_layer1_stats(cursor, target_date, now):
         target_date_str = target_date.strftime('%Y-%m-%d')
         youtube_today = repo.get_youtube_today(cursor, target_date_str)
         youtube_expected_map = repo.get_youtube_expected(cursor)
-        youtube_avg = repo.get_youtube_avg(cursor, target_date_str)
 
         today_by_category = {
             row[0]: {
@@ -47,7 +46,7 @@ def get_layer1_stats(cursor, target_date, now):
         youtube_total_expected = 0
         youtube_statuses = []
 
-        category_names = set(youtube_expected_map) | set(today_by_category)
+        category_names = {'HHP'} | set(youtube_expected_map) | set(today_by_category)
         for category in category_names:
             if category == 'TV':
                 continue
@@ -58,15 +57,19 @@ def get_layer1_stats(cursor, target_date, now):
             video_count = today_data.get('video_count', 0)
             comment_count = today_data.get('comment_count', 0)
             country_count = today_data.get('country_count', 0)
-            completed_country_count = today_data.get('completed_country_count', 0)
+            completed_country_count = today_data.get(
+                'completed_country_count', 0
+            )
 
             expected_data = youtube_expected_map.get(category, {})
             expected = expected_data.get('expected_jobs', 0)
-            expected_country_count = expected_data.get('expected_countries', 0)
-            keywords_per_country_min = expected_data.get('keywords_per_country_min', 0)
-            keywords_per_country_max = expected_data.get('keywords_per_country_max', 0)
-            avg_data = youtube_avg.get(category, {'avg_video': 0, 'avg_comment': 0})
-            avg_7day = avg_data['avg_video']
+            expected_country_count = expected_data.get(
+                'expected_countries', 0
+            )
+            distinct_keyword_count = expected_data.get(
+                'distinct_keywords', 0
+            )
+            avg_7day = expected
 
             if expected > 0:
                 rate = (completed_count / expected) * 100
@@ -100,8 +103,7 @@ def get_layer1_stats(cursor, target_date, now):
                 'country_count': country_count,
                 'completed_country_count': completed_country_count,
                 'expected_country_count': expected_country_count,
-                'keywords_per_country_min': keywords_per_country_min,
-                'keywords_per_country_max': keywords_per_country_max,
+                'distinct_keyword_count': distinct_keyword_count,
                 'avg_7day': round(avg_7day),
                 'rate': round(rate, 1),
                 'status': status

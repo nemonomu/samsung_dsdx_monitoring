@@ -51,12 +51,8 @@ class YouTubeServiceTests(unittest.TestCase):
             'HHP': {
                 'expected_jobs': 240,
                 'expected_countries': 10,
-                'keywords_per_country_min': 24,
-                'keywords_per_country_max': 24,
-            }
-        }
-        self.repo_stub.get_youtube_avg = lambda _cursor, _target: {
-            'HHP': {'avg_video': 240, 'avg_comment': 40000}
+                'distinct_keywords': 24,
+            },
         }
 
     def _stats(self, today_rows):
@@ -75,13 +71,14 @@ class YouTubeServiceTests(unittest.TestCase):
         self.assertEqual(100.0, check['rate'])
         self.assertEqual('OK', check['status'])
         category = check['categories'][0]
-        self.assertEqual(240, category['attempted_count'])
         self.assertEqual(240, category['log_count'])
-        self.assertEqual(10, category['completed_country_count'])
-        self.assertEqual(10, category['expected_country_count'])
-        self.assertEqual(24, category['keywords_per_country_min'])
+        self.assertEqual(240, category['attempted_count'])
         self.assertEqual(841, category['video_count'])
         self.assertEqual(40938, category['comment_count'])
+        self.assertEqual(10, category['country_count'])
+        self.assertEqual(10, category['completed_country_count'])
+        self.assertEqual(10, category['expected_country_count'])
+        self.assertEqual(24, category['distinct_keyword_count'])
 
     def test_failed_country_does_not_count_attempted_jobs_as_completed(self):
         check = self._stats([
@@ -89,7 +86,6 @@ class YouTubeServiceTests(unittest.TestCase):
         ])
 
         category = check['categories'][0]
-        self.assertEqual(240, category['attempted_count'])
         self.assertEqual(216, category['log_count'])
         self.assertEqual(90.0, category['rate'])
         self.assertEqual('WARNING', category['status'])

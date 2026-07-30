@@ -11,10 +11,12 @@ def get_youtube_today(cursor, target_date_str):
                 r.*,
                 ROW_NUMBER() OVER (
                     PARTITION BY r.collection_country
-                    ORDER BY r.started_at DESC NULLS LAST, r.id DESC
+                    ORDER BY
+                        r.started_at DESC NULLS LAST,
+                        r.batch_id DESC NULLS LAST
                 ) AS row_num
             FROM youtube_country_collection_runs r
-            WHERE r.collection_date = %s
+            WHERE r.collection_date = %s::date
         ),
         latest_runs AS (
             SELECT *
@@ -42,32 +44,22 @@ def get_youtube_today(cursor, target_date_str):
 def get_youtube_expected(cursor):
     """신규 10개국 HHP 그룹만 기대 수집량에 포함한다."""
     cursor.execute("""
-        WITH per_country AS (
-            SELECT
-                category,
-                collection_country,
-                COUNT(DISTINCT keyword) AS distinct_keyword_count
-            FROM youtube_keywords
-            WHERE status = 'active'
-              AND category = 'HHP'
-              AND collection_group = 'hhp_10_country'
-            GROUP BY category, collection_country
-        )
         SELECT
             category,
-            SUM(distinct_keyword_count) AS expected_job_count,
-            COUNT(*) AS expected_country_count,
-            MIN(distinct_keyword_count) AS keywords_per_country_min,
-            MAX(distinct_keyword_count) AS keywords_per_country_max
-        FROM per_country
+            COUNT(*) AS expected_job_count,
+            COUNT(DISTINCT collection_country) AS expected_country_count,
+            COUNT(DISTINCT keyword) AS distinct_keyword_count
+        FROM youtube_keywords
+        WHERE status = 'active'
+          AND category = 'HHP'
+          AND collection_group = 'hhp_10_country'
         GROUP BY category
     """)
     return {
         row[0]: {
             'expected_jobs': row[1] or 0,
             'expected_countries': row[2] or 0,
-            'keywords_per_country_min': row[3] or 0,
-            'keywords_per_country_max': row[4] or 0,
+            'distinct_keywords': row[3] or 0,
         }
         for row in cursor.fetchall()
     }
@@ -80,7 +72,9 @@ def get_youtube_avg(cursor, target_date_str):
                 r.*,
                 ROW_NUMBER() OVER (
                     PARTITION BY r.collection_date, r.collection_country
-                    ORDER BY r.started_at DESC NULLS LAST, r.id DESC
+                    ORDER BY
+                        r.started_at DESC NULLS LAST,
+                        r.batch_id DESC NULLS LAST
                 ) AS row_num
             FROM youtube_country_collection_runs r
             WHERE r.collection_date >= %s::date - INTERVAL '8 days'
@@ -126,7 +120,9 @@ def get_youtube_logs(cursor, target_date_str, category):
                 r.*,
                 ROW_NUMBER() OVER (
                     PARTITION BY r.collection_country
-                    ORDER BY r.started_at DESC NULLS LAST, r.id DESC
+                    ORDER BY
+                        r.started_at DESC NULLS LAST,
+                        r.batch_id DESC NULLS LAST
                 ) AS row_num
             FROM youtube_country_collection_runs r
             WHERE r.collection_date = %s
@@ -172,7 +168,9 @@ def get_youtube_videos(cursor, target_date_str, category):
                 r.*,
                 ROW_NUMBER() OVER (
                     PARTITION BY r.collection_country
-                    ORDER BY r.started_at DESC NULLS LAST, r.id DESC
+                    ORDER BY
+                        r.started_at DESC NULLS LAST,
+                        r.batch_id DESC NULLS LAST
                 ) AS row_num
             FROM youtube_country_collection_runs r
             WHERE r.collection_date = %s
@@ -243,7 +241,9 @@ def get_youtube_comments(cursor, target_date_str, category):
                 r.*,
                 ROW_NUMBER() OVER (
                     PARTITION BY r.collection_country
-                    ORDER BY r.started_at DESC NULLS LAST, r.id DESC
+                    ORDER BY
+                        r.started_at DESC NULLS LAST,
+                        r.batch_id DESC NULLS LAST
                 ) AS row_num
             FROM youtube_country_collection_runs r
             WHERE r.collection_date = %s

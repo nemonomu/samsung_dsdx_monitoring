@@ -46,6 +46,32 @@ _SERVICE_MAP = {
     'macro_rpi': macro_rpi_svc,
 }
 
+_YOUTUBE_SAVEPOINT = 'layer1_youtube_monitoring'
+
+
+def _rollback_youtube_savepoint(cursor):
+    cursor.execute(f'ROLLBACK TO SAVEPOINT {_YOUTUBE_SAVEPOINT}')
+    cursor.execute(f'RELEASE SAVEPOINT {_YOUTUBE_SAVEPOINT}')
+
+
+def _get_youtube_stats_isolated(cursor, svc, target_date, now):
+    """YouTube 조회 실패가 다른 Layer1 수집 결과를 무효화하지 않게 한다."""
+    cursor.execute(f'SAVEPOINT {_YOUTUBE_SAVEPOINT}')
+    try:
+        svc_result = svc.get_layer1_stats(cursor, target_date, now)
+        if not isinstance(svc_result, dict) or not isinstance(
+            svc_result.get('check'), dict
+        ):
+            _rollback_youtube_savepoint(cursor)
+            return None
+    except Exception as exc:
+        _rollback_youtube_savepoint(cursor)
+        log_error(exc)
+        return None
+
+    cursor.execute(f'RELEASE SAVEPOINT {_YOUTUBE_SAVEPOINT}')
+    return svc_result
+
 
 def _get_active_services(target_date=None):
     """스케줄 DB에서 활성 서비스 목록, daily 여부, target_date 여부를 동적으로 구성"""
@@ -106,7 +132,20 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                 if check_type_filter and check_type_filter != check_type:
                     continue
 
-                if check_type == 'market_competitor_event':
+                if check_type == 'youtube':
+                    svc_result = _get_youtube_stats_isolated(
+                        cursor, svc, target_date, now
+                    )
+                    if svc_result is None:
+                        results['failed_items'].append({
+                            'source': 'Consumer (YouTube)',
+                            'error_type': '조회 오류',
+                            'expected': '국가 수집 데이터',
+                            'actual': 0,
+                            'timestamp': str(target_date),
+                        })
+                        continue
+                elif check_type == 'market_competitor_event':
                     svc_result = svc.get_layer1_stats(cursor, target_date, now, comp_batch_id=comp_batch_id)
                 else:
                     svc_result = svc.get_layer1_stats(cursor, target_date, now)

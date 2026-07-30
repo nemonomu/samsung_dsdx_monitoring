@@ -20,6 +20,23 @@ from apps.dx.dx_layer2.anomaly_validation.services import get_anomaly_stats
 VALID_TABLES_RETAILER = {'TV Retail'}
 
 
+def _run_with_youtube_fallback(
+    cursor, target_date, stats_func, savepoint_name
+):
+    """YouTube SQL 실패 시 트랜잭션을 복구하고 기존 검수만 재조회한다."""
+    cursor.execute(f'SAVEPOINT {savepoint_name}')
+    try:
+        result = stats_func(cursor, target_date)
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint_name}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint_name}')
+        log_error(exc)
+        return stats_func(cursor, target_date, include_youtube=False)
+
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint_name}')
+    return result
+
+
 # ══════════════════════════════════════════════════════════════
 # 메인 서비스 함수
 # ══════════════════════════════════════════════════════════════
@@ -45,7 +62,12 @@ def get_layer_stats(cursor, target_date):
     }
 
     # 1. NULL 검증
-    null_validation, total_null_issues = get_null_stats(cursor, target_date)
+    null_validation, total_null_issues = _run_with_youtube_fallback(
+        cursor,
+        target_date,
+        get_null_stats,
+        'layer2_youtube_null_stats',
+    )
     results['validation_types'].append(null_validation)
 
     # 2. 형식 검증
@@ -53,7 +75,12 @@ def get_layer_stats(cursor, target_date):
     results['validation_types'].append(format_validation)
 
     # 3. 중복 검증
-    anomaly_validation, total_anomaly_issues = get_anomaly_stats(cursor, target_date)
+    anomaly_validation, total_anomaly_issues = _run_with_youtube_fallback(
+        cursor,
+        target_date,
+        get_anomaly_stats,
+        'layer2_youtube_anomaly_stats',
+    )
     results['validation_types'].append(anomaly_validation)
 
     # Summary 계산

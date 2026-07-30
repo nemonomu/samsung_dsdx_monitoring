@@ -11,7 +11,7 @@ class YouTubeRepositoryTests(unittest.TestCase):
             'youtube_repositories_under_test',
         )
 
-    def test_today_uses_latest_country_runs_and_completed_keywords(self):
+    def test_today_uses_country_runs_and_completed_keywords(self):
         expected_row = ('HHP', 240, 240, 841, 40938, 10, 10)
         cursor = ScriptedCursor([{'fetchall': [expected_row]}])
 
@@ -20,26 +20,31 @@ class YouTubeRepositoryTests(unittest.TestCase):
         self.assertEqual([expected_row], rows)
         sql, params = cursor.calls[0]
         self.assertIn('youtube_country_collection_runs', sql)
-        self.assertIn('PARTITION BY r.collection_country', sql)
-        self.assertIn('WHERE row_num = 1', sql)
+        self.assertIn('collection_date = %s::date', sql)
         self.assertIn("status = 'completed'", sql)
+        self.assertIn('ROW_NUMBER()', sql)
+        self.assertIn('PARTITION BY r.collection_country', sql)
+        self.assertIn('r.batch_id DESC NULLS LAST', sql)
+        self.assertNotIn('r.id', sql)
         self.assertNotIn('youtube_collection_logs', sql)
         self.assertEqual(('2026-07-29',), params)
 
-    def test_expected_excludes_legacy_group_and_reports_unique_keywords(self):
-        cursor = ScriptedCursor([{'fetchall': [('HHP', 240, 10, 24, 24)]}])
+    def test_expected_excludes_legacy_group(self):
+        cursor = ScriptedCursor([{'fetchall': [('HHP', 240, 10, 24)]}])
 
         result = self.repo.get_youtube_expected(cursor)
 
-        self.assertEqual(240, result['HHP']['expected_jobs'])
-        self.assertEqual(10, result['HHP']['expected_countries'])
-        self.assertEqual(24, result['HHP']['keywords_per_country_min'])
-        self.assertEqual(24, result['HHP']['keywords_per_country_max'])
+        self.assertEqual({
+            'expected_jobs': 240,
+            'expected_countries': 10,
+            'distinct_keywords': 24,
+        }, result['HHP'])
         sql, params = cursor.calls[0]
         self.assertIn("collection_group = 'hhp_10_country'", sql)
         self.assertIn("category = 'HHP'", sql)
-        self.assertIn('SUM(distinct_keyword_count)', sql)
-        self.assertNotIn('SUM(job_count)', sql)
+        self.assertIn('COUNT(*)', sql)
+        self.assertIn('COUNT(DISTINCT collection_country)', sql)
+        self.assertIn('COUNT(DISTINCT keyword)', sql)
         self.assertNotIn('legacy_us', sql)
         self.assertIsNone(params)
 
@@ -63,6 +68,7 @@ class YouTubeRepositoryTests(unittest.TestCase):
         for sql in (list_sql, count_sql):
             self.assertIn('r.batch_id = v.collection_batch_id', sql)
             self.assertIn('r.collection_country = v.collection_country', sql)
+            self.assertNotIn('r.id', sql)
             self.assertNotIn('youtube_collection_logs', sql)
         self.assertNotIn('DATE(v.created_at)', list_sql)
         self.assertEqual(('2026-07-29', 'HHP'), list_params)
@@ -86,6 +92,7 @@ class YouTubeRepositoryTests(unittest.TestCase):
         self.assertIn('r.collection_country = c.collection_country', sql)
         self.assertIn('v.collection_batch_id = c.collection_batch_id', sql)
         self.assertIn('v.collection_country = c.collection_country', sql)
+        self.assertNotIn('r.id', sql)
         self.assertNotIn('DATE(c.created_at)', sql)
         self.assertEqual(('2026-07-29', 'HHP'), params)
 
@@ -101,6 +108,7 @@ class YouTubeRepositoryTests(unittest.TestCase):
         self.assertEqual(0, total)
         sql, _ = cursor.calls[0]
         self.assertIn('youtube_country_collection_runs', sql)
+        self.assertNotIn('r.id', sql)
         self.assertNotIn('youtube_collection_logs', sql)
 
 

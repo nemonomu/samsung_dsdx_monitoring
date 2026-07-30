@@ -296,7 +296,7 @@ function renderDXTableDetail(vType, table) {
             if (isYouTube && retailer.retailer === 'Logs') {
                 detailText = 'keyword + category 중복';
             } else if (isYouTube && retailer.retailer === 'Videos') {
-                detailText = '국가 + 배치 + video_id + keyword 중복';
+                detailText = 'video_id + keyword 중복';
             } else if (isYouTube && retailer.retailer === 'Comments') {
                 detailText = 'video_id + comment_id 중복';
             } else if (isMarket && retailer.retailer === 'Trend') {
