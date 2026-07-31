@@ -117,16 +117,15 @@ async function run() {
     await flushPromises();
 
     const emailHtml = email.elements['cs-email-container'].innerHTML;
-    assert(emailHtml.includes('YouTube 국가 실행 (HHP)'));
-    assert(emailHtml.includes('YouTube 완료 키워드 작업 (HHP)'));
+    assert(!emailHtml.includes('YouTube 국가 실행 (HHP)'));
+    assert(!emailHtml.includes('YouTube 완료 키워드 작업 (HHP)'));
     assert(emailHtml.includes('YouTube 영상 데이터 (HHP)'));
-    assert(emailHtml.includes('YouTube 댓글 데이터 (HHP)'));
-    assert(emailHtml.includes('youtube_country_collection_runs'));
-    assert(emailHtml.includes('youtube_videos'));
-    assert(emailHtml.includes('youtube_comments'));
-    for (const value of ['10', '240', '841', '40938']) {
-        assert(emailHtml.includes('>' + value + '</td>'));
-    }
+    assert(!emailHtml.includes('YouTube 댓글 데이터 (HHP)'));
+    assert(!emailHtml.includes('youtube_country_collection_runs'));
+    assert(emailHtml.includes('RAW_EXT_YOUTUBE_VIDEOS_VIEW'));
+    assert(!emailHtml.includes('>youtube_videos</td>'));
+    assert(!emailHtml.includes('youtube_comments'));
+    assert(emailHtml.includes('>841</td>'));
 
     const daily = loadPage('?focus=' + encodeURIComponent('일일 수집 현황'));
     daily.L4._sectionHandler.collection_status();

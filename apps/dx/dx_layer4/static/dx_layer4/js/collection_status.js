@@ -34,7 +34,7 @@
         'retail_tv': 'RAW_EXT_TV_RETAIL_COM_VIEW',
         'youtube': 'RAW_EXT_YOUTUBE_VIDEOS_VIEW',
         'youtube_runs': 'youtube_country_collection_runs',
-        'youtube_videos': 'youtube_videos',
+        'youtube_videos': 'RAW_EXT_YOUTUBE_VIDEOS_VIEW',
         'youtube_comments': 'youtube_comments',
         'market_trend': 'RAW_EXT_MARKET_TREND_VIEW',
         'market_demand': 'RAW_EXT_OPENAI_FORECAST_RESULTS_VIEW',
@@ -277,11 +277,8 @@
                     youtubeTotals.comments += (cat.comment_count || 0);
                 });
 
-                if (options.expandYoutube) {
-                    rows.push({ no: no++, category: 'Consumer', name: 'YouTube 국가 실행 (HHP)', table_name: TABLE_NAME_MAP.youtube_runs, expected: youtubeTotals.expectedCountries, actual: youtubeTotals.completedCountries });
-                    rows.push({ no: no++, category: 'Consumer', name: 'YouTube 완료 키워드 작업 (HHP)', table_name: TABLE_NAME_MAP.youtube_runs, expected: youtubeTotals.expectedKeywords, actual: youtubeTotals.completedKeywords });
+                if (options.emailYoutubeVideoOnly) {
                     rows.push({ no: no++, category: 'Consumer', name: 'YouTube 영상 데이터 (HHP)', table_name: TABLE_NAME_MAP.youtube_videos, expected: '-', actual: youtubeTotals.videos });
-                    rows.push({ no: no++, category: 'Consumer', name: 'YouTube 댓글 데이터 (HHP)', table_name: TABLE_NAME_MAP.youtube_comments, expected: '-', actual: youtubeTotals.comments });
                 } else {
                     rows.push({ no: no++, category: CATEGORY_MAP[checkType] || '', name: NAME_MAP[checkType] || check.name, table_name: TABLE_NAME_MAP[checkType] || '', expected: '-', actual: youtubeTotals.videos });
                 }
@@ -369,7 +366,7 @@
     function renderEmailReport(dailyData, tvData, date) {
         var container = document.getElementById('cs-email-container');
 
-        var dailyRows = buildDailyRows(dailyData, { expandYoutube: true });
+        var dailyRows = buildDailyRows(dailyData, { emailYoutubeVideoOnly: true });
         var totalExpected = 0, totalActual = 0;
         dailyRows.forEach(function(r) {
             if (typeof r.expected === 'number') totalExpected += r.expected;
@@ -411,7 +408,7 @@
 
         // 비고
         html += '<br><span style="font-size:12px;color:#888;line-height:1.8;">'
-            + '&nbsp;&nbsp;※ YouTube 영상·댓글 데이터는 업로드 및 댓글 현황에 따라 수집 건수가 결정되어 예상 건수를 사전에 산정할 수 없습니다.<br>'
+            + '&nbsp;&nbsp;※ YouTube 영상 데이터는 업로드 현황에 따라 수집 건수가 결정되어 예상 건수를 사전에 산정할 수 없습니다.<br>'
             + '&nbsp;&nbsp;※ Retail 항목은 중복 데이터 및 제외 키워드·비대상 제품을 필터링하여 수집하므로, 일일 수집건수가 예상건수보다 적을 수 있습니다.'
             + '</span><br><br>'
             + '<span style="font-size:12px;color:#555;line-height:1.8;">'
