@@ -1,6 +1,26 @@
+.redirect-data-content {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 0;
+    min-width: 0;
+    height: calc(100vh - 64px);
+    overflow: hidden;
+}
+
+.redirect-data-content .page-header {
+    flex: 0 0 auto;
+}
+
 .redirect-card {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
     padding: 0;
     overflow: hidden;
+    gap: 0;
 }
 
 .redirect-filter {
@@ -44,10 +64,36 @@
 }
 
 .redirect-table-wrap {
-    overflow: auto;
-    max-height: calc(100vh - 340px);
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #f1f5f9;
     border-top: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
+}
+
+.redirect-table-wrap::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.redirect-table-wrap::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+.redirect-table-wrap::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border: 2px solid #f1f5f9;
+    border-radius: 999px;
+}
+
+.redirect-table-wrap::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
 }
 
 .redirect-table {
@@ -84,6 +130,7 @@
 }
 
 .redirect-pagination {
+    flex: 0 0 auto;
     display: flex;
     justify-content: center;
     align-items: center;
