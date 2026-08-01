@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'dx_data/css/item_master.css' %}">
-<link rel="stylesheet" href="{% static 'dx_data/css/redirect_data.css' %}">
+<link rel="stylesheet" href="{% static 'dx_data/css/redirect_data.css' %}?v=2">
 {% endblock %}
 
 {% block content %}
@@ -44,15 +44,23 @@
         </div>
 
         <div class="white-card-frame redirect-card">
-            <div class="redirect-filter">
-                <label for="redirectDate">조회 날짜</label>
-                <input type="date" id="redirectDate">
-                <button type="button" class="redirect-btn primary" id="redirectSearch">조회</button>
-                <button type="button" class="redirect-btn" id="redirectPrev">전날</button>
-                <button type="button" class="redirect-btn" id="redirectNext">다음날</button>
+            <div class="redirect-card-header">
+                <span class="redirect-tab">TV</span>
             </div>
 
-            <div class="redirect-summary" id="redirectSummary">조회 중...</div>
+            <div class="redirect-filter-panel">
+                <div class="redirect-filter">
+                    <label for="redirectDate">조회 날짜</label>
+                    <input type="date" id="redirectDate">
+                    <button type="button" class="redirect-btn primary" id="redirectSearch">조회</button>
+                    <button type="button" class="redirect-btn" id="redirectPrev">전날</button>
+                    <button type="button" class="redirect-btn" id="redirectNext">다음날</button>
+                </div>
+            </div>
+
+            <div class="redirect-result-bar">
+                <div class="redirect-summary" id="redirectSummary">조회 중...</div>
+            </div>
             <div class="redirect-table-wrap" id="redirectTable"></div>
             <div class="redirect-pagination" id="redirectPagination"></div>
         </div>
