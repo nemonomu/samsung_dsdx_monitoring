@@ -374,7 +374,7 @@
                     column: 'redirect',
                     total_count: retailer.redirect_true_count || 0,
                     null_count: 0,
-                    remark: 'Amazon redirect=TRUE 건수 (검수 제외)'
+                    remark: 'Amazon redirect=TRUE 건수'
                 });
             }
             return copy;
