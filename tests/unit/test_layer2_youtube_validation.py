@@ -1,4 +1,6 @@
+import ast
 import inspect
+import textwrap
 import unittest
 from datetime import date, datetime
 from unittest.mock import Mock
@@ -329,6 +331,20 @@ class YouTubeFormatValidationTests(unittest.TestCase):
         source = inspect.getsource(self.service.get_format_stats)
         self.assertNotIn('yt_tables', source)
         self.assertNotIn("'table': 'youtube'", source)
+
+    def test_format_stats_interpolates_redirect_filter(self):
+        source = inspect.getsource(self.service.get_format_stats)
+        tree = ast.parse(textwrap.dedent(source))
+        literal_sql = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        ]
+
+        self.assertFalse(any(
+            '{get_tv_validation_condition' in value
+            for value in literal_sql
+        ))
 
 
 if __name__ == '__main__':

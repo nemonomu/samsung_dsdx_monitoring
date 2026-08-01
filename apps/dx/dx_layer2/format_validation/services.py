@@ -823,7 +823,7 @@ def get_format_stats(cursor, target_date):
     CHUNK_SIZE = 5000
     tv_offset = 0
     while True:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 account_name, id, item, page_type, product_url,
                 main_rank, bsr_rank, final_sku_price, original_sku_price,
