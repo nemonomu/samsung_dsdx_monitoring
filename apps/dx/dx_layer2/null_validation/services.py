@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from apps.common.db import execute_dx_query, dx_table
 from apps.common.response import log_error
 from apps.common.retail_columns import load_retail_columns, get_editable_columns
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 
 
@@ -437,6 +438,9 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                 date_where += " AND account_name = %s"
                 params.append(retailer_name)
 
+            if query_parts['table_name'] == 'tv_retail_com':
+                date_where += f" AND {get_tv_validation_condition()}"
+
             query = f"""
                 SELECT COUNT(*) as total,
                        {', '.join(query_parts['count_parts'])}
@@ -561,6 +565,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         if retailer:
             query += " AND account_name = %s"
             params.append(retailer)
+        if actual_table == 'tv_retail_com':
+            query += f" AND {get_tv_validation_condition()}"
         query += f" ORDER BY {date_col}"
     else:
         detail_where, params = _build_null_date_where(
@@ -619,6 +625,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                     WHERE {date_col}::timestamp >= %s AND {date_col}::timestamp < %s
                       AND account_name = %s
                       AND item IN ({placeholders})
+                      {f'AND {get_tv_validation_condition()}' if actual_table == 'tv_retail_com' else ''}
                     ORDER BY item, {date_col}
                 """
                 expand_params = [str(start_date), str(next_date), retailer] + error_items

@@ -3,6 +3,7 @@ Layer 3 카테고리별 특성 서비스 레이어
 """
 
 from apps.common.response import log_error
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import (
     apply_tv_retail_am_filter,
     load_category_rules,
@@ -69,7 +70,11 @@ def get_rules_summary(cursor, target_date, target_category, rules):
             # 전체 건수 쿼리 (date_column 기반)
             if has_date_filter:
                 if table_name == 'tv_retail_com':
-                    total_query = f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s"
+                    total_query = (
+                        f"SELECT COUNT(*) FROM {table_name} "
+                        f"WHERE DATE({date_col}) = %s "
+                        f"AND {get_tv_validation_condition()}"
+                    )
                 else:
                     total_query = f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s"
                 cursor.execute(total_query, (target_date,))
@@ -82,7 +87,7 @@ def get_rules_summary(cursor, target_date, target_category, rules):
             # 이상치 쿼리 실행
             query = query_template.replace('{table}', table_name).replace('{date_col}', date_col)
             query = apply_tv_retail_am_filter(query, table_name, date_col)
-            if not query.strip().upper().startswith('SELECT'):
+            if not validate_select_query(query):
                 raise ValueError(f'허용되지 않은 쿼리 유형: {detail_code}')
             # psycopg2 파라미터 바인딩용 이스케이프: LIKE의 %를 %%로
             query = query.replace('%%', '%')

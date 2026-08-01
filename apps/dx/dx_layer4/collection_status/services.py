@@ -10,6 +10,7 @@ from email.utils import formataddr
 from datetime import datetime
 from apps.common.db import dx_connection, dx_table
 from apps.common.retail_columns import load_retail_columns
+from apps.common.retail_validation import get_tv_validation_condition
 from config.config import EMAIL_CONFIG
 
 _EMAIL_LOG_TABLE = dx_table('monitoring_email_logs')
@@ -63,9 +64,21 @@ def get_collection_status(target_date, category):
                 f"SELECT COUNT(*) AS total_count, {', '.join(null_parts)} "
                 f"FROM {table_name} "
                 f"WHERE account_name = %s AND {_BATCH_DATE_EXPR} = %s "
+                f"AND {get_tv_validation_condition()} "
             )
             cursor.execute(sql, [retailer, _batch_date_key(target_date)])
             row = cursor.fetchone()
+
+            redirect_true_count = 0
+            if category == 'tv' and retailer == 'Amazon':
+                cursor.execute(
+                    f"SELECT COUNT(*) FROM {table_name} "
+                    f"WHERE account_name = %s AND {_BATCH_DATE_EXPR} = %s "
+                    f"AND redirect IS TRUE",
+                    [retailer, _batch_date_key(target_date)],
+                )
+                redirect_row = cursor.fetchone()
+                redirect_true_count = (redirect_row[0] or 0) if redirect_row else 0
 
             total_count = (row[0] or 0) if row else 0
             savings_count = (row[len(columns) + 1] or 0) if row else 0
@@ -115,6 +128,7 @@ def get_collection_status(target_date, category):
             retailers.append({
                 'retailer': retailer,
                 'total_count': total_count,
+                'redirect_true_count': redirect_true_count,
                 'columns': column_nulls,
             })
 
@@ -138,6 +152,7 @@ def get_null_detail(target_date, category, retailer, column):
             f"SELECT id, {date_expr}, account_name, item, {column}, product_url "
             f"FROM {table_name} "
             f"WHERE account_name = %s AND {_BATCH_DATE_EXPR} = %s "
+            f"AND {get_tv_validation_condition()} "
             f"AND ({column} IS NULL OR CAST({column} AS TEXT) = '') "
             f"ORDER BY item, {date_col} ASC"
         )

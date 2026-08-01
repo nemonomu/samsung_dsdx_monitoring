@@ -4,6 +4,7 @@ Layer 3 필드 누락 서비스 레이어
 
 from datetime import timedelta
 from apps.common.retail_columns import get_missing_exclude_conditions
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import validate_exclude_condition
 
 
@@ -92,6 +93,7 @@ def field_missing_detection(cursor, target_date, product_line, retailer, retail_
             SELECT item, {', '.join(case_prev)}, {', '.join(case_today)}
             FROM {table_name}
             WHERE account_name = %s
+            AND {get_tv_validation_condition()}
             AND DATE({date_column}) IN (%s, %s, %s)
             GROUP BY item
         """
@@ -132,6 +134,7 @@ def field_missing_detection(cursor, target_date, product_line, retailer, retail_
                 null_count_query = f"""
                     SELECT COUNT(*) FROM {table_name}
                     WHERE account_name = %s
+                    AND {get_tv_validation_condition()}
                     AND DATE({date_column}) = %s
                     AND item IN ({placeholders})
                     AND ({safe_col} IS NULL OR CAST({safe_col} AS TEXT) = ''){exclude_sql}
@@ -229,6 +232,7 @@ def field_missing_detail_all(cursor, target_date, product_line, retailer, displa
             SELECT COUNT(*)
             FROM {table_name}
             WHERE account_name = %s
+            AND {get_tv_validation_condition()}
             AND DATE({date_cast}) IN (%s, %s, %s)
         """, (retailer, prev_date_2, prev_date_1, target_date))
         total_count = cursor.fetchone()[0]
@@ -238,6 +242,7 @@ def field_missing_detail_all(cursor, target_date, product_line, retailer, displa
         SELECT {select_clause}
         FROM {table_name}
         WHERE account_name = %s
+        AND {get_tv_validation_condition()}
         AND DATE({date_cast}) IN (%s, %s, %s)
         ORDER BY item, {date_column} ASC
         LIMIT %s OFFSET %s
@@ -332,6 +337,7 @@ def field_missing_detail_problem(cursor, target_date, product_line, retailer, co
                 SELECT DISTINCT item, account_name, MAX(CAST({safe_col} AS TEXT)) as prev_value
                 FROM {table_name}
                 WHERE account_name = %s
+                AND {get_tv_validation_condition()}
                 AND DATE({date_cast}) IN (%s, %s)
                 AND {safe_col} IS NOT NULL
                 AND CAST({safe_col} AS TEXT) != ''
@@ -341,6 +347,7 @@ def field_missing_detail_problem(cursor, target_date, product_line, retailer, co
                 SELECT DISTINCT item, account_name, {safe_col}
                 FROM {table_name}
                 WHERE account_name = %s
+                AND {get_tv_validation_condition()}
                 AND DATE({date_cast}) = %s
             ) t ON p.item = t.item AND p.account_name = t.account_name
             WHERE t.{safe_col} IS NULL OR CAST(t.{safe_col} AS TEXT) = ''
@@ -486,6 +493,7 @@ def field_missing_detail_by_field(cursor, target_date, product_line, retailer, f
         SELECT item
         FROM {table_name}
         WHERE account_name = %s
+        AND {get_tv_validation_condition()}
         AND DATE({date_cast}) IN (%s, %s, %s)
         GROUP BY item
         HAVING
@@ -525,6 +533,7 @@ def field_missing_detail_by_field(cursor, target_date, product_line, retailer, f
         SELECT {select_clause}
         FROM {table_name}
         WHERE account_name = %s
+        AND {get_tv_validation_condition()}
         AND DATE({date_cast}) IN ({date_placeholders})
         AND item IN ({placeholders})
         ORDER BY item, {date_column}

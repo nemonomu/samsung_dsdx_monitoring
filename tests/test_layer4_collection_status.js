@@ -42,9 +42,10 @@ function response(data) {
     });
 }
 
-function loadPage(search, statsData = layer1Data) {
+function loadPage(search, statsData = layer1Data, collectionData = { success: true, retailers: [] }) {
     const elements = {
         'cs-daily-container': { innerHTML: '' },
+        'cs-container': { innerHTML: '' },
         'cs-email-container': { innerHTML: '' },
         'email-send-btn': {
             textContent: '',
@@ -82,7 +83,7 @@ function loadPage(search, statsData = layer1Data) {
                 return response({ count: 0 });
             }
             if (url.startsWith('/dx/layer4/api/collection-status/')) {
-                return response({ success: true, retailers: [] });
+                return response(collectionData);
             }
             return response({});
         },
@@ -126,6 +127,42 @@ async function run() {
     assert(!emailHtml.includes('>youtube_videos</td>'));
     assert(!emailHtml.includes('youtube_comments'));
     assert(emailHtml.includes('>841</td>'));
+
+    const redirectData = {
+        success: true,
+        retailers: [{
+            retailer: 'Amazon',
+            total_count: 248,
+            redirect_true_count: 2,
+            columns: [{ column: 'item', total_count: 248, null_count: 0 }]
+        }, {
+            retailer: 'Bestbuy',
+            total_count: 315,
+            redirect_true_count: 0,
+            columns: [{ column: 'item', total_count: 315, null_count: 0 }]
+        }]
+    };
+    const redirectEmail = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        layer1Data,
+        redirectData
+    );
+    redirectEmail.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const redirectEmailHtml = redirectEmail.elements['cs-email-container'].innerHTML;
+    assert(redirectEmailHtml.includes('redirect'));
+    assert(redirectEmailHtml.includes('Amazon redirect=TRUE'));
+    assert(redirectEmailHtml.includes('>2</td>'));
+
+    const nullPage = loadPage(
+        '?focus=' + encodeURIComponent('항목별 NULL 현황'),
+        layer1Data,
+        redirectData
+    );
+    nullPage.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const nullHtml = nullPage.elements['cs-container'].innerHTML;
+    assert(!nullHtml.includes('redirect'));
 
     const daily = loadPage('?focus=' + encodeURIComponent('일일 수집 현황'));
     daily.L4._sectionHandler.collection_status();

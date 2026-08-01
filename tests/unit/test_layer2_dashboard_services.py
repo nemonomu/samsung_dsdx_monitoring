@@ -21,6 +21,13 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             'apps.common.retail_columns': module_stub(
                 'apps.common.retail_columns', validate_field=lambda *_: None
             ),
+            'apps.common.retail_validation': module_stub(
+                'apps.common.retail_validation',
+                get_tv_validation_condition=lambda alias=None: (
+                    f"NOT ({alias + '.' if alias else ''}account_name = 'Amazon' "
+                    f"AND {alias + '.' if alias else ''}redirect IS TRUE)"
+                ),
+            ),
             'apps.common.response': module_stub(
                 'apps.common.response', log_error=lambda error: str(error)
             ),

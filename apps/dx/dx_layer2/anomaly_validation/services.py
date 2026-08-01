@@ -7,6 +7,7 @@ from apps.common.retail_columns import (
     get_editable_columns, get_duplicate_key_columns,
     get_retailer_list, get_retail_duplicate_keys,
 )
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 
 
@@ -85,6 +86,9 @@ def _build_dup_delete_query(table, retailer=''):
     retailer_where = ''
     if retailer_col and retailer:
         retailer_where = f"AND {retailer_col} = %s"
+    validation_where = ''
+    if actual == 'tv_retail_com':
+        validation_where = f"AND {get_tv_validation_condition('t')}"
 
     sql = f"""
         SELECT sub.id, sub.record_data FROM (
@@ -95,6 +99,7 @@ def _build_dup_delete_query(table, retailer=''):
                    ) as rn
             FROM {actual} t
             WHERE DATE({date_col}::timestamp) = %s
+              {validation_where}
               {retailer_where}
         ) sub
         WHERE sub.rn > 1
@@ -129,12 +134,13 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
     if table == 'tv_retail':
         select_cols = {'group': ['item', 'retailer', 'period', 'dup_count', 'reason'], 'record': ['id', 'product_url', 'crawl_datetime', 'page_type', 'main_rank', 'bsr_rank']}
         # 전체 그룹 수
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(*) FROM (
                 SELECT item, account_name,
                        CASE WHEN EXTRACT(HOUR FROM crawl_datetime::timestamp) < 12 THEN '오전' ELSE '오후' END as period
                 FROM tv_retail_com
                 WHERE DATE(crawl_datetime::timestamp) = %s
+                  AND {get_tv_validation_condition()}
                   AND (%s = '' OR account_name = %s)
                 GROUP BY item, account_name, period
                 HAVING COUNT(*) > 1
@@ -144,13 +150,14 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
 
         # 중복 그룹 찾기: item + 시간대 (오전/오후 각각 1건만 있어야 정상)
         # page_type은 무시 - main과 bsr에서 같은 item이 수집되는 건 정상
-        cursor.execute("""
+        cursor.execute(f"""
             WITH duplicate_groups AS (
                 SELECT item, account_name,
                        CASE WHEN EXTRACT(HOUR FROM crawl_datetime::timestamp) < 12 THEN '오전' ELSE '오후' END as period,
                        COUNT(*) as dup_count
                 FROM tv_retail_com
                 WHERE DATE(crawl_datetime::timestamp) = %s
+                  AND {get_tv_validation_condition()}
                   AND (%s = '' OR account_name = %s)
                 GROUP BY item, account_name, period
                 HAVING COUNT(*) > 1
@@ -163,6 +170,7 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
             JOIN tv_retail_com t ON t.item IS NOT DISTINCT FROM d.item
                 AND t.account_name = d.account_name
                 AND DATE(t.crawl_datetime::timestamp) = %s
+                AND {get_tv_validation_condition('t')}
                 AND CASE WHEN EXTRACT(HOUR FROM t.crawl_datetime::timestamp) < 12 THEN '오전' ELSE '오후' END = d.period
             ORDER BY d.dup_count DESC, d.item, d.period, t.crawl_datetime
         """, (target_date, retailer, retailer, page_size, offset, target_date))
@@ -596,8 +604,12 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
 
     # 1. 삭제 대상 전체 행 조회 (백업용)
     id_placeholders = ', '.join(['%s'] * len(ids))
+    validation_where = ''
+    if actual_table == 'tv_retail_com':
+        validation_where = f" AND {get_tv_validation_condition('t')}"
     cursor.execute(
-        f"SELECT id, row_to_json(t.*) as record_data FROM {actual_table} t WHERE id IN ({id_placeholders})",
+        f"SELECT id, row_to_json(t.*) as record_data FROM {actual_table} t "
+        f"WHERE id IN ({id_placeholders}){validation_where}",
         ids
     )
     rows = cursor.fetchall()
@@ -670,6 +682,9 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
 def get_duplicate_count(cursor, table_name, date_col, dup_keys, target_date, use_period=False, group_by_col=None):
     """스케줄 기반 중복 검증 쿼리 실행"""
     dup_keys_sql = ', '.join(dup_keys)
+    validation_where = ''
+    if table_name == 'tv_retail_com':
+        validation_where = f"AND {get_tv_validation_condition()}"
 
     if use_period:
         period_expr = f"CASE WHEN EXTRACT(HOUR FROM {date_col}::timestamp) < 12 THEN '오전' ELSE '오후' END as period"
@@ -679,6 +694,7 @@ def get_duplicate_count(cursor, table_name, date_col, dup_keys, target_date, use
                     SELECT {dup_keys_sql}, {period_expr}
                     FROM {table_name}
                     WHERE DATE({date_col}::timestamp) = %s
+                    {validation_where}
                     GROUP BY {dup_keys_sql}, period
                     HAVING COUNT(*) > 1
                 ) sub
@@ -692,6 +708,7 @@ def get_duplicate_count(cursor, table_name, date_col, dup_keys, target_date, use
                     SELECT {dup_keys_sql}, {period_expr}
                     FROM {table_name}
                     WHERE DATE({date_col}::timestamp) = %s
+                    {validation_where}
                     GROUP BY {dup_keys_sql}, period
                     HAVING COUNT(*) > 1
                 ) sub
@@ -703,6 +720,7 @@ def get_duplicate_count(cursor, table_name, date_col, dup_keys, target_date, use
                 SELECT {dup_keys_sql}
                 FROM {table_name}
                 WHERE DATE({date_col}) = %s
+                {validation_where}
                 GROUP BY {dup_keys_sql}
                 HAVING COUNT(*) > 1
             ) sub
@@ -763,7 +781,12 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
         tv_dup_keys = ['item', 'account_name']
     tv_date_col = 'crawl_datetime'
 
-    cursor.execute(f"SELECT COUNT(*) FROM tv_retail_com WHERE DATE({tv_date_col}::timestamp) = %s", (target_date,))
+    cursor.execute(
+        f"SELECT COUNT(*) FROM tv_retail_com "
+        f"WHERE DATE({tv_date_col}::timestamp) = %s "
+        f"AND {get_tv_validation_condition()}",
+        (target_date,),
+    )
     tv_total_records = cursor.fetchone()[0] or 0
 
     retailer_list = get_retailer_list()
@@ -795,9 +818,10 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
         tv_dup_total += dup_count
 
     # TV Retail 가격 이상
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT COUNT(*) FROM tv_retail_com
         WHERE DATE(crawl_datetime::timestamp) = %s
+        AND {get_tv_validation_condition()}
         AND final_sku_price ~ '^\$[\d,]+\.?\d*$'
         AND (
             CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) < 0

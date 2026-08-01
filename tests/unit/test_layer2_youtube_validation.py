@@ -15,6 +15,13 @@ def common_stubs():
     return {
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
+        'apps.common.retail_validation': module_stub(
+            'apps.common.retail_validation',
+            get_tv_validation_condition=lambda alias=None: (
+                f"NOT ({alias + '.' if alias else ''}account_name = 'Amazon' "
+                f"AND {alias + '.' if alias else ''}redirect IS TRUE)"
+            ),
+        ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
         'apps.dx.dx_layer2.common': package_stub('apps.dx.dx_layer2.common'),

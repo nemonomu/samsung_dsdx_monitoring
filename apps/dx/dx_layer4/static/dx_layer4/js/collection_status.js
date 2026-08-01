@@ -366,6 +366,20 @@
     function renderEmailReport(dailyData, tvData, date) {
         var container = document.getElementById('cs-email-container');
 
+        var emailRetailers = (tvData.retailers || []).map(function(retailer) {
+            var copy = Object.assign({}, retailer);
+            copy.columns = (retailer.columns || []).slice();
+            if (retailer.retailer === 'Amazon') {
+                copy.columns.push({
+                    column: 'redirect',
+                    total_count: retailer.redirect_true_count || 0,
+                    null_count: 0,
+                    remark: 'Amazon redirect=TRUE 건수 (검수 제외)'
+                });
+            }
+            return copy;
+        });
+
         var dailyRows = buildDailyRows(dailyData, { emailYoutubeVideoOnly: true });
         var totalExpected = 0, totalActual = 0;
         dailyRows.forEach(function(r) {
@@ -420,7 +434,7 @@
 
         // 2. R.com 수집 항목 Missing Value 현황
         html += '<b style="font-size:14px;">2. R.com 수집 항목 Missing Value 현황</b><br>';
-        if (tvData.success) html += buildNullTable(tvData.retailers, 'TV');
+        if (tvData.success) html += buildNullTable(emailRetailers, 'TV');
 
         html += '<br>감사합니다.';
 

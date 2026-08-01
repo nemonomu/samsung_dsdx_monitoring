@@ -11,6 +11,7 @@ from apps.common.retail_columns import (
     get_editable_columns,
 )
 from apps.common.db import dx_table
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 
 
@@ -85,6 +86,7 @@ def get_format_detail(cursor, target_date, table, retailer, days):
                 id, crawl_datetime, account_name, {', '.join(all_fields)}
             FROM tv_retail_com
             WHERE crawl_datetime::timestamp >= %s AND crawl_datetime::timestamp < %s
+              AND {get_tv_validation_condition()}
         """
         params = [str(target_date), str(next_date)]
         if retailer:
@@ -400,6 +402,7 @@ def get_format_detail(cursor, target_date, table, retailer, days):
                         number_of_ppl_purchased_yesterday, number_of_ppl_added_to_carts, discount_type
                     FROM tv_retail_com
                     WHERE crawl_datetime::timestamp >= %s AND crawl_datetime::timestamp < %s
+                      AND {get_tv_validation_condition()}
                       AND account_name = %s AND item IN ({placeholders})
                     ORDER BY item, crawl_datetime
                 """
@@ -704,6 +707,7 @@ def get_tv_format_errors(cursor, table_name, date_field, target_date, retailer):
         FROM {table_name}
         WHERE DATE({date_field}::timestamp) = %s
           AND account_name = %s
+          AND {get_tv_validation_condition()}
         ORDER BY id
     """, (target_date, retailer))
     for row in cursor.fetchall():
@@ -832,6 +836,7 @@ def get_format_stats(cursor, target_date):
                 number_of_ppl_purchased_yesterday, number_of_ppl_added_to_carts, discount_type
             FROM tv_retail_com
             WHERE DATE(crawl_datetime::timestamp) = %s
+              AND {get_tv_validation_condition()}
             ORDER BY id
             LIMIT %s OFFSET %s
         """, (target_date, CHUNK_SIZE, tv_offset))

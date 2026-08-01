@@ -5,6 +5,7 @@
 from datetime import timedelta
 from apps.common.db import dx_table
 from apps.common.response import log_error
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import (
     apply_tv_retail_am_filter,
     validate_table_name as _validate_table_name,
@@ -57,6 +58,7 @@ def get_time_series_detail(cursor, target_date, detail_code, days=1):
         FROM {source_table} d
         JOIN _anomaly_items a ON d.item = a.item
         WHERE {date_filter}
+        {f'AND {get_tv_validation_condition("d")}' if source_table == 'tv_retail_com' else ''}
         ORDER BY d.item, d.account_name, d.{date_column} ASC
     """
     cursor.execute(combined_sql, (target_date, target_date, prev_date) + tuple(date_params))
@@ -95,7 +97,7 @@ def get_duplicate_detail(cursor, target_date, product_line):
         }
 
     if product_line == 'tv':
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT item, account_name, page_type,
                    'DAILY' as period,
                    COUNT(*) as cnt,
@@ -103,6 +105,7 @@ def get_duplicate_detail(cursor, target_date, product_line):
                    MAX(crawl_datetime) as last_crawl
             FROM tv_retail_com
             WHERE DATE(crawl_datetime::timestamp) = %s
+              AND {get_tv_validation_condition()}
             GROUP BY item, account_name, page_type
             HAVING COUNT(*) > 1
             ORDER BY COUNT(*) DESC
@@ -196,6 +199,7 @@ def get_review_change_detail(cursor, target_date, product_line):
                    product_url, '일일' as period
             FROM {table}
             WHERE {date_func} = %s
+            {f'AND {get_tv_validation_condition()}' if product_line == 'tv' else ''}
             AND count_of_star_ratings IS NOT NULL AND count_of_star_ratings ~ '^[0-9,]+$'
         ),
         yesterday_daily AS (
@@ -203,6 +207,7 @@ def get_review_change_detail(cursor, target_date, product_line):
                    CAST(REPLACE(count_of_star_ratings, ',', '') AS INTEGER) as review_count
             FROM {table}
             WHERE {date_func} = %s
+            {f'AND {get_tv_validation_condition()}' if product_line == 'tv' else ''}
             AND count_of_star_ratings IS NOT NULL AND count_of_star_ratings ~ '^[0-9,]+$'
         ),
         daily_changes AS (
@@ -252,10 +257,11 @@ def get_price_anomalies(cursor, target_date, product_line):
 
     """가격 이상치 상세 조회"""
     if product_line == 'tv':
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT product_name, account_name, final_sku_price, main_rank, crawl_datetime
             FROM tv_retail_com
             WHERE DATE(crawl_datetime::timestamp) = %s
+            AND {get_tv_validation_condition()}
             AND (final_sku_price < 0 OR final_sku_price > 50000)
             ORDER BY final_sku_price DESC
         """, (target_date,))
@@ -300,14 +306,18 @@ def get_price_changes(cursor, target_date, product_line, threshold=0.3):
     prev_date = target_date - timedelta(days=1)
 
     if product_line == 'tv':
-        cursor.execute("""
+        cursor.execute(f"""
             WITH today AS (
                 SELECT item, product_name, account_name, final_sku_price as price, product_url
-                FROM tv_retail_com WHERE DATE(crawl_datetime::timestamp) = %s AND final_sku_price IS NOT NULL
+                FROM tv_retail_com WHERE DATE(crawl_datetime::timestamp) = %s
+                AND {get_tv_validation_condition()}
+                AND final_sku_price IS NOT NULL
             ),
             yesterday AS (
                 SELECT item, product_name, account_name, final_sku_price as price
-                FROM tv_retail_com WHERE DATE(crawl_datetime::timestamp) = %s AND final_sku_price IS NOT NULL
+                FROM tv_retail_com WHERE DATE(crawl_datetime::timestamp) = %s
+                AND {get_tv_validation_condition()}
+                AND final_sku_price IS NOT NULL
             )
             SELECT t.item, t.account_name, t.product_name,
                    y.price as prev_price, t.price as curr_price,

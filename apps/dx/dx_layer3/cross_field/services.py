@@ -4,6 +4,7 @@ Layer 3 크로스 필드 검증 서비스 레이어
 
 from datetime import timedelta
 from apps.common.retail_columns import get_editable_columns, get_retailer_columns
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import (
     validate_crossfield,
     validate_review_detail_match,
@@ -84,6 +85,7 @@ def get_cross_field_rule_detail(cursor, target_date, product_line, section, rule
                           AND item IN ({placeholders})
                           AND DATE({date_col}::timestamp) >= %s
                           AND DATE({date_col}::timestamp) <= %s
+                          {f'AND {get_tv_validation_condition()}' if table_name == 'tv_retail_com' else ''}
                         ORDER BY item, {date_col}
                     """, [acct] + items + [str(from_date), str(target_date)])
                     cols_desc = [desc[0] for desc in cursor.description]
@@ -254,7 +256,7 @@ def get_sentiment_cross_detail(cursor, target_date, product_line):
     anomalies = []
 
     if product_line == 'tv':
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 r.id,
                 r.item,
@@ -267,6 +269,7 @@ def get_sentiment_cross_detail(cursor, target_date, product_line):
             FROM tv_retail_sentiment s
             JOIN tv_retail_com r ON s.retail_com_id = r.id
             WHERE DATE(r.crawl_datetime::timestamp) = %s
+            AND {get_tv_validation_condition('r')}
             AND s.sentiment_score IS NOT NULL
             AND LOWER(s.sentiment_score::text) NOT IN ('none', 'null', '')
             AND (

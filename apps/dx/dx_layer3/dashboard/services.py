@@ -5,6 +5,10 @@ Layer 3 대시보드 서비스 — 공통 규칙 로드, 검증, 상태 판정
 import re
 from apps.common.db import get_dx_connection, dx_table
 from apps.common.response import log_error
+from apps.common.retail_validation import (
+    apply_tv_validation_scope,
+    get_tv_validation_condition,
+)
 
 
 _DANGEROUS_SQL = {'DROP', 'DELETE', 'TRUNCATE', 'UPDATE', 'INSERT', 'ALTER', 'GRANT', 'REVOKE'}
@@ -61,8 +65,8 @@ def validate_select_query(query):
     return True
 
 def apply_tv_retail_am_filter(query, table_name, date_col='crawl_datetime'):
-    """Compatibility wrapper: TV Retail validation now uses the full target date."""
-    return query
+    """Compatibility wrapper for the full-date TV validation scope."""
+    return apply_tv_validation_scope(query, table_name)
 
 def validate_exclude_condition(condition):
     """exclude_condition SQL 조각 검증 — 화이트리스트 패턴만 허용"""
@@ -308,7 +312,12 @@ def validate_all_category_specs(target_date):
                 validate_table_name(table_name)
                 if has_date_filter:
                     if table_name == 'tv_retail_com':
-                        total_query = f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s AND EXTRACT(HOUR FROM {date_col}) < 12"
+                        total_query = (
+                            f"SELECT COUNT(*) FROM {table_name} "
+                            f"WHERE DATE({date_col}) = %s "
+                            f"AND EXTRACT(HOUR FROM {date_col}) < 12 "
+                            f"AND {get_tv_validation_condition()}"
+                        )
                     else:
                         total_query = f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s"
                     cursor.execute(total_query, (target_date,))

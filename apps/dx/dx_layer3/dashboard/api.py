@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from django.http import JsonResponse
 from apps.common.db import dx_connection
 from apps.common.response import log_error
+from apps.common.retail_validation import get_tv_validation_condition
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -92,6 +93,7 @@ def layer_stats(request):
                                 curr_cursor.execute(f"""
                                     SELECT COUNT(*) FROM {table_name}
                                     WHERE DATE({date_column}::timestamp) = %s
+                                    {f'AND {get_tv_validation_condition()}' if table_name == 'tv_retail_com' else ''}
                                     {time_filter}
                                 """, (target_date,))
                                 table_totals[table_name] = curr_cursor.fetchone()[0] or 0
@@ -162,6 +164,7 @@ def layer_stats(request):
                             cursor.execute(f"""
                                 SELECT COUNT(*) FROM {table_name}
                                 WHERE DATE({date_column}::timestamp) = %s
+                                {f'AND {get_tv_validation_condition()}' if table_name == 'tv_retail_com' else ''}
                                 {time_filter}
                             """, (target_date,))
                             table_totals[table_name] = cursor.fetchone()[0] or 0
@@ -216,6 +219,7 @@ def layer_stats(request):
                         cursor.execute("""
                             SELECT COUNT(*) FROM tv_retail_com
                             WHERE DATE(crawl_datetime::timestamp) = %s
+                              AND NOT (account_name = 'Amazon' AND redirect IS TRUE)
                         """, (target_date,))
                         tv_total = cursor.fetchone()[0] or 0
                         table_totals['tv_retail_com'] = tv_total
@@ -292,6 +296,7 @@ def layer_stats(request):
                             FROM tv_retail_sentiment s
                             JOIN tv_retail_com r ON s.retail_com_id = r.id
                             WHERE DATE(r.crawl_datetime::timestamp) = %s
+                            AND NOT (r.account_name = 'Amazon' AND r.redirect IS TRUE)
                             AND s.sentiment_score IS NOT NULL
                             AND LOWER(s.sentiment_score::text) NOT IN ('none', 'null', '')
                         """, (target_date,))
@@ -302,6 +307,7 @@ def layer_stats(request):
                             FROM tv_retail_sentiment s
                             JOIN tv_retail_com r ON s.retail_com_id = r.id
                             WHERE DATE(r.crawl_datetime::timestamp) = %s
+                            AND NOT (r.account_name = 'Amazon' AND r.redirect IS TRUE)
                             AND s.sentiment_score IS NOT NULL
                             AND LOWER(s.sentiment_score::text) NOT IN ('none', 'null', '')
                             AND (

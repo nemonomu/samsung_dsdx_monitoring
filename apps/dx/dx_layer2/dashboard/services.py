@@ -7,6 +7,7 @@ Layer 2 Dashboard: 비즈니스 로직
 from datetime import datetime
 from apps.common.retail_columns import validate_field
 from apps.common.response import log_error
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2.null_validation.services import get_null_stats
 from apps.dx.dx_layer2.format_validation.services import (
@@ -134,6 +135,7 @@ def get_retailer_detail(cursor, validation_type, table_name, retailer, target_da
             FROM {db_table}
             WHERE DATE({date_field}::timestamp) = %s
               AND account_name = %s
+              AND {get_tv_validation_condition()}
               AND ({null_conditions})
             ORDER BY id
         """, (target_date, retailer))
@@ -166,6 +168,7 @@ def get_retailer_detail(cursor, validation_type, table_name, retailer, target_da
             FROM {db_table}
             WHERE DATE({date_field}::timestamp) = %s
               AND account_name = %s
+              AND {get_tv_validation_condition()}
               AND ({null_conditions})
         """, (target_date, retailer))
         results['total'] = cursor.fetchone()[0]
@@ -187,6 +190,7 @@ def get_retailer_detail(cursor, validation_type, table_name, retailer, target_da
             FROM {db_table}
             WHERE DATE({date_field}::timestamp) = %s
               AND account_name = %s
+              AND {get_tv_validation_condition()}
             GROUP BY item
             HAVING COUNT(*) > 1
             ORDER BY cnt DESC

@@ -2,6 +2,8 @@
 DX Layer 1 Retail Repositories: 데이터베이스 I/O 쿼리 전담 계층
 """
 
+from apps.common.retail_validation import get_tv_validation_condition
+
 BATCH_DATE_EXPR = "substring(COALESCE(batch_id, '') from '([0-9]{8})')"
 
 
@@ -85,6 +87,7 @@ def get_retail_summary_null_counts(cursor, table_name, date_field, check_columns
         FROM {table_name}
         WHERE {BATCH_DATE_EXPR} = %s
         AND LOWER(account_name) = LOWER(%s)
+        AND {get_tv_validation_condition()}
     """
     cursor.execute(query, (batch_date, retailer))
     return cursor.fetchone()
