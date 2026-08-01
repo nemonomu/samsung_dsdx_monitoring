@@ -18,6 +18,11 @@ def item_master(request):
     return render(request, 'dx_data/item_master.html', context)
 
 
+def redirect_data(request):
+    """Amazon redirect 데이터 읽기 전용 조회 페이지"""
+    return render(request, 'dx_data/redirect_data.html', {})
+
+
 
 def history(request):
     """변경 이력 페이지"""
