@@ -54,6 +54,60 @@ class Layer4RedirectStatusTests(unittest.TestCase):
         self.assertIn('redirect IS TRUE', cursor.calls[1][0])
         self.assertNotIn(condition, cursor.calls[1][0])
 
+    def test_promotion_total_uses_layer1_collection_count(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (314, 298, 299, 0, 0)},
+        ])
+
+        @contextmanager
+        def connection():
+            yield object(), cursor
+
+        stubs = {
+            'apps': package_stub('apps'),
+            'apps.common': package_stub('apps.common'),
+            'apps.common.db': module_stub(
+                'apps.common.db',
+                dx_connection=connection,
+                dx_table=lambda table: table,
+            ),
+            'apps.common.retail_columns': module_stub(
+                'apps.common.retail_columns',
+                load_retail_columns=lambda: {
+                    'tv': {'Bestbuy': ['promotion_position', 'promotion_type']}
+                },
+            ),
+            'apps.common.retail_validation': module_stub(
+                'apps.common.retail_validation',
+                get_tv_validation_condition=lambda alias=None: 'TRUE',
+            ),
+            'config': package_stub('config'),
+            'config.config': module_stub(
+                'config.config', EMAIL_CONFIG={},
+            ),
+        }
+        service = load_module(
+            'apps/dx/dx_layer4/collection_status/services.py',
+            'layer4_promotion_status_under_test',
+            stubs,
+        )
+
+        result = service.get_collection_status(date(2026, 7, 31), 'tv')
+
+        columns = {
+            item['column']: item
+            for item in result['retailers'][0]['columns']
+        }
+        self.assertEqual(16, columns['promotion_position']['total_count'])
+        self.assertEqual(0, columns['promotion_position']['null_count'])
+        self.assertEqual(16, columns['promotion_type']['total_count'])
+        self.assertEqual(1, columns['promotion_type']['null_count'])
+        self.assertEqual(
+            '프로모션 페이지 수집 항목',
+            columns['promotion_position']['remark'],
+        )
+        self.assertNotIn('최대 18개', columns['promotion_type']['remark'])
+
 
 if __name__ == '__main__':
     unittest.main()

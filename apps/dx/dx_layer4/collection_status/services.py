@@ -87,9 +87,6 @@ def get_collection_status(target_date, category):
             CUSTOM_TOTALS = {
                 'bsr_rank': 100,
             }
-            if category == 'tv':
-                CUSTOM_TOTALS['promotion_type'] = 18
-                CUSTOM_TOTALS['promotion_position'] = 18
 
             REMARKS = {
                 'bsr_rank': 'BSR 페이지 수집 항목 (일 100건)',
@@ -97,8 +94,14 @@ def get_collection_status(target_date, category):
                 'original_sku_price': '할인가 존재 시에만 원본가 존재 (Amazon 제외)',
             }
             if category == 'tv':
-                REMARKS['promotion_type'] = '프로모션 페이지 수집 항목 (TV 최대 18개)'
-                REMARKS['promotion_position'] = '프로모션 페이지 수집 항목 (TV 최대 18개)'
+                REMARKS['promotion_type'] = '프로모션 페이지 수집 항목'
+                REMARKS['promotion_position'] = '프로모션 페이지 수집 항목'
+
+            not_null_counts = {
+                col: total_count - ((row[i + 1] or 0) if row else 0)
+                for i, col in enumerate(columns)
+            }
+            promotion_total = not_null_counts.get('promotion_position', 0)
 
             column_nulls = []
             for i, col in enumerate(columns):
@@ -110,6 +113,9 @@ def get_collection_status(target_date, category):
                 elif col == 'trend_rank':
                     col_total = not_null
                     null_count = 0
+                elif category == 'tv' and col in ('promotion_type', 'promotion_position'):
+                    col_total = promotion_total
+                    null_count = max(col_total - not_null, 0)
                 elif col in CUSTOM_TOTALS:
                     col_total = CUSTOM_TOTALS[col]
                     null_count = col_total - not_null if col_total > not_null else 0
