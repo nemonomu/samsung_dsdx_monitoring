@@ -1,7 +1,12 @@
 import unittest
 from datetime import date
 
-from tests.unit.support import load_module, module_stub, package_stub
+from tests.unit.support import (
+    ScriptedCursor,
+    load_module,
+    module_stub,
+    package_stub,
+)
 
 
 class RecordingCursor:
@@ -46,6 +51,11 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             'apps.dx.dx_layer2.null_validation.services': module_stub(
                 'apps.dx.dx_layer2.null_validation.services',
                 get_null_stats=lambda *_args, **_kwargs: ({}, 0),
+                get_non_product_exclusion_condition=lambda table: (
+                    "NOT EXISTS (SELECT 1 FROM tv_item_mst non_product "
+                    "WHERE non_product.is_product IS FALSE)"
+                    if table == 'tv_retail_com' else ''
+                ),
             ),
             'apps.dx.dx_layer2.format_validation': package_stub(
                 'apps.dx.dx_layer2.format_validation'
@@ -117,6 +127,21 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             'SAVEPOINT layer2_youtube_test',
             'RELEASE SAVEPOINT layer2_youtube_test',
         ], [sql for sql, _params in cursor.calls])
+
+    def test_null_detail_excludes_item_master_non_products(self):
+        cursor = ScriptedCursor([
+            {'fetchall': []},
+            {'fetchone': (0,)},
+        ])
+
+        self.service.get_retailer_detail(
+            cursor, 'null', 'TV Retail', 'Amazon', date(2026, 8, 3)
+        )
+
+        self.assertEqual(2, len(cursor.calls))
+        for sql, _params in cursor.calls:
+            self.assertIn('FROM tv_item_mst non_product', sql)
+            self.assertIn('non_product.is_product IS FALSE', sql)
 
 
 if __name__ == '__main__':

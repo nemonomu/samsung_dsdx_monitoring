@@ -389,6 +389,23 @@ def _apply_static_scope(date_where, params, query_parts):
     return date_where, params
 
 
+def get_non_product_exclusion_condition(table_name):
+    """Layer 2 TV NULL validation scope excluding item-master non-products."""
+    if table_name != 'tv_retail_com':
+        return ''
+
+    item_master_table = dx_table('tv_item_mst')
+    return f"""
+        NOT EXISTS (
+            SELECT 1
+            FROM {item_master_table} non_product
+            WHERE non_product.is_product IS FALSE
+              AND non_product.item IS NOT DISTINCT FROM {table_name}.item
+              AND non_product.account_name IS NOT DISTINCT FROM {table_name}.account_name
+        )
+    """
+
+
 
 
 def get_null_stats(cursor, target_date, include_youtube=True):
@@ -440,6 +457,9 @@ def get_null_stats(cursor, target_date, include_youtube=True):
 
             if query_parts['table_name'] == 'tv_retail_com':
                 date_where += f" AND {get_tv_validation_condition()}"
+                date_where += (
+                    f" AND {get_non_product_exclusion_condition(query_parts['table_name'])}"
+                )
 
             query = f"""
                 SELECT COUNT(*) as total,
@@ -567,6 +587,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             params.append(retailer)
         if actual_table == 'tv_retail_com':
             query += f" AND {get_tv_validation_condition()}"
+            query += f" AND {get_non_product_exclusion_condition(actual_table)}"
         query += f" ORDER BY {date_col}"
     else:
         detail_where, params = _build_null_date_where(
@@ -619,6 +640,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             if error_items:
                 start_date = target_date - timedelta(days=days - 1)
                 placeholders = ', '.join(['%s'] * len(error_items))
+                non_product_scope = get_non_product_exclusion_condition(actual_table)
                 expand_query = f"""
                     SELECT *
                     FROM {actual_table}
@@ -626,6 +648,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                       AND account_name = %s
                       AND item IN ({placeholders})
                       {f'AND {get_tv_validation_condition()}' if actual_table == 'tv_retail_com' else ''}
+                      {f'AND {non_product_scope}' if non_product_scope else ''}
                     ORDER BY item, {date_col}
                 """
                 expand_params = [str(start_date), str(next_date), retailer] + error_items
