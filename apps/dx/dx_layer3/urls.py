@@ -1,4 +1,5 @@
 from django.urls import path
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from .dashboard import views as dashboard_views, api as dashboard_api
 from .time_series import views as ts_views, api as ts_api
 from .cross_field import views as cf_views, api as cf_api
@@ -29,7 +30,6 @@ urlpatterns = [
     # API — 크로스 필드
     path('api/cross-field-detail/', cf_api.cross_field_detail, name='api_cross_field_detail'),
     path('api/sentiment-cross-detail/', cf_api.sentiment_cross_detail, name='api_sentiment_cross_detail'),
-    path('api/comp-product-cross-detail/', cf_api.comp_product_cross_detail, name='api_comp_product_cross_detail'),
     path('api/crossfield-rules/', cf_api.crossfield_rules, name='api_crossfield_rules'),
 
     # API — 카테고리별 특성
@@ -47,3 +47,10 @@ urlpatterns = [
     path('api/review/', edit_api.review, name='api_review'),
     path('api/review-reasons/', edit_api.review_reasons, name='api_review_reasons'),
 ]
+
+if 'market_comp_product' not in DISABLED_SOURCE_TABLES:
+    urlpatterns.append(path(
+        'api/comp-product-cross-detail/',
+        cf_api.comp_product_cross_detail,
+        name='api_comp_product_cross_detail',
+    ))

@@ -3,6 +3,7 @@ Layer3 셀 수정 / 정상 처리 서비스 — 순수 비즈니스 로직
 """
 
 from datetime import datetime
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 
 
@@ -10,7 +11,7 @@ VALID_TABLES_UPDATE = {
     'tv_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
-}
+} - DISABLED_SOURCE_TABLES
 
 
 def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,

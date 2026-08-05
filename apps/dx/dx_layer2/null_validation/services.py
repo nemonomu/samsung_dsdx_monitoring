@@ -9,6 +9,7 @@ from apps.common.db import execute_dx_query, dx_table
 from apps.common.response import log_error
 from apps.common.retail_columns import load_retail_columns, get_editable_columns
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 
 
@@ -167,6 +168,7 @@ def load_null_check_config():
             if (
                 category in EXCLUDED_RETAIL_CATEGORIES
                 or table_name in EXCLUDED_RETAIL_TABLES
+                or str(table_name).lower() in DISABLED_SOURCE_TABLES
                 or str(category).lower() == 'youtube'
                 or table_name in YOUTUBE_NULL_TABLES
             ):
@@ -717,7 +719,7 @@ VALID_TABLES_UPDATE = {
     'tv_retail_com',
     'youtube_country_collection_runs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
-}
+} - DISABLED_SOURCE_TABLES
 
 
 def save_null_review(cursor, conn, table_name, record_id, column_name, status, memo, reason, crawl_date, correction_type, username):

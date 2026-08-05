@@ -4,6 +4,7 @@ Layer 3 대시보드 서비스 — 공통 규칙 로드, 검증, 상태 판정
 
 import re
 from apps.common.db import get_dx_connection, dx_table
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import (
     apply_tv_validation_scope,
@@ -19,7 +20,7 @@ _ALLOWED_TABLES = {
     'tv_sentiment_com', 'hhp_sentiment_com',
     'comp_product',
     'openai_forecast_results',
-}
+} - DISABLED_SOURCE_TABLES
 
 EXCLUDED_RETAIL_TABLES = {'hhp_retail_com', 'hhp_item_mst'}
 EXCLUDED_RETAIL_SECTIONS = {'hhp_retail'}
@@ -28,7 +29,11 @@ EXCLUDED_RETAIL_SECTIONS = {'hhp_retail'}
 def is_excluded_retail_rule(rule):
     table_name = (rule.get('table_name') or '').lower()
     section_code = (rule.get('section_code') or '').lower()
-    return table_name in EXCLUDED_RETAIL_TABLES or section_code in EXCLUDED_RETAIL_SECTIONS
+    return (
+        table_name in EXCLUDED_RETAIL_TABLES
+        or section_code in EXCLUDED_RETAIL_SECTIONS
+        or table_name in DISABLED_SOURCE_TABLES
+    )
 
 _EXCLUDE_PATTERN = re.compile(
     r"""^\s*\w+\s+(?:

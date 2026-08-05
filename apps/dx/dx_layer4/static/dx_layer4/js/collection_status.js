@@ -42,6 +42,15 @@
         'market_promotion': 'RAW_EXT_OPENAI_RETAILER_PROMOTIONS_VIEW'
     };
 
+    // 수집이 중단된 항목은 Layer 1 응답에 남아 있어도 일일 현황·이메일에서 제외한다.
+    var DISABLED_CHECK_TYPES = {
+        'market_trend': true,
+        'market_demand': true,
+        'market_promotion': true,
+        'market_competitor': true,
+        'market_competitor_event': true
+    };
+
     function loadDailyStatus() {
         var date = getSelectedDate();
         if (!date) return;
@@ -247,6 +256,7 @@
         var no = 1;
         checks.forEach(function(check) {
             var checkType = check.check_type;
+            if (DISABLED_CHECK_TYPES[checkType]) return;
 
             if (checkType === 'retail' && check.categories) {
                 check.categories.forEach(function(cat) {

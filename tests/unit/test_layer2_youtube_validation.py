@@ -24,6 +24,16 @@ def common_stubs():
                 f"AND {alias + '.' if alias else ''}redirect IS TRUE)"
             ),
         ),
+        'apps.common.monitoring_exclusions': module_stub(
+            'apps.common.monitoring_exclusions',
+            DISABLED_SOURCE_TABLES=frozenset({
+                'market_trend',
+                'openai_forecast_results',
+                'openai_retailer_promotions',
+                'market_comp_product',
+                'market_comp_event',
+            }),
+        ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
         'apps.dx.dx_layer2.common': package_stub('apps.dx.dx_layer2.common'),
@@ -58,8 +68,12 @@ class YouTubeNullValidationTests(unittest.TestCase):
             'layer2_null_service_under_test',
             stubs,
         )
+        cls._load_null_check_config = staticmethod(
+            cls.service.load_null_check_config
+        )
 
     def setUp(self):
+        self.service.load_null_check_config = self._load_null_check_config
         self.service._null_check_config_cache = None
         self.service._null_check_config_cache_time = None
         self.service.log_error = lambda *_: None
@@ -209,6 +223,36 @@ class YouTubeNullValidationTests(unittest.TestCase):
         self.assertNotIn('item', cursor.calls[0][0])
         conn.commit.assert_called_once_with()
 
+    def test_stopped_market_null_rules_are_not_loaded(self):
+        self.service.execute_dx_query = lambda _query: [
+            {
+                'category': 'market', 'cat_display_name': 'Market',
+                'display_order': 4, 'has_retailer': False,
+                'check_name': 'market_comp_product',
+                'group_display_name': 'Comp Product',
+                'table_name': 'market_comp_product',
+                'date_column': 'created_at', 'check_column': 'comp_brand',
+                'check_type': 'both', 'display_columns': 'id|comp_brand',
+                'query_columns': 'id|comp_brand', 'query_days': 0,
+            },
+            {
+                'category': 'market', 'cat_display_name': 'Market',
+                'display_order': 4, 'has_retailer': False,
+                'check_name': 'market_trend',
+                'group_display_name': 'Trend',
+                'table_name': 'market_trend',
+                'date_column': 'crawl_at_local_time', 'check_column': 'keyword',
+                'check_type': 'both', 'display_columns': 'id|keyword',
+                'query_columns': 'id|keyword', 'query_days': 0,
+            },
+        ]
+
+        config = self.service.load_null_check_config()
+
+        self.assertNotIn('market', config)
+        self.assertNotIn('market_trend', self.service.VALID_TABLES_UPDATE)
+        self.assertNotIn('market_comp_product', self.service.VALID_TABLES_UPDATE)
+
 
 class YouTubeDuplicateValidationTests(unittest.TestCase):
     @classmethod
@@ -286,6 +330,27 @@ class YouTubeDuplicateValidationTests(unittest.TestCase):
         )
         self.assertNotIn('youtube_logs', self.service._DUP_TABLE_CONFIG)
 
+    def test_stopped_market_duplicate_targets_are_not_public(self):
+        self.assertNotIn('market_product', self.service.VALID_TABLES_ANOMALY)
+        self.assertNotIn('market_event', self.service.VALID_TABLES_ANOMALY)
+        self.assertNotIn('market_product', self.service._DUP_TABLE_CONFIG)
+        self.assertNotIn('market_event', self.service._DUP_TABLE_CONFIG)
+        self.assertNotIn('market_trend', self.service._DUP_TABLE_CONFIG)
+
+    def test_stopped_market_duplicate_stats_do_not_query_source(self):
+        cursor = ScriptedCursor([])
+
+        result = self.service._get_market_duplicate_stats(
+            cursor,
+            date(2026, 8, 5),
+            'market_comp_product',
+            'created_at',
+            ['batch_id'],
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual([], cursor.calls)
+
     def test_anomaly_stats_has_youtube_only_fallback_switch(self):
         source = inspect.getsource(self.service.get_anomaly_stats)
         self.assertIn('include_youtube=True', str(inspect.signature(
@@ -345,6 +410,21 @@ class YouTubeFormatValidationTests(unittest.TestCase):
             '{get_tv_validation_condition' in value
             for value in literal_sql
         ))
+
+    def test_stopped_market_format_detail_does_not_query_source(self):
+        cursor = ScriptedCursor([])
+
+        result = self.service.get_format_detail(
+            cursor, date(2026, 8, 5), 'market', 'Comp Product', 1
+        )
+
+        self.assertEqual([], result['results'])
+        self.assertEqual('', result['actual_table'])
+        self.assertEqual([], cursor.calls)
+        self.assertNotIn('market_trend', self.service.VALID_TABLES_RULES)
+        self.assertNotIn(
+            'market_comp_product', self.service.VALID_TABLES_RULES
+        )
 
 
 if __name__ == '__main__':

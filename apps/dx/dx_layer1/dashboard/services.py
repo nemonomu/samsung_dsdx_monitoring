@@ -6,6 +6,7 @@ from datetime import datetime
 from apps.common.db import dx_connection
 from apps.common.response import log_error
 from apps.common.dx_schedules import load_collection_schedules, is_target_date as check_target_date
+from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 
 from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
@@ -83,6 +84,9 @@ def _get_active_services(target_date=None):
 
     for s in schedules:
         ct = s['check_type']
+        # 수집이 재개되면 공통 비활성화 목록에서 해당 check_type을 제거한다.
+        if ct in DISABLED_CHECK_TYPES:
+            continue
         if ct not in _SERVICE_MAP:
             continue
         if ct not in seen:

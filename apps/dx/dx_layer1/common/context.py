@@ -3,6 +3,7 @@ Layer 1 공통 context — 상수 및 사이드바 헬퍼
 """
 
 from apps.common.dx_schedules import load_collection_schedules
+from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 
 LAYER_CONTEXT = {
     'number': 1,
@@ -45,6 +46,8 @@ def _build_sidebar_groups(section):
 
     for s in schedules:
         ct = s['check_type']
+        if ct in DISABLED_CHECK_TYPES:
+            continue
         if ct in seen:
             continue
         seen.add(ct)

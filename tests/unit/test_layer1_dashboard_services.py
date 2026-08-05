@@ -42,6 +42,16 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
                 load_collection_schedules=lambda: [],
                 is_target_date=lambda *_: False,
             ),
+            'apps.common.monitoring_exclusions': module_stub(
+                'apps.common.monitoring_exclusions',
+                DISABLED_CHECK_TYPES=frozenset({
+                    'market_trend',
+                    'market_demand',
+                    'market_promotion',
+                    'market_competitor',
+                    'market_competitor_event',
+                }),
+            ),
             'apps.dx': package_stub('apps.dx'),
             'apps.dx.dx_layer1': package_stub('apps.dx.dx_layer1'),
         }
@@ -132,6 +142,28 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'ROLLBACK TO SAVEPOINT layer1_youtube_monitoring',
             [sql for sql, _params in cursor.calls],
         )
+
+    def test_stopped_market_services_are_not_activated(self):
+        self.service.load_collection_schedules = lambda: [
+            {'check_type': 'retail', 'schedule_type': 'daily'},
+            {'check_type': 'market_trend', 'schedule_type': 'daily'},
+            {'check_type': 'market_demand', 'schedule_type': 'weekly'},
+            {'check_type': 'market_promotion', 'schedule_type': 'weekly'},
+            {'check_type': 'market_competitor', 'schedule_type': 'quarterly'},
+            {'check_type': 'market_competitor_event', 'schedule_type': 'monthly'},
+        ]
+        self.service.check_target_date = lambda *_: True
+
+        service_order, daily_types, target_types = self.service._get_active_services(
+            date(2026, 8, 5)
+        )
+
+        self.assertEqual(
+            ['retail'],
+            [check_type for check_type, _service in service_order],
+        )
+        self.assertEqual({'retail'}, daily_types)
+        self.assertEqual({'retail'}, target_types)
 
 
 if __name__ == '__main__':

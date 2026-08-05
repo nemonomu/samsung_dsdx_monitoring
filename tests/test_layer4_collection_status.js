@@ -172,6 +172,56 @@ async function run() {
     assert(dailyHtml.includes('YouTube 영상 데이터 (HHP)'));
     assert(!dailyHtml.includes('YouTube 국가 실행 (HHP)'));
 
+    const marketData = {
+        checks: [
+            {
+                check_type: 'market_trend',
+                name: 'Market Trend',
+                expected: 1,
+                actual: 1
+            },
+            {
+                check_type: 'market_demand',
+                name: 'Market Demand',
+                expected: 1,
+                actual: 1
+            },
+            {
+                check_type: 'market_promotion',
+                name: 'Market Promotion',
+                expected: 1,
+                actual: 1
+            },
+            {
+                check_type: 'market_competitor',
+                name: 'Market Competitor',
+                expected: 1,
+                actual: 1
+            },
+            {
+                check_type: 'market_competitor_event',
+                name: 'Market Competitor Event',
+                expected: 1,
+                actual: 1
+            }
+        ]
+    };
+    const marketDaily = loadPage(
+        '?focus=' + encodeURIComponent('?쇱씪 ?섏쭛 ?꾪솴'),
+        marketData
+    );
+    marketDaily.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const marketDailyHtml =
+        marketDaily.elements['cs-daily-container'].innerHTML;
+    assert(!marketDailyHtml.includes('RAW_EXT_MARKET_TREND_VIEW'));
+    assert(!marketDailyHtml.includes('RAW_EXT_OPENAI_FORECAST_RESULTS_VIEW'));
+    assert(!marketDailyHtml.includes('RAW_EXT_MARKET_COMP_EVENT_VIEW'));
+    assert(!marketDailyHtml.includes(
+        'RAW_EXT_OPENAI_RETAILER_PROMOTIONS_VIEW'
+    ));
+    assert(!marketDailyHtml.includes('Market Competitor'));
+
     const failed = loadPage(
         '?focus=' + encodeURIComponent('이메일 보고'),
         { error: 'redacted' }

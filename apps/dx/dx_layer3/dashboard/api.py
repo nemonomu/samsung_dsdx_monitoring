@@ -5,6 +5,7 @@ Layer 3 대시보드 API — 전체 통계 오케스트레이터
 from datetime import datetime, timedelta
 from django.http import JsonResponse
 from apps.common.db import dx_connection
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
 from .services import (
@@ -412,7 +413,11 @@ def layer_stats(request):
                 except Exception as e:
                     log_error(e)
 
-            if run_market and product_line in ['market', 'all']:
+            if (
+                run_market
+                and product_line in ['market', 'all']
+                and 'market_comp_product' not in DISABLED_SOURCE_TABLES
+            ):
                 with dx_connection() as (market_conn, market_cursor):
                     first_day_of_month = target_date.replace(day=1)
                     month_start = first_day_of_month.strftime('%Y-%m-%d')

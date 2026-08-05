@@ -5,6 +5,7 @@
 
 from datetime import datetime
 from apps.common.db import dx_table
+from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 
 _CHECK_LOG = dx_table('monitoring_check_log')
 _CHECK_LOG_DETAIL = dx_table('monitoring_check_log_detail')
@@ -41,7 +42,10 @@ def get_target_sections(date_str):
 
     target_types = set()
     for s in schedules:
-        if check_target_date(s, target_date):
+        if (
+            s['check_type'] not in DISABLED_CHECK_TYPES
+            and check_target_date(s, target_date)
+        ):
             target_types.add(s['check_type'])
 
     return len(target_types)
@@ -136,7 +140,7 @@ def save_check(cursor, conn, date_str, layer, step, sections, username):
 
     for s in sections:
         section = s.get('section', '')
-        if section not in ALL_SECTIONS:
+        if section not in ALL_SECTIONS or section in DISABLED_CHECK_TYPES:
             continue
 
         details = s.get('details', [])

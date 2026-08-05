@@ -29,6 +29,16 @@ class Layer2NonProductNullValidationTests(unittest.TestCase):
                     "NOT (account_name = 'Amazon' AND redirect IS TRUE)"
                 ),
             ),
+            'apps.common.monitoring_exclusions': module_stub(
+                'apps.common.monitoring_exclusions',
+                DISABLED_SOURCE_TABLES=frozenset({
+                    'market_trend',
+                    'openai_forecast_results',
+                    'openai_retailer_promotions',
+                    'market_comp_product',
+                    'market_comp_event',
+                }),
+            ),
             'apps.dx': package_stub('apps.dx'),
             'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
             'apps.dx.dx_layer2.common': package_stub(

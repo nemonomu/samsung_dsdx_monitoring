@@ -11,6 +11,7 @@ from apps.common.retail_columns import (
     get_editable_columns,
 )
 from apps.common.db import dx_table
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 
@@ -24,7 +25,7 @@ VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
-}
+} - DISABLED_SOURCE_TABLES
 
 
 # ── thin wrappers ──────────────────────────────────────────
@@ -342,6 +343,19 @@ def get_format_detail(cursor, target_date, table, retailer, days):
             'Forecast': ('openai_forecast_results', 'crawled_at', ['product_name', 'event', 'metric_type', 'event_offset', 'event_value', 'week', 'crawled_at']),
         }
         db_table, date_col, all_fields = market_config[retailer]
+        if db_table in DISABLED_SOURCE_TABLES:
+            return {
+                'date': str(target_date),
+                'table': table,
+                'retailer': retailer,
+                'column_names': [],
+                'editable_cols': [],
+                'actual_table': '',
+                'normal_reviews': {},
+                'results': [],
+                'field_counts': {},
+                'total_format_count': 0,
+            }
         account_name = retailer
         column_names = ['id'] + all_fields
 
@@ -520,6 +534,8 @@ def get_format_detail(cursor, target_date, table, retailer, days):
             'Forecast': 'openai_forecast_results',
         }
         actual_table = market_table_map.get(retailer, '')
+        if actual_table in DISABLED_SOURCE_TABLES:
+            actual_table = ''
 
     # 형식 검증 정상 처리 건 조회
     normal_reviews = {}
@@ -1017,11 +1033,16 @@ def get_format_stats(cursor, target_date):
 
     # Market 형식 검증
     try:
-        market_tables = [
+        configured_market_tables = [
             ('market_trend', 'Trend', 'crawl_at_local_time'),
             ('market_comp_product', 'Comp Product', 'created_at'),
             ('market_comp_event', 'Comp Event', 'created_at'),
             ('openai_forecast_results', 'Forecast', 'crawled_at'),
+        ]
+        # 수집 재개 시 공통 비활성화 목록에서 테이블을 제거하면 자동 복구된다.
+        market_tables = [
+            item for item in configured_market_tables
+            if item[0] not in DISABLED_SOURCE_TABLES
         ]
         market_total_format_issues = 0
         market_total_format_checked = 0
@@ -1047,15 +1068,16 @@ def get_format_stats(cursor, target_date):
                 'status': get_status(mkt_issues),
             })
 
-        format_validation['tables'].append({
-            'table': 'market',
-            'table_name': 'Market',
-            'total_checked': market_total_format_checked,
-            'total_issues': market_total_format_issues,
-            'status': get_status(market_total_format_issues),
-            'retailers': market_format_retailers
-        })
-        total_format_issues += market_total_format_issues
+        if market_format_retailers:
+            format_validation['tables'].append({
+                'table': 'market',
+                'table_name': 'Market',
+                'total_checked': market_total_format_checked,
+                'total_issues': market_total_format_issues,
+                'status': get_status(market_total_format_issues),
+                'retailers': market_format_retailers
+            })
+            total_format_issues += market_total_format_issues
     except Exception as e:
         print(f'[WARN] layer_stats market_format: {e}')
 

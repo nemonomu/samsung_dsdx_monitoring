@@ -8,6 +8,7 @@ from apps.common.retail_columns import (
     get_retailer_list, get_retail_duplicate_keys,
 )
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 
 
@@ -58,6 +59,12 @@ _DUP_TABLE_CONFIG = {
         'retailer_col': None,
     },
 }
+
+# 직접 상세조회·중복삭제 API도 중단 원본 테이블에 접근하지 못하게 한다.
+for _table_key, _table_config in tuple(_DUP_TABLE_CONFIG.items()):
+    if _table_config['actual'] in DISABLED_SOURCE_TABLES:
+        VALID_TABLES_ANOMALY.discard(_table_key)
+        _DUP_TABLE_CONFIG.pop(_table_key)
 
 
 def _build_dup_delete_query(table, retailer=''):
@@ -763,6 +770,32 @@ def _get_youtube_video_duplicate_stats(cursor, target_date):
     }
 
 
+def _get_market_duplicate_stats(
+    cursor, target_date, table_name, fallback_date_col, fallback_dup_keys
+):
+    """Return duplicate stats without touching a stopped Market source."""
+    if table_name in DISABLED_SOURCE_TABLES:
+        return None
+
+    dup_info = get_duplicate_key_columns(table_name)
+    date_col = dup_info['date_column'] if dup_info else fallback_date_col
+    dup_keys = dup_info['duplicate_keys'] if dup_info else fallback_dup_keys
+
+    cursor.execute(
+        f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s",
+        (target_date,),
+    )
+    total_records = cursor.fetchone()[0] or 0
+    duplicate_groups = get_duplicate_count(
+        cursor, table_name, date_col, dup_keys, target_date
+    )
+    return {
+        'total_records': total_records,
+        'duplicate_groups': duplicate_groups,
+        'duplicate_keys': dup_keys,
+    }
+
+
 def get_anomaly_stats(cursor, target_date, include_youtube=True):
     """중복 검증 통계 — 대시보드용"""
     total_anomaly_issues = 0
@@ -921,63 +954,48 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
         total_anomaly_issues += yt_total_issues
 
     # Market 중복
-    mt_dup_info = get_duplicate_key_columns('market_trend')
-    mt_date_col = mt_dup_info['date_column'] if mt_dup_info else 'crawl_at_local_time'
-    mt_dup_keys = mt_dup_info['duplicate_keys'] if mt_dup_info else ['keyword']
+    # 중단된 Market 원본은 통계에서도 조회하지 않는다.
+    market_sources = (
+        ('market_trend', 'Trend', 'crawl_at_local_time', ['keyword']),
+        (
+            'market_comp_product', 'Product', 'created_at',
+            ['batch_id', 'samsung_series_name', 'comp_brand', 'comp_series_name'],
+        ),
+        (
+            'market_comp_event', 'Event', 'created_at',
+            ['batch_id', 'comp_brand', 'comp_sku_name'],
+        ),
+    )
+    market_retailers = []
+    market_total_records = 0
+    market_total_dup = 0
+    for table_name, display_name, date_col, duplicate_keys in market_sources:
+        source_stats = _get_market_duplicate_stats(
+            cursor, target_date, table_name, date_col, duplicate_keys
+        )
+        if source_stats is None:
+            continue
+        market_total_records += source_stats['total_records']
+        market_total_dup += source_stats['duplicate_groups']
+        market_retailers.append({
+            'retailer': display_name,
+            'total': source_stats['total_records'],
+            'duplicate_groups': source_stats['duplicate_groups'],
+            'duplicate_keys': source_stats['duplicate_keys'],
+            'status': get_status(source_stats['duplicate_groups'])
+        })
 
-    cursor.execute(f"SELECT COUNT(*) FROM market_trend WHERE DATE({mt_date_col}) = %s", (target_date,))
-    market_trend_total = cursor.fetchone()[0] or 0
-    market_trend_dup = get_duplicate_count(cursor, 'market_trend', mt_date_col, mt_dup_keys, target_date)
-
-    mp_dup_info = get_duplicate_key_columns('market_comp_product')
-    mp_date_col = mp_dup_info['date_column'] if mp_dup_info else 'created_at'
-    mp_dup_keys = mp_dup_info['duplicate_keys'] if mp_dup_info else ['batch_id', 'samsung_series_name', 'comp_brand', 'comp_series_name']
-
-    cursor.execute(f"SELECT COUNT(*) FROM market_comp_product WHERE DATE({mp_date_col}) = %s", (target_date,))
-    market_product_total = cursor.fetchone()[0] or 0
-    market_product_dup = get_duplicate_count(cursor, 'market_comp_product', mp_date_col, mp_dup_keys, target_date)
-
-    me_dup_info = get_duplicate_key_columns('market_comp_event')
-    me_date_col = me_dup_info['date_column'] if me_dup_info else 'created_at'
-    me_dup_keys = me_dup_info['duplicate_keys'] if me_dup_info else ['batch_id', 'comp_brand', 'comp_sku_name']
-
-    cursor.execute(f"SELECT COUNT(*) FROM market_comp_event WHERE DATE({me_date_col}) = %s", (target_date,))
-    market_event_total = cursor.fetchone()[0] or 0
-    market_event_dup = get_duplicate_count(cursor, 'market_comp_event', me_date_col, me_dup_keys, target_date)
-
-    market_total_dup = market_trend_dup + market_product_dup + market_event_dup
-    anomaly_validation['tables'].append({
-        'table': 'market',
-        'table_name': 'Market',
-        'total_records': market_trend_total + market_product_total + market_event_total,
-        'total_issues': market_total_dup,
-        'duplicate_groups': market_total_dup,
-        'status': get_status(market_total_dup),
-        'retailers': [
-            {
-                'retailer': 'Trend',
-                'total': market_trend_total,
-                'duplicate_groups': market_trend_dup,
-                'duplicate_keys': mt_dup_keys,
-                'status': get_status(market_trend_dup)
-            },
-            {
-                'retailer': 'Product',
-                'total': market_product_total,
-                'duplicate_groups': market_product_dup,
-                'duplicate_keys': mp_dup_keys,
-                'status': get_status(market_product_dup)
-            },
-            {
-                'retailer': 'Event',
-                'total': market_event_total,
-                'duplicate_groups': market_event_dup,
-                'duplicate_keys': me_dup_keys,
-                'status': get_status(market_event_dup)
-            }
-        ]
-    })
-    total_anomaly_issues += market_total_dup
+    if market_retailers:
+        anomaly_validation['tables'].append({
+            'table': 'market',
+            'table_name': 'Market',
+            'total_records': market_total_records,
+            'total_issues': market_total_dup,
+            'duplicate_groups': market_total_dup,
+            'status': get_status(market_total_dup),
+            'retailers': market_retailers
+        })
+        total_anomaly_issues += market_total_dup
 
     anomaly_validation['total_issues'] = total_anomaly_issues
     anomaly_validation['status'] = get_status(total_anomaly_issues)

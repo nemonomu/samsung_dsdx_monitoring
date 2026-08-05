@@ -4,6 +4,7 @@ cursor + params 를 받아 plain dict 를 반환한다.
 """
 
 from datetime import datetime
+from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 
 
@@ -11,7 +12,7 @@ VALID_TABLES_UPDATE = {
     'tv_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
-}
+} - DISABLED_SOURCE_TABLES
 
 
 def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
