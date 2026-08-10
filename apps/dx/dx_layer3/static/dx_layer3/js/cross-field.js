@@ -23,8 +23,10 @@ function showRetailerDetail(retailer) {
 
     const productLine = window.crossfieldProductLine || 'HHP';
     const date = window.crossfieldDate || new Date().toISOString().slice(0, 10);
-    const tableName = productLine.toUpperCase() === 'HHP' ? 'hhp_retail_com' : 'tv_retail_com';
-    const dateCol = productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime';
+    const tableName = window.crossfieldTableName
+        || (productLine.toUpperCase() === 'HHP' ? 'hhp_retail_com' : 'tv_retail_com');
+    const dateCol = window.crossfieldDateCol
+        || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const titleText = `${ruleNameDisplay} (${rSummary.count || 0}건)`;
@@ -558,7 +560,8 @@ async function reloadCfDays() {
                     r['product_url'] = renderProductUrl(row[urlKey]);
                 }
                 r._rowId = row.id;
-                var dateCol = (window.crossfieldProductLine || 'tv').toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime';
+                var dateCol = window.crossfieldDateCol
+                    || ((window.crossfieldProductLine || 'tv').toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
                 r._rowDate = (row[dateCol] || '').substring(0, 10);
                 return r;
             });

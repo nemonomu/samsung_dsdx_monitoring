@@ -1,6 +1,11 @@
 import unittest
 
 from tests.unit.support import load_module, module_stub, package_stub
+from apps.common.tse_retail import (
+    TSE_TABLE_TO_PRODUCT_LINE,
+    get_tse_product_line_for_table,
+    validate_tse_editable_column,
+)
 
 
 class StoppedMarketDataEditTests(unittest.TestCase):
@@ -22,6 +27,12 @@ class StoppedMarketDataEditTests(unittest.TestCase):
             'apps.common.retail_columns': module_stub(
                 'apps.common.retail_columns',
                 get_editable_columns=lambda *_: [],
+            ),
+            'apps.common.tse_retail': module_stub(
+                'apps.common.tse_retail',
+                TSE_TABLE_TO_PRODUCT_LINE=TSE_TABLE_TO_PRODUCT_LINE,
+                get_tse_product_line_for_table=get_tse_product_line_for_table,
+                validate_tse_editable_column=validate_tse_editable_column,
             ),
         }
         cls.layer2 = load_module(

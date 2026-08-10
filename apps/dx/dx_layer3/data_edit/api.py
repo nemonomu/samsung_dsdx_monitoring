@@ -22,12 +22,24 @@ def update_cell(request):
         return JsonResponse({'error': '잘못된 요청 형식'}, status=400)
 
     table_name = body.get('table_name', '')
-    row_id = body.get('row_id')
+    try:
+        row_id = int(body.get('row_id'))
+        if row_id <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return JsonResponse({'error': '잘못된 ID 형식'}, status=400)
     column_name = body.get('column_name', '')
     new_value = body.get('new_value')
     crawl_date = body.get('crawl_date')
     memo = body.get('memo', '') or None
     rule_id = body.get('rule_id')
+    if rule_id not in (None, ''):
+        try:
+            rule_id = int(rule_id)
+            if rule_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return JsonResponse({'error': '잘못된 규칙 ID 형식'}, status=400)
     correction_type = body.get('correction_type', 'cross_field')
     if correction_type not in ('cross_field', 'field_missing'):
         correction_type = 'cross_field'
@@ -71,13 +83,25 @@ def review(request):
         return JsonResponse({'error': '잘못된 요청 형식'}, status=400)
 
     table_name = body.get('table_name', '')
-    record_id = body.get('record_id')
+    try:
+        record_id = int(body.get('record_id'))
+        if record_id <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        return JsonResponse({'error': '잘못된 ID 형식'}, status=400)
     column_name = body.get('column_name', '')
     status = body.get('status', '')
     memo = body.get('memo', '')
     reason = body.get('reason', '')
     crawl_date = body.get('crawl_date')
     rule_id = body.get('rule_id')
+    if rule_id not in (None, ''):
+        try:
+            rule_id = int(rule_id)
+            if rule_id <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return JsonResponse({'error': '잘못된 규칙 ID 형식'}, status=400)
     correction_type = body.get('correction_type', 'cross_field')
     if correction_type not in ('cross_field', 'field_missing'):
         correction_type = 'cross_field'

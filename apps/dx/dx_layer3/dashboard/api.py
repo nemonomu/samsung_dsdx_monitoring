@@ -8,6 +8,8 @@ from apps.common.db import dx_connection
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.tse_retail import TSE_SOURCE_CONFIG
+from apps.dx.dx_layer3.cross_field import tse_services
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -286,6 +288,48 @@ def layer_stats(request):
                     'failed': hhp_cross_errors,
                     'status': get_status(hhp_cross_errors, hhp_cross_total)
                 })
+
+            # TSE TV/REF/LDY는 스키마가 분리되어 있으며, 날짜·리테일러별
+            # greatest-id 최신 배치만 Python 고정 규칙으로 검증한다.
+            if run_crossfield:
+                tse_product_lines = (
+                    list(TSE_SOURCE_CONFIG)
+                    if product_line == 'all'
+                    else [product_line] if product_line in TSE_SOURCE_CONFIG
+                    else []
+                )
+                for tse_product_line in tse_product_lines:
+                    try:
+                        tse_result = tse_services.get_tse_cross_field_summary(
+                            cursor, target_date, tse_product_line,
+                        )
+                        if not tse_result.get('configured'):
+                            continue
+                        tse_total = tse_result['total_checked']
+                        tse_failed = tse_result['failed_records']
+                        tse_findings = tse_result['total_anomalies']
+                    except Exception as e:
+                        log_error(e)
+                        tse_result = {
+                            'label': TSE_SOURCE_CONFIG[tse_product_line]['display_name'],
+                        }
+                        tse_total = 0
+                        tse_failed = 0
+                        tse_findings = 0
+
+                    total_checked += tse_total
+                    total_anomalies += tse_findings
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{tse_result['label']} 논리적 일관성",
+                        'detail_code': tse_product_line,
+                        'description': '리뷰·별점 수, 최종가·원가, 할인 금액·할인율 검증',
+                        'checked': tse_total,
+                        'passed': max(0, tse_total - tse_failed),
+                        'failed': tse_failed,
+                        'finding_count': tse_findings,
+                        'status': get_status(tse_failed, tse_total),
+                    })
 
             if run_crossfield and product_line in ['tv', 'all']:
                 tv_sentiment_cross_total = 0

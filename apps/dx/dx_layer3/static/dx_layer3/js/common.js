@@ -366,7 +366,9 @@ function renderData(data) {
         checks.forEach((check, checkIdx) => {
             const status = (check.status || 'OK').toLowerCase();
             // 카테고리별 특성은 모두 검증 규칙 버튼 표시, 크로스 필드는 특정 항목만
-            const hasRules = categoryName === '카테고리별 특성' || crossfieldChecksWithRules.includes(check.name);
+            const hasRules = categoryName === '카테고리별 특성'
+                || crossfieldChecksWithRules.includes(check.name)
+                || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
 
             html += `
@@ -480,7 +482,11 @@ async function showDetail(category, checkName, detailCode) {
             apiUrl = `/layer3/api/comp-product-cross-detail/?date=${date}`;
         } else {
             // TV/HHP 논리적 일관성
-            const type = checkName.includes('TV') ? 'tv' : 'hhp';
+            let type = 'hhp';
+            if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
+            else if (detailCode === 'tse_ref' || checkName.includes('TSE REF')) type = 'tse_ref';
+            else if (detailCode === 'tse_ldy' || checkName.includes('TSE LDY')) type = 'tse_ldy';
+            else if (checkName.includes('TV')) type = 'tv';
             apiUrl = `/layer3/api/cross-field-detail/?date=${date}&type=${type}`;
         }
 
@@ -881,6 +887,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldSelectFields = data.select_fields || '';
             window.crossfieldValidationType = data.validation_type || '';
             window.crossfieldTableName = data.table_name || '';
+            window.crossfieldDateCol = data.date_col || 'crawl_datetime';
             window.crossfieldEditableCols = new Set(data.editable_columns || []);
             window.crossfieldNormalReviews = data.normal_reviews || {};
             window.crossfieldRetailerColumns = data.retailer_columns || {};
@@ -983,7 +990,8 @@ async function showRulesModal(checkName) {
 
     // 크로스필드 규칙 체크 (Sentiment, 논리적 일관성)
     const crossfieldChecks = ['TV 논리적 일관성', 'HHP 논리적 일관성', 'TV Sentiment↔리뷰 일관성', 'HHP Sentiment↔리뷰 일관성'];
-    const isCrossfield = crossfieldChecks.includes(checkName);
+    const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
+    const isCrossfield = crossfieldChecks.includes(checkName) || isTseCrossfield;
 
     // checkName에서 category 추출
     let category = 'all';
@@ -991,7 +999,13 @@ async function showRulesModal(checkName) {
 
     if (isCrossfield) {
         // 크로스필드 규칙
-        if (checkName.includes('TV') && checkName.includes('Sentiment')) {
+        if (checkName.includes('TSE TV')) {
+            category = 'tse_tv_retail';
+        } else if (checkName.includes('TSE REF')) {
+            category = 'tse_ref_retail';
+        } else if (checkName.includes('TSE LDY')) {
+            category = 'tse_ldy_retail';
+        } else if (checkName.includes('TV') && checkName.includes('Sentiment')) {
             category = 'tv_sentiment';
         } else if (checkName.includes('HHP') && checkName.includes('Sentiment')) {
             category = 'hhp_sentiment';
