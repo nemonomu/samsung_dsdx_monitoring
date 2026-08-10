@@ -7,6 +7,7 @@ from apps.dx.dx_layer3.dashboard.services import (
     load_crossfield_rules,
     load_category_rules,
 )
+from apps.common.tse_retail import TSE_SOURCE_CONFIG
 
 
 LAYER_CONTEXT = {
@@ -38,9 +39,33 @@ def _get_sidebar_items():
             seen_ts.add(name)
             sidebar['time_series'].append({'name': name, 'detail_code': r['detail_code']})
 
+    crossfield_rules = load_crossfield_rules()
+    tse_section_codes = {
+        source['section_code'] for source in TSE_SOURCE_CONFIG.values()
+    }
     sidebar['cross_field'] = list(dict.fromkeys(
-        r['section_name'] for r in load_crossfield_rules() if r.get('section_name')
+        r['section_name']
+        for r in crossfield_rules
+        if r.get('section_name') and r.get('section_code') not in tse_section_codes
     ))
+
+    active_tse_sections = {
+        r.get('section_code') for r in crossfield_rules
+    }
+    tse_children = []
+    for detail_code, source in TSE_SOURCE_CONFIG.items():
+        if source['section_code'] not in active_tse_sections:
+            continue
+        tse_children.append({
+            'name': source['display_name'],
+            'label': source['category'],
+            'detail_code': detail_code,
+        })
+    if tse_children:
+        sidebar['cross_field'].append({
+            'name': 'TSE',
+            'children': tse_children,
+        })
 
     sidebar['category_spec'] = list(dict.fromkeys(
         r['section_name'] for r in load_category_rules() if r.get('section_name')
@@ -51,15 +76,38 @@ def _get_sidebar_items():
     return sidebar
 
 
-def _build_sidebar_groups(section):
+def _build_sidebar_groups(section, focus='', detail_code=''):
     sidebar = _get_sidebar_items()
+
+    crossfield_items = []
+    for item in sidebar['cross_field']:
+        if not isinstance(item, dict):
+            crossfield_items.append({'name': item, 'active': False})
+            continue
+
+        children = []
+        for child in item.get('children', []):
+            child_item = dict(child)
+            child_item['active'] = (
+                section == 'cross_field'
+                and (
+                    focus == child['name']
+                    or detail_code == child['detail_code']
+                )
+            )
+            children.append(child_item)
+        crossfield_items.append({
+            'name': item['name'],
+            'active': any(child['active'] for child in children),
+            'children': children,
+        })
     return [
         {'key': 'time_series', 'icon': '📈', 'label': '시계열 이상치',
          'expanded': section == 'time_series', 'active': section == 'time_series',
          'items': [{'name': n['name'], 'detail_code': n['detail_code'], 'active': False} for n in sidebar['time_series']]},
         {'key': 'cross_field', 'icon': '🔗', 'label': '크로스 필드 검증',
          'expanded': section == 'cross_field', 'active': section == 'cross_field',
-         'items': [{'name': n, 'active': False} for n in sidebar['cross_field']]},
+         'items': crossfield_items},
         {'key': 'category_spec', 'icon': '📋', 'label': '카테고리별 특성',
          'expanded': section == 'category_spec', 'active': section == 'category_spec',
          'items': [{'name': n, 'active': False} for n in sidebar['category_spec']]},
@@ -70,6 +118,8 @@ def _build_sidebar_groups(section):
 
 
 def build_context(section, request):
+    focus = request.GET.get('focus', '')
+    detail_code = request.GET.get('detail_code', '')
     return {
         'layer': LAYER_CONTEXT,
         'section': section,
@@ -78,5 +128,5 @@ def build_context(section, request):
         'sidebar_items': _get_sidebar_items(),
         'sidebar_title': 'Layer 3 검증',
         'sidebar_base_url': '/dx/layer3/',
-        'sidebar_groups': _build_sidebar_groups(section),
+        'sidebar_groups': _build_sidebar_groups(section, focus, detail_code),
     }

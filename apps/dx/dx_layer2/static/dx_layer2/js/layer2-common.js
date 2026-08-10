@@ -1353,7 +1353,7 @@ function closeRuleModal() {
 }
 
 // ==================== 사이드바 ====================
-function onSubitemClick(parentSection, tableName) {
+function onSubitemClick(parentSection, tableName, detailCode) {
     const section = (window.LAYER2 && window.LAYER2.section) || 'dashboard';
     const date = getSelectedDate();
     const dateParam = date ? `?date=${date}` : '';
@@ -1371,11 +1371,15 @@ function onSubitemClick(parentSection, tableName) {
     }
 
     // 같은 섹션: ViewStack으로 해당 테이블 상세 표시
-    showTableDetailByName(tableName);
+    showTableDetailByName(detailCode || tableName);
 
     // 사이드바 active 갱신
     document.querySelectorAll('.sidebar-subitem').forEach(function(el) {
-        el.classList.toggle('active', el.textContent.trim() === tableName);
+        const itemDetailCode = el.dataset ? el.dataset.detailCode : '';
+        const isActive = detailCode
+            ? itemDetailCode === detailCode
+            : el.textContent.trim() === tableName;
+        el.classList.toggle('active', isActive);
     });
 }
 
@@ -1409,11 +1413,13 @@ function scrollToTable(tableName) {
     }
 }
 
-// 이름으로 테이블 상세 열기 (사이드바 서브아이템 클릭)
-function showTableDetailByName(tableName) {
+// 표시명 또는 canonical section code로 테이블 상세 열기
+function showTableDetailByName(tableTarget) {
     if (!dxData || !dxData.validation_types || !dxData.validation_types[0]) return;
     const tables = dxData.validation_types[0].tables || [];
-    const idx = tables.findIndex(t => t.table_name === tableName);
+    const idx = tables.findIndex(
+        t => t.table_name === tableTarget || t.table === tableTarget
+    );
     if (idx >= 0) {
         // ViewStack 초기화 후 열기
         while (ViewStack.depth() > 0) ViewStack.pop();

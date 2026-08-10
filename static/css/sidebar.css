@@ -159,6 +159,22 @@
     font-weight: 600;
 }
 
+.dx-sidebar .sidebar-subgroup-title {
+    padding: 8px 12px 4px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: default;
+}
+
+.dx-sidebar .sidebar-subgroup-children {
+    display: block;
+}
+
+.dx-sidebar .sidebar-subgroup-child {
+    padding-left: 28px;
+}
+
 /* ============================================================
  * 사이드바 접힌 상태
  * ============================================================ */

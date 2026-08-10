@@ -211,6 +211,7 @@ async function loadData() {
     // focus 파라미터 확인 (사이드바에서 직접 진입 시)
     const urlParams = new URLSearchParams(window.location.search);
     const focusParam = urlParams.get('focus');
+    const detailCodeParam = urlParams.get('detail_code') || '';
 
     // focus가 있으면 stats 건너뛰고 바로 상세 로드
     if (focusParam) {
@@ -218,7 +219,13 @@ async function loadData() {
         var expGroup = document.querySelector('.sidebar-group.expanded');
         if (expGroup) {
             expGroup.querySelectorAll('.sidebar-subitem').forEach(function(item) {
-                item.classList.toggle('active', item.textContent.trim() === focusParam);
+                const itemName = item.dataset.itemName || item.textContent.trim();
+                const itemDetailCode = item.dataset.detailCode || '';
+                item.classList.toggle(
+                    'active',
+                    itemName === focusParam
+                        || (detailCodeParam && itemDetailCode === detailCodeParam)
+                );
             });
         }
 
@@ -238,10 +245,9 @@ async function loadData() {
             }
         } else if (section === 'time_series' && SECTION_CATEGORY_MAP[section]) {
             // 시계열 이상치: 사이드메뉴에서는 페이지 내 렌더링
-            var detailCodeParam = urlParams.get('detail_code') || '';
             loadTimeSeriesPage(date, focusParam, detailCodeParam);
         } else if (SECTION_CATEGORY_MAP[section]) {
-            showDetail(SECTION_CATEGORY_MAP[section], focusParam);
+            showDetail(SECTION_CATEGORY_MAP[section], focusParam, detailCodeParam);
         }
 
         // focus 파라미터 제거 (뒤로가기 시 중복 방지)
@@ -451,7 +457,13 @@ async function showDetail(category, checkName, detailCode) {
     var expGroup = document.querySelector('.sidebar-group.expanded');
     if (expGroup) {
         expGroup.querySelectorAll('.sidebar-subitem').forEach(function(item) {
-            item.classList.toggle('active', item.textContent.trim() === checkName);
+            const itemName = item.dataset.itemName || item.textContent.trim();
+            const itemDetailCode = item.dataset.detailCode || '';
+            item.classList.toggle(
+                'active',
+                itemName === checkName
+                    || (detailCode && itemDetailCode === detailCode)
+            );
         });
     }
 

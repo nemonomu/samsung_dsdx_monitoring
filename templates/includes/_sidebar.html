@@ -19,10 +19,26 @@
             </div>
             <div class="sidebar-subitems">
                 {% for item in group.items %}
+                {% if item.children %}
+                <div class="sidebar-subgroup {% if item.active %}active{% endif %}">
+                    <div class="sidebar-subgroup-title">{{ item.name }}</div>
+                    <div class="sidebar-subgroup-children">
+                        {% for child in item.children %}
+                        <a class="sidebar-subitem sidebar-subgroup-child {% if child.active %}active{% endif %}"
+                           data-item-name="{{ child.name }}"
+                           data-detail-code="{{ child.detail_code|default:"" }}"
+                           onclick="onSubitemClick('{{ group.key }}', '{{ child.name|escapejs }}', '{{ child.detail_code|default:""|escapejs }}')">
+                            {{ child.label|default:child.name }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
                 <a class="sidebar-subitem {% if item.active %}active{% endif %}"
                    onclick="onSubitemClick('{{ group.key }}', '{{ item.name|escapejs }}', '{{ item.detail_code|default:""|escapejs }}')">
                     {{ item.name }}
                 </a>
+                {% endif %}
                 {% endfor %}
             </div>
         </div>
