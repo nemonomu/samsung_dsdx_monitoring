@@ -28,10 +28,19 @@ class Layer4RedirectStatusTests(unittest.TestCase):
             'apps.common.retail_columns': module_stub(
                 'apps.common.retail_columns',
                 load_retail_columns=lambda: {'tv': {'Amazon': ['item']}},
+                get_tse_retailer_columns=lambda _product_line: {},
             ),
             'apps.common.retail_validation': module_stub(
                 'apps.common.retail_validation',
                 get_tv_validation_condition=lambda alias=None: condition,
+            ),
+            'apps.common.tse_retail': module_stub(
+                'apps.common.tse_retail',
+                TSE_SOURCE_CONFIG={},
+                get_tse_required_columns=lambda _product_line: (),
+                get_tse_source=lambda _product_line: {},
+                normalize_tse_product_line=lambda value: value,
+                resolve_tse_table=lambda value: value,
             ),
             'config': package_stub('config'),
             'config.config': module_stub(
@@ -76,10 +85,19 @@ class Layer4RedirectStatusTests(unittest.TestCase):
                 load_retail_columns=lambda: {
                     'tv': {'Bestbuy': ['promotion_position', 'promotion_type']}
                 },
+                get_tse_retailer_columns=lambda _product_line: {},
             ),
             'apps.common.retail_validation': module_stub(
                 'apps.common.retail_validation',
                 get_tv_validation_condition=lambda alias=None: 'TRUE',
+            ),
+            'apps.common.tse_retail': module_stub(
+                'apps.common.tse_retail',
+                TSE_SOURCE_CONFIG={},
+                get_tse_required_columns=lambda _product_line: (),
+                get_tse_source=lambda _product_line: {},
+                normalize_tse_product_line=lambda value: value,
+                resolve_tse_table=lambda value: value,
             ),
             'config': package_stub('config'),
             'config.config': module_stub(

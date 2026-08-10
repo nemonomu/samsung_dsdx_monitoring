@@ -182,7 +182,7 @@
     var bulkHistoryTable = null;
     var bulkHistoryFilterBar = null;
     var bulkHistoryData = null;
-    var bulkHistoryCategory = 'tv'; // 'tv' | 'hhp'
+    var bulkHistoryCategory = 'tv';
 
     function isBulkHistoryActive() {
         var activeTab = document.querySelector('#corrections-tabs .log-tab.active');
@@ -240,6 +240,9 @@
                     type: 'custom',
                     html: '<div style="display:flex;align-items:center;gap:4px;">'
                         + '<button id="bulk-cat-tv" style="' + (bulkHistoryCategory === 'tv' ? catBtnActiveStyle : catBtnStyle) + '">TV</button>'
+                        + '<button id="bulk-cat-tse_tv" style="' + (bulkHistoryCategory === 'tse_tv' ? catBtnActiveStyle : catBtnStyle) + '">TSE TV</button>'
+                        + '<button id="bulk-cat-tse_ref" style="' + (bulkHistoryCategory === 'tse_ref' ? catBtnActiveStyle : catBtnStyle) + '">TSE REF</button>'
+                        + '<button id="bulk-cat-tse_ldy" style="' + (bulkHistoryCategory === 'tse_ldy' ? catBtnActiveStyle : catBtnStyle) + '">TSE LDY</button>'
                         + '</div>'
                 },
                 {
@@ -268,7 +271,7 @@
             }
         }).render();
 
-        ['tv', 'hhp'].forEach(function(cat) {
+        ['tv', 'tse_tv', 'tse_ref', 'tse_ldy'].forEach(function(cat) {
             var btn = document.getElementById('bulk-cat-' + cat);
             if (!btn) return;
             btn.addEventListener('click', function() {
@@ -460,6 +463,9 @@
 
         var CATEGORY_NAME = {
             'tv_retail_com': 'TV',
+            'dx_tse.dx_tse_tv_retail_com': 'TSE TV',
+            'dx_tse.dx_tse_ref_retail_com': 'TSE REF',
+            'dx_tse.dx_tse_ldy_retail_com': 'TSE LDY',
             'youtube_collection_logs': 'YouTube', 'youtube_videos': 'YouTube', 'youtube_comments': 'YouTube',
             'market_trend': 'Market Trend', 'market_comp_product': 'Market', 'market_comp_event': 'Market',
             'openai_forecast_results': '수요증감율'
@@ -519,6 +525,9 @@
     function showCorrectionDetail(item, no) {
         var CATEGORY_NAME = {
             'tv_retail_com': 'TV',
+            'dx_tse.dx_tse_tv_retail_com': 'TSE TV',
+            'dx_tse.dx_tse_ref_retail_com': 'TSE REF',
+            'dx_tse.dx_tse_ldy_retail_com': 'TSE LDY',
             'youtube_collection_logs': 'YouTube', 'youtube_videos': 'YouTube', 'youtube_comments': 'YouTube',
             'market_trend': 'Market Trend', 'market_comp_product': 'Market', 'market_comp_event': 'Market',
             'openai_forecast_results': '수요증감율'
@@ -562,8 +571,13 @@
         }
         html += '</table>';
 
-        // TV Retail history lookup
-        var historyTables = ['tv_retail_com'];
+        // Retail history lookup
+        var historyTables = [
+            'tv_retail_com',
+            'dx_tse.dx_tse_tv_retail_com',
+            'dx_tse.dx_tse_ref_retail_com',
+            'dx_tse.dx_tse_ldy_retail_com'
+        ];
         if (historyTables.indexOf(item.table_name) >= 0 && item.retailer && item.item) {
             html += '<div style="text-align:right;margin-top:12px;">'
                 + '<button class="app-btn app-btn-sm app-btn-outline" id="corr-history-btn">이력 조회</button>'

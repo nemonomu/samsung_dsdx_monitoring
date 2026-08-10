@@ -13,6 +13,7 @@
         'retail': 'Retail',
         'sentiment': 'Retail',
         'youtube': 'Consumer',
+        'tse_retail': 'TSE',
         'market_trend': 'Market',
         'market_demand': 'Market',
         'market_competitor': 'Market',
@@ -24,6 +25,7 @@
         'retail': '거래선 제품 정보 / 감성점수',
         'sentiment': '감성분석',
         'youtube': 'YouTube 영상 데이터 (HHP)',
+        'tse_retail': 'TSE Retail 수집 데이터',
         'market_trend': '키워드 검색 트렌드 (TV/HHP)',
         'market_demand': '수요 증감율 예측 (TV/HHP)',
         'market_competitor_event': '경쟁 신제품 출시 정보 (TV/HHP)',
@@ -36,6 +38,9 @@
         'youtube_runs': 'youtube_country_collection_runs',
         'youtube_videos': 'RAW_EXT_YOUTUBE_VIDEOS_VIEW',
         'youtube_comments': 'youtube_comments',
+        'tse_tv': 'dx_tse.dx_tse_tv_retail_com',
+        'tse_ref': 'dx_tse.dx_tse_ref_retail_com',
+        'tse_ldy': 'dx_tse.dx_tse_ldy_retail_com',
         'market_trend': 'RAW_EXT_MARKET_TREND_VIEW',
         'market_demand': 'RAW_EXT_OPENAI_FORECAST_RESULTS_VIEW',
         'market_competitor_event': 'RAW_EXT_MARKET_COMP_EVENT_VIEW',
@@ -123,7 +128,14 @@
 
     // ── 항목별 NULL 현황 ────────────────────────────────
 
-    var currentCategory = 'tv';
+    var VALID_NULL_CATEGORIES = {
+        'tv': true,
+        'tse_tv': true,
+        'tse_ref': true,
+        'tse_ldy': true
+    };
+    var requestedCategory = new URLSearchParams(window.location.search).get('category');
+    var currentCategory = VALID_NULL_CATEGORIES[requestedCategory] ? requestedCategory : 'tv';
 
     function loadNullStatus() {
         var date = getSelectedDate();
@@ -167,6 +179,7 @@
     // 카테고리 토글
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.cs-cat-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.cat === currentCategory);
             btn.addEventListener('click', function() {
                 document.querySelectorAll('.cs-cat-btn').forEach(function(b) { b.classList.remove('active'); });
                 btn.classList.add('active');
@@ -201,14 +214,22 @@
         var container = document.getElementById('cs-email-container');
         container.innerHTML = '<div class="l4-empty-state"><p>조회 중...</p></div>';
 
-        // 일일 수집 현황 + TV Retail NULL + 발송 여부 동시 조회
+        // 일일 수집 현황 + TV/TSE Missing + 발송 여부 동시 조회
         Promise.all([
             fetchJsonRequired('/dx/layer1/api/stats/?date=' + encodeURIComponent(date)),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tv', { success: true, retailers: [] }),
+            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_tv', { success: true, retailers: [] }),
+            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_ref', { success: true, retailers: [] }),
+            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_ldy', { success: true, retailers: [] }),
+            fetchJsonOrFallback('/dx/layer3/api/tse-crossfield-summary/?date=' + encodeURIComponent(date), { success: true, product_lines: [] }),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/email-check/?date=' + encodeURIComponent(date), { count: 0 })
         ]).then(function(results) {
-            renderEmailReport(results[0], results[1], date);
-            updateSendButton(results[2].count || 0, results[2]);
+            renderEmailReport(results[0], results[1], {
+                tse_tv: results[2],
+                tse_ref: results[3],
+                tse_ldy: results[4]
+            }, results[5], date);
+            updateSendButton(results[6].count || 0, results[6]);
         }).catch(function(e) {
             console.error(e);
             container.innerHTML = '<div class="l4-empty-state"><p>오류가 발생했습니다.</p></div>';
@@ -268,6 +289,29 @@
                 return;
             } else if (check.is_target_date === false) {
                 return;
+            } else if (checkType === 'tse_retail') {
+                (check.categories || []).forEach(function(cat) {
+                    var productLine = String(cat.product_line || ('tse_' + String(cat.name || '').toLowerCase())).toLowerCase();
+                    var retailerRows = cat.retailers || [];
+                    var expected = typeof cat.expected === 'number' ? cat.expected : 0;
+                    var actual = typeof cat.total === 'number' ? cat.total : (typeof cat.actual === 'number' ? cat.actual : 0);
+                    if (retailerRows.length > 0) {
+                        expected = 0;
+                        actual = 0;
+                        retailerRows.forEach(function(retailer) {
+                            expected += Number(retailer.expected || 0);
+                            actual += Number(retailer.actual !== undefined ? retailer.actual : (retailer.total || 0));
+                        });
+                    }
+                    rows.push({
+                        no: no++,
+                        category: 'TSE',
+                        name: 'TSE ' + String(cat.name || '').toUpperCase() + ' 수집 데이터',
+                        table_name: cat.table_name || TABLE_NAME_MAP[productLine] || '',
+                        expected: expected || 300,
+                        actual: actual
+                    });
+                });
             } else if (checkType === 'youtube') {
                 var youtubeTotals = {
                     expectedCountries: 0,
@@ -333,7 +377,7 @@
         var html = '';
         if (label) html += '<div style="font-size:13px;font-weight:700;margin:16px 0 8px;font-family:Malgun Gothic,sans-serif;">' + label + '</div>';
         html += '<table style="' + TABLE + '"><tr><th style="' + TH + 'width:250px;" rowspan="2">수집항목</th>';
-        retailers.forEach(function(r) { html += '<th style="' + TH + '" colspan="2">' + r.retailer + '</th>'; });
+        retailers.forEach(function(r) { html += '<th style="' + TH + '" colspan="2">' + L4.escapeHtml(r.retailer) + '</th>'; });
         if (hasRemarks) html += '<th style="' + TH + '" rowspan="2">비고</th>';
         html += '</tr><tr>';
         retailers.forEach(function() {
@@ -373,7 +417,74 @@
         return html;
     }
 
-    function renderEmailReport(dailyData, tvData, date) {
+    function buildTseCrossfieldTables(data) {
+        var productLines = (data && data.product_lines) || [];
+        if (productLines.length === 0) {
+            return '<div style="' + TD + 'margin-top:8px;">검증 데이터 없음</div>';
+        }
+
+        var html = '';
+        productLines.forEach(function(productLine) {
+            var retailers = productLine.retailers || [];
+            html += '<div style="font-size:13px;font-weight:700;margin:16px 0 8px;font-family:Malgun Gothic,sans-serif;">'
+                + L4.escapeHtml(productLine.label || productLine.product_line || '') + '</div>';
+            html += '<table style="' + TABLE + '"><tr>'
+                + '<th style="' + TH + '">리테일러</th>'
+                + '<th style="' + TH + '">검수건수</th>'
+                + '<th style="' + TH + '">오류 행</th>'
+                + '<th style="' + TH + '">총 오류건수</th>'
+                + '</tr>';
+            retailers.forEach(function(retailer) {
+                html += '<tr>'
+                    + '<td style="' + TD + '">' + L4.escapeHtml(retailer.retailer || '') + '</td>'
+                    + '<td style="' + TD_NUM + '">' + L4.formatNumber(retailer.total_checked || 0) + '</td>'
+                    + '<td style="' + TD_NUM + '">' + L4.formatNumber(retailer.failed_records || 0) + '</td>'
+                    + '<td style="' + TD_NUM + '">' + L4.formatNumber(retailer.total_errors || 0) + '</td>'
+                    + '</tr>';
+            });
+            if (retailers.length === 0) {
+                html += '<tr><td style="' + TD + 'text-align:center;" colspan="4">검증 데이터 없음</td></tr>';
+            }
+            html += '</table>';
+
+            var ruleMap = {};
+            retailers.forEach(function(retailer) {
+                (retailer.rules || []).forEach(function(rule) {
+                    var key = rule.detail_code || rule.detail_name;
+                    if (!ruleMap[key]) {
+                        ruleMap[key] = {
+                            name: rule.detail_name || rule.detail_code || '',
+                            counts: {}
+                        };
+                    }
+                    ruleMap[key].counts[retailer.retailer] = rule.error_count || 0;
+                });
+            });
+            var ruleKeys = Object.keys(ruleMap);
+            if (ruleKeys.length > 0) {
+                html += '<table style="' + TABLE + '"><tr><th style="' + TH + '">검수 규칙</th>';
+                retailers.forEach(function(retailer) {
+                    html += '<th style="' + TH + '">' + L4.escapeHtml(retailer.retailer || '') + '</th>';
+                });
+                html += '<th style="' + TH + '">합계</th></tr>';
+                ruleKeys.forEach(function(key) {
+                    var rule = ruleMap[key];
+                    var total = 0;
+                    html += '<tr><td style="' + TD + '">' + L4.escapeHtml(rule.name) + '</td>';
+                    retailers.forEach(function(retailer) {
+                        var count = Number(rule.counts[retailer.retailer] || 0);
+                        total += count;
+                        html += '<td style="' + TD_NUM + '">' + L4.formatNumber(count) + '</td>';
+                    });
+                    html += '<td style="' + TD_NUM + '">' + L4.formatNumber(total) + '</td></tr>';
+                });
+                html += '</table>';
+            }
+        });
+        return html;
+    }
+
+    function renderEmailReport(dailyData, tvData, tseData, crossfieldData, date) {
         var container = document.getElementById('cs-email-container');
 
         var emailRetailers = (tvData.retailers || []).map(function(retailer) {
@@ -445,6 +556,19 @@
         // 2. R.com 수집 항목 Missing Value 현황
         html += '<b style="font-size:14px;">2. R.com 수집 항목 Missing Value 현황</b><br>';
         if (tvData.success) html += buildNullTable(emailRetailers, 'TV');
+        if (tseData && tseData.tse_tv && tseData.tse_tv.success) {
+            html += buildNullTable(tseData.tse_tv.retailers || [], 'TSE - TV');
+        }
+        if (tseData && tseData.tse_ref && tseData.tse_ref.success) {
+            html += buildNullTable(tseData.tse_ref.retailers || [], 'TSE - REF');
+        }
+        if (tseData && tseData.tse_ldy && tseData.tse_ldy.success) {
+            html += buildNullTable(tseData.tse_ldy.retailers || [], 'TSE - LDY');
+        }
+
+        // 3. TSE Cross-field 검증 현황
+        html += '<br><b style="font-size:14px;">3. TSE Cross-field 검증 현황</b><br>';
+        html += buildTseCrossfieldTables(crossfieldData);
 
         html += '<br>감사합니다.';
 

@@ -42,7 +42,12 @@ function response(data) {
     });
 }
 
-function loadPage(search, statsData = layer1Data, collectionData = { success: true, retailers: [] }) {
+function loadPage(
+    search,
+    statsData = layer1Data,
+    collectionData = { success: true, retailers: [] },
+    crossfieldData = { success: true, product_lines: [] }
+) {
     const elements = {
         'cs-daily-container': { innerHTML: '' },
         'cs-container': { innerHTML: '' },
@@ -82,7 +87,14 @@ function loadPage(search, statsData = layer1Data, collectionData = { success: tr
             if (url.includes('email-check')) {
                 return response({ count: 0 });
             }
+            if (url.startsWith('/dx/layer3/api/tse-crossfield-summary/')) {
+                return response(crossfieldData);
+            }
             if (url.startsWith('/dx/layer4/api/collection-status/')) {
+                if (collectionData.byCategory) {
+                    const category = new URL('http://test' + url).searchParams.get('category');
+                    return response(collectionData.byCategory[category] || { success: true, retailers: [] });
+                }
                 return response(collectionData);
             }
             return response({});
@@ -171,6 +183,103 @@ async function run() {
     const dailyHtml = daily.elements['cs-daily-container'].innerHTML;
     assert(dailyHtml.includes('YouTube 영상 데이터 (HHP)'));
     assert(!dailyHtml.includes('YouTube 국가 실행 (HHP)'));
+
+    const tseLayer1Data = {
+        checks: [{
+            check_type: 'tse_retail',
+            name: 'TSE Retail',
+            is_target_date: true,
+            categories: [{
+                name: 'TV',
+                product_line: 'tse_tv',
+                table_name: 'dx_tse.dx_tse_tv_retail_com',
+                retailers: [{ retailer: 'Homepro', expected: 300, actual: 300 }]
+            }, {
+                name: 'REF',
+                product_line: 'tse_ref',
+                table_name: 'dx_tse.dx_tse_ref_retail_com',
+                retailers: [{ retailer: 'Homepro', expected: 300, actual: 300 }]
+            }, {
+                name: 'LDY',
+                product_line: 'tse_ldy',
+                table_name: 'dx_tse.dx_tse_ldy_retail_com',
+                retailers: [{ retailer: 'Homepro', expected: 300, actual: 287 }]
+            }]
+        }]
+    };
+    const tseCollections = {
+        byCategory: {
+            tv: { success: true, retailers: [] },
+            tse_tv: {
+                success: true,
+                retailers: [{
+                    retailer: 'Homepro',
+                    total_count: 300,
+                    columns: [{ column: 'screen_size', total_count: 300, null_count: 0 }]
+                }]
+            },
+            tse_ref: {
+                success: true,
+                retailers: [{
+                    retailer: 'Homepro',
+                    total_count: 300,
+                    columns: [{ column: 'ref_capacity', total_count: 300, null_count: 0 }]
+                }]
+            },
+            tse_ldy: {
+                success: true,
+                retailers: [{
+                    retailer: 'Homepro',
+                    total_count: 287,
+                    columns: [{ column: 'ldy_capacity', total_count: 287, null_count: 6 }]
+                }]
+            }
+        }
+    };
+    const tseEmail = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        tseLayer1Data,
+        tseCollections,
+        {
+            success: true,
+            product_lines: [{
+                product_line: 'tse_ldy',
+                label: 'TSE LDY',
+                retailers: [{
+                    retailer: 'Homepro',
+                    total_checked: 287,
+                    failed_records: 4,
+                    total_errors: 6,
+                    rules: [{
+                        detail_code: 'savings_rate_floor_mismatch',
+                        detail_name: '할인율 불일치',
+                        error_count: 6
+                    }]
+                }]
+            }]
+        }
+    );
+    tseEmail.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const tseEmailHtml = tseEmail.elements['cs-email-container'].innerHTML;
+    assert(tseEmailHtml.includes('TSE TV 수집 데이터'));
+    assert(tseEmailHtml.includes('dx_tse.dx_tse_tv_retail_com'));
+    assert(tseEmailHtml.includes('TSE - TV'));
+    assert(tseEmailHtml.includes('TSE - REF'));
+    assert(tseEmailHtml.includes('TSE - LDY'));
+    assert(tseEmailHtml.includes('ldy_capacity'));
+    assert(tseEmailHtml.includes('3. TSE Cross-field 검증 현황'));
+    assert(tseEmailHtml.includes('할인율 불일치'));
+    assert(tseEmailHtml.includes('>6</td>'));
+
+    const tseNull = loadPage(
+        '?focus=' + encodeURIComponent('항목별 NULL 현황') + '&category=tse_ldy',
+        tseLayer1Data,
+        tseCollections
+    );
+    tseNull.L4._sectionHandler.collection_status();
+    await flushPromises();
+    assert(tseNull.elements['cs-container'].innerHTML.includes('ldy_capacity'));
 
     const marketData = {
         checks: [

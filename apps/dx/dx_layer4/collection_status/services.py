@@ -9,19 +9,33 @@ from email.header import Header
 from email.utils import formataddr
 from datetime import datetime
 from apps.common.db import dx_connection, dx_table
-from apps.common.retail_columns import load_retail_columns
+from apps.common.retail_columns import load_retail_columns, get_tse_retailer_columns
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.tse_retail import (
+    TSE_SOURCE_CONFIG,
+    get_tse_required_columns,
+    get_tse_source,
+    normalize_tse_product_line,
+    resolve_tse_table,
+)
 from config.config import EMAIL_CONFIG
 
 _EMAIL_LOG_TABLE = dx_table('monitoring_email_logs')
 
 _TABLE_MAP = {
     'tv': 'tv_retail_com',
+    **{
+        product_line: config['table_name']
+        for product_line, config in TSE_SOURCE_CONFIG.items()
+    },
 }
 
 _DATE_COL_MAP = {
     'tv': 'crawl_datetime',
+    **{product_line: 'crawl_datetime' for product_line in TSE_SOURCE_CONFIG},
 }
+
+VALID_COLLECTION_CATEGORIES = frozenset(_TABLE_MAP)
 
 _BATCH_DATE_EXPR = "substring(COALESCE(batch_id, '') from '([0-9]{8})')"
 
@@ -30,8 +44,103 @@ def _batch_date_key(date_value):
     return str(date_value)[:10].replace('-', '')
 
 
+def _get_tse_columns(product_line):
+    """Return active TSE configuration intersected with server allowlists."""
+    key = normalize_tse_product_line(product_line)
+    allowed = set(get_tse_required_columns(key))
+    result = []
+    for retailer_name, config in get_tse_retailer_columns(key).items():
+        required = [
+            column
+            for column in config.get('required_columns', [])
+            if column in allowed
+        ]
+        if required:
+            result.append({
+                'retailer': retailer_name,
+                'retailer_key': config['retailer'],
+                'columns': required,
+            })
+    return result
+
+
+def _get_tse_collection_status(target_date, product_line):
+    """Return latest-batch NULL counts for one TSE product line."""
+    key = normalize_tse_product_line(product_line)
+    table_name = resolve_tse_table(key)
+    retailer_configs = _get_tse_columns(key)
+    if not retailer_configs:
+        return {
+            'success': True,
+            'category': key,
+            'label': get_tse_source(key)['display_name'],
+            'retailers': [],
+        }
+
+    retailers = []
+    with dx_connection() as (conn, cursor):
+        include_unassigned = len(retailer_configs) == 1
+        for retailer_config in retailer_configs:
+            columns = retailer_config['columns']
+            null_parts = [
+                f"SUM(CASE WHEN t.{column} IS NULL OR "
+                f"BTRIM(CAST(t.{column} AS TEXT)) = '' THEN 1 ELSE 0 END)"
+                for column in columns
+            ]
+            account_scope = "LOWER(t.account_name) = LOWER(%s)"
+            if include_unassigned:
+                account_scope = f"""(
+                    {account_scope}
+                    OR t.account_name IS NULL
+                    OR BTRIM(CAST(t.account_name AS TEXT)) = ''
+                )"""
+            sql = (
+                f"SELECT COUNT(*) AS total_count, {', '.join(null_parts)} "
+                f"FROM {table_name} t "
+                f"JOIN ("
+                f"  SELECT batch_id FROM {table_name} "
+                f"  WHERE LOWER(account_name) = LOWER(%s) "
+                f"    AND LEFT(TRIM(crawl_datetime), 10) = %s "
+                f"  ORDER BY id DESC LIMIT 1"
+                f") latest ON t.batch_id IS NOT DISTINCT FROM latest.batch_id "
+                f"WHERE {account_scope} "
+                f"  AND LEFT(TRIM(t.crawl_datetime), 10) = %s"
+            )
+            cursor.execute(sql, [
+                retailer_config['retailer_key'],
+                str(target_date),
+                retailer_config['retailer_key'],
+                str(target_date),
+            ])
+            row = cursor.fetchone()
+            total_count = (row[0] or 0) if row else 0
+            column_nulls = []
+            for index, column in enumerate(columns):
+                null_count = (row[index + 1] or 0) if row else 0
+                column_nulls.append({
+                    'column': column,
+                    'total_count': total_count,
+                    'null_count': null_count,
+                })
+            retailers.append({
+                'retailer': retailer_config['retailer'],
+                'total_count': total_count,
+                'columns': column_nulls,
+            })
+
+    return {
+        'success': True,
+        'category': key,
+        'label': get_tse_source(key)['display_name'],
+        'retailers': retailers,
+    }
+
+
 def get_collection_status(target_date, category):
     """리테일러별 수집 건수 + 컬럼별 NULL 수 조회"""
+    if category in TSE_SOURCE_CONFIG:
+        return _get_tse_collection_status(target_date, category)
+
     table_name = _TABLE_MAP[category]
     date_col = _DATE_COL_MAP[category]
 
@@ -143,6 +252,9 @@ def get_collection_status(target_date, category):
 
 def get_null_detail(target_date, category, retailer, column):
     """특정 리테일러/컬럼의 NULL 행 상세 조회"""
+    if category in TSE_SOURCE_CONFIG:
+        return _get_tse_null_detail(target_date, category, retailer, column)
+
     table_name = _TABLE_MAP[category]
     date_col = _DATE_COL_MAP[category]
     date_expr = 'crawl_datetime' if category == 'tv' else 'crawl_strdatetime AS crawl_datetime'
@@ -178,6 +290,70 @@ def get_null_detail(target_date, category, retailer, column):
             rows.append(d)
 
     return {'success': True, 'columns': col_names, 'rows': rows}
+
+
+def _get_tse_null_detail(target_date, product_line, retailer, column):
+    """Return a read-only Layer 4 detail for a TSE latest-batch NULL."""
+    key = normalize_tse_product_line(product_line)
+    table_name = resolve_tse_table(key)
+    retailer_key = str(retailer or '').strip().lower()
+    retailer_configs = _get_tse_columns(key)
+    matched = next(
+        (
+            config for config in retailer_configs
+            if config['retailer_key'] == retailer_key
+        ),
+        None,
+    )
+    if not matched or column not in matched['columns']:
+        raise ValueError('허용되지 않은 컬럼입니다.')
+    include_unassigned = len(retailer_configs) == 1
+    account_scope = "LOWER(t.account_name) = LOWER(%s)"
+    if include_unassigned:
+        account_scope = f"""(
+            {account_scope}
+            OR t.account_name IS NULL
+            OR BTRIM(CAST(t.account_name AS TEXT)) = ''
+        )"""
+
+    with dx_connection() as (conn, cursor):
+        sql = (
+            f"SELECT t.id, t.crawl_datetime, t.account_name, t.item, "
+            f"t.{column}, t.product_url "
+            f"FROM {table_name} t "
+            f"JOIN ("
+            f"  SELECT batch_id FROM {table_name} "
+            f"  WHERE LOWER(account_name) = LOWER(%s) "
+            f"    AND LEFT(TRIM(crawl_datetime), 10) = %s "
+            f"  ORDER BY id DESC LIMIT 1"
+            f") latest ON t.batch_id IS NOT DISTINCT FROM latest.batch_id "
+            f"WHERE {account_scope} "
+            f"  AND LEFT(TRIM(t.crawl_datetime), 10) = %s "
+            f"  AND (t.{column} IS NULL OR BTRIM(CAST(t.{column} AS TEXT)) = '') "
+            f"ORDER BY t.item, t.id"
+        )
+        cursor.execute(
+            sql,
+            [retailer_key, str(target_date), retailer_key, str(target_date)],
+        )
+        col_names = [
+            'id', 'crawl_datetime', 'account_name', 'item', column, 'product_url'
+        ]
+        rows = []
+        for row in cursor.fetchall():
+            rows.append({
+                name: '' if value is None else str(value)
+                for name, value in zip(col_names, row)
+            })
+
+    return {
+        'success': True,
+        'category': key,
+        'actual_table': table_name,
+        'read_only': True,
+        'columns': col_names,
+        'rows': rows,
+    }
 
 
 def save_email_log(crawl_date, subject, receiver, sender, sent_id, status, error_message=None):

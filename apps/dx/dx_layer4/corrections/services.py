@@ -4,7 +4,16 @@ Layer 4 검수기록 Services — 목록 조회, 취소, 이력 조회
 
 from datetime import datetime, timedelta
 from apps.common.db import dx_connection
-from apps.common.retail_columns import get_retailer_columns, load_retail_columns
+from apps.common.retail_columns import (
+    get_retailer_columns,
+    get_tse_retailer_columns,
+    load_retail_columns,
+)
+from apps.common.tse_retail import (
+    TSE_SOURCE_CONFIG,
+    TSE_TABLE_TO_PRODUCT_LINE,
+    get_tse_editable_columns,
+)
 
 
 # 원본 테이블별 수집 시간 컬럼 매핑
@@ -17,6 +26,10 @@ _CRAWL_TIME_COLUMN = {
     'market_comp_product': 'created_at',
     'market_comp_event': 'created_at',
     'openai_forecast_results': 'crawled_at',
+    **{
+        config['table_name']: 'crawl_datetime'
+        for config in TSE_SOURCE_CONFIG.values()
+    },
 }
 
 _ALLOWED_TABLES = set(_CRAWL_TIME_COLUMN.keys())
@@ -24,6 +37,20 @@ _ALLOWED_TABLES = set(_CRAWL_TIME_COLUMN.keys())
 # 이력 조회: 허용 테이블 → (product_line, date_column)
 _HISTORY_TABLES = {
     'tv_retail_com': ('tv', 'crawl_datetime'),
+    **{
+        config['table_name']: (product_line, 'crawl_datetime')
+        for product_line, config in TSE_SOURCE_CONFIG.items()
+    },
+}
+
+_BULK_HISTORY_TABLES = {
+    # Preserve the pre-TSE API default: ``all`` means the existing TV source.
+    'all': ('tv_retail_com',),
+    'tv': ('tv_retail_com',),
+    **{
+        product_line: (config['table_name'],)
+        for product_line, config in TSE_SOURCE_CONFIG.items()
+    },
 }
 
 
@@ -195,15 +222,14 @@ def cancel_corrections(ids, cancel_memo, username):
 
 def get_bulk_history(target_date, correction_type='all', category='all', days=3):
     """일괄 이력 조회 (Retail 테이블 한정)"""
-    if category == 'tv':
-        allowed_tables = ('tv_retail_com',)
-    elif category == 'hhp':
+    if category == 'hhp':
         return {
             'success': True, 'rows': [], 'columns': [],
             'default_visible': [], 'fixed': [], 'corrected_map': {}
         }
-    else:
-        allowed_tables = ('tv_retail_com',)
+    allowed_tables = _BULK_HISTORY_TABLES.get(category)
+    if not allowed_tables:
+        raise ValueError('지원하지 않는 카테고리입니다.')
 
     table_placeholders = ','.join(['%s'] * len(allowed_tables))
 
@@ -254,12 +280,22 @@ def get_bulk_history(target_date, correction_type='all', category='all', days=3)
         all_rows = []
 
         for table_name, retailers_items in items_by_table.items():
-            product_line = 'tv' if table_name == 'tv_retail_com' else 'hhp'
-            orig_date_col = 'crawl_datetime' if table_name == 'tv_retail_com' else 'crawl_strdatetime'
-
-            pl_cols = set()
-            for r_cols in all_col_data.get(product_line, {}).values():
-                pl_cols.update(r_cols)
+            is_tse = table_name in TSE_TABLE_TO_PRODUCT_LINE
+            if is_tse:
+                product_line = TSE_TABLE_TO_PRODUCT_LINE[table_name]
+                orig_date_col = 'crawl_datetime'
+                server_allowed = set(get_tse_editable_columns(product_line))
+                pl_cols = set()
+                for config in get_tse_retailer_columns(product_line).values():
+                    pl_cols.update(config.get('required_columns', []))
+                    pl_cols.update(config.get('editable_columns', []))
+                pl_cols.intersection_update(server_allowed)
+            else:
+                product_line = 'tv' if table_name == 'tv_retail_com' else 'hhp'
+                orig_date_col = 'crawl_datetime' if table_name == 'tv_retail_com' else 'crawl_strdatetime'
+                pl_cols = set()
+                for r_cols in all_col_data.get(product_line, {}).values():
+                    pl_cols.update(r_cols)
 
             other_cols = sorted(
                 c for c in pl_cols
@@ -270,7 +306,11 @@ def get_bulk_history(target_date, correction_type='all', category='all', days=3)
                 has_product_url = True
             all_other.update(other_cols)
 
-            date_expr = 'crawl_datetime' if table_name == 'tv_retail_com' else 'crawl_strdatetime AS crawl_datetime'
+            date_expr = (
+                'crawl_datetime'
+                if table_name == 'tv_retail_com' or is_tse
+                else 'crawl_strdatetime AS crawl_datetime'
+            )
             select_parts = ['id', date_expr, 'account_name', 'item'] + other_cols
             col_names_local = ['id', 'crawl_datetime', 'account_name', 'item'] + other_cols
             if table_has_url:
@@ -284,9 +324,14 @@ def get_bulk_history(target_date, correction_type='all', category='all', days=3)
             cond_sql = ' OR '.join(['(account_name = %s AND item = %s)'] * len(items_list))
             params = [p for r, i in items_list for p in (r, i)]
 
+            date_condition = (
+                f"LEFT(TRIM({orig_date_col}), 10) >= %s"
+                if is_tse
+                else f"({orig_date_col})::date >= %s::date"
+            )
             cursor.execute(
                 f"SELECT {', '.join(select_parts)} FROM {table_name} "
-                f"WHERE ({cond_sql}) AND ({orig_date_col})::date >= %s::date "
+                f"WHERE ({cond_sql}) AND {date_condition} "
                 f"ORDER BY account_name, item, {orig_date_col} ASC",
                 params + [since_date]
             )
@@ -333,7 +378,24 @@ def get_history(table_name, retailer, item, column, days, record_id):
 
     product_line, date_col = _HISTORY_TABLES[table_name]
 
-    retail_columns = get_retailer_columns(product_line, retailer)
+    is_tse = table_name in TSE_TABLE_TO_PRODUCT_LINE
+    if is_tse:
+        retailer_key = str(retailer).strip().lower()
+        config = next(
+            (
+                value for value in get_tse_retailer_columns(product_line).values()
+                if value.get('retailer') == retailer_key
+            ),
+            None,
+        )
+        configured = set()
+        if config:
+            configured.update(config.get('required_columns', []))
+            configured.update(config.get('editable_columns', []))
+        configured.intersection_update(get_tse_editable_columns(product_line))
+        retail_columns = sorted(configured)
+    else:
+        retail_columns = get_retailer_columns(product_line, retailer)
     if not retail_columns:
         raise ValueError('컬럼 정보를 찾을 수 없습니다.')
 
@@ -353,9 +415,14 @@ def get_history(table_name, retailer, item, column, days, record_id):
 
     with dx_connection() as (conn, cursor):
         since_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        date_condition = (
+            f"LEFT(TRIM({date_col}), 10) >= %s"
+            if is_tse
+            else f"({date_col})::date >= %s::date"
+        )
         cursor.execute(
             f"SELECT {select_sql} FROM {table_name} "
-            f"WHERE account_name = %s AND item = %s AND ({date_col})::date >= %s::date "
+            f"WHERE account_name = %s AND item = %s AND {date_condition} "
             f"ORDER BY {date_col} ASC",
             (retailer, item, since_date)
         )
