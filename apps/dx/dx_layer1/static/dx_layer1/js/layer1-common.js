@@ -339,6 +339,22 @@ function flattenCheckToDetails(sectionType, check) {
                     expected_count: 0, actual_count: cat.comment_count || 0, rate: 0, status: cat.status });
             });
             break;
+        case 'tse_retail':
+            (check.categories || []).forEach(function(cat) {
+                (cat.retailers || []).forEach(function(ret) {
+                    details.push({
+                        category: cat.category || cat.name,
+                        time_slot: check.collection_window || 'RDP 09:00~09:30',
+                        retailer: ret.retailer,
+                        item_name: ret.batch_id || '',
+                        expected_count: ret.expected || 0,
+                        actual_count: ret.actual || ret.count || 0,
+                        rate: ret.rate || 0,
+                        status: ret.status
+                    });
+                });
+            });
+            break;
         case 'market_trend':
             (check.categories || []).forEach(function(cat) {
                 (cat.items || []).forEach(function(item) {

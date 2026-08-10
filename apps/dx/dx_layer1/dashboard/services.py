@@ -11,6 +11,7 @@ from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
 from apps.dx.dx_layer1.youtube import youtube_services as youtube_svc
+from apps.dx.dx_layer1.tse_retail import tse_retail_services as tse_retail_svc
 from apps.dx.dx_layer1.market_trend import market_trend_services as market_trend_svc
 from apps.dx.dx_layer1.market_demand import market_demand_services as market_demand_svc
 from apps.dx.dx_layer1.market_competitor import market_competitor_services as market_competitor_svc
@@ -30,6 +31,7 @@ _SERVICE_MAP = {
     'retail': retail_svc,
     'sentiment': sentiment_svc,
     'youtube': youtube_svc,
+    'tse_retail': tse_retail_svc,
     'market_trend': market_trend_svc,
     'market_demand': market_demand_svc,
     'market_competitor': market_competitor_svc,
@@ -48,6 +50,7 @@ _SERVICE_MAP = {
 }
 
 _YOUTUBE_SAVEPOINT = 'layer1_youtube_monitoring'
+_TSE_RETAIL_SAVEPOINT = 'layer1_tse_retail_monitoring'
 
 
 def _rollback_youtube_savepoint(cursor):
@@ -71,6 +74,30 @@ def _get_youtube_stats_isolated(cursor, svc, target_date, now):
         return None
 
     cursor.execute(f'RELEASE SAVEPOINT {_YOUTUBE_SAVEPOINT}')
+    return svc_result
+
+
+def _rollback_tse_retail_savepoint(cursor):
+    cursor.execute(f'ROLLBACK TO SAVEPOINT {_TSE_RETAIL_SAVEPOINT}')
+    cursor.execute(f'RELEASE SAVEPOINT {_TSE_RETAIL_SAVEPOINT}')
+
+
+def _get_tse_retail_stats_isolated(cursor, svc, target_date, now):
+    """Keep a TSE query failure from invalidating existing Layer 1 results."""
+    cursor.execute(f'SAVEPOINT {_TSE_RETAIL_SAVEPOINT}')
+    try:
+        svc_result = svc.get_layer1_stats(cursor, target_date, now)
+        if not isinstance(svc_result, dict) or not isinstance(
+            svc_result.get('check'), dict
+        ):
+            _rollback_tse_retail_savepoint(cursor)
+            return None
+    except Exception as exc:
+        _rollback_tse_retail_savepoint(cursor)
+        log_error(exc)
+        return None
+
+    cursor.execute(f'RELEASE SAVEPOINT {_TSE_RETAIL_SAVEPOINT}')
     return svc_result
 
 
@@ -145,6 +172,19 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                             'source': 'Consumer (YouTube)',
                             'error_type': '조회 오류',
                             'expected': '국가 수집 데이터',
+                            'actual': 0,
+                            'timestamp': str(target_date),
+                        })
+                        continue
+                elif check_type == 'tse_retail':
+                    svc_result = _get_tse_retail_stats_isolated(
+                        cursor, svc, target_date, now
+                    )
+                    if svc_result is None:
+                        results['failed_items'].append({
+                            'source': 'TSE Retail',
+                            'error_type': '조회 오류',
+                            'expected': 'TSE 국가 수집 데이터',
                             'actual': 0,
                             'timestamp': str(target_date),
                         })

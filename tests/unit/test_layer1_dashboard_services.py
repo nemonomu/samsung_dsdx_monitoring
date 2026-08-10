@@ -60,6 +60,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'retail': 'retail_services',
             'sentiment': 'sentiment_services',
             'youtube': 'youtube_services',
+            'tse_retail': 'tse_retail_services',
             'market_trend': 'market_trend_services',
             'market_demand': 'market_demand_services',
             'market_competitor': 'market_competitor_services',
@@ -142,6 +143,42 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'ROLLBACK TO SAVEPOINT layer1_youtube_monitoring',
             [sql for sql, _params in cursor.calls],
         )
+
+    def test_tse_exception_rolls_back_and_preserves_tv(self):
+        cursor = RecordingCursor()
+        retail_service = StatsService({
+            'check': {
+                'name': 'TV Retail',
+                'check_type': 'retail',
+                'status': 'OK',
+            },
+            'failed_items': [],
+        })
+
+        @contextmanager
+        def connection():
+            yield object(), cursor
+
+        self.service.dx_connection = connection
+        self.service._get_active_services = lambda _target: (
+            [
+                ('tse_retail', StatsService(error=RuntimeError('tse query failed'))),
+                ('retail', retail_service),
+            ],
+            {'tse_retail', 'retail'},
+            {'tse_retail', 'retail'},
+        )
+
+        result = self.service.get_dashboard_stats(date(2026, 8, 10))
+
+        self.assertNotIn('error', result)
+        self.assertEqual(['retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual('TSE Retail', result['failed_items'][0]['source'])
+        self.assertEqual([
+            'SAVEPOINT layer1_tse_retail_monitoring',
+            'ROLLBACK TO SAVEPOINT layer1_tse_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_tse_retail_monitoring',
+        ], [sql for sql, _params in cursor.calls])
 
     def test_stopped_market_services_are_not_activated(self):
         self.service.load_collection_schedules = lambda: [

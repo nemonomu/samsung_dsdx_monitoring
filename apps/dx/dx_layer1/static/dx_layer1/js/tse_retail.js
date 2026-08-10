@@ -1,0 +1,123 @@
+// ============================================================
+// TSE Retail Render Functions
+// ============================================================
+
+function tseNumber(value) {
+    var number = Number(value || 0);
+    return Number.isFinite(number) ? number : 0;
+}
+
+function renderTseRetailerRow(retailer) {
+    var expected = tseNumber(retailer.expected);
+    var actual = tseNumber(retailer.actual !== undefined ? retailer.actual : retailer.count);
+    var rate = retailer.rate !== undefined
+        ? tseNumber(retailer.rate)
+        : (expected > 0 ? Math.round(actual / expected * 1000) / 10 : 0);
+
+    return '<tr>' +
+        '<td class="rt-name">' + esc(retailer.retailer || '-') + '</td>' +
+        '<td>' + esc(retailer.batch_id || '-') + '</td>' +
+        '<td>' + expected.toLocaleString() + '</td>' +
+        '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
+        '<td>' + rate.toLocaleString() + '%</td>' +
+        '<td class="rt-status ct-nc">' + getStatusBadge(retailer.status) + '</td>' +
+    '</tr>';
+}
+
+function renderTseCategory(cat, checkIdx, catIdx) {
+    var expected = tseNumber(cat.expected);
+    var actual = tseNumber(cat.actual !== undefined ? cat.actual : cat.total);
+    var retailers = cat.retailers || [];
+    var rowsHtml = retailers.length > 0
+        ? retailers.map(renderTseRetailerRow).join('')
+        : '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">설정된 리테일러 데이터 없음</td></tr>';
+
+    return '<div class="sentiment-category-item">' +
+        '<div class="sentiment-category-header" onclick="toggleTseCategory(this, ' + checkIdx + ', ' + catIdx + ')">' +
+            '<div class="sentiment-category-info">' +
+                '<span class="toggle-icon-small">▶</span>' +
+                '<span class="sentiment-category-name">' + esc(cat.name || cat.category || '') + '</span>' +
+            '</div>' +
+            '<div class="sentiment-category-stats">' +
+                '<span class="sentiment-category-count">' + actual.toLocaleString() + '/' + expected.toLocaleString() + '건</span>' +
+                getStatusBadge(cat.status) +
+            '</div>' +
+        '</div>' +
+        '<div class="sentiment-two-column retail-single-column" id="tse-cat-' + checkIdx + '-' + catIdx + '">' +
+            '<div class="sentiment-column">' +
+                '<div class="retail-rank-wrap">' +
+                    '<table class="ct ct-grid">' +
+                        '<colgroup>' +
+                            '<col style="width:18%">' +
+                            '<col style="width:28%">' +
+                            '<col style="width:13%">' +
+                            '<col style="width:13%">' +
+                            '<col style="width:12%">' +
+                            '<col style="width:16%">' +
+                        '</colgroup>' +
+                        '<thead><tr>' +
+                            '<th style="text-align:left">리테일러</th>' +
+                            '<th>최신 배치</th>' +
+                            '<th>예상 건수</th>' +
+                            '<th>수집 건수</th>' +
+                            '<th>수집률</th>' +
+                            '<th></th>' +
+                        '</tr></thead>' +
+                        '<tbody>' + rowsHtml + '</tbody>' +
+                    '</table>' +
+                '</div>' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+}
+
+function renderTseRetailCheck(check, checkIdx) {
+    var categories = check.categories || [];
+    var expected = tseNumber(check.expected);
+    var actual = tseNumber(check.actual !== undefined ? check.actual : check.total);
+    var categoriesHtml = categories.map(function(cat, catIdx) {
+        return renderTseCategory(cat, checkIdx, catIdx);
+    }).join('');
+
+    return '<div class="check-item">' +
+        '<div class="check-main" onclick="toggleTimeSlots(this, ' + checkIdx + ')">' +
+            '<div class="check-info">' +
+                '<div class="check-name"><span class="toggle-icon">▶</span>' + esc(check.name || 'TSE Retail') + '</div>' +
+                '<div class="check-description">' + esc(check.description || '') + '</div>' +
+            '</div>' +
+            '<div class="check-criteria">' +
+                '<span class="criteria-item ok">정상: 300건 이상</span>' +
+                '<span class="criteria-item warning">경고: 200~299건</span>' +
+                '<span class="criteria-item critical">위험: 200건 미만</span>' +
+            '</div>' +
+            '<div class="check-stats">' +
+                '<div class="check-stat">' +
+                    '<div class="value">' + actual.toLocaleString() + '/' + expected.toLocaleString() + '</div>' +
+                    '<div class="label">총 수집량</div>' +
+                '</div>' +
+                getStatusBadge(check.status) +
+            '</div>' +
+        '</div>' +
+        '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
+            '<div class="time-slot-item" style="margin-bottom:16px;">' +
+                '<div class="time-slot-header" style="cursor:default;">' +
+                    '<div class="time-slot-info">' +
+                        '<span class="time-slot-name">수집 시간</span>' +
+                        '<span class="time-slot-time"><span class="utc">' + esc(check.collection_window || 'RDP 09:00~09:30') + '</span></span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="sentiment-categories">' + categoriesHtml + '</div>' +
+        '</div>' +
+    '</div>';
+}
+
+function toggleTseCategory(element, checkIdx, catIdx) {
+    var container = document.getElementById('tse-cat-' + checkIdx + '-' + catIdx);
+    var icon = element.querySelector('.toggle-icon-small');
+    if (!container) return;
+    container.classList.toggle('show');
+    if (icon) icon.classList.toggle('expanded');
+}
+
+L1.renderers.tse_retail = renderTseRetailCheck;
