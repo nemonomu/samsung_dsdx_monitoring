@@ -8,6 +8,11 @@ import time
 from pathlib import Path
 from apps.common.db import execute_dx_query, dx_table
 from apps.common.response import log_error
+from apps.common.tse_retail import (
+    TSE_SOURCE_CONFIG,
+    display_tse_retailer,
+    normalize_tse_product_line,
+)
 
 # CSV 파일 경로 (config/csv 폴더) - 형식검증, 시계열 규칙용
 CSV_DIR = Path(__file__).parent.parent.parent / 'config' / 'csv'
@@ -17,6 +22,9 @@ _CACHE_TTL = 60  # 초
 
 _retail_columns_cache = None
 _retail_columns_cache_time = None
+
+_tse_retail_columns_cache = None
+_tse_retail_columns_cache_time = None
 
 _format_rules_cache = None
 _format_rules_cache_time = None
@@ -117,9 +125,91 @@ def get_all_retailer_columns(product_line):
 
 def reload_retail_columns():
     """캐시 초기화 후 다시 로드"""
-    global _retail_columns_cache
+    global _retail_columns_cache, _tse_retail_columns_cache
     _retail_columns_cache = None
+    _tse_retail_columns_cache = None
     return load_retail_columns()
+
+
+def load_tse_retail_columns():
+    """Load active TSE NULL/edit column settings without changing TV/HHP data.
+
+    Returns::
+
+        {
+            'tse_tv': {
+                'Homepro': {
+                    'retailer': 'homepro',
+                    'required_columns': [...],
+                    'editable_columns': [...],
+                },
+            },
+            ...
+        }
+    """
+    global _tse_retail_columns_cache, _tse_retail_columns_cache_time
+
+    now = time.time()
+    if (
+        _tse_retail_columns_cache is not None
+        and _tse_retail_columns_cache_time
+        and (now - _tse_retail_columns_cache_time) < _CACHE_TTL
+    ):
+        return _tse_retail_columns_cache
+
+    result = {product_line: {} for product_line in TSE_SOURCE_CONFIG}
+    try:
+        query = """
+            SELECT product_line, column_name, retailer,
+                   skip_missing_check, is_editable
+            FROM monitoring_retail_columns
+            WHERE product_line IN (%s, %s, %s)
+              AND is_active = TRUE
+              AND COALESCE(is_del, FALSE) = FALSE
+            ORDER BY product_line, retailer, id
+        """
+        rows = execute_dx_query(query, tuple(TSE_SOURCE_CONFIG.keys()))
+        for row in rows:
+            try:
+                product_line = normalize_tse_product_line(row['product_line'])
+            except ValueError:
+                continue
+
+            retailer_key = str(row.get('retailer') or '').strip().lower()
+            if not retailer_key:
+                continue
+            retailer_name = display_tse_retailer(row['retailer'])
+            retailer_config = result[product_line].setdefault(retailer_name, {
+                'retailer': retailer_key,
+                'required_columns': [],
+                'editable_columns': [],
+            })
+            column_name = row['column_name']
+            if not row.get('skip_missing_check'):
+                retailer_config['required_columns'].append(column_name)
+            if row.get('is_editable'):
+                retailer_config['editable_columns'].append(column_name)
+    except Exception as e:
+        log_error(e, 'db')
+
+    _tse_retail_columns_cache = result
+    _tse_retail_columns_cache_time = now
+    return result
+
+
+def get_tse_retailer_columns(product_line):
+    """Return TSE retailer column settings for one product line."""
+    key = normalize_tse_product_line(product_line)
+    return load_tse_retail_columns().get(key, {})
+
+
+def get_tse_required_columns_for_retailer(product_line, retailer):
+    """Return active required columns for a TSE retailer."""
+    retailer_key = str(retailer or '').strip().lower()
+    for config in get_tse_retailer_columns(product_line).values():
+        if config['retailer'] == retailer_key:
+            return list(config['required_columns'])
+    return []
 
 
 def get_editable_columns(product_line, retailer):
