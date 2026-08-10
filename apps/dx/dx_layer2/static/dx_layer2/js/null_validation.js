@@ -26,6 +26,9 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'YouTube Videos' ? 'youtube_videos' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :
+                       tableName === 'TSE TV' ? 'tse_tv_retail' :
+                       tableName === 'TSE REF' ? 'tse_ref_retail' :
+                       tableName === 'TSE LDY' ? 'tse_ldy_retail' :
                        tableName === 'Market' ? 'market' :
                        tableName.toLowerCase().replace(' ', '_');
 

@@ -12,6 +12,23 @@ from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 
+try:
+    from apps.common.retail_columns import load_tse_retail_columns
+    from apps.common.tse_retail import (
+        TSE_SOURCE_CONFIG,
+        TSE_TABLE_TO_PRODUCT_LINE,
+        get_tse_editable_columns,
+        get_tse_required_columns,
+        get_tse_product_line_for_table,
+    )
+except (ImportError, AttributeError):
+    load_tse_retail_columns = None
+    TSE_SOURCE_CONFIG = None
+    TSE_TABLE_TO_PRODUCT_LINE = {}
+    get_tse_editable_columns = None
+    get_tse_required_columns = None
+    get_tse_product_line_for_table = None
+
 
 # ==================== NULL 검증 설정 (monitoring_null_check 테이블) ====================
 
@@ -226,8 +243,22 @@ def load_null_check_config():
 
 
 def get_all_categories():
-    """모든 대시보드 카테고리 목록 반환 (display_order 순)"""
-    return list(load_null_check_config().keys())
+    """모든 대시보드 카테고리 목록 반환 (display_order 순)."""
+    categories = list(load_null_check_config().keys())
+    runtime = _get_tse_runtime()
+    if runtime:
+        try:
+            tse_config = runtime['load_columns']()
+        except Exception as exc:
+            log_error(exc, 'db')
+            tse_config = {}
+        for product_line, source in runtime['sources'].items():
+            if (
+                tse_config.get(product_line)
+                and source['section_code'] not in categories
+            ):
+                categories.append(source['section_code'])
+    return categories
 
 
 def get_check_names_by_category(category):
@@ -287,6 +318,367 @@ def _is_field_null(val, check_type):
         return val is not None and str(val).strip() == ''
     else:  # both
         return val is None or str(val).strip() == ''
+
+
+def _get_tse_runtime():
+    """Load the TSE registry lazily so legacy Layer 2 imports stay isolated."""
+    if not all((
+        load_tse_retail_columns,
+        TSE_SOURCE_CONFIG,
+        get_tse_editable_columns,
+        get_tse_required_columns,
+        get_tse_product_line_for_table,
+    )):
+        return None
+
+    return {
+        'load_columns': load_tse_retail_columns,
+        'sources': TSE_SOURCE_CONFIG,
+        'max_editable': get_tse_editable_columns,
+        'max_required': get_tse_required_columns,
+        'product_line_for_table': get_tse_product_line_for_table,
+    }
+
+
+def _get_tse_product_line_for_category(category, runtime=None):
+    runtime = runtime or _get_tse_runtime()
+    if not runtime:
+        return None
+    for product_line, source in runtime['sources'].items():
+        if source['section_code'] == category:
+            return product_line
+    return None
+
+
+def _get_tse_retailer_config(product_line, retailer, runtime=None, config=None):
+    """Resolve an active retailer config case-insensitively."""
+    runtime = runtime or _get_tse_runtime()
+    if not runtime:
+        return None
+    if config is None:
+        config = runtime['load_columns']()
+    retailer_key = str(retailer or '').strip().lower()
+    product_configs = config.get(product_line, {})
+    if not retailer_key and len(product_configs) == 1:
+        return next(iter(product_configs.items()))
+    for display_name, retailer_config in product_configs.items():
+        if (
+            str(display_name).strip().lower() == retailer_key
+            or str(retailer_config.get('retailer') or '').strip().lower()
+            == retailer_key
+        ):
+            return display_name, retailer_config
+    return None
+
+
+def _safe_tse_required_columns(product_line, retailer_config, runtime):
+    """Keep DB-configured identifiers inside the server-owned allowlist."""
+    allowed = set(runtime['max_required'](product_line))
+    return [
+        column for column in retailer_config.get('required_columns', [])
+        if column in allowed
+    ]
+
+
+def _safe_tse_editable_columns(product_line, retailer_config, runtime):
+    """Require both the server maximum and DB ``is_editable`` flag."""
+    allowed = set(runtime['max_editable'](product_line))
+    return [
+        column for column in retailer_config.get('editable_columns', [])
+        if column in allowed
+    ]
+
+
+def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
+    """Return TSE NULL cards using only each retailer's latest daily batch."""
+    tables = []
+    total_issues = 0
+    target_date_text = str(target_date)
+
+    for product_line, source in runtime['sources'].items():
+        retailer_rows = []
+        table_total = 0
+        table_issues = 0
+        table_fields = []
+        canonical_table = source['table_name']
+        product_configs = tse_config.get(product_line, {})
+        include_unassigned = len(product_configs) == 1
+
+        for display_name, retailer_config in product_configs.items():
+            required_columns = _safe_tse_required_columns(
+                product_line, retailer_config, runtime
+            )
+            if not required_columns:
+                continue
+
+            retailer_value = retailer_config['retailer']
+            account_scope = "LOWER(source.account_name) = LOWER(%s)"
+            if include_unassigned:
+                account_scope = f"""(
+                    {account_scope}
+                    OR source.account_name IS NULL
+                    OR TRIM(CAST(source.account_name AS TEXT)) = ''
+                )"""
+            count_parts = []
+            for column in required_columns:
+                condition = _build_null_sql_condition(column, 'both')
+                count_parts.append(
+                    f"COUNT(CASE WHEN {condition} THEN 1 END) AS null_{column}"
+                )
+
+            query = f"""
+                WITH latest_batch AS (
+                    SELECT source.batch_id
+                    FROM {canonical_table} source
+                    WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                      AND LOWER(source.account_name) = LOWER(%s)
+                    ORDER BY source.id DESC
+                    LIMIT 1
+                )
+                SELECT (SELECT batch_id FROM latest_batch) AS latest_batch_id,
+                       COUNT(*) AS total,
+                       {', '.join(count_parts)}
+                FROM {canonical_table} source
+                WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                  AND {account_scope}
+                  AND source.batch_id IS NOT DISTINCT FROM
+                      (SELECT batch_id FROM latest_batch)
+                  AND EXISTS (SELECT 1 FROM latest_batch)
+            """
+            cursor.execute(
+                query,
+                (
+                    target_date_text, retailer_value,
+                    target_date_text, retailer_value,
+                ),
+            )
+            row = cursor.fetchone()
+
+            latest_batch_id = row[0] if row else None
+            total = (row[1] or 0) if row else 0
+            fields_detail = {
+                column: ((row[index + 2] or 0) if row else 0)
+                for index, column in enumerate(required_columns)
+            }
+
+            # A normal review only removes the same record in the current
+            # latest batch. Reviews on an older rerun must not alter this card.
+            if latest_batch_id is not None and any(fields_detail.values()):
+                placeholders = ', '.join(['%s'] * len(required_columns))
+                cursor.execute(f"""
+                    SELECT correction.column_name,
+                           COUNT(DISTINCT correction.record_id)
+                    FROM monitoring_corrections correction
+                    JOIN {canonical_table} source
+                      ON source.id = correction.record_id
+                    WHERE correction.table_name = %s
+                      AND correction.crawl_date = %s
+                      AND correction.correction_type = 'null_check'
+                      AND correction.status = 'normal'
+                      AND LOWER(correction.retailer) = LOWER(%s)
+                      AND correction.column_name IN ({placeholders})
+                      AND LEFT(TRIM(source.crawl_datetime), 10) = %s
+                      AND {account_scope}
+                      AND source.batch_id IS NOT DISTINCT FROM %s
+                    GROUP BY correction.column_name
+                """, (
+                    canonical_table,
+                    target_date_text,
+                    retailer_value,
+                    *required_columns,
+                    target_date_text,
+                    retailer_value,
+                    latest_batch_id,
+                ))
+                for correction_column, correction_count in cursor.fetchall():
+                    if correction_column in fields_detail:
+                        fields_detail[correction_column] = max(
+                            0,
+                            fields_detail[correction_column]
+                            - (correction_count or 0),
+                        )
+
+            issue_count = sum(fields_detail.values())
+            retailer_rows.append({
+                'retailer': display_name,
+                'total': total,
+                'total_null_count': issue_count,
+                'status': get_status(issue_count),
+                'fields_detail': fields_detail,
+                'latest_batch_id': latest_batch_id,
+            })
+            table_total += total
+            table_issues += issue_count
+            for column in required_columns:
+                if column not in table_fields:
+                    table_fields.append(column)
+
+        if retailer_rows:
+            tables.append({
+                'table': source['section_code'],
+                'table_name': source['display_name'],
+                'total_records': table_total,
+                'total_issues': table_issues,
+                'status': get_status(table_issues),
+                'retailers': retailer_rows,
+                'fields': table_fields,
+            })
+            total_issues += table_issues
+
+    return tables, total_issues
+
+
+def _append_tse_null_stats(cursor, target_date, validation):
+    """Append TSE stats behind a savepoint so legacy stats still render."""
+    runtime = _get_tse_runtime()
+    if not runtime:
+        return 0
+    try:
+        tse_config = runtime['load_columns']()
+    except Exception as exc:
+        log_error(exc, 'db')
+        return 0
+    if not any(tse_config.get(key) for key in runtime['sources']):
+        return 0
+
+    savepoint = 'layer2_tse_null_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    try:
+        tables, issue_count = _get_tse_null_tables(
+            cursor, target_date, runtime, tse_config
+        )
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        log_error(exc, 'db')
+        return 0
+
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    validation['tables'].extend(tables)
+    return issue_count
+
+
+def _get_tse_null_detail(
+    cursor, target_date, category, retailer, column, runtime, tse_config
+):
+    """Return latest-batch TSE NULL rows and edit/history metadata."""
+    product_line = _get_tse_product_line_for_category(category, runtime)
+    source = runtime['sources'].get(product_line) if product_line else None
+    resolved = (
+        _get_tse_retailer_config(
+            product_line, retailer, runtime, tse_config
+        )
+        if source else None
+    )
+    if not source or not resolved:
+        return {
+            'results': [], 'display_config': {}, 'query_config': {},
+            'date': str(target_date),
+        }
+
+    display_name, retailer_config = resolved
+    required_columns = _safe_tse_required_columns(
+        product_line, retailer_config, runtime
+    )
+    if column not in required_columns:
+        return {
+            'results': [], 'display_config': {}, 'query_config': {},
+            'date': str(target_date),
+        }
+
+    canonical_table = source['table_name']
+    retailer_value = retailer_config['retailer']
+    target_date_text = str(target_date)
+    where_condition = _build_null_sql_condition(f'source.{column}', 'both')
+    include_unassigned = len(tse_config.get(product_line, {})) == 1
+    account_scope = "LOWER(source.account_name) = LOWER(%s)"
+    if include_unassigned:
+        account_scope = f"""(
+            {account_scope}
+            OR source.account_name IS NULL
+            OR TRIM(CAST(source.account_name AS TEXT)) = ''
+        )"""
+    cursor.execute(f"""
+        WITH latest_batch AS (
+            SELECT source.id, source.batch_id
+            FROM {canonical_table} source
+            WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+              AND LOWER(source.account_name) = LOWER(%s)
+            ORDER BY source.id DESC
+            LIMIT 1
+        )
+        SELECT source.*
+        FROM {canonical_table} source
+        CROSS JOIN latest_batch
+        WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+          AND {account_scope}
+          AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
+          AND {where_condition}
+        ORDER BY source.id
+    """, (
+        target_date_text, retailer_value,
+        target_date_text, retailer_value,
+    ))
+    select_columns = [description[0] for description in cursor.description]
+    raw_rows = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT record_id, column_name, memo, created_id, created_at, reason
+        FROM monitoring_corrections
+        WHERE table_name = %s AND crawl_date = %s AND column_name = %s
+          AND correction_type = 'null_check' AND status = 'normal'
+          AND LOWER(retailer) = LOWER(%s)
+    """, (canonical_table, target_date_text, column, retailer_value))
+    normal_set = set()
+    normal_reviews = {}
+    for review_row in cursor.fetchall():
+        normal_set.add(review_row[0])
+        normal_reviews[f"{review_row[0]}_{review_row[1]}"] = {
+            'memo': review_row[2],
+            'created_id': review_row[3],
+            'created_at': (
+                review_row[4].strftime('%Y-%m-%d %H:%M:%S')
+                if review_row[4] else None
+            ),
+            'reason': review_row[5],
+        }
+
+    column_index = {
+        column_name: index for index, column_name in enumerate(select_columns)
+    }
+    id_index = column_index['id']
+    results = []
+    for row in raw_rows:
+        if row[id_index] in normal_set:
+            continue
+        record = {}
+        for column_name, index in column_index.items():
+            value = row[index]
+            record[column_name] = (
+                value.strftime('%Y-%m-%d %H:%M:%S')
+                if isinstance(value, datetime) else value
+            )
+        record['null_fields'] = [column]
+        results.append(record)
+
+    editable_columns = _safe_tse_editable_columns(
+        product_line, retailer_config, runtime
+    )
+    return {
+        'results': results,
+        'select_cols': select_columns,
+        'editable_cols': editable_columns,
+        'actual_table': canonical_table,
+        'display_config': {
+            column: {'select_columns': select_columns},
+        },
+        'query_config': {column: select_columns},
+        'normal_reviews': normal_reviews,
+        'date_column': 'crawl_datetime',
+        'date': target_date_text,
+        'latest_batch_only': True,
+        'retailer': display_name,
+    }
 
 
 def get_null_check_query_parts(category, check_name):
@@ -525,6 +917,9 @@ def get_null_stats(cursor, target_date, include_youtube=True):
         })
         total_null_issues += cat_total_issues
 
+    total_null_issues += _append_tse_null_stats(
+        cursor, target_date, null_validation
+    )
     null_validation['total_issues'] = total_null_issues
     null_validation['status'] = get_status(total_null_issues)
     return null_validation, total_null_issues
@@ -532,6 +927,15 @@ def get_null_stats(cursor, target_date, include_youtube=True):
 
 def get_null_detail(cursor, target_date, category, retailer, days, column):
     """NULL 필드 상세 조회 — 특정 컬럼의 NULL 행만 조회. dict 반환."""
+
+    runtime = _get_tse_runtime()
+    product_line = _get_tse_product_line_for_category(category, runtime)
+    if runtime and product_line:
+        tse_config = runtime['load_columns']()
+        return _get_tse_null_detail(
+            cursor, target_date, category, retailer, column,
+            runtime, tse_config,
+        )
 
     if category in EXCLUDED_RETAIL_CATEGORIES:
         return {'results': [], 'display_config': {}, 'query_config': {}, 'date': str(target_date)}
@@ -715,11 +1119,11 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
 
 
 # null_review 테이블 화이트리스트
-VALID_TABLES_UPDATE = {
+VALID_TABLES_UPDATE = ({
     'tv_retail_com',
     'youtube_country_collection_runs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
-} - DISABLED_SOURCE_TABLES
+} | set(TSE_TABLE_TO_PRODUCT_LINE)) - DISABLED_SOURCE_TABLES
 
 
 def save_null_review(cursor, conn, table_name, record_id, column_name, status, memo, reason, crawl_date, correction_type, username):
@@ -741,6 +1145,18 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if table_name not in VALID_TABLES_UPDATE:
         return {'error': '허용되지 않는 테이블', 'status_code': 400}
 
+    runtime = _get_tse_runtime()
+    tse_product_line = None
+    if runtime:
+        try:
+            tse_product_line = runtime['product_line_for_table'](table_name)
+        except ValueError:
+            tse_product_line = None
+    if tse_product_line and column_name not in set(
+        runtime['max_required'](tse_product_line)
+    ):
+        return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+
     youtube_columns = _YOUTUBE_REVIEW_COLUMNS.get(table_name)
     if youtube_columns is not None and column_name not in youtube_columns:
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
@@ -751,10 +1167,19 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     else:
         select_columns = f"{column_name}, account_name, item"
 
-    cursor.execute(
-        f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
-        (record_id,)
-    )
+    if tse_product_line:
+        cursor.execute(f"""
+            SELECT {select_columns}
+            FROM {table_name}
+            WHERE id = %s
+              AND country = 'TSE'
+              AND LEFT(TRIM(crawl_datetime), 10) = %s
+        """, (record_id, str(crawl_date)))
+    else:
+        cursor.execute(
+            f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
+            (record_id,)
+        )
     row = cursor.fetchone()
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
@@ -765,6 +1190,25 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         None if youtube_columns is not None
         else str(row[2]) if row[2] else None
     )
+
+    if tse_product_line:
+        try:
+            tse_config = runtime['load_columns']()
+            retailer_config = _get_tse_retailer_config(
+                tse_product_line, retailer, runtime, tse_config
+            )
+        except Exception as exc:
+            log_error(exc, 'db')
+            return {'error': 'TSE 설정 조회 실패', 'status_code': 500}
+        if not retailer_config:
+            return {'error': '허용되지 않는 리테일러', 'status_code': 400}
+        if not retailer:
+            retailer = retailer_config[1].get('retailer') or retailer_config[0]
+        required_columns = _safe_tse_required_columns(
+            tse_product_line, retailer_config[1], runtime
+        )
+        if column_name not in required_columns:
+            return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     # 중복 정상처리 체크
     cursor.execute("""
