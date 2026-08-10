@@ -221,15 +221,14 @@
             fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_tv', { success: true, retailers: [] }),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_ref', { success: true, retailers: [] }),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_ldy', { success: true, retailers: [] }),
-            fetchJsonOrFallback('/dx/layer3/api/tse-crossfield-summary/?date=' + encodeURIComponent(date), { success: true, product_lines: [] }),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/email-check/?date=' + encodeURIComponent(date), { count: 0 })
         ]).then(function(results) {
             renderEmailReport(results[0], results[1], {
                 tse_tv: results[2],
                 tse_ref: results[3],
                 tse_ldy: results[4]
-            }, results[5], date);
-            updateSendButton(results[6].count || 0, results[6]);
+            }, date);
+            updateSendButton(results[5].count || 0, results[5]);
         }).catch(function(e) {
             console.error(e);
             container.innerHTML = '<div class="l4-empty-state"><p>오류가 발생했습니다.</p></div>';
@@ -417,74 +416,7 @@
         return html;
     }
 
-    function buildTseCrossfieldTables(data) {
-        var productLines = (data && data.product_lines) || [];
-        if (productLines.length === 0) {
-            return '<div style="' + TD + 'margin-top:8px;">검증 데이터 없음</div>';
-        }
-
-        var html = '';
-        productLines.forEach(function(productLine) {
-            var retailers = productLine.retailers || [];
-            html += '<div style="font-size:13px;font-weight:700;margin:16px 0 8px;font-family:Malgun Gothic,sans-serif;">'
-                + L4.escapeHtml(productLine.label || productLine.product_line || '') + '</div>';
-            html += '<table style="' + TABLE + '"><tr>'
-                + '<th style="' + TH + '">리테일러</th>'
-                + '<th style="' + TH + '">검수건수</th>'
-                + '<th style="' + TH + '">오류 행</th>'
-                + '<th style="' + TH + '">총 오류건수</th>'
-                + '</tr>';
-            retailers.forEach(function(retailer) {
-                html += '<tr>'
-                    + '<td style="' + TD + '">' + L4.escapeHtml(retailer.retailer || '') + '</td>'
-                    + '<td style="' + TD_NUM + '">' + L4.formatNumber(retailer.total_checked || 0) + '</td>'
-                    + '<td style="' + TD_NUM + '">' + L4.formatNumber(retailer.failed_records || 0) + '</td>'
-                    + '<td style="' + TD_NUM + '">' + L4.formatNumber(retailer.total_errors || 0) + '</td>'
-                    + '</tr>';
-            });
-            if (retailers.length === 0) {
-                html += '<tr><td style="' + TD + 'text-align:center;" colspan="4">검증 데이터 없음</td></tr>';
-            }
-            html += '</table>';
-
-            var ruleMap = {};
-            retailers.forEach(function(retailer) {
-                (retailer.rules || []).forEach(function(rule) {
-                    var key = rule.detail_code || rule.detail_name;
-                    if (!ruleMap[key]) {
-                        ruleMap[key] = {
-                            name: rule.detail_name || rule.detail_code || '',
-                            counts: {}
-                        };
-                    }
-                    ruleMap[key].counts[retailer.retailer] = rule.error_count || 0;
-                });
-            });
-            var ruleKeys = Object.keys(ruleMap);
-            if (ruleKeys.length > 0) {
-                html += '<table style="' + TABLE + '"><tr><th style="' + TH + '">검수 규칙</th>';
-                retailers.forEach(function(retailer) {
-                    html += '<th style="' + TH + '">' + L4.escapeHtml(retailer.retailer || '') + '</th>';
-                });
-                html += '<th style="' + TH + '">합계</th></tr>';
-                ruleKeys.forEach(function(key) {
-                    var rule = ruleMap[key];
-                    var total = 0;
-                    html += '<tr><td style="' + TD + '">' + L4.escapeHtml(rule.name) + '</td>';
-                    retailers.forEach(function(retailer) {
-                        var count = Number(rule.counts[retailer.retailer] || 0);
-                        total += count;
-                        html += '<td style="' + TD_NUM + '">' + L4.formatNumber(count) + '</td>';
-                    });
-                    html += '<td style="' + TD_NUM + '">' + L4.formatNumber(total) + '</td></tr>';
-                });
-                html += '</table>';
-            }
-        });
-        return html;
-    }
-
-    function renderEmailReport(dailyData, tvData, tseData, crossfieldData, date) {
+    function renderEmailReport(dailyData, tvData, tseData, date) {
         var container = document.getElementById('cs-email-container');
 
         var emailRetailers = (tvData.retailers || []).map(function(retailer) {
@@ -565,10 +497,6 @@
         if (tseData && tseData.tse_ldy && tseData.tse_ldy.success) {
             html += buildNullTable(tseData.tse_ldy.retailers || [], 'TSE - LDY');
         }
-
-        // 3. TSE Cross-field 검증 현황
-        html += '<br><b style="font-size:14px;">3. TSE Cross-field 검증 현황</b><br>';
-        html += buildTseCrossfieldTables(crossfieldData);
 
         html += '<br>감사합니다.';
 

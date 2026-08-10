@@ -20,6 +20,15 @@ const source = fs.readFileSync(
 
 const layer1Data = {
     checks: [{
+        check_type: 'retail',
+        name: 'Retail',
+        is_target_date: true,
+        categories: [{
+            name: 'TV',
+            expected: 900,
+            total: 879
+        }]
+    }, {
         check_type: 'youtube',
         name: 'Consumer (YouTube)',
         is_target_date: true,
@@ -45,9 +54,10 @@ function response(data) {
 function loadPage(
     search,
     statsData = layer1Data,
-    collectionData = { success: true, retailers: [] },
-    crossfieldData = { success: true, product_lines: [] }
+    collectionData = { success: true, retailers: [] }
 ) {
+    const requests = [];
+    const listeners = {};
     const elements = {
         'cs-daily-container': { innerHTML: '' },
         'cs-container': { innerHTML: '' },
@@ -56,9 +66,21 @@ function loadPage(
             textContent: '',
             title: '',
             disabled: false,
-            addEventListener: () => {}
+            addEventListener: (type, handler) => {
+                listeners['email-send-btn:' + type] = handler;
+            }
         },
-        'email-copy-btn': { addEventListener: () => {} }
+        'email-copy-btn': {
+            addEventListener: (type, handler) => {
+                listeners['email-copy-btn:' + type] = handler;
+            }
+        },
+        'email-preview-content': {
+            innerHTML: '<div>email body</div>',
+            querySelector: selector => selector === '.email-subject'
+                ? { textContent: 'monitoring subject' }
+                : null
+        }
     };
     const L4 = {
         _sectionInit: {},
@@ -79,16 +101,14 @@ function loadPage(
         L4,
         getSelectedDate: () => '2026-07-29',
         showToast: () => {},
-        showConfirm: () => Promise.resolve(false),
-        fetch: url => {
+        showConfirm: () => Promise.resolve(true),
+        fetch: (url, options) => {
+            requests.push({ url, options });
             if (url.startsWith('/dx/layer1/api/stats/')) {
                 return response(statsData);
             }
             if (url.includes('email-check')) {
                 return response({ count: 0 });
-            }
-            if (url.startsWith('/dx/layer3/api/tse-crossfield-summary/')) {
-                return response(crossfieldData);
             }
             if (url.startsWith('/dx/layer4/api/collection-status/')) {
                 if (collectionData.byCategory) {
@@ -102,7 +122,9 @@ function loadPage(
         document: {
             cookie: '',
             getElementById: id => elements[id] || null,
-            addEventListener: () => {},
+            addEventListener: (type, handler) => {
+                if (type === 'DOMContentLoaded') handler();
+            },
             querySelectorAll: () => [],
             querySelector: () => null
         },
@@ -116,7 +138,7 @@ function loadPage(
     };
     vm.createContext(context);
     vm.runInContext(source, context);
-    return { L4, elements };
+    return { L4, elements, requests, listeners };
 }
 
 async function flushPromises() {
@@ -139,6 +161,9 @@ async function run() {
     assert(!emailHtml.includes('>youtube_videos</td>'));
     assert(!emailHtml.includes('youtube_comments'));
     assert(emailHtml.includes('>841</td>'));
+    assert(emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
+    assert(emailHtml.includes('RAW_EXT_TV_RETAIL_COM_VIEW'));
+    assert(emailHtml.includes('>879</td>'));
 
     const redirectData = {
         success: true,
@@ -239,25 +264,7 @@ async function run() {
     const tseEmail = loadPage(
         '?focus=' + encodeURIComponent('이메일 보고'),
         tseLayer1Data,
-        tseCollections,
-        {
-            success: true,
-            product_lines: [{
-                product_line: 'tse_ldy',
-                label: 'TSE LDY',
-                retailers: [{
-                    retailer: 'Homepro',
-                    total_checked: 287,
-                    failed_records: 4,
-                    total_errors: 6,
-                    rules: [{
-                        detail_code: 'savings_rate_floor_mismatch',
-                        detail_name: '할인율 불일치',
-                        error_count: 6
-                    }]
-                }]
-            }]
-        }
+        tseCollections
     );
     tseEmail.L4._sectionHandler.collection_status();
     await flushPromises();
@@ -268,9 +275,31 @@ async function run() {
     assert(tseEmailHtml.includes('TSE - REF'));
     assert(tseEmailHtml.includes('TSE - LDY'));
     assert(tseEmailHtml.includes('ldy_capacity'));
-    assert(tseEmailHtml.includes('3. TSE Cross-field 검증 현황'));
-    assert(tseEmailHtml.includes('할인율 불일치'));
+    assert(!tseEmailHtml.includes('TSE Cross-field 검증 현황'));
+    assert(!tseEmailHtml.includes('할인율 불일치'));
     assert(tseEmailHtml.includes('>6</td>'));
+    assert(!tseEmail.requests.some(request =>
+        request.url.startsWith('/dx/layer3/api/tse-crossfield-summary/')
+    ));
+    assert(tseEmail.requests.some(request => request.url.includes('category=tse_tv')));
+    assert(tseEmail.requests.some(request => request.url.includes('category=tse_ref')));
+    assert(tseEmail.requests.some(request => request.url.includes('category=tse_ldy')));
+
+    assert(source.includes("fetch('/dx/layer4/api/collection-status/send-email/'"));
+    assert(source.includes('date: getSelectedDate()'));
+
+    email.listeners['email-send-btn:click']();
+    await flushPromises();
+    await flushPromises();
+    const sendRequest = email.requests.find(request =>
+        request.url === '/dx/layer4/api/collection-status/send-email/'
+    );
+    assert(sendRequest);
+    assert.strictEqual(sendRequest.options.method, 'POST');
+    const sendPayload = JSON.parse(sendRequest.options.body);
+    assert.strictEqual(sendPayload.subject, 'monitoring subject');
+    assert.strictEqual(sendPayload.html, '<div>email body</div>');
+    assert.strictEqual(sendPayload.date, '2026-07-29');
 
     const tseNull = loadPage(
         '?focus=' + encodeURIComponent('항목별 NULL 현황') + '&category=tse_ldy',
