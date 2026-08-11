@@ -41,8 +41,25 @@ let inlineHtml = '';
 const modal = { title: '', body: '', opened: false };
 const sandbox = {
     console,
-    document: { addEventListener() {} },
+    document: {
+        addEventListener() {},
+        getElementById() { return null; },
+        querySelector() { return null; },
+    },
     window: { crossfieldRetailerData: null },
+    esc(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    },
+    renderProductUrl(value) { return value || ''; },
+    FilterBar: function FilterBar() {
+        this.render = function render() { return this; };
+    },
+    setTimeout() {},
     isCrossFieldInline: () => true,
     ViewStack: {
         push(html) { inlineHtml = html; },
@@ -51,6 +68,7 @@ const sandbox = {
         setTitle(_name, title) { modal.title = title; },
         setBody(_name, body) { modal.body = body; },
         open() { modal.opened = true; },
+        getTitle() { return ''; },
     },
 };
 
@@ -67,6 +85,59 @@ sandbox.showRetailerDetail('Homepro');
 assert.strictEqual(modal.title, 'Homepro - 상세 조회');
 assert(modal.body.includes('다시 조회해 주세요'));
 assert.strictEqual(modal.opened, true);
+
+function testTseCanonicalQueryRendersInInlineAndModalDetail() {
+    const displayQuery = "WITH batches AS (<unsafe>) SELECT * FROM source WHERE item = 'TV''1';";
+    sandbox.window.crossfieldRetailerData = {
+        Homepro: {
+            rows: [{
+                id: 7,
+                item: "TV'1",
+                account_name: 'Homepro',
+                crawl_datetime: '2026-08-10T09:10:00+09:00',
+            }],
+        },
+    };
+    sandbox.window.crossfieldRetailerSummary = {
+        Homepro: { count: 1, items: ["TV'1"] },
+    };
+    sandbox.window.crossfieldProductLine = 'TSE_TV';
+    sandbox.window.crossfieldDate = '2026-08-10';
+    sandbox.window.crossfieldDateCol = 'crawl_datetime';
+    sandbox.window.crossfieldRuleName = '가격 검증';
+    sandbox.window.crossfieldDisplayQueries = { Homepro: displayQuery };
+    sandbox.window.crossfieldDays = 3;
+    sandbox.window.crossfieldRetailerColumns = {};
+
+    inlineHtml = '';
+    sandbox.isCrossFieldInline = () => true;
+    sandbox.showRetailerDetail('Homepro');
+    assert(inlineHtml.includes('3일치 최신 배치 조회 SQL'));
+    assert(inlineHtml.includes('cf-tse-display-query-Homepro'));
+    assert(inlineHtml.includes('&lt;unsafe&gt;'));
+    assert(!inlineHtml.includes('<unsafe>'));
+
+    sandbox.isCrossFieldInline = () => false;
+    sandbox.showRetailerDetail('Homepro');
+    assert(modal.body.includes('3일치 최신 배치 조회 SQL'));
+    assert(modal.body.includes('&lt;unsafe&gt;'));
+    assert(modal.body.includes('id="item-list-Homepro"'));
+
+    sandbox.window.crossfieldRetailerData.Homepro.rows[0].item = null;
+    sandbox.window.crossfieldRetailerSummary.Homepro.items = [];
+    sandbox.showRetailerDetail('Homepro');
+    assert(modal.body.includes('ID 목록 (1개)'));
+    assert(modal.body.includes('id="item-list-Homepro"'));
+}
+
+testTseCanonicalQueryRendersInInlineAndModalDetail();
+assert(commonSource.includes('window.crossfieldDisplayQuery = data.query ||'));
+assert(commonSource.includes('window.crossfieldDisplayQueries = data.queries ||'));
+assert(commonSource.includes("? (rule.query || '쿼리 없음')"));
+assert(commonSource.includes('preserveRaw === true ? text : formatSQL(text)'));
+assert(source.includes("itemTitle.textContent = listLabel + ' 목록 ('"));
+assert(source.includes("document.getElementById('${queryId}'), true"));
+assert(source.includes("if (!isCrossFieldInline())"));
 
 async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     let requestedUrl = '';
@@ -101,6 +172,23 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
 
     vm.createContext(commonSandbox);
     vm.runInContext(commonSource, commonSandbox);
+
+    let copiedSql = '';
+    commonSandbox.navigator = {
+        clipboard: {
+            writeText(value) {
+                copiedSql = value;
+                return Promise.resolve();
+            },
+        },
+    };
+    commonSandbox.window.isSecureContext = true;
+    commonSandbox.copyQueryToClipboard({
+        textContent: "SELECT * FROM x WHERE item = 'A AND B';",
+        previousElementSibling: null,
+        nextElementSibling: null,
+    }, true);
+    assert.strictEqual(copiedSql, "SELECT * FROM x WHERE item = 'A AND B';");
 
     assert.strictEqual(
         commonSandbox.getLayer3DisplayName('TV 논리적 일관성', ''),

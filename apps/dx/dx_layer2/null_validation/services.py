@@ -29,6 +29,11 @@ except (ImportError, AttributeError):
     get_tse_required_columns = None
     get_tse_product_line_for_table = None
 
+try:
+    from apps.common.tse_retail import TSE_COUNTRY
+except (ImportError, AttributeError):
+    TSE_COUNTRY = 'TSE'
+
 
 # ==================== NULL 검증 설정 (monitoring_null_check 테이블) ====================
 
@@ -389,6 +394,33 @@ def _safe_tse_editable_columns(product_line, retailer_config, runtime):
     ]
 
 
+def _get_tse_null_display_columns(column, select_columns):
+    """Return the compact default TSE detail columns in display order."""
+    price_columns = (
+        'final_sku_price', 'original_sku_price', 'savings',
+    )
+    candidates = ['id', 'crawl_datetime', 'item']
+    if column in price_columns:
+        candidates.extend(price_columns)
+    else:
+        candidates.append(column)
+    candidates.append('product_url')
+
+    available = set(select_columns)
+    result = []
+    for candidate in candidates:
+        if candidate in available and candidate not in result:
+            result.append(candidate)
+    return result
+
+
+def _build_tse_country_scope(alias='source'):
+    """Keep TSE rows plus missing-country rows that Layer 2 must report."""
+    country_column = f'{alias}.country'
+    null_condition = _build_null_sql_condition(country_column, 'both')
+    return f'({country_column} = %s OR {null_condition})'
+
+
 def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
     """Return TSE NULL cards using only each retailer's latest daily batch."""
     tables = []
@@ -403,6 +435,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
         canonical_table = source['table_name']
         product_configs = tse_config.get(product_line, {})
         include_unassigned = len(product_configs) == 1
+        country_scope = _build_tse_country_scope()
 
         for display_name, retailer_config in product_configs.items():
             required_columns = _safe_tse_required_columns(
@@ -432,6 +465,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                     FROM {canonical_table} source
                     WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
                       AND LOWER(source.account_name) = LOWER(%s)
+                      AND {country_scope}
                     ORDER BY source.id DESC
                     LIMIT 1
                 )
@@ -441,6 +475,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 FROM {canonical_table} source
                 WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
                   AND {account_scope}
+                  AND {country_scope}
                   AND source.batch_id IS NOT DISTINCT FROM
                       (SELECT batch_id FROM latest_batch)
                   AND EXISTS (SELECT 1 FROM latest_batch)
@@ -448,8 +483,8 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
             cursor.execute(
                 query,
                 (
-                    target_date_text, retailer_value,
-                    target_date_text, retailer_value,
+                    target_date_text, retailer_value, TSE_COUNTRY,
+                    target_date_text, retailer_value, TSE_COUNTRY,
                 ),
             )
             row = cursor.fetchone()
@@ -479,6 +514,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                       AND correction.column_name IN ({placeholders})
                       AND LEFT(TRIM(source.crawl_datetime), 10) = %s
                       AND {account_scope}
+                      AND {country_scope}
                       AND source.batch_id IS NOT DISTINCT FROM %s
                     GROUP BY correction.column_name
                 """, (
@@ -488,6 +524,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                     *required_columns,
                     target_date_text,
                     retailer_value,
+                    TSE_COUNTRY,
                     latest_batch_id,
                 ))
                 for correction_column, correction_count in cursor.fetchall():
@@ -559,7 +596,8 @@ def _append_tse_null_stats(cursor, target_date, validation):
 
 
 def _get_tse_null_detail(
-    cursor, target_date, category, retailer, column, runtime, tse_config
+    cursor, target_date, category, retailer, column, runtime, tse_config,
+    days=1,
 ):
     """Return latest-batch TSE NULL rows and edit/history metadata."""
     product_line = _get_tse_product_line_for_category(category, runtime)
@@ -589,7 +627,9 @@ def _get_tse_null_detail(
     canonical_table = source['table_name']
     retailer_value = retailer_config['retailer']
     target_date_text = str(target_date)
+    history_days = min(max(int(days or 1), 1), 30)
     where_condition = _build_null_sql_condition(f'source.{column}', 'both')
+    country_scope = _build_tse_country_scope()
     include_unassigned = len(tse_config.get(product_line, {})) == 1
     account_scope = "LOWER(source.account_name) = LOWER(%s)"
     if include_unassigned:
@@ -604,6 +644,7 @@ def _get_tse_null_detail(
             FROM {canonical_table} source
             WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
               AND LOWER(source.account_name) = LOWER(%s)
+              AND {country_scope}
             ORDER BY source.id DESC
             LIMIT 1
         )
@@ -612,15 +653,20 @@ def _get_tse_null_detail(
         CROSS JOIN latest_batch
         WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
           AND {account_scope}
+          AND {country_scope}
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
           AND {where_condition}
         ORDER BY source.id
     """, (
-        target_date_text, retailer_value,
-        target_date_text, retailer_value,
+        target_date_text, retailer_value, TSE_COUNTRY,
+        target_date_text, retailer_value, TSE_COUNTRY,
     ))
     select_columns = [description[0] for description in cursor.description]
     raw_rows = cursor.fetchall()
+    column_index = {
+        column_name: index for index, column_name in enumerate(select_columns)
+    }
+    id_index = column_index['id']
 
     cursor.execute("""
         SELECT record_id, column_name, memo, created_id, created_at, reason
@@ -643,10 +689,76 @@ def _get_tse_null_detail(
             'reason': review_row[5],
         }
 
-    column_index = {
-        column_name: index for index, column_name in enumerate(select_columns)
-    }
-    id_index = column_index['id']
+    is_expanded = False
+    item_index = column_index.get('item')
+    if history_days > 1 and item_index is not None:
+        unreviewed_rows = [
+            row for row in raw_rows if row[id_index] not in normal_set
+        ]
+        error_items = sorted({
+            row[item_index]
+            for row in unreviewed_rows
+            if not _is_field_null(row[item_index], 'both')
+        }, key=lambda value: str(value))
+        has_missing_item = any(
+            _is_field_null(row[item_index], 'both')
+            for row in unreviewed_rows
+        )
+        history_conditions = []
+        history_values = []
+        if error_items:
+            placeholders = ', '.join(['%s'] * len(error_items))
+            history_conditions.append(f'source.item IN ({placeholders})')
+            history_values.extend(error_items)
+        if has_missing_item:
+            item_null_condition = _build_null_sql_condition(
+                'source.item', 'both'
+            )
+            history_conditions.append(
+                f'(({item_null_condition}) AND ({where_condition}))'
+            )
+
+        if history_conditions:
+            start_date_text = str(
+                target_date - timedelta(days=history_days - 1)
+            )
+            history_scope = ' OR '.join(history_conditions)
+            cursor.execute(f"""
+                WITH latest_batches AS (
+                    SELECT DISTINCT ON (
+                        LEFT(TRIM(source.crawl_datetime), 10),
+                        LOWER(source.account_name)
+                    )
+                           LEFT(TRIM(source.crawl_datetime), 10) AS crawl_date,
+                           LOWER(source.account_name) AS retailer_key,
+                           source.batch_id,
+                           source.id
+                    FROM {canonical_table} source
+                    WHERE LEFT(TRIM(source.crawl_datetime), 10) >= %s
+                      AND LEFT(TRIM(source.crawl_datetime), 10) <= %s
+                      AND LOWER(source.account_name) = LOWER(%s)
+                      AND {country_scope}
+                    ORDER BY crawl_date, retailer_key, source.id DESC
+                )
+                SELECT source.*
+                FROM {canonical_table} source
+                JOIN latest_batches latest
+                  ON LEFT(TRIM(source.crawl_datetime), 10)
+                     = latest.crawl_date
+                 AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+                WHERE {account_scope}
+                  AND {country_scope}
+                  AND ({history_scope})
+                ORDER BY source.item,
+                         LEFT(TRIM(source.crawl_datetime), 10),
+                         source.id
+            """, (
+                start_date_text, target_date_text, retailer_value, TSE_COUNTRY,
+                retailer_value, TSE_COUNTRY, *history_values,
+            ))
+            raw_rows = cursor.fetchall()
+            is_expanded = True
+
     results = []
     for row in raw_rows:
         if row[id_index] in normal_set:
@@ -658,7 +770,10 @@ def _get_tse_null_detail(
                 value.strftime('%Y-%m-%d %H:%M:%S')
                 if isinstance(value, datetime) else value
             )
-        record['null_fields'] = [column]
+        column_value = row[column_index[column]]
+        record['null_fields'] = (
+            [column] if _is_field_null(column_value, 'both') else []
+        )
         results.append(record)
 
     editable_columns = _safe_tse_editable_columns(
@@ -670,13 +785,21 @@ def _get_tse_null_detail(
         'editable_cols': editable_columns,
         'actual_table': canonical_table,
         'display_config': {
-            column: {'select_columns': select_columns},
+            column: {
+                'select_columns': _get_tse_null_display_columns(
+                    column, select_columns
+                ),
+            },
         },
         'query_config': {column: select_columns},
+        'query_retailer': retailer_value,
+        'query_include_unassigned': include_unassigned,
+        'supports_day_history': True,
         'normal_reviews': normal_reviews,
         'date_column': 'crawl_datetime',
         'date': target_date_text,
-        'latest_batch_only': True,
+        'history_days': history_days,
+        'latest_batch_only': not is_expanded,
         'retailer': display_name,
     }
 
@@ -934,7 +1057,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         tse_config = runtime['load_columns']()
         return _get_tse_null_detail(
             cursor, target_date, category, retailer, column,
-            runtime, tse_config,
+            runtime, tse_config, days=days,
         )
 
     if category in EXCLUDED_RETAIL_CATEGORIES:
@@ -1168,13 +1291,14 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         select_columns = f"{column_name}, account_name, item"
 
     if tse_product_line:
+        country_scope = _build_tse_country_scope()
         cursor.execute(f"""
             SELECT {select_columns}
-            FROM {table_name}
-            WHERE id = %s
-              AND country = 'TSE'
-              AND LEFT(TRIM(crawl_datetime), 10) = %s
-        """, (record_id, str(crawl_date)))
+            FROM {table_name} source
+            WHERE source.id = %s
+              AND {country_scope}
+              AND LEFT(TRIM(source.crawl_datetime), 10) = %s
+        """, (record_id, TSE_COUNTRY, str(crawl_date)))
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",

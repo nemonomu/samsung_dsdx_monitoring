@@ -65,6 +65,7 @@ def common_stubs():
         ),
         'apps.common.tse_retail': module_stub(
             'apps.common.tse_retail',
+            TSE_COUNTRY='TSE',
             TSE_SOURCE_CONFIG=TSE_SOURCES,
             TSE_TABLE_TO_PRODUCT_LINE={
                 source['table_name']: key
@@ -145,9 +146,14 @@ class TSELayer2NullTests(unittest.TestCase):
         self.assertIn('ORDER BY source.id DESC LIMIT 1', summary_sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM', summary_sql)
         self.assertIn('OR source.account_name IS NULL', summary_sql)
+        self.assertIn('source.country = %s', summary_sql)
+        self.assertIn('source.country IS NULL', summary_sql)
         self.assertNotIn('batch_id AS null_batch_id', summary_sql)
         self.assertEqual(
-            ('2026-08-10', 'homepro', '2026-08-10', 'homepro'),
+            (
+                '2026-08-10', 'homepro', 'TSE',
+                '2026-08-10', 'homepro', 'TSE',
+            ),
             params,
         )
 
@@ -228,6 +234,220 @@ class TSELayer2NullTests(unittest.TestCase):
         self.assertIn('CROSS JOIN latest_batch', detail_sql)
         self.assertIn('source.sku IS NULL', detail_sql)
         self.assertIn('OR source.account_name IS NULL', detail_sql)
+        self.assertIn('source.country = %s', detail_sql)
+        self.assertEqual(
+            (
+                '2026-08-10', 'homepro', 'TSE',
+                '2026-08-10', 'homepro', 'TSE',
+            ),
+            cursor.calls[0][1],
+        )
+
+    def test_country_null_detail_keeps_missing_country_inside_tse_batch(self):
+        description = [
+            ('id',), ('batch_id',), ('country',), ('account_name',),
+            ('item',), ('crawl_datetime',), ('sku',), ('product_url',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [(
+                    11, 'h20260810_095803', None, 'Homepro', 'TV-1',
+                    '2026-08-10T09:58:03+09:00', 'SKU-1',
+                    'https://example.test/tv-1',
+                )],
+            },
+            {'fetchall': []},
+        ])
+
+        result = self.service._get_tse_null_detail(
+            cursor, date(2026, 8, 10), 'tse_tv_retail', 'Homepro',
+            'country', self.runtime, tse_columns_config(),
+        )
+
+        self.assertEqual([11], [row['id'] for row in result['results']])
+        detail_sql = cursor.calls[0][0]
+        self.assertIn('source.country = %s', detail_sql)
+        self.assertIn('source.country IS NULL', detail_sql)
+        self.assertIn('source.country IS NULL', detail_sql)
+
+    def test_detail_keeps_all_columns_but_uses_compact_default_display(self):
+        description = [
+            ('id',), ('batch_id',), ('country',), ('account_name',),
+            ('item',), ('crawl_datetime',), ('sku',),
+            ('final_sku_price',), ('original_sku_price',), ('savings',),
+            ('product_url',), ('retailer_sku_name',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [(
+                    11, 'h20260810_095803', 'TSE', 'Homepro', 'TV-1',
+                    '2026-08-10T09:58:03+09:00', None,
+                    '10,000', '12,000', '2,000',
+                    'https://example.test/tv-1', 'Example TV',
+                )],
+            },
+            {'fetchall': []},
+        ])
+
+        result = self.service._get_tse_null_detail(
+            cursor, date(2026, 8, 10), 'tse_tv_retail', 'Homepro',
+            'sku', self.runtime, tse_columns_config(),
+        )
+
+        all_columns = [column[0] for column in description]
+        self.assertEqual(all_columns, result['select_cols'])
+        self.assertEqual(all_columns, result['query_config']['sku'])
+        self.assertEqual(
+            ['id', 'crawl_datetime', 'item', 'sku', 'product_url'],
+            result['display_config']['sku']['select_columns'],
+        )
+        self.assertEqual('homepro', result['query_retailer'])
+        self.assertTrue(result['query_include_unassigned'])
+        self.assertTrue(result['supports_day_history'])
+        self.assertEqual(1, result['history_days'])
+        self.assertTrue(result['latest_batch_only'])
+
+    def test_price_field_uses_compact_price_display_group(self):
+        select_columns = [
+            'id', 'batch_id', 'crawl_datetime', 'item',
+            'final_sku_price', 'original_sku_price', 'savings',
+            'product_url', 'retailer_sku_name',
+        ]
+
+        display_columns = self.service._get_tse_null_display_columns(
+            'final_sku_price', select_columns
+        )
+
+        self.assertEqual([
+            'id', 'crawl_datetime', 'item', 'final_sku_price',
+            'original_sku_price', 'savings', 'product_url',
+        ], display_columns)
+
+    def test_detail_expands_seed_items_to_latest_batch_per_day(self):
+        description = [
+            ('id',), ('batch_id',), ('country',), ('account_name',),
+            ('item',), ('crawl_datetime',), ('sku',), ('product_url',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [
+                    (
+                        11, 'h20260810_095803', 'TSE', 'Homepro',
+                        'TV-1', '2026-08-10T09:58:03+09:00', None,
+                        'https://example.test/tv-1',
+                    ),
+                    (
+                        12, 'h20260810_095803', 'TSE', 'Homepro',
+                        'TV-2', '2026-08-10T09:58:03+09:00', None,
+                        'https://example.test/tv-2',
+                    ),
+                ],
+            },
+            {
+                'fetchall': [
+                    (12, 'sku', 'checked', 'tester', None, 'source_issue'),
+                ],
+            },
+            {
+                'description': description,
+                'fetchall': [
+                    (
+                        1, 'h20260712_095803', 'TSE', 'Homepro',
+                        'TV-1', '2026-07-12T09:58:03+09:00', 'SKU-1',
+                        'https://example.test/tv-1',
+                    ),
+                    (
+                        11, 'h20260810_095803', 'TSE', 'Homepro',
+                        'TV-1', '2026-08-10T09:58:03+09:00', None,
+                        'https://example.test/tv-1',
+                    ),
+                ],
+            },
+        ])
+
+        result = self.service._get_tse_null_detail(
+            cursor, date(2026, 8, 10), 'tse_tv_retail', 'Homepro',
+            'sku', self.runtime, tse_columns_config(), days=45,
+        )
+
+        self.assertEqual(30, result['history_days'])
+        self.assertFalse(result['latest_batch_only'])
+        self.assertEqual([1, 11], [row['id'] for row in result['results']])
+        self.assertEqual([], result['results'][0]['null_fields'])
+        self.assertEqual(['sku'], result['results'][1]['null_fields'])
+        history_sql, history_params = cursor.calls[2]
+        self.assertIn('WITH latest_batches AS', history_sql)
+        self.assertIn('SELECT DISTINCT ON', history_sql)
+        self.assertIn('LEFT(TRIM(source.crawl_datetime), 10)', history_sql)
+        self.assertIn('source.batch_id IS NOT DISTINCT FROM', history_sql)
+        self.assertIn('source.country = %s', history_sql)
+        self.assertEqual(
+            (
+                '2026-07-12', '2026-08-10', 'homepro', 'TSE',
+                'homepro', 'TSE', 'TV-1',
+            ),
+            history_params,
+        )
+        self.assertNotIn('TV-2', history_params)
+
+    def test_item_null_expands_with_null_predicate_instead_of_id_fallback(self):
+        description = [
+            ('id',), ('batch_id',), ('country',), ('account_name',),
+            ('item',), ('crawl_datetime',), ('sku',), ('product_url',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [(
+                    11, 'h20260810_095803', 'TSE', 'Homepro', None,
+                    '2026-08-10T09:58:03+09:00', 'SKU-1',
+                    'https://example.test/tv-1',
+                )],
+            },
+            {'fetchall': []},
+            {
+                'description': description,
+                'fetchall': [
+                    (
+                        1, 'h20260808_095803', 'TSE', 'Homepro', None,
+                        '2026-08-08T09:58:03+09:00', 'SKU-1',
+                        'https://example.test/tv-1',
+                    ),
+                    (
+                        11, 'h20260810_095803', 'TSE', 'Homepro', None,
+                        '2026-08-10T09:58:03+09:00', 'SKU-1',
+                        'https://example.test/tv-1',
+                    ),
+                ],
+            },
+        ])
+        runtime = dict(self.runtime)
+        runtime['max_required'] = lambda product_line: (
+            *self.runtime['max_required'](product_line), 'item',
+        )
+        config = tse_columns_config()
+        config['tse_tv']['Homepro']['required_columns'].append('item')
+
+        result = self.service._get_tse_null_detail(
+            cursor, date(2026, 8, 10), 'tse_tv_retail', 'Homepro',
+            'item', runtime, config, days=3,
+        )
+
+        self.assertEqual([1, 11], [row['id'] for row in result['results']])
+        history_sql, history_params = cursor.calls[2]
+        self.assertIn('WITH latest_batches AS', history_sql)
+        self.assertIn('source.item IS NULL', history_sql)
+        self.assertNotIn('source.item IN (', history_sql)
+        self.assertEqual(
+            (
+                '2026-08-08', '2026-08-10', 'homepro', 'TSE',
+                'homepro', 'TSE',
+            ),
+            history_params,
+        )
 
     def test_normal_review_is_recorded_for_active_required_column(self):
         cursor = ScriptedCursor([
@@ -248,14 +468,37 @@ class TSELayer2NullTests(unittest.TestCase):
             'SELECT sku, account_name, item FROM dx_tse.dx_tse_tv_retail_com',
             cursor.calls[0][0],
         )
-        self.assertIn("country = 'TSE'", cursor.calls[0][0])
-        self.assertIn('LEFT(TRIM(crawl_datetime), 10) = %s', cursor.calls[0][0])
-        self.assertEqual((11, '2026-08-10'), cursor.calls[0][1])
+        self.assertIn('source.country = %s', cursor.calls[0][0])
+        self.assertIn('source.country IS NULL', cursor.calls[0][0])
+        self.assertIn(
+            'LEFT(TRIM(source.crawl_datetime), 10) = %s',
+            cursor.calls[0][0],
+        )
+        self.assertEqual((11, 'TSE', '2026-08-10'), cursor.calls[0][1])
         self.assertIn('INSERT INTO monitoring_corrections', cursor.calls[2][0])
         insert_params = cursor.calls[2][1]
         self.assertEqual('null_check', insert_params[1])
         self.assertEqual('dx_tse.dx_tse_tv_retail_com', insert_params[2])
         self.assertEqual('normal', insert_params[10])
+        conn.commit.assert_called_once_with()
+
+    def test_country_null_record_can_be_marked_normal(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'Homepro', 'TV-1')},
+            {'fetchone': None},
+            {},
+        ])
+        conn = Mock()
+
+        result = self.service.save_null_review(
+            cursor, conn, 'dx_tse.dx_tse_tv_retail_com', 11, 'country',
+            'normal', 'checked', 'source_issue', date(2026, 8, 10),
+            'null', 'tester',
+        )
+
+        self.assertTrue(result['success'])
+        self.assertIn('source.country IS NULL', cursor.calls[0][0])
+        self.assertEqual((11, 'TSE', '2026-08-10'), cursor.calls[0][1])
         conn.commit.assert_called_once_with()
 
     def test_normal_review_rejects_edit_only_column(self):

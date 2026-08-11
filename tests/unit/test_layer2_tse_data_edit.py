@@ -72,6 +72,7 @@ class TSELayer2DataEditTests(unittest.TestCase):
             cursor.calls[0][0],
         )
         self.assertIn("country = 'TSE'", cursor.calls[0][0])
+        self.assertIn('OR country IS NULL', cursor.calls[0][0])
         self.assertIn('LEFT(TRIM(crawl_datetime), 10) = %s', cursor.calls[0][0])
         self.assertEqual((11, '2026-08-10'), cursor.calls[0][1])
         self.assertIn(f'UPDATE {TSE_TABLE} SET sku = %s', cursor.calls[1][0])

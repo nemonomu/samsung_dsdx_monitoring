@@ -77,6 +77,12 @@ TSE_RULE_SPECS = OrderedDict((
     }),
 ))
 
+_TSE_DISPLAY_QUERY_COLUMNS = {
+    'id', 'batch_id', 'country', 'account_name', 'item', 'crawl_datetime',
+    'count_of_reviews', 'count_of_star_ratings', 'star_rating',
+    'final_sku_price', 'original_sku_price', 'savings', 'product_url',
+}
+
 
 _RULE_ALIASES = {
     'review_count_mismatch': 'review_count_match',
@@ -343,6 +349,173 @@ def load_latest_tse_rows(cursor, target_date, product_line, from_date=None):
     return _rows_as_dicts(cursor)
 
 
+def _display_sql_literal(value):
+    """Return one safely quoted SQL literal for copy-only display SQL."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def build_tse_display_query(
+        target_date, product_line, rule, days=1, retailer=None,
+        retailers=None, items=None, retailer_item_pairs=None):
+    """Build the canonical read-only query shown for a TSE cross-field rule.
+
+    The application does not execute this SQL.  It mirrors the allowlisted
+    source scope used by :func:`load_latest_tse_rows`; Python remains the
+    authority for evaluating the cross-field rule itself.
+    """
+    key = normalize_tse_product_line(product_line)
+    source = get_tse_source(key)
+    rule_key = rule.get('rule_key') or _resolve_rule_key(rule)
+    spec = TSE_RULE_SPECS.get(rule_key, {})
+    day_count = min(30, max(1, int(days)))
+    start_date = target_date - timedelta(days=day_count - 1)
+
+    select_columns = [
+        'id', 'batch_id', 'country', 'account_name', 'item',
+        'crawl_datetime',
+    ]
+    field_groups = (spec.get('field1'), spec.get('field2'), 'product_url')
+    for field_group in field_groups:
+        for column in str(field_group or '').split('|'):
+            column = column.strip()
+            if (
+                column in _TSE_DISPLAY_QUERY_COLUMNS
+                and column not in select_columns
+            ):
+                select_columns.append(column)
+    select_sql = ', '.join(f'source.{column}' for column in select_columns)
+
+    pair_values = set()
+    for pair in retailer_item_pairs or []:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            continue
+        pair_retailer = str(pair[0] or '').strip()
+        if not pair_retailer:
+            continue
+        pair_item = (
+            None if pair[1] is None or str(pair[1]) == ''
+            else str(pair[1])
+        )
+        pair_values.add((pair_retailer, pair_item))
+    pair_values = sorted(
+        pair_values, key=lambda pair: (pair[0].lower(), pair[1] or '')
+    )
+
+    retailer_values = []
+    if retailer is not None:
+        retailer_values = [retailer]
+    elif retailers is not None:
+        retailer_values = list(retailers)
+    else:
+        configured_retailer = str(rule.get('retailer') or 'ALL').strip()
+        if configured_retailer and configured_retailer.upper() != 'ALL':
+            retailer_values = [configured_retailer]
+    retailer_values.extend(pair[0] for pair in pair_values)
+
+    retailer_values = sorted({
+        str(value).strip() for value in retailer_values
+        if value is not None
+        and str(value).strip()
+        and str(value).strip().upper() != 'ALL'
+    })
+
+    batch_filters = []
+    source_filters = []
+    if len(retailer_values) == 1:
+        retailer_literal = _display_sql_literal(retailer_values[0])
+        batch_filters.append(
+            'AND LOWER(TRIM(account_name)) = '
+            f'LOWER(TRIM({retailer_literal}))'
+        )
+        source_filters.append(
+            'AND LOWER(TRIM(source.account_name)) = '
+            f'LOWER(TRIM({retailer_literal}))'
+        )
+    elif retailer_values:
+        retailer_literals = ', '.join(
+            f'LOWER(TRIM({_display_sql_literal(value)}))'
+            for value in retailer_values
+        )
+        batch_filters.append(
+            f'AND LOWER(TRIM(account_name)) IN ({retailer_literals})'
+        )
+        source_filters.append(
+            'AND LOWER(TRIM(source.account_name)) '
+            f'IN ({retailer_literals})'
+        )
+
+    if pair_values:
+        pair_clauses = []
+        for pair_retailer, pair_item in pair_values:
+            retailer_literal = _display_sql_literal(pair_retailer)
+            item_scope = (
+                "(source.item IS NULL "
+                "OR TRIM(CAST(source.item AS TEXT)) = '')"
+                if pair_item is None
+                else f'source.item = {_display_sql_literal(pair_item)}'
+            )
+            pair_clauses.append(
+                '(LOWER(TRIM(source.account_name)) = '
+                f'LOWER(TRIM({retailer_literal})) AND {item_scope})'
+            )
+        source_filters.append(
+            'AND (\n          '
+            + '\n       OR '.join(pair_clauses)
+            + '\n      )'
+        )
+    else:
+        item_values = sorted({
+            str(item) for item in (items or [])
+            if item is not None and str(item) != ''
+        })
+        if item_values:
+            item_literals = ', '.join(
+                _display_sql_literal(item) for item in item_values
+            )
+            source_filters.append(f'AND source.item IN ({item_literals})')
+
+    start_literal = _display_sql_literal(start_date)
+    end_literal = _display_sql_literal(target_date)
+    country_literal = _display_sql_literal(TSE_COUNTRY)
+    batch_filter_sql = ''.join(f'\n          {line}' for line in batch_filters)
+    source_filter_sql = ''.join(f'\n      {line}' for line in source_filters)
+
+    return f"""WITH batches AS (
+    SELECT LEFT(TRIM(crawl_datetime), 10) AS collection_date,
+           account_name,
+           batch_id,
+           MAX(id) AS max_id
+    FROM {source['table_name']}
+    WHERE LEFT(TRIM(crawl_datetime), 10)
+          BETWEEN {start_literal} AND {end_literal}
+      AND country = {country_literal}
+      AND NULLIF(TRIM(account_name), '') IS NOT NULL
+      AND NULLIF(TRIM(batch_id), '') IS NOT NULL{batch_filter_sql}
+    GROUP BY LEFT(TRIM(crawl_datetime), 10), account_name, batch_id
+), ranked_batches AS (
+    SELECT collection_date,
+           account_name,
+           batch_id,
+           ROW_NUMBER() OVER (
+               PARTITION BY collection_date, LOWER(TRIM(account_name))
+               ORDER BY max_id DESC
+           ) AS batch_rank
+    FROM batches
+)
+SELECT {select_sql}
+FROM {source['table_name']} source
+JOIN ranked_batches latest
+  ON latest.collection_date = LEFT(TRIM(source.crawl_datetime), 10)
+ AND LOWER(TRIM(latest.account_name)) = LOWER(TRIM(source.account_name))
+ AND latest.batch_id = source.batch_id
+ AND latest.batch_rank = 1
+WHERE LEFT(TRIM(source.crawl_datetime), 10)
+      BETWEEN {start_literal} AND {end_literal}
+  AND source.country = {country_literal}{source_filter_sql}
+ORDER BY LEFT(TRIM(source.crawl_datetime), 10),
+         LOWER(TRIM(source.account_name)), source.item, source.id;"""
+
+
 def _load_normal_corrections(cursor, target_date, table_name, rule_ids=None):
     params = [str(target_date), table_name]
     rule_filter = ''
@@ -478,15 +651,35 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
 
 def get_tse_cross_field_summary(cursor, target_date, product_line):
     result = build_tse_crossfield_result(cursor, target_date, product_line)
-    return {
-        'date': result['date'],
-        'configured': result['configured'],
-        'product_line': result['product_line'].upper(),
-        'label': result['label'],
-        'total_checked': result['total_checked'],
-        'failed_records': result['failed_records'],
-        'total_anomalies': result['total_anomalies'],
-        'rule_summary': [{
+    rule_summary = []
+    available_retailers = [
+        summary['retailer'] for summary in result['retailers']
+        if summary.get('retailer')
+    ]
+    for rule in result['rule_results']:
+        error_rows = rule.get('error_details') or []
+        scoped_pairs = [
+            (
+                str(row.get('account_name')).strip(),
+                None if row.get('item') is None or str(row.get('item')) == ''
+                else str(row.get('item')),
+            )
+            for row in error_rows
+            if str(row.get('account_name') or '').strip()
+        ]
+        scoped_retailers = sorted({
+            str(row.get('account_name')).strip()
+            for row in error_rows if str(row.get('account_name') or '').strip()
+        })
+        if not scoped_retailers:
+            configured_retailer = str(rule.get('retailer') or 'ALL').strip()
+            scoped_retailers = (
+                [configured_retailer]
+                if configured_retailer
+                and configured_retailer.upper() != 'ALL'
+                else available_retailers
+            )
+        rule_summary.append({
             'rule_id': rule['rule_id'],
             'detail_code': rule['detail_code'],
             'detail_name': rule['detail_name'],
@@ -495,9 +688,23 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
             'validation_type': rule['rule_key'],
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
-            'query': rule.get('query') or '',
+            'query': build_tse_display_query(
+                target_date, result['product_line'], rule,
+                retailers=[] if scoped_pairs else scoped_retailers,
+                retailer_item_pairs=scoped_pairs,
+            ),
             'select_fields': rule.get('select_fields') or '',
-        } for rule in result['rule_results']],
+        })
+
+    return {
+        'date': result['date'],
+        'configured': result['configured'],
+        'product_line': result['product_line'].upper(),
+        'label': result['label'],
+        'total_checked': result['total_checked'],
+        'failed_records': result['failed_records'],
+        'total_anomalies': result['total_anomalies'],
+        'rule_summary': rule_summary,
         'table_name': result['table_name'],
         'date_col': result['date_col'],
         'no_review_texts': '',
@@ -571,6 +778,23 @@ def get_tse_cross_field_rule_detail(
         if item and item not in summary['items']:
             summary['items'].append(item)
 
+    retailer_pairs = {retailer: [] for retailer in retailer_summary}
+    for row in anomalies:
+        retailer = display_tse_retailer(row.get('account_name')) or 'Unknown'
+        retailer_pairs.setdefault(retailer, []).append((
+            retailer,
+            None if row.get('item') is None or str(row.get('item')) == ''
+            else str(row.get('item')),
+        ))
+    display_queries = {
+        retailer: build_tse_display_query(
+            target_date, result['product_line'], selected, days=days,
+            retailer=retailer,
+            retailer_item_pairs=retailer_pairs.get(retailer, []),
+        )
+        for retailer in retailer_summary
+    }
+
     return {
         'found': True,
         'date': str(target_date),
@@ -591,6 +815,10 @@ def get_tse_cross_field_rule_detail(
         'editable_columns': sorted(editable_columns),
         'normal_reviews': normal_reviews,
         'retailer_columns': retailer_columns,
+        'query': build_tse_display_query(
+            target_date, result['product_line'], selected, days=days,
+        ),
+        'queries': display_queries,
     }
 
 

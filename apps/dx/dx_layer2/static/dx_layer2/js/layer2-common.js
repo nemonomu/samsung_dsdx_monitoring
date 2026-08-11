@@ -308,6 +308,7 @@ function renderDetailWithTable(options) {
     var crawlDate = options.crawlDate || '';
     var normalReviews = options.normalReviews || {};
     var dateColumn = options.dateColumn || '';
+    var enableModalColumnSelector = options.enableModalColumnSelector === true;
     var isRowspan = !Array.isArray(config);
     var defaultCols = getAllColumns(config);
 
@@ -374,8 +375,8 @@ function renderDetailWithTable(options) {
         extraCols.forEach(function(c) { allColumns.push(c); });
     }
 
-    // FilterBar (섹션 페이지에서만 표시, 대시보드 모달에서는 숨김)
-    if (isInlineMode()) {
+    // FilterBar (섹션 페이지 + 명시적으로 허용한 상세 모달)
+    if (isInlineMode() || enableModalColumnSelector) {
         var visibleKeys = defaultVisibleKeys.filter(function(k) { return k !== 'null_fields'; });
         var filterCols = visibleKeys.map(function(key) {
             var col = defaultKeySet[key];

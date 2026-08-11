@@ -127,6 +127,39 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
+    def test_display_query_uses_canonical_latest_batch_scope_and_quotes_literals(self):
+        query = tse_services.build_tse_display_query(
+            date(2026, 8, 10), 'tse_tv',
+            _rule(1, 'review_count_match'), days=3,
+            retailer="Homepro's", items=["TV'1", 'TV-2'],
+        )
+
+        self.assertIn('FROM dx_tse.dx_tse_tv_retail_com', query)
+        self.assertIn('LEFT(TRIM(crawl_datetime), 10)', query)
+        self.assertIn("BETWEEN '2026-08-08' AND '2026-08-10'", query)
+        self.assertIn("country = 'TSE'", query)
+        self.assertIn("NULLIF(TRIM(account_name), '') IS NOT NULL", query)
+        self.assertIn("NULLIF(TRIM(batch_id), '') IS NOT NULL", query)
+        self.assertIn(
+            'PARTITION BY collection_date, LOWER(TRIM(account_name))', query,
+        )
+        self.assertIn('ORDER BY max_id DESC', query)
+        self.assertIn("LOWER(TRIM('Homepro''s'))", query)
+        self.assertIn("source.item IN ('TV''1', 'TV-2')", query)
+
+    def test_display_query_splits_composite_rule_fields_into_allowlisted_columns(self):
+        query = tse_services.build_tse_display_query(
+            date(2026, 8, 10), 'tse_tv',
+            _rule(1, 'savings_amount_match'),
+        )
+
+        self.assertIn('source.savings', query)
+        self.assertIn('source.original_sku_price', query)
+        self.assertIn('source.final_sku_price', query)
+        self.assertNotIn(
+            'source.original_sku_price|final_sku_price', query,
+        )
+
     def test_latest_batch_query_uses_text_date_and_greatest_id(self):
         cursor = ScriptedCursor([{
             'fetchall': [_valid_row()],
@@ -166,6 +199,49 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
             'Homepro',
         )
 
+    def test_summary_replaces_stored_query_with_canonical_display_query(self):
+        rule = _rule(1, 'review_count_match')
+        rule['query'] = 'DELETE FROM something'
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]},
+            {'fetchall': [_valid_row(count_of_reviews='9')]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.get_tse_cross_field_summary(
+            cursor, date(2026, 8, 10), 'tse_tv',
+        )
+        query = result['rule_summary'][0]['query']
+
+        self.assertNotIn('DELETE FROM something', query)
+        self.assertIn('WITH batches AS', query)
+        self.assertIn('FROM dx_tse.dx_tse_tv_retail_com', query)
+        self.assertIn("BETWEEN '2026-08-10' AND '2026-08-10'", query)
+        self.assertIn("LOWER(TRIM('Homepro'))", query)
+        self.assertIn("source.item = 'A-1'", query)
+
+    def test_display_query_supports_multiple_scoped_retailers(self):
+        query = tse_services.build_tse_display_query(
+            date(2026, 8, 10), 'tse_tv',
+            _rule(1, 'review_count_match'),
+            retailer_item_pairs=[
+                ('Homepro', 'TV-1'), ("Future's Shop", 'TV-2'),
+            ],
+        )
+
+        self.assertIn('LOWER(TRIM(account_name)) IN (', query)
+        self.assertIn("LOWER(TRIM('Future''s Shop'))", query)
+        self.assertIn("LOWER(TRIM('Homepro'))", query)
+        self.assertIn("source.item = 'TV-1'", query)
+        self.assertIn("source.item = 'TV-2'", query)
+        self.assertNotIn("source.item IN ('TV-1', 'TV-2')", query)
+        self.assertIn(
+            "LOWER(TRIM('Homepro')) AND source.item = 'TV-1'", query,
+        )
+        self.assertIn(
+            "LOWER(TRIM('Future''s Shop')) AND source.item = 'TV-2'", query,
+        )
+
     def test_rule_detail_uses_same_retailer_key_for_summary_and_rows(self):
         cursor = ScriptedCursor([
             {'fetchall': [_rule(1, 'review_count_match')]},
@@ -176,11 +252,37 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         ])
 
         result = tse_services.get_tse_cross_field_rule_detail(
-            cursor, date(2026, 8, 10), 'tse_tv', 1,
+            cursor, date(2026, 8, 10), 'tse_tv', 1, days=3,
         )
 
         self.assertEqual(['Homepro'], list(result['retailer_summary']))
         self.assertEqual('Homepro', result['anomalies'][0]['account_name'])
+        self.assertIn('WITH batches AS', result['query'])
+        self.assertIn(
+            "BETWEEN '2026-08-08' AND '2026-08-10'",
+            result['queries']['Homepro'],
+        )
+        self.assertIn(
+            "source.item = 'A-1'", result['queries']['Homepro'],
+        )
+
+    def test_rule_detail_query_keeps_null_item_anomaly_scope(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'review_count_match')]},
+            {'fetchall': [_valid_row(
+                account_name='homepro', item=None, count_of_reviews='9',
+            )]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.get_tse_cross_field_rule_detail(
+            cursor, date(2026, 8, 10), 'tse_tv', 1, days=3,
+        )
+        query = result['queries']['Homepro']
+
+        self.assertIn('source.item IS NULL', query)
+        self.assertIn("LOWER(TRIM('Homepro'))", query)
+        self.assertNotIn('source.item IN (', query)
 
     def test_normal_history_excludes_same_record_and_rule(self):
         cursor = ScriptedCursor([

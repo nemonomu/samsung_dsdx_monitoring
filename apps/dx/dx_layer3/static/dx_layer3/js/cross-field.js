@@ -11,6 +11,20 @@ function backToCrossfieldSummary() {
         renderDetailModal(window.crossfieldTitle, '크로스 필드 검증', window.crossfieldSummaryData);
     }
 }
+
+function _cfBuildTseDisplayQueryBox(query, retailerSafe, days) {
+    if (!query) return '';
+    const queryId = `cf-tse-display-query-${retailerSafe}`;
+    return `
+        <div class="query-box">
+            <div class="query-box-header">
+                <span class="query-box-title">${days}일치 최신 배치 조회 SQL</span>
+                <button class="btn-copy" onclick="copyQueryToClipboard(document.getElementById('${queryId}'), true)">복사</button>
+            </div>
+            <pre id="${queryId}" class="query-content">${esc(query)}</pre>
+        </div>`;
+}
+
 function showRetailerDetail(retailer) {
     const inline = isCrossFieldInline();
     const retailerData = window.crossfieldRetailerData;
@@ -36,6 +50,11 @@ function showRetailerDetail(retailer) {
     const rows = data.rows;
     const rSummary = (window.crossfieldRetailerSummary || {})[retailer] || {};
     const items = rSummary.items || [];
+    const ids = [...new Set(rows
+        .map(row => row.id)
+        .filter(value => value != null && String(value) !== ''))];
+    const listValues = items.length > 0 ? items : ids;
+    const listLabel = items.length > 0 ? 'Item' : 'ID';
 
     const productLine = window.crossfieldProductLine || 'HHP';
     const date = window.crossfieldDate || new Date().toISOString().slice(0, 10);
@@ -44,6 +63,7 @@ function showRetailerDetail(retailer) {
     const dateCol = window.crossfieldDateCol
         || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
+    const isTseProductLine = productLineDisplay.startsWith('TSE_');
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const titleText = `${ruleNameDisplay} (${rSummary.count || 0}건)`;
     const subtitleText = `${productLineDisplay} Retail | ${retailer}`;
@@ -67,25 +87,47 @@ function showRetailerDetail(retailer) {
 
     // Item 목록 토글 + 3일치 쿼리 (모달)
     const retailerSafe = retailer.replace(/[^a-zA-Z0-9]/g, '');
-    const itemListDisplay = items.join(', ');
+    const itemListDisplay = listValues.join(', ');
+    const displayDays = window.crossfieldDays || 1;
+    const tseDisplayQuery = (window.crossfieldDisplayQueries || {})[retailer]
+        || window.crossfieldDisplayQuery || '';
+    const tseQueryBox = isTseProductLine
+        ? _cfBuildTseDisplayQueryBox(tseDisplayQuery, retailerSafe, displayDays)
+        : '';
     var itemQueryHtml = '';
     if (inline) {
         // 인라인: Item 목록 토글만
         itemQueryHtml = `
             <div class="item-toggle-section">
                 <div class="item-toggle-header" onclick="var c=this.nextElementSibling;c.style.display=c.style.display==='none'?'':'none';this.querySelector('.toggle-arrow').textContent=c.style.display==='none'?'▸':'▾';">
-                    <span class="toggle-arrow">▸</span> Item 목록 (${items.length}개)
+                    <span class="toggle-arrow">▸</span> ${listLabel} 목록 (${listValues.length}개)
                 </div>
                 <div class="item-toggle-content" style="display:none;">
                     <div class="item-copy-header">
-                        <span class="item-copy-title">Item 목록 (${items.length}개)</span>
+                        <span class="item-copy-title">${listLabel} 목록 (${listValues.length}개)</span>
                         <button class="btn-copy" onclick="copyQueryToClipboard(document.getElementById('item-list-${retailerSafe}'))">복사</button>
                     </div>
                     <div id="item-list-${retailerSafe}" class="item-copy-content">${esc(itemListDisplay)}</div>
                 </div>
             </div>`;
+        if (tseQueryBox) {
+            itemQueryHtml += `<div class="query-section">${tseQueryBox}</div>`;
+        }
     } else {
         // 모달: Item 목록 + 3일치 쿼리 (원본 모달 로직)
+        if (isTseProductLine) {
+            const itemListBox = listValues.length > 0 ? `
+                <div class="item-list-box">
+                    <div class="query-box-header">
+                        <span class="query-box-title">${listLabel} 목록 (${listValues.length}개)</span>
+                        <button class="btn-copy" onclick="copyQueryToClipboard(this.parentElement.nextElementSibling)">복사</button>
+                    </div>
+                    <div id="item-list-${retailerSafe}" class="item-list-content">${esc(itemListDisplay)}</div>
+                </div>` : '';
+            if (tseQueryBox) {
+                itemQueryHtml = `<div class="query-section">${itemListBox}${tseQueryBox}</div>`;
+            }
+        } else {
         const inClause = items.map(item => "'" + item + "'").join(', ');
         var dynamicCols = [];
         const selectFieldsRaw = window.crossfieldSelectFields || '';
@@ -125,6 +167,7 @@ function showRetailerDetail(retailer) {
                         <pre class="query-content">${query}</pre>
                     </div>
                 </div>`;
+        }
         }
     }
 
@@ -178,7 +221,7 @@ function showRetailerDetail(retailer) {
 
     const daysInputHtml = `<div style="display:flex;align-items:center;gap:6px;margin-right:12px;">
         <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">일수:</label>
-        <input type="number" id="cf-detail-days" value="1" min="1" max="30"
+        <input type="number" id="cf-detail-days" value="${displayDays}" min="1" max="30"
             style="width:50px;padding:3px 6px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;font-size:12px;text-align:center;"
             onkeydown="if(event.key==='Enter')reloadCfDays()">
         <button onclick="reloadCfDays()" style="padding:3px 10px;font-size:12px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;background:var(--page-color,#0d9488);color:#fff;cursor:pointer;white-space:nowrap;">조회</button>
@@ -543,16 +586,27 @@ async function reloadCfDays() {
         });
 
         window.crossfieldRetailerData = retailerData;
+        window.crossfieldRetailerSummary = data.retailer_summary || {};
         window.crossfieldAnomalies = anomalies;
         window.crossfieldEditableCols = new Set(data.editable_columns || []);
         window.crossfieldNormalReviews = data.normal_reviews || {};
         window.crossfieldRetailerColumns = data.retailer_columns || {};
+        window.crossfieldDisplayQuery = data.query || '';
+        window.crossfieldDisplayQueries = data.queries || {};
+        window.crossfieldDays = data.days || days;
         window.crossfieldPendingEdits = {};
 
         // 현재 리테일러 데이터 갱신
         if (currentRetailer && retailerData[currentRetailer]) {
             var rows = retailerData[currentRetailer].rows;
             var items = retailerData[currentRetailer].items;
+            var ids = [...new Set(rows
+                .map(function(row) { return row.id; })
+                .filter(function(value) {
+                    return value != null && String(value) !== '';
+                }))];
+            var listValues = items.length > 0 ? items : ids;
+            var listLabel = items.length > 0 ? 'Item' : 'ID';
             var editableCols = window.crossfieldEditableCols;
             var normalReviews = window.crossfieldNormalReviews;
 
@@ -605,16 +659,51 @@ async function reloadCfDays() {
                 var daysLabel = days > 1 ? ' / ' + days + '일치' : '';
                 var ruleNameDisplay = window.crossfieldRuleName || '';
                 if (titleEl) titleEl.textContent = ruleNameDisplay + ' (' + rows.length + '건' + daysLabel + ')';
+                if (!isCrossFieldInline()) {
+                    var productLineDisplay = (
+                        window.crossfieldProductLine || ''
+                    ).toUpperCase();
+                    AppModal.setTitle(
+                        'detail',
+                        ruleNameDisplay + ' : ' + productLineDisplay + ' '
+                        + currentRetailer + ' (' + rows.length + '건'
+                        + daysLabel + ')'
+                    );
+                }
 
                 // 아이템 목록 갱신
                 var retailerSafe = currentRetailer.replace(/[^a-zA-Z0-9]/g, '');
                 var itemListEl = document.getElementById('item-list-' + retailerSafe);
-                if (itemListEl) itemListEl.textContent = items.join(', ');
+                if (itemListEl) {
+                    itemListEl.textContent = listValues.join(', ');
+                    var itemTitle = itemListEl.previousElementSibling
+                        ? itemListEl.previousElementSibling.querySelector(
+                            '.item-copy-title, .query-box-title'
+                        )
+                        : null;
+                    if (itemTitle) {
+                        itemTitle.textContent = listLabel + ' 목록 ('
+                            + listValues.length + '개)';
+                    }
+                }
                 var toggleHeader = document.querySelector('.item-toggle-header');
                 if (toggleHeader) {
                     var arrow = toggleHeader.querySelector('.toggle-arrow');
                     var arrowText = arrow ? arrow.textContent : '▸';
-                    toggleHeader.innerHTML = '<span class="toggle-arrow">' + arrowText + '</span> Item 목록 (' + items.length + '개)';
+                    toggleHeader.innerHTML = '<span class="toggle-arrow">'
+                        + arrowText + '</span> ' + listLabel + ' 목록 ('
+                        + listValues.length + '개)';
+                }
+
+                var displayQuery = (window.crossfieldDisplayQueries || {})[currentRetailer]
+                    || window.crossfieldDisplayQuery || '';
+                var queryEl = document.getElementById('cf-tse-display-query-' + retailerSafe);
+                if (queryEl && displayQuery) {
+                    queryEl.textContent = displayQuery;
+                    var queryTitle = queryEl.parentElement
+                        ? queryEl.parentElement.querySelector('.query-box-title')
+                        : null;
+                    if (queryTitle) queryTitle.textContent = days + '일치 최신 배치 조회 SQL';
                 }
 
                 _cfRebuildTable();

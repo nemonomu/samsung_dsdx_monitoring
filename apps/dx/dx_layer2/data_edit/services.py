@@ -83,7 +83,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             SELECT {select_columns}
             FROM {table_name}
             WHERE id = %s
-              AND country = 'TSE'
+              AND (
+                  country = 'TSE'
+                  OR country IS NULL
+                  OR TRIM(CAST(country AS TEXT)) = ''
+              )
               AND LEFT(TRIM(crawl_datetime), 10) = %s
         """, (row_id, str(crawl_date)))
     else:

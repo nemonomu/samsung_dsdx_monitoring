@@ -50,9 +50,9 @@ function formatSQL(sql) {
     return formatted;
 }
 
-function copyQueryToClipboard(element) {
+function copyQueryToClipboard(element, preserveRaw) {
     const text = element.textContent;
-    const formattedSQL = formatSQL(text);
+    const clipboardSQL = preserveRaw === true ? text : formatSQL(text);
     function showSuccess() {
         let btn = element.previousElementSibling?.querySelector?.('.btn-copy');
         if (!btn) btn = element.previousElementSibling?.querySelector?.('.btn-copy-query');
@@ -71,12 +71,12 @@ function copyQueryToClipboard(element) {
         }
     }
     if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(formattedSQL).then(showSuccess).catch(err => {
+        navigator.clipboard.writeText(clipboardSQL).then(showSuccess).catch(err => {
             console.error('복사 실패:', err);
-            fallbackCopy(formattedSQL, showSuccess);
+            fallbackCopy(clipboardSQL, showSuccess);
         });
     } else {
-        fallbackCopy(formattedSQL, showSuccess);
+        fallbackCopy(clipboardSQL, showSuccess);
     }
 }
 
@@ -687,6 +687,8 @@ function renderDetailModal(title, category, data) {
 function renderCrossfieldSummaryContent(title, _category, data) {
     const inline = isCrossFieldInline();
     const ruleSummary = data.rule_summary || [];
+    const isTseProductLine = String(data.product_line || '')
+        .toUpperCase().startsWith('TSE_');
 
     // 현재 상태 저장 (뒤로가기용)
     window.crossfieldSummaryData = data;
@@ -721,7 +723,11 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         ruleSummary.forEach((rule, idx) => {
             const fieldDisplay = rule.field2 ? `${rule.field1} ↔ ${rule.field2}` : rule.field1;
             const queryId = `crossfield-query-${idx}`;
-            const displayQuery = replaceCrossfieldQueryPlaceholders(rule.query, tableName, dateCol, noReviewTexts, targetDate);
+            const displayQuery = isTseProductLine
+                ? (rule.query || '쿼리 없음')
+                : replaceCrossfieldQueryPlaceholders(
+                    rule.query, tableName, dateCol, noReviewTexts, targetDate
+                );
             const detailTitle = `${fieldDisplay} (${rule.error_message})`;
             html += `
                 <div class="rule-summary-card-wrapper">
@@ -737,7 +743,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                     </div>
                     <div id="${queryId}" class="crossfield-query-box" style="display: none;">
                         <pre>${esc(displayQuery)}</pre>
-                        <button class="btn-copy-query" onclick="copyQueryToClipboard(this.previousElementSibling)">복사</button>
+                        <button class="btn-copy-query" onclick="copyQueryToClipboard(this.previousElementSibling, ${isTseProductLine})">복사</button>
                     </div>
                 </div>
             `;
@@ -925,6 +931,9 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldEditableCols = new Set(data.editable_columns || []);
             window.crossfieldNormalReviews = data.normal_reviews || {};
             window.crossfieldRetailerColumns = data.retailer_columns || {};
+            window.crossfieldDisplayQuery = data.query || '';
+            window.crossfieldDisplayQueries = data.queries || {};
+            window.crossfieldDays = data.days || 1;
             window.crossfieldPendingEdits = {};
 
             // 건수는 백엔드 계산값 사용

@@ -23,6 +23,188 @@ function parseLayer2DetailResponse(response) {
         });
 }
 
+function _escapeTseSqlHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function _tseSqlLiteral(value) {
+    return "'" + String(value == null ? '' : value).replace(/'/g, "''") + "'";
+}
+
+function _isTseSqlIdentifier(value, allowQualified) {
+    const pattern = allowQualified
+        ? /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/
+        : /^[A-Za-z_][A-Za-z0-9_]*$/;
+    return pattern.test(String(value || ''));
+}
+
+function _tseHistoryStartDate(date, days) {
+    const parsed = new Date(date + 'T00:00:00');
+    parsed.setDate(parsed.getDate() - Math.max(0, days - 1));
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function _tseRecordItems(records) {
+    return [...new Set(records
+        .map(row => row.item)
+        .filter(value => value != null && String(value).trim() !== '')
+        .map(value => String(value)))].sort();
+}
+
+function _tseNullCondition(columnSql) {
+    return `(${columnSql} IS NULL
+       OR TRIM(CAST(${columnSql} AS TEXT)) = '')`;
+}
+
+function _tseCountryScope() {
+    return `(source.country = 'TSE'
+       OR source.country IS NULL
+       OR TRIM(CAST(source.country AS TEXT)) = '')`;
+}
+
+function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) {
+    const tableName = data.actual_table || '';
+    const retailer = data.query_retailer || '';
+    if (!_isTseSqlIdentifier(tableName, true)
+        || !_isTseSqlIdentifier(fieldName, false)
+        || !queryColumns.length
+        || queryColumns.some(col => !_isTseSqlIdentifier(col, false))) {
+        return '';
+    }
+
+    const selectSql = queryColumns.map(col => `source.${col}`).join(', ');
+    const tableSql = tableName;
+    const retailerSql = _tseSqlLiteral(retailer);
+    const dateSql = _tseSqlLiteral(date);
+    const fieldNullSql = _tseNullCondition(`source.${fieldName}`);
+    const countryScopeSql = _tseCountryScope();
+    let accountScope = `LOWER(source.account_name) = LOWER(${retailerSql})`;
+    if (data.query_include_unassigned === true) {
+        accountScope = `(${accountScope}\n       OR source.account_name IS NULL\n       OR TRIM(CAST(source.account_name AS TEXT)) = '')`;
+    }
+
+    const items = _tseRecordItems(records);
+    const hasMissingItem = records.some(
+        row => row.item == null || String(row.item).trim() === ''
+    );
+    const missingItemIds = [...new Set(records
+        .filter(row => row.item == null || String(row.item).trim() === '')
+        .map(row => Number(row.id))
+        .filter(id => Number.isSafeInteger(id) && id > 0))];
+    const historyConditions = [];
+    if (items.length > 0) {
+        historyConditions.push(
+            `source.item IN (${items.map(_tseSqlLiteral).join(', ')})`
+        );
+    }
+    if (hasMissingItem) {
+        historyConditions.push(
+            `(${_tseNullCondition('source.item')} AND ${fieldNullSql})`
+        );
+    }
+
+    if (days > 1 && historyConditions.length > 0) {
+        const startDateSql = _tseSqlLiteral(_tseHistoryStartDate(date, days));
+        const historyScopeSql = historyConditions.join('\n       OR ');
+        return `WITH latest_batches AS (
+    SELECT DISTINCT ON (
+        LEFT(TRIM(source.crawl_datetime), 10),
+        LOWER(source.account_name)
+    )
+           LEFT(TRIM(source.crawl_datetime), 10) AS crawl_date,
+           LOWER(source.account_name) AS retailer_key,
+           source.batch_id,
+           source.id
+    FROM ${tableSql} AS source
+    WHERE LEFT(TRIM(source.crawl_datetime), 10) >= ${startDateSql}
+      AND LEFT(TRIM(source.crawl_datetime), 10) <= ${dateSql}
+      AND LOWER(source.account_name) = LOWER(${retailerSql})
+      AND ${countryScopeSql}
+    ORDER BY crawl_date, retailer_key, source.id DESC
+)
+SELECT ${selectSql}
+FROM ${tableSql} AS source
+JOIN latest_batches AS latest
+  ON LEFT(TRIM(source.crawl_datetime), 10) = latest.crawl_date
+ AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+WHERE ${accountScope}
+  AND ${countryScopeSql}
+  AND (${historyScopeSql})
+ORDER BY source.item, LEFT(TRIM(source.crawl_datetime), 10), source.id;`;
+    }
+
+    if (days === 1) {
+        const recordConditions = [];
+        if (items.length > 0) {
+            recordConditions.push(
+                `source.item IN (${items.map(_tseSqlLiteral).join(', ')})`
+            );
+        }
+        if (missingItemIds.length > 0) {
+            recordConditions.push(`source.id IN (${missingItemIds.join(', ')})`);
+        }
+        const recordFilterSql = recordConditions.length > 0
+            ? `\n  AND (${recordConditions.join('\n       OR ')})`
+            : '';
+        return `WITH latest_batch AS (
+    SELECT source.id, source.batch_id
+    FROM ${tableSql} AS source
+    WHERE LEFT(TRIM(source.crawl_datetime), 10) = ${dateSql}
+      AND LOWER(source.account_name) = LOWER(${retailerSql})
+      AND ${countryScopeSql}
+    ORDER BY source.id DESC
+    LIMIT 1
+)
+SELECT ${selectSql}
+FROM ${tableSql} AS source
+CROSS JOIN latest_batch
+WHERE LEFT(TRIM(source.crawl_datetime), 10) = ${dateSql}
+  AND ${accountScope}
+  AND ${countryScopeSql}
+  AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
+  AND ${fieldNullSql}${recordFilterSql}
+ORDER BY source.id;`;
+    }
+    return '';
+}
+
+function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, days) {
+    const items = _tseRecordItems(records);
+    const ids = records.map(row => row.id).filter(Boolean);
+    const query = _buildTseNullQuery(
+        fieldName, data, records, queryColumns, date, days
+    );
+    let html = '<div class="item-query-section">';
+    if (items.length > 0) {
+        html += `<div class="item-list-box">
+            <div class="item-copy-header"><span class="item-copy-title">Item 목록 (${items.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+            <div class="item-copy-content">${_escapeTseSqlHtml(items.join(', '))}</div>
+        </div>`;
+    } else if (ids.length > 0) {
+        html += `<div class="item-list-box">
+            <div class="item-copy-header"><span class="item-copy-title">ID 목록 (${ids.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+            <div class="item-copy-content">${_escapeTseSqlHtml(ids.join(', '))}</div>
+        </div>`;
+    }
+    if (query) {
+        const label = days > 1 ? `${days}일치 최신 배치 조회 SQL` : '선택일 최신 배치 조회 SQL';
+        html += `<div class="query-box">
+            <div class="item-copy-header"><span class="item-copy-title">${label} (${_escapeTseSqlHtml(date)} 기준)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+            <pre class="query-content">${_escapeTseSqlHtml(query)}</pre>
+        </div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
 function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetailJson = null, tableCode = null) {
     if (count === 0) { showToast('조회된 데이터가 없습니다.', 'info'); return; }
 
@@ -203,12 +385,27 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail';
-    const currentDays = modalState.days || 1;
+    const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
+    const supportsDayHistory = isRetail
+        || (isTseRetail && data.supports_day_history === true);
+    const currentDays = isTseRetail
+        ? Math.min(
+            30, Math.max(1, Number(data.history_days || modalState.days || 1))
+        )
+        : (modalState.days || 1);
+    if (isTseRetail) modalState.days = currentDays;
 
     const fieldConfig = displayConfig[fieldName] || {};
     const selectColumns = fieldConfig.select_columns || [];
     const columnHeaders = fieldConfig.column_headers || {};
     const queryColumns = queryConfig[fieldName] || [];
+    const daysInputHtml = supportsDayHistory ? `<div style="display:flex;align-items:center;gap:6px;margin-right:12px;">
+        <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">일수:</label>
+        <input type="number" id="detail-days" value="${currentDays}" min="1" max="30"
+            style="width:50px;padding:3px 6px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;font-size:12px;text-align:center;"
+            onkeydown="if(event.key==='Enter')reloadNullDays()">
+        <button onclick="reloadNullDays()" style="padding:3px 10px;font-size:12px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;background:var(--page-color,#0d9488);color:#fff;cursor:pointer;white-space:nowrap;">조회</button>
+    </div>` : '';
 
     // 칼럼 설정: displayConfig가 있으면 동적 생성, 없으면 기본 config 사용
     var columns;
@@ -230,6 +427,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
+            ${isTseRetail ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL 오류 (${records.length}건)</h4>`;
     }
@@ -306,6 +504,12 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         }
     }
 
+    if (isTseRetail) {
+        itemQueryHtml += _buildTseNullQueryHtml(
+            fieldName, data, records, queryColumns, date, currentDays
+        );
+    }
+
     // 컨테이너 HTML 생성
     var containerHtml = buildDetailContainerHtml({ itemQueryHtml: itemQueryHtml });
 
@@ -316,13 +520,6 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
         const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}`;
-        var daysInputHtml = isRetail ? `<div style="display:flex;align-items:center;gap:6px;margin-right:12px;">
-            <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">일수:</label>
-            <input type="number" id="detail-days" value="${currentDays}" min="1" max="30"
-                style="width:50px;padding:3px 6px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;font-size:12px;text-align:center;"
-                onkeydown="if(event.key==='Enter')reloadNullDays()">
-            <button onclick="reloadNullDays()" style="padding:3px 10px;font-size:12px;border:1px solid var(--border-color,#e2e8f0);border-radius:4px;background:var(--page-color,#0d9488);color:#fff;cursor:pointer;white-space:nowrap;">조회</button>
-        </div>` : '';
         const wrapper = `<div class="inline-detail-view">
             <div class="inline-detail-header"><div>
                 <div class="inline-detail-title">${fieldTitle}</div>
@@ -346,7 +543,8 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         actualTable: data.actual_table || '',
         crawlDate: date,
         dateColumn: data.date_column || '',
-        normalReviews: data.normal_reviews || {}
+        normalReviews: data.normal_reviews || {},
+        enableModalColumnSelector: isTseRetail
     });
 }
 
