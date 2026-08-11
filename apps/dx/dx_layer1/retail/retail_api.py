@@ -87,7 +87,8 @@ def backup_status(request):
 
 
 def backup_retail_data(request):
-    """TV/HHP retail 데이터 백업 API
+    """SEA TV와 TSE TV/REF/LDY 통합 백업 API.
+
     GET: 백업 대상 건수 조회
     POST: 백업 실행
     """
@@ -103,8 +104,11 @@ def backup_retail_data(request):
             return JsonResponse({
                 'success': True,
                 'tv_count': result['tv_count'],
+                'tse_tv_count': result['tse_tv_count'],
+                'tse_ref_count': result['tse_ref_count'],
+                'tse_ldy_count': result['tse_ldy_count'],
                 'hhp_count': 0,
-                'total_count': result['tv_count']
+                'total_count': result['total_count'],
             })
         else:
             return JsonResponse({'success': False, 'error': result.get('error', 'Unknown error')})
@@ -115,19 +119,27 @@ def backup_retail_data(request):
         result = backup_all_retail(username, target_date)
 
         if result['success']:
-            tv_count = result['tv']['count']
-            message = f"백업 완료 - TV: {tv_count}건"
+            counts = {
+                'tv_count': result['tv']['count'],
+                'tse_tv_count': result['tse_tv']['count'],
+                'tse_ref_count': result['tse_ref']['count'],
+                'tse_ldy_count': result['tse_ldy']['count'],
+            }
+            message = (
+                f"백업 완료 - SEA TV: {counts['tv_count']}건, "
+                f"TSE TV: {counts['tse_tv_count']}건, "
+                f"TSE REF: {counts['tse_ref_count']}건, "
+                f"TSE LDY: {counts['tse_ldy_count']}건"
+            )
             return JsonResponse({
                 'success': True,
                 'message': message,
-                'tv_count': tv_count,
-                'hhp_count': 0
+                **counts,
+                'hhp_count': 0,
+                'total_count': sum(counts.values()),
             })
         else:
-            errors = []
-            if not result['tv']['success']:
-                errors.append(f"TV: {result['tv'].get('error', 'Unknown error')}")
             return JsonResponse({
                 'success': False,
-                'error': ', '.join(errors)
+                'error': result.get('error', '통합 백업 중 오류가 발생했습니다.'),
             })
