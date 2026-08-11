@@ -275,7 +275,9 @@ async function reloadNullData(date) {
 
             // dxData에서 해당 리테일러의 fields_detail 찾기
             const nullType = (statsData.validation_types || []).find(v => v.type === 'null');
-            const table = (nullType?.tables || []).find(t => t.table_name === modalState.tableName);
+            const table = (nullType?.tables || []).find(
+                t => t.table === modalState.tableParam || t.table_name === modalState.tableName
+            );
             const retailerData = (table?.retailers || []).find(r => r.retailer === modalState.retailer);
             const fieldCounts = retailerData?.fields_detail || {};
 

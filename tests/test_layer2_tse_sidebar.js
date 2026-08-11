@@ -6,13 +6,26 @@ const source = fs.readFileSync(
     'apps/dx/dx_layer2/static/dx_layer2/js/layer2-common.js',
     'utf8'
 );
+const indexSource = fs.readFileSync(
+    'apps/dx/dx_layer2/static/dx_layer2/js/index.js',
+    'utf8'
+);
+
+assert.ok(source.includes('/dx/layer1/retail/api/backup-status/'));
+assert.ok(indexSource.includes('/dx/layer1/retail/api/backup-status/'));
+for (const label of ['SEA TV:', 'TSE TV:', 'TSE REF:', 'TSE LDY:']) {
+    assert.ok(source.includes(label));
+    assert.ok(indexSource.includes(label));
+}
+assert.ok(!indexSource.includes('/dx/layer1/api/backup-status/'));
 
 let openedIndex = null;
 const sidebarItems = [
-    makeSidebarItem('TV Retail', ''),
+    makeSidebarItem('SEA Retail', ''),
     makeSidebarItem('TV', 'tse_tv_retail'),
     makeSidebarItem('REF', 'tse_ref_retail'),
-    makeSidebarItem('LDY', 'tse_ldy_retail')
+    makeSidebarItem('LDY', 'tse_ldy_retail'),
+    makeSidebarItem('YouTube', '')
 ];
 
 function makeSidebarItem(label, detailCode) {
@@ -58,20 +71,20 @@ vm.runInContext(`
     dxData = {
         validation_types: [{
             tables: [
-                { table: 'tv_retail', table_name: 'TV Retail' },
-                { table: 'youtube', table_name: 'YouTube' },
+                { table: 'tv_retail', table_name: 'SEA Retail' },
                 { table: 'tse_tv_retail', table_name: 'TSE TV' },
                 { table: 'tse_ref_retail', table_name: 'TSE REF' },
-                { table: 'tse_ldy_retail', table_name: 'TSE LDY' }
+                { table: 'tse_ldy_retail', table_name: 'TSE LDY' },
+                { table: 'youtube', table_name: 'YouTube' }
             ]
         }]
     };
 `, sandbox);
 
 for (const [label, detailCode, expectedIndex] of [
-    ['TSE TV', 'tse_tv_retail', 2],
-    ['TSE REF', 'tse_ref_retail', 3],
-    ['TSE LDY', 'tse_ldy_retail', 4]
+    ['TSE TV', 'tse_tv_retail', 1],
+    ['TSE REF', 'tse_ref_retail', 2],
+    ['TSE LDY', 'tse_ldy_retail', 3]
 ]) {
     openedIndex = null;
     sandbox.onSubitemClick('null_validation', label, detailCode);
@@ -84,9 +97,14 @@ for (const [label, detailCode, expectedIndex] of [
 }
 
 openedIndex = null;
-sandbox.onSubitemClick('null_validation', 'TV Retail', '');
+sandbox.onSubitemClick('null_validation', 'SEA Retail', '');
 assert.strictEqual(openedIndex, 0);
 assert.strictEqual(sidebarItems[0].classList.active, true);
+
+openedIndex = null;
+sandbox.onSubitemClick('null_validation', 'YouTube', '');
+assert.strictEqual(openedIndex, 4);
+assert.strictEqual(sidebarItems[4].classList.active, true);
 
 sandbox.window.LAYER2.section = 'dashboard';
 sandbox.window.location.href = 'http://example.test/dx/layer2/';

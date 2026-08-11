@@ -43,9 +43,12 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
                 'null_validation', focus='tse_ref_retail'
             )
         null_group, format_group, anomaly_group = groups
-        tse_parent = null_group['items'][-1]
+        tse_parent = next(
+            item for item in null_group['items']
+            if item['name'] == 'TSE Retail'
+        )
 
-        self.assertEqual('TSE', tse_parent['name'])
+        self.assertEqual('TSE Retail', tse_parent['name'])
         self.assertNotIn('detail_code', tse_parent)
         self.assertTrue(tse_parent['active'])
         self.assertEqual(
@@ -62,8 +65,18 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
                 for child in tse_parent['children']
             ],
         )
-        self.assertFalse(any(item.get('name') == 'TSE' for item in format_group['items']))
-        self.assertFalse(any(item.get('name') == 'TSE' for item in anomaly_group['items']))
+        self.assertEqual(
+            ['SEA Retail', 'TSE Retail', 'YouTube'],
+            [item['name'] for item in null_group['items']],
+        )
+        self.assertEqual(
+            ['SEA Retail', 'YouTube'],
+            [item['name'] for item in format_group['items']],
+        )
+        self.assertEqual(
+            ['SEA Retail', 'YouTube'],
+            [item['name'] for item in anomaly_group['items']],
+        )
 
     def test_display_focus_activates_child_and_inactive_sources_are_hidden(self):
         context, stubs = self._load_context([
@@ -74,14 +87,20 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             null_group = context.build_sidebar_groups(
                 'null_validation', focus='TSE TV'
             )[0]
-        tse_parent = null_group['items'][-1]
+        tse_parent = next(
+            item for item in null_group['items']
+            if item['name'] == 'TSE Retail'
+        )
 
         self.assertEqual(['TSE TV'], [child['name'] for child in tse_parent['children']])
         self.assertEqual(['TV'], [child['label'] for child in tse_parent['children']])
         self.assertTrue(tse_parent['children'][0]['active'])
         self.assertEqual(
-            ['TV Retail', 'YouTube'],
-            [item['name'] for item in null_group['items'][:-1]],
+            ['SEA Retail', 'YouTube'],
+            [
+                item['name'] for item in null_group['items']
+                if item['name'] != 'TSE Retail'
+            ],
         )
 
     def test_tse_parent_is_omitted_when_no_tse_source_is_active(self):
@@ -91,7 +110,7 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             groups = context.build_sidebar_groups('null_validation')
 
         self.assertEqual(
-            ['TV Retail', 'YouTube'],
+            ['SEA Retail', 'YouTube'],
             [item['name'] for item in groups[0]['items']],
         )
 

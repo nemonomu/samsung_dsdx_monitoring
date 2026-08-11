@@ -37,6 +37,23 @@ TSE_NULL_SIDEBAR_CHILDREN = (
 )
 
 
+DISPLAY_NAME_OVERRIDES = {
+    'tv_retail': 'SEA Retail',
+}
+
+
+def _get_display_name(category, info):
+    return DISPLAY_NAME_OVERRIDES.get(category, info['display_name'])
+
+
+def _legacy_display_order(category):
+    """Keep SEA first and YouTube immediately behind the TSE group."""
+    return {
+        'tv_retail': 0,
+        'youtube': 2,
+    }.get(category, 3)
+
+
 
 def get_status(issue_count):
     """상태 기준: 0건 = OK, 1건 이상 = CRITICAL"""
@@ -47,7 +64,12 @@ def get_sidebar_items():
     """사이드바 하위항목 — 카테고리 목록에서 추출 (데이터 조회 없음)"""
     from apps.dx.dx_layer2.null_validation.services import load_null_check_config
     config = load_null_check_config()
-    items = [{'key': c, 'name': info['display_name']} for c, info in config.items()]
+    items = [
+        {'key': category, 'name': _get_display_name(category, info)}
+        for category, info in sorted(
+            config.items(), key=lambda item: _legacy_display_order(item[0])
+        )
+    ]
     return {'null': items, 'format': items, 'anomaly': items}
 
 
@@ -59,7 +81,21 @@ def build_sidebar_groups(section, focus=''):
     config = load_null_check_config()
 
     def make_items(sec):
-        return [{'name': info['display_name'], 'active': section == sec and info['display_name'] == focus} for info in config.values()]
+        items = []
+        for category, info in sorted(
+            config.items(), key=lambda item: _legacy_display_order(item[0])
+        ):
+            display_name = _get_display_name(category, info)
+            items.append({
+                'name': display_name,
+                'active': (
+                    section == sec
+                    and focus in (
+                        display_name, info['display_name'], category,
+                    )
+                ),
+            })
+        return items
 
     null_items = make_items('null_validation')
     active_categories = set(get_all_categories())
@@ -75,11 +111,21 @@ def build_sidebar_groups(section, focus=''):
         tse_children.append(child_item)
 
     if tse_children:
-        null_items.append({
-            'name': 'TSE',
+        tse_parent = {
+            'name': 'TSE Retail',
             'active': any(child['active'] for child in tse_children),
             'children': tse_children,
-        })
+        }
+        youtube_index = next(
+            (
+                index for index, item in enumerate(null_items)
+                if item['name'] == _get_display_name(
+                    'youtube', config.get('youtube', {'display_name': 'YouTube'})
+                )
+            ),
+            len(null_items),
+        )
+        null_items.insert(youtube_index, tse_parent)
 
     return [
         {'key': 'null_validation', 'icon': '🔍', 'label': 'NULL 검증',

@@ -12,7 +12,18 @@ let modalState = {
 };
 var _dupPageSize = 50;
 
-function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetailJson = null) {
+function parseLayer2DetailResponse(response) {
+    return response.json()
+        .catch(function() { return {}; })
+        .then(function(data) {
+            if (!response.ok || data.error) {
+                throw new Error(data.error || `HTTP ${response.status}`);
+            }
+            return data;
+        });
+}
+
+function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetailJson = null, tableCode = null) {
     if (count === 0) { showToast('조회된 데이터가 없습니다.', 'info'); return; }
 
     const typeNames = { 'null': 'NULL 검증', 'format': '형식 검증', 'duplicate': '중복 검증' };
@@ -20,17 +31,18 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
     const subtitleText = `${tableName} | ${count}건의 오류 데이터`;
 
     const date = getSelectedDate();
-    const tableParam = tableName === 'YouTube' ? 'youtube' :
+    const tableParam = tableCode || (tableName === 'YouTube' ? 'youtube' :
                        tableName === 'YouTube Logs' ? 'youtube_logs' :
                        tableName === 'YouTube Comments' ? 'youtube_comments' :
                        tableName === 'YouTube Videos' ? 'youtube_videos' :
+                       tableName === 'SEA Retail' ? 'tv_retail' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :
                        tableName === 'TSE TV' ? 'tse_tv_retail' :
                        tableName === 'TSE REF' ? 'tse_ref_retail' :
                        tableName === 'TSE LDY' ? 'tse_ldy_retail' :
                        tableName === 'Market' ? 'market' :
-                       tableName.toLowerCase().replace(' ', '_');
+                       tableName.toLowerCase().replace(' ', '_'));
 
     if (isInlineMode()) {
         // 섹션 페이지: ViewStack 인라인 교체
@@ -161,16 +173,23 @@ function showNullFieldDetail(fieldName, pushStack = true) {
 
     modalState.selectedField = fieldName;
 
-    const apiUrl = `/dx/layer2/api/null-detail/?table=${tableParam}&retailer=${retailer}&date=${date}&days=${days}&column=${fieldName}`;
+    const query = new URLSearchParams({
+        table: tableParam,
+        retailer: retailer,
+        date: date,
+        days: String(days),
+        column: fieldName
+    });
+    const apiUrl = `/dx/layer2/api/null-detail/?${query.toString()}`;
 
-    fetch(apiUrl)
-        .then(response => response.json())
+    return fetch(apiUrl)
+        .then(parseLayer2DetailResponse)
         .then(data => {
             renderNullFieldDetailView(fieldName, data, pushStack);
         })
         .catch(error => {
             console.error('Null Field Detail Error:', error);
-            if (body) body.innerHTML = '<div class="modal-loading" style="color: var(--color-critical);">데이터 로딩 실패</div>';
+            if (body) body.innerHTML = '<div class="modal-loading" style="color: var(--color-critical);">상세 조회 실패</div>';
         });
 }
 

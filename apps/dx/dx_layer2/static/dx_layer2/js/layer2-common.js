@@ -1249,19 +1249,28 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchDXStats();
 });
 
+function formatBackupPendingCounts(data) {
+    return `SEA TV: ${Number(data.tv_count || 0).toLocaleString()}, ` +
+        `TSE TV: ${Number(data.tse_tv_count || 0).toLocaleString()}, ` +
+        `TSE REF: ${Number(data.tse_ref_count || 0).toLocaleString()}, ` +
+        `TSE LDY: ${Number(data.tse_ldy_count || 0).toLocaleString()}`;
+}
+
 async function checkBackupStatus() {
     const date = getSelectedDate();
     if (!date) return;
     try {
-        const res = await fetch(`/dx/layer1/retail/api/backup-status/?date=${date}`);
+        const res = await fetch(`/dx/layer1/retail/api/backup-status/?date=${encodeURIComponent(date)}`);
+        if (!res.ok) return;
         const data = await res.json();
         if (!data.success || data.pending_count === 0) return;
+        const counts = formatBackupPendingCounts(data);
 
         if (!data.has_backup) {
-            const goBackup = await showConfirm(`${date} 미백업 ${data.pending_count}건 (TV: ${data.tv_count}, HHP: ${data.hhp_count})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
+            const goBackup = await showConfirm(`${date} 미백업 ${data.pending_count}건 (${counts})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
             if (goBackup) window.location.href = '/dx/layer1/';
         } else {
-            const goBackup = await showConfirm(`추가 수집 데이터 ${data.pending_count}건 미백업 (TV: ${data.tv_count}, HHP: ${data.hhp_count})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
+            const goBackup = await showConfirm(`추가 수집 데이터 ${data.pending_count}건 미백업 (${counts})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
             if (goBackup) window.location.href = '/dx/layer1/';
         }
     } catch (e) { /* 백업 상태 조회 실패 시 무시 */ }

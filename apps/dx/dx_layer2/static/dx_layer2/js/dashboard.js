@@ -1,10 +1,53 @@
 // ==================== DX ====================
+const LAYER2_TABLE_DISPLAY_NAMES = {
+    tv_retail: 'SEA Retail'
+};
+
+const LAYER2_TABLE_DISPLAY_ORDER = {
+    tv_retail: 0,
+    tse_tv_retail: 1,
+    tse_ref_retail: 2,
+    tse_ldy_retail: 3,
+    youtube: 4
+};
+
+function prepareLayer2DisplayData(data) {
+    if (!data || !Array.isArray(data.validation_types)) return data;
+
+    data.validation_types.forEach(function(validationType) {
+        if (!Array.isArray(validationType.tables)) return;
+
+        validationType.tables.forEach(function(table) {
+            const displayName = LAYER2_TABLE_DISPLAY_NAMES[table.table];
+            if (displayName) table.table_name = displayName;
+        });
+
+        validationType.tables = validationType.tables
+            .map(function(table, index) {
+                return { table: table, index: index };
+            })
+            .sort(function(left, right) {
+                const leftOrder = Object.prototype.hasOwnProperty.call(
+                    LAYER2_TABLE_DISPLAY_ORDER, left.table.table
+                ) ? LAYER2_TABLE_DISPLAY_ORDER[left.table.table] : 100;
+                const rightOrder = Object.prototype.hasOwnProperty.call(
+                    LAYER2_TABLE_DISPLAY_ORDER, right.table.table
+                ) ? LAYER2_TABLE_DISPLAY_ORDER[right.table.table] : 100;
+                return leftOrder - rightOrder || left.index - right.index;
+            })
+            .map(function(entry) { return entry.table; });
+    });
+
+    return data;
+}
+
 function fetchDXStats() {
     const date = getSelectedDate();
 
     fetch(`/dx/layer2/api/stats/?date=${date}`)
         .then(response => response.json())
         .then(data => {
+            prepareLayer2DisplayData(data);
             dxData = data;
             renderDXSummary(data);
             renderDXValidationTypes(data);
@@ -213,6 +256,7 @@ function renderDXTables(vType, vIdx) {
 function renderDXTableDetail(vType, table) {
     let html = '';
     const tableName = table.table_name;
+    const tableCode = table.table || '';
 
     // NULL 검증 - 리테일러별 상세
     if (vType.type === 'null' && table.retailers) {
@@ -229,7 +273,7 @@ function renderDXTableDetail(vType, table) {
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}">
                     <div class="retailer-card-main"
                          data-fields='${fieldsJson}'
-                         onclick="openDetailModal('null', '${tableName}', '${retailer.retailer}', ${nullCount}, 1, this.dataset.fields)"
+                         onclick="openDetailModal('null', '${tableName}', '${retailer.retailer}', ${nullCount}, 1, this.dataset.fields, '${tableCode}')"
                          ${!hasIssue ? 'style="cursor: default;"' : 'style="cursor: pointer;"'}>
                         <div class="retailer-header">
                             <span class="retailer-name">${retailer.retailer}</span>
