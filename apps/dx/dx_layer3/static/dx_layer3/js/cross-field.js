@@ -18,7 +18,7 @@ function _cfBuildTseDisplayQueryBox(query, retailerSafe, days) {
     return `
         <div class="query-box">
             <div class="query-box-header">
-                <span class="query-box-title">${days}일치 최신 배치 조회 SQL</span>
+                <span class="query-box-title">${days}일 수정용 조회 SQL</span>
                 <button class="btn-copy" onclick="copyQueryToClipboard(document.getElementById('${queryId}'), true)">복사</button>
             </div>
             <pre id="${queryId}" class="query-content">${esc(query)}</pre>
@@ -176,7 +176,9 @@ function showRetailerDetail(retailer) {
     const ruleDisplayCols = selectFieldsRaw ? selectFieldsRaw.split('|').map(f => f.trim()).filter(f => f) : [];
 
     // 기본 표시 컬럼: 고정 + 규칙 컬럼 (규칙 없으면 otherKeys 전체)
-    const fixedKeys = ['_no', 'id', 'item', 'page_type'];
+    const fixedKeys = [
+        '_no', 'id', 'item', 'retailer_sku_name', 'page_type'
+    ];
     const defaultDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
 
     // 전체 컬럼 정의 (기본 표시 + 나머지 수집 컬럼)

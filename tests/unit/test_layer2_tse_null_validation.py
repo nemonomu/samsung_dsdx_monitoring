@@ -298,9 +298,16 @@ class TSELayer2NullTests(unittest.TestCase):
 
         all_columns = [column[0] for column in description]
         self.assertEqual(all_columns, result['select_cols'])
-        self.assertEqual(all_columns, result['query_config']['sku'])
+        self.assertEqual([
+            'id', 'item', 'sku', 'retailer_sku_name',
+            'final_sku_price', 'original_sku_price', 'savings',
+            'crawl_datetime', 'product_url',
+        ], result['query_config']['sku'])
         self.assertEqual(
-            ['id', 'crawl_datetime', 'item', 'sku', 'product_url'],
+            [
+                'id', 'crawl_datetime', 'item', 'retailer_sku_name',
+                'sku', 'product_url',
+            ],
             result['display_config']['sku']['select_columns'],
         )
         self.assertEqual('homepro', result['query_retailer'])
@@ -321,9 +328,63 @@ class TSELayer2NullTests(unittest.TestCase):
         )
 
         self.assertEqual([
-            'id', 'crawl_datetime', 'item', 'final_sku_price',
-            'original_sku_price', 'savings', 'product_url',
+            'id', 'crawl_datetime', 'item', 'retailer_sku_name',
+            'final_sku_price', 'original_sku_price', 'savings',
+            'product_url',
         ], display_columns)
+
+    def test_normal_review_identity_is_hidden_for_six_days_then_rechecked(self):
+        record = {
+            'id': 12,
+            'item': 'TV-1',
+            'retailer_sku_name': 'Example TV',
+        }
+        reviews = [{
+            'record_id': 11,
+            'column_name': 'sku',
+            'crawl_date': date(2026, 8, 11),
+            'identity': ('tv-1', 'example tv'),
+        }]
+
+        self.assertTrue(self.service._is_tse_review_suppressed(
+            record, 'sku', date(2026, 8, 12), reviews
+        ))
+        self.assertTrue(self.service._is_tse_review_suppressed(
+            record, 'sku', date(2026, 8, 17), reviews
+        ))
+        self.assertFalse(self.service._is_tse_review_suppressed(
+            record, 'sku', date(2026, 8, 18), reviews
+        ))
+        changed_name = dict(record, retailer_sku_name='Different TV')
+        self.assertFalse(self.service._is_tse_review_suppressed(
+            changed_name, 'sku', date(2026, 8, 12), reviews
+        ))
+
+    def test_summary_excludes_recently_reviewed_item_and_retailer_sku(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('h20260811_095803', 1, 0, 0, 1)},
+            {'fetchall': [(
+                11, 'sku', 'checked', 'tester', None, 'source_issue',
+                date(2026, 8, 10), 'TV-1', 'Example TV',
+            )]},
+            {'fetchall': [(
+                12, 'TV-1', 'Example TV', 'TSE', 'Homepro', None,
+            )]},
+        ])
+
+        tables, issue_count = self.service._get_tse_null_tables(
+            cursor, date(2026, 8, 11), self.runtime,
+            tse_columns_config(),
+        )
+
+        self.assertEqual(0, issue_count)
+        self.assertEqual(
+            0, tables[0]['retailers'][0]['fields_detail']['sku']
+        )
+        review_sql, review_params = cursor.calls[1]
+        self.assertIn('reviewed_source.retailer_sku_name', review_sql)
+        self.assertEqual('2026-08-05', review_params[1])
+        self.assertEqual('2026-08-11', review_params[2])
 
     def test_detail_expands_seed_items_to_latest_batch_per_day(self):
         description = [
@@ -348,7 +409,10 @@ class TSELayer2NullTests(unittest.TestCase):
             },
             {
                 'fetchall': [
-                    (12, 'sku', 'checked', 'tester', None, 'source_issue'),
+                    (
+                        12, 'sku', 'checked', 'tester', None, 'source_issue',
+                        date(2026, 8, 10), 'TV-2', None,
+                    ),
                 ],
             },
             {

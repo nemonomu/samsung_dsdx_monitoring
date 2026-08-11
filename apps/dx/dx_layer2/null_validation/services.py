@@ -399,7 +399,7 @@ def _get_tse_null_display_columns(column, select_columns):
     price_columns = (
         'final_sku_price', 'original_sku_price', 'savings',
     )
-    candidates = ['id', 'crawl_datetime', 'item']
+    candidates = ['id', 'crawl_datetime', 'item', 'retailer_sku_name']
     if column in price_columns:
         candidates.extend(price_columns)
     else:
@@ -414,11 +414,118 @@ def _get_tse_null_display_columns(column, select_columns):
     return result
 
 
+def _get_tse_null_query_columns(column, select_columns):
+    """Return a compact, correction-friendly column list for display SQL."""
+    candidates = [
+        'id', 'item', 'sku', 'retailer_sku_name', column,
+        'final_sku_price', 'original_sku_price', 'savings',
+        'crawl_datetime', 'product_url',
+    ]
+    available = set(select_columns)
+    result = []
+    for candidate in candidates:
+        if candidate in available and candidate not in result:
+            result.append(candidate)
+    return result
+
+
 def _build_tse_country_scope(alias='source'):
     """Keep TSE rows plus missing-country rows that Layer 2 must report."""
     country_column = f'{alias}.country'
     null_condition = _build_null_sql_condition(country_column, 'both')
     return f'({country_column} = %s OR {null_condition})'
+
+
+TSE_NORMAL_REVIEW_RECHECK_DAYS = 7
+
+
+def _tse_review_date(value):
+    """Return a date for source/correction values, or ``None`` if invalid."""
+    if isinstance(value, datetime):
+        return value.date()
+    try:
+        return datetime.strptime(str(value)[:10], '%Y-%m-%d').date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _tse_review_identity(item, retailer_sku_name):
+    """Build the stable identity used to carry a normal review forward."""
+    item_text = str(item or '').strip()
+    if not item_text:
+        return None
+    retailer_sku_text = str(retailer_sku_name or '').strip()
+    return item_text.casefold(), retailer_sku_text.casefold()
+
+
+def _load_tse_recent_normal_reviews(
+        cursor, canonical_table, retailer, columns, start_date, end_date):
+    """Load normal reviews and their original item/SKU identity."""
+    if not columns:
+        return []
+    placeholders = ', '.join(['%s'] * len(columns))
+    cursor.execute(f"""
+        SELECT correction.record_id,
+               correction.column_name,
+               correction.memo,
+               correction.created_id,
+               correction.created_at,
+               correction.reason,
+               correction.crawl_date,
+               reviewed_source.item,
+               reviewed_source.retailer_sku_name
+        FROM monitoring_corrections correction
+        JOIN {canonical_table} reviewed_source
+          ON reviewed_source.id = correction.record_id
+        WHERE correction.table_name = %s
+          AND correction.crawl_date >= %s
+          AND correction.crawl_date <= %s
+          AND correction.correction_type = 'null_check'
+          AND correction.status = 'normal'
+          AND LOWER(correction.retailer) = LOWER(%s)
+          AND correction.column_name IN ({placeholders})
+        ORDER BY correction.crawl_date DESC, correction.id DESC
+    """, (
+        canonical_table, str(start_date), str(end_date), retailer, *columns,
+    ))
+    reviews = []
+    for row in cursor.fetchall():
+        review_date = _tse_review_date(row[6])
+        if review_date is None:
+            continue
+        reviews.append({
+            'record_id': row[0],
+            'column_name': row[1],
+            'memo': row[2],
+            'created_id': row[3],
+            'created_at': row[4],
+            'reason': row[5],
+            'crawl_date': review_date,
+            'identity': _tse_review_identity(row[7], row[8]),
+        })
+    return reviews
+
+
+def _is_tse_review_suppressed(record, column, row_date, reviews):
+    """Hide the same reviewed identity until its seven-day recheck date."""
+    effective_date = _tse_review_date(row_date)
+    if effective_date is None:
+        return False
+    identity = _tse_review_identity(
+        record.get('item'), record.get('retailer_sku_name')
+    )
+    record_id = str(record.get('id'))
+    for review in reviews:
+        if review['column_name'] != column:
+            continue
+        elapsed_days = (effective_date - review['crawl_date']).days
+        if elapsed_days < 0 or elapsed_days >= TSE_NORMAL_REVIEW_RECHECK_DAYS:
+            continue
+        if elapsed_days == 0 and record_id == str(review['record_id']):
+            return True
+        if identity is not None and identity == review['identity']:
+            return True
+    return False
 
 
 def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
@@ -496,44 +603,60 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 for index, column in enumerate(required_columns)
             }
 
-            # A normal review only removes the same record in the current
-            # latest batch. Reviews on an older rerun must not alter this card.
+            # Carry a normal review forward for the same item and
+            # retailer_sku_name.  The identity is exposed again on day seven.
             if latest_batch_id is not None and any(fields_detail.values()):
-                placeholders = ', '.join(['%s'] * len(required_columns))
-                cursor.execute(f"""
-                    SELECT correction.column_name,
-                           COUNT(DISTINCT correction.record_id)
-                    FROM monitoring_corrections correction
-                    JOIN {canonical_table} source
-                      ON source.id = correction.record_id
-                    WHERE correction.table_name = %s
-                      AND correction.crawl_date = %s
-                      AND correction.correction_type = 'null_check'
-                      AND correction.status = 'normal'
-                      AND LOWER(correction.retailer) = LOWER(%s)
-                      AND correction.column_name IN ({placeholders})
-                      AND LEFT(TRIM(source.crawl_datetime), 10) = %s
-                      AND {account_scope}
-                      AND {country_scope}
-                      AND source.batch_id IS NOT DISTINCT FROM %s
-                    GROUP BY correction.column_name
-                """, (
+                recent_reviews = _load_tse_recent_normal_reviews(
+                    cursor,
                     canonical_table,
-                    target_date_text,
                     retailer_value,
-                    *required_columns,
-                    target_date_text,
-                    retailer_value,
-                    TSE_COUNTRY,
-                    latest_batch_id,
-                ))
-                for correction_column, correction_count in cursor.fetchall():
-                    if correction_column in fields_detail:
-                        fields_detail[correction_column] = max(
-                            0,
-                            fields_detail[correction_column]
-                            - (correction_count or 0),
+                    required_columns,
+                    target_date - timedelta(
+                        days=TSE_NORMAL_REVIEW_RECHECK_DAYS - 1
+                    ),
+                    target_date,
+                )
+                if recent_reviews:
+                    review_columns = []
+                    for review_column in (
+                        'id', 'item', 'retailer_sku_name', *required_columns
+                    ):
+                        if review_column not in review_columns:
+                            review_columns.append(review_column)
+                    review_select_sql = ', '.join(
+                        f'source.{review_column}'
+                        for review_column in review_columns
+                    )
+                    cursor.execute(f"""
+                        SELECT {review_select_sql}
+                        FROM {canonical_table} source
+                        WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                          AND {account_scope}
+                          AND {country_scope}
+                          AND source.batch_id IS NOT DISTINCT FROM %s
+                    """, (
+                        target_date_text, retailer_value, TSE_COUNTRY,
+                        latest_batch_id,
+                    ))
+                    current_rows = [
+                        dict(zip(review_columns, current_row))
+                        for current_row in cursor.fetchall()
+                    ]
+                    fields_detail = {
+                        review_column: sum(
+                            1 for current_row in current_rows
+                            if _is_field_null(
+                                current_row.get(review_column), 'both'
+                            )
+                            and not _is_tse_review_suppressed(
+                                current_row,
+                                review_column,
+                                target_date,
+                                recent_reviews,
+                            )
                         )
+                        for review_column in required_columns
+                    }
 
             issue_count = sum(fields_detail.values())
             retailer_rows.append({
@@ -666,34 +789,53 @@ def _get_tse_null_detail(
     column_index = {
         column_name: index for index, column_name in enumerate(select_columns)
     }
-    id_index = column_index['id']
-
-    cursor.execute("""
-        SELECT record_id, column_name, memo, created_id, created_at, reason
-        FROM monitoring_corrections
-        WHERE table_name = %s AND crawl_date = %s AND column_name = %s
-          AND correction_type = 'null_check' AND status = 'normal'
-          AND LOWER(retailer) = LOWER(%s)
-    """, (canonical_table, target_date_text, column, retailer_value))
-    normal_set = set()
+    recent_reviews = _load_tse_recent_normal_reviews(
+        cursor,
+        canonical_table,
+        retailer_value,
+        [column],
+        target_date - timedelta(
+            days=history_days + TSE_NORMAL_REVIEW_RECHECK_DAYS - 2
+        ),
+        target_date,
+    )
     normal_reviews = {}
-    for review_row in cursor.fetchall():
-        normal_set.add(review_row[0])
-        normal_reviews[f"{review_row[0]}_{review_row[1]}"] = {
-            'memo': review_row[2],
-            'created_id': review_row[3],
+    for review in recent_reviews:
+        normal_reviews[
+            f"{review['record_id']}_{review['column_name']}"
+        ] = {
+            'memo': review['memo'],
+            'created_id': review['created_id'],
             'created_at': (
-                review_row[4].strftime('%Y-%m-%d %H:%M:%S')
-                if review_row[4] else None
+                review['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                if isinstance(review['created_at'], datetime)
+                else str(review['created_at'] or '') or None
             ),
-            'reason': review_row[5],
+            'reason': review['reason'],
         }
+
+    def row_as_mapping(row):
+        return {
+            column_name: row[index]
+            for column_name, index in column_index.items()
+        }
+
+    def row_is_suppressed(row):
+        row_record = row_as_mapping(row)
+        if not _is_field_null(row_record.get(column), 'both'):
+            return False
+        return _is_tse_review_suppressed(
+            row_record,
+            column,
+            row_record.get('crawl_datetime') or target_date,
+            recent_reviews,
+        )
 
     is_expanded = False
     item_index = column_index.get('item')
     if history_days > 1 and item_index is not None:
         unreviewed_rows = [
-            row for row in raw_rows if row[id_index] not in normal_set
+            row for row in raw_rows if not row_is_suppressed(row)
         ]
         error_items = sorted({
             row[item_index]
@@ -761,7 +903,7 @@ def _get_tse_null_detail(
 
     results = []
     for row in raw_rows:
-        if row[id_index] in normal_set:
+        if row_is_suppressed(row):
             continue
         record = {}
         for column_name, index in column_index.items():
@@ -791,7 +933,9 @@ def _get_tse_null_detail(
                 ),
             },
         },
-        'query_config': {column: select_columns},
+        'query_config': {
+            column: _get_tse_null_query_columns(column, select_columns),
+        },
         'query_retailer': retailer_value,
         'query_include_unassigned': include_unassigned,
         'supports_day_history': True,

@@ -52,6 +52,15 @@ function _tseHistoryStartDate(date, days) {
     return `${year}-${month}-${day}`;
 }
 
+function _tseNextDate(date) {
+    const parsed = new Date(date + 'T00:00:00');
+    parsed.setDate(parsed.getDate() + 1);
+    const year = parsed.getFullYear();
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const day = String(parsed.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function _tseRecordItems(records) {
     return [...new Set(records
         .map(row => row.item)
@@ -59,15 +68,10 @@ function _tseRecordItems(records) {
         .map(value => String(value)))].sort();
 }
 
-function _tseNullCondition(columnSql) {
-    return `(${columnSql} IS NULL
-       OR TRIM(CAST(${columnSql} AS TEXT)) = '')`;
-}
-
 function _tseCountryScope() {
-    return `(source.country = 'TSE'
-       OR source.country IS NULL
-       OR TRIM(CAST(source.country AS TEXT)) = '')`;
+    return `(country = 'TSE'
+       OR country IS NULL
+       OR TRIM(CAST(country AS TEXT)) = '')`;
 }
 
 function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) {
@@ -80,15 +84,15 @@ function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) 
         return '';
     }
 
-    const selectSql = queryColumns.map(col => `source.${col}`).join(', ');
+    const selectSql = queryColumns.map(col => `    ${col}`).join(',\n');
     const tableSql = tableName;
     const retailerSql = _tseSqlLiteral(retailer);
-    const dateSql = _tseSqlLiteral(date);
-    const fieldNullSql = _tseNullCondition(`source.${fieldName}`);
+    const startDateSql = _tseSqlLiteral(_tseHistoryStartDate(date, days));
+    const endDateSql = _tseSqlLiteral(_tseNextDate(date));
     const countryScopeSql = _tseCountryScope();
-    let accountScope = `LOWER(source.account_name) = LOWER(${retailerSql})`;
+    let accountScope = `LOWER(account_name) = LOWER(${retailerSql})`;
     if (data.query_include_unassigned === true) {
-        accountScope = `(${accountScope}\n       OR source.account_name IS NULL\n       OR TRIM(CAST(source.account_name AS TEXT)) = '')`;
+        accountScope = `(${accountScope}\n       OR account_name IS NULL\n       OR TRIM(CAST(account_name AS TEXT)) = '')`;
     }
 
     const items = _tseRecordItems(records);
@@ -99,81 +103,26 @@ function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) 
         .filter(row => row.item == null || String(row.item).trim() === '')
         .map(row => Number(row.id))
         .filter(id => Number.isSafeInteger(id) && id > 0))];
-    const historyConditions = [];
+    const recordConditions = [];
     if (items.length > 0) {
-        historyConditions.push(
-            `source.item IN (${items.map(_tseSqlLiteral).join(', ')})`
+        recordConditions.push(
+            `item IN (\n${items.map(item => `    ${_tseSqlLiteral(item)}`).join(',\n')}\n  )`
         );
     }
-    if (hasMissingItem) {
-        historyConditions.push(
-            `(${_tseNullCondition('source.item')} AND ${fieldNullSql})`
-        );
+    if (hasMissingItem && missingItemIds.length > 0) {
+        recordConditions.push(`id IN (${missingItemIds.join(', ')})`);
     }
+    if (recordConditions.length === 0) return '';
 
-    if (days > 1 && historyConditions.length > 0) {
-        const startDateSql = _tseSqlLiteral(_tseHistoryStartDate(date, days));
-        const historyScopeSql = historyConditions.join('\n       OR ');
-        return `WITH latest_batches AS (
-    SELECT DISTINCT ON (
-        LEFT(TRIM(source.crawl_datetime), 10),
-        LOWER(source.account_name)
-    )
-           LEFT(TRIM(source.crawl_datetime), 10) AS crawl_date,
-           LOWER(source.account_name) AS retailer_key,
-           source.batch_id,
-           source.id
-    FROM ${tableSql} AS source
-    WHERE LEFT(TRIM(source.crawl_datetime), 10) >= ${startDateSql}
-      AND LEFT(TRIM(source.crawl_datetime), 10) <= ${dateSql}
-      AND LOWER(source.account_name) = LOWER(${retailerSql})
-      AND ${countryScopeSql}
-    ORDER BY crawl_date, retailer_key, source.id DESC
-)
-SELECT ${selectSql}
-FROM ${tableSql} AS source
-JOIN latest_batches AS latest
-  ON LEFT(TRIM(source.crawl_datetime), 10) = latest.crawl_date
- AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+    return `SELECT
+${selectSql}
+FROM ${tableSql}
 WHERE ${accountScope}
   AND ${countryScopeSql}
-  AND (${historyScopeSql})
-ORDER BY source.item, LEFT(TRIM(source.crawl_datetime), 10), source.id;`;
-    }
-
-    if (days === 1) {
-        const recordConditions = [];
-        if (items.length > 0) {
-            recordConditions.push(
-                `source.item IN (${items.map(_tseSqlLiteral).join(', ')})`
-            );
-        }
-        if (missingItemIds.length > 0) {
-            recordConditions.push(`source.id IN (${missingItemIds.join(', ')})`);
-        }
-        const recordFilterSql = recordConditions.length > 0
-            ? `\n  AND (${recordConditions.join('\n       OR ')})`
-            : '';
-        return `WITH latest_batch AS (
-    SELECT source.id, source.batch_id
-    FROM ${tableSql} AS source
-    WHERE LEFT(TRIM(source.crawl_datetime), 10) = ${dateSql}
-      AND LOWER(source.account_name) = LOWER(${retailerSql})
-      AND ${countryScopeSql}
-    ORDER BY source.id DESC
-    LIMIT 1
-)
-SELECT ${selectSql}
-FROM ${tableSql} AS source
-CROSS JOIN latest_batch
-WHERE LEFT(TRIM(source.crawl_datetime), 10) = ${dateSql}
-  AND ${accountScope}
-  AND ${countryScopeSql}
-  AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
-  AND ${fieldNullSql}${recordFilterSql}
-ORDER BY source.id;`;
-    }
-    return '';
+  AND (${recordConditions.join('\n       OR ')})
+  AND DATE(crawl_datetime::timestamp) >= DATE ${startDateSql}
+  AND DATE(crawl_datetime::timestamp) <= DATE ${endDateSql}
+ORDER BY item, crawl_datetime;`;
 }
 
 function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, days) {
@@ -195,7 +144,7 @@ function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, da
         </div>`;
     }
     if (query) {
-        const label = days > 1 ? `${days}일치 최신 배치 조회 SQL` : '선택일 최신 배치 조회 SQL';
+        const label = `${days}일 수정용 조회 SQL`;
         html += `<div class="query-box">
             <div class="item-copy-header"><span class="item-copy-title">${label} (${_escapeTseSqlHtml(date)} 기준)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
             <pre class="query-content">${_escapeTseSqlHtml(query)}</pre>

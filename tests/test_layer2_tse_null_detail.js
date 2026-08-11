@@ -128,6 +128,7 @@ function makeTseDetailData() {
         results: [{
             id: 7,
             item: "TV'1 <script>",
+            retailer_sku_name: 'Example TV',
             crawl_datetime: '2026-08-10T09:00:00+09:00',
             sku: null,
             product_url: 'https://example.test/tv-1'
@@ -135,19 +136,20 @@ function makeTseDetailData() {
         display_config: {
             sku: {
                 select_columns: [
-                    'id', 'crawl_datetime', 'item', 'sku', 'product_url'
+                    'id', 'crawl_datetime', 'item', 'retailer_sku_name',
+                    'sku', 'product_url'
                 ]
             }
         },
         query_config: {
             sku: [
-                'id', 'batch_id', 'crawl_datetime', 'item', 'sku',
-                'product_url'
+                'id', 'item', 'sku', 'retailer_sku_name',
+                'crawl_datetime', 'product_url'
             ]
         },
         select_cols: [
-            'id', 'batch_id', 'crawl_datetime', 'item', 'sku',
-            'product_url'
+            'id', 'batch_id', 'crawl_datetime', 'item',
+            'retailer_sku_name', 'sku', 'product_url'
         ],
         actual_table: 'dx_tse.dx_tse_tv_retail_com',
         query_retailer: "Home'pro",
@@ -159,7 +161,7 @@ function makeTseDetailData() {
     };
 }
 
-function testTseCanonicalSqlEscapesLiteralsAndHtml() {
+function testTseCorrectionSqlEscapesLiteralsAndHtml() {
     const sandbox = { console };
     vm.createContext(sandbox);
     vm.runInContext(nullSource, sandbox);
@@ -173,29 +175,31 @@ function testTseCanonicalSqlEscapesLiteralsAndHtml() {
         data.date, data.history_days
     );
 
-    assert.ok(query.includes('FROM dx_tse.dx_tse_tv_retail_com AS source'));
-    assert.ok(query.includes('WITH latest_batches AS'));
-    assert.ok(query.includes("'2026-08-08'"));
+    assert.ok(query.includes('FROM dx_tse.dx_tse_tv_retail_com'));
+    assert.ok(!query.includes('WITH latest_batches AS'));
+    assert.ok(query.includes("DATE(crawl_datetime::timestamp) >= DATE '2026-08-08'"));
+    assert.ok(query.includes("DATE(crawl_datetime::timestamp) <= DATE '2026-08-11'"));
     assert.ok(query.includes("LOWER('Home''pro')"));
-    assert.ok(query.includes("source.item IN ('TV''1 <script>')"));
-    assert.ok(query.includes("source.country = 'TSE'"));
-    assert.ok(query.includes('source.batch_id IS NOT DISTINCT FROM latest.batch_id'));
+    assert.ok(query.includes("'TV''1 <script>'"));
+    assert.ok(query.includes("country = 'TSE'"));
+    assert.ok(query.includes('retailer_sku_name'));
+    assert.ok(!query.includes('batch_id IS NOT DISTINCT FROM'));
     assert.ok(!html.includes('<script>'));
     assert.ok(html.includes('&lt;script&gt;'));
-    assert.ok(html.includes('3일치 최신 배치 조회 SQL'));
+    assert.ok(html.includes('3일 수정용 조회 SQL'));
 
     const singleDayQuery = sandbox._buildTseNullQuery(
         'sku', data, data.results, data.query_config.sku,
         data.date, 1
     );
-    assert.ok(singleDayQuery.includes('WITH latest_batch AS'));
+    assert.ok(!singleDayQuery.includes('WITH latest_batch AS'));
     assert.ok(!singleDayQuery.includes('WITH latest_batches AS'));
-    assert.ok(singleDayQuery.includes("source.country = 'TSE'"));
-    assert.ok(singleDayQuery.includes('source.sku IS NULL'));
-    assert.ok(singleDayQuery.includes("source.item IN ('TV''1 <script>')"));
+    assert.ok(singleDayQuery.includes("country = 'TSE'"));
+    assert.ok(!singleDayQuery.includes('sku IS NULL'));
+    assert.ok(singleDayQuery.includes("'TV''1 <script>'"));
 }
 
-function testTseItemNullUsesLatestBatchHistoryQuery() {
+function testTseItemNullUsesSimpleIdFallbackQuery() {
     const sandbox = { console };
     vm.createContext(sandbox);
     vm.runInContext(nullSource, sandbox);
@@ -215,10 +219,9 @@ function testTseItemNullUsesLatestBatchHistoryQuery() {
         data.date, data.history_days
     );
 
-    assert.ok(query.includes('WITH latest_batches AS'));
-    assert.ok(query.includes('source.item IS NULL'));
-    assert.ok(query.includes("source.country = 'TSE'"));
-    assert.ok(!query.includes('WHERE source.id IN'));
+    assert.ok(!query.includes('WITH latest_batches AS'));
+    assert.ok(query.includes('id IN (8)'));
+    assert.ok(query.includes("country = 'TSE'"));
 
     const mixedData = makeTseDetailData();
     mixedData.results.push({
@@ -232,8 +235,8 @@ function testTseItemNullUsesLatestBatchHistoryQuery() {
         'sku', mixedData, mixedData.results, mixedData.query_config.sku,
         mixedData.date, 1
     );
-    assert.ok(singleDayQuery.includes("source.item IN ('TV''1 <script>')"));
-    assert.ok(singleDayQuery.includes('source.id IN (8)'));
+    assert.ok(singleDayQuery.includes("'TV''1 <script>'"));
+    assert.ok(singleDayQuery.includes('id IN (8)'));
 }
 
 function renderTseDetail(inlineMode) {
@@ -274,19 +277,22 @@ function testTseSqlAndDaysRenderInInlineAndDashboardViews() {
 
     assert.ok(inline.html.includes('id="detail-days"'));
     assert.ok(inline.html.includes('dx_tse.dx_tse_tv_retail_com'));
-    assert.ok(inline.html.includes('3일치 최신 배치 조회 SQL'));
+    assert.ok(inline.html.includes('3일 수정용 조회 SQL'));
     assert.ok(dashboard.html.includes('id="detail-days"'));
     assert.ok(dashboard.html.includes('dx_tse.dx_tse_tv_retail_com'));
-    assert.ok(dashboard.html.includes('3일치 최신 배치 조회 SQL'));
+    assert.ok(dashboard.html.includes('3일 수정용 조회 SQL'));
     assert.deepStrictEqual(
         JSON.parse(JSON.stringify(inline.tableOptions.config.map(col => col.key))),
-        ['id', 'crawl_datetime', 'item', 'sku', 'product_url']
+        [
+            'id', 'crawl_datetime', 'item', 'retailer_sku_name',
+            'sku', 'product_url'
+        ]
     );
     assert.deepStrictEqual(
         JSON.parse(JSON.stringify(inline.tableOptions.selectCols)),
         [
-            'id', 'batch_id', 'crawl_datetime', 'item', 'sku',
-            'product_url'
+            'id', 'batch_id', 'crawl_datetime', 'item',
+            'retailer_sku_name', 'sku', 'product_url'
         ]
     );
     assert.strictEqual(
@@ -301,8 +307,8 @@ function testTseSqlAndDaysRenderInInlineAndDashboardViews() {
 async function main() {
     testDashboardDisplayOrderAndCanonicalCode();
     await testNullDetailUsesEncodedCanonicalParamsAndShowsErrors();
-    testTseCanonicalSqlEscapesLiteralsAndHtml();
-    testTseItemNullUsesLatestBatchHistoryQuery();
+    testTseCorrectionSqlEscapesLiteralsAndHtml();
+    testTseItemNullUsesSimpleIdFallbackQuery();
     testTseSqlAndDaysRenderInInlineAndDashboardViews();
 }
 

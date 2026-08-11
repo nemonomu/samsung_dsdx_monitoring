@@ -86,13 +86,14 @@ assert.strictEqual(modal.title, 'Homepro - 상세 조회');
 assert(modal.body.includes('다시 조회해 주세요'));
 assert.strictEqual(modal.opened, true);
 
-function testTseCanonicalQueryRendersInInlineAndModalDetail() {
-    const displayQuery = "WITH batches AS (<unsafe>) SELECT * FROM source WHERE item = 'TV''1';";
+function testTseCorrectionQueryRendersInInlineAndModalDetail() {
+    const displayQuery = "SELECT <unsafe> FROM source WHERE item = 'TV''1';";
     sandbox.window.crossfieldRetailerData = {
         Homepro: {
             rows: [{
                 id: 7,
                 item: "TV'1",
+                retailer_sku_name: 'Example TV',
                 account_name: 'Homepro',
                 crawl_datetime: '2026-08-10T09:10:00+09:00',
             }],
@@ -112,14 +113,14 @@ function testTseCanonicalQueryRendersInInlineAndModalDetail() {
     inlineHtml = '';
     sandbox.isCrossFieldInline = () => true;
     sandbox.showRetailerDetail('Homepro');
-    assert(inlineHtml.includes('3일치 최신 배치 조회 SQL'));
+    assert(inlineHtml.includes('3일 수정용 조회 SQL'));
     assert(inlineHtml.includes('cf-tse-display-query-Homepro'));
     assert(inlineHtml.includes('&lt;unsafe&gt;'));
     assert(!inlineHtml.includes('<unsafe>'));
 
     sandbox.isCrossFieldInline = () => false;
     sandbox.showRetailerDetail('Homepro');
-    assert(modal.body.includes('3일치 최신 배치 조회 SQL'));
+    assert(modal.body.includes('3일 수정용 조회 SQL'));
     assert(modal.body.includes('&lt;unsafe&gt;'));
     assert(modal.body.includes('id="item-list-Homepro"'));
 
@@ -130,7 +131,7 @@ function testTseCanonicalQueryRendersInInlineAndModalDetail() {
     assert(modal.body.includes('id="item-list-Homepro"'));
 }
 
-testTseCanonicalQueryRendersInInlineAndModalDetail();
+testTseCorrectionQueryRendersInInlineAndModalDetail();
 assert(commonSource.includes('window.crossfieldDisplayQuery = data.query ||'));
 assert(commonSource.includes('window.crossfieldDisplayQueries = data.queries ||'));
 assert(commonSource.includes("? (rule.query || '쿼리 없음')"));
@@ -138,6 +139,7 @@ assert(commonSource.includes('preserveRaw === true ? text : formatSQL(text)'));
 assert(source.includes("itemTitle.textContent = listLabel + ' 목록 ('"));
 assert(source.includes("document.getElementById('${queryId}'), true"));
 assert(source.includes("if (!isCrossFieldInline())"));
+assert(/fixedKeys = \[\s*'_no', 'id', 'item', 'retailer_sku_name'/.test(source));
 
 async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     let requestedUrl = '';

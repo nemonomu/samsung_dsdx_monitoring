@@ -79,6 +79,7 @@ TSE_RULE_SPECS = OrderedDict((
 
 _TSE_DISPLAY_QUERY_COLUMNS = {
     'id', 'batch_id', 'country', 'account_name', 'item', 'crawl_datetime',
+    'sku', 'retailer_sku_name',
     'count_of_reviews', 'count_of_star_ratings', 'star_rating',
     'final_sku_price', 'original_sku_price', 'savings', 'product_url',
 }
@@ -357,11 +358,10 @@ def _display_sql_literal(value):
 def build_tse_display_query(
         target_date, product_line, rule, days=1, retailer=None,
         retailers=None, items=None, retailer_item_pairs=None):
-    """Build the canonical read-only query shown for a TSE cross-field rule.
+    """Build a compact, correction-friendly query for a TSE rule.
 
-    The application does not execute this SQL.  It mirrors the allowlisted
-    source scope used by :func:`load_latest_tse_rows`; Python remains the
-    authority for evaluating the cross-field rule itself.
+    The application never executes this display SQL.  The validation engine
+    still uses :func:`load_latest_tse_rows` and Python rule evaluation.
     """
     key = normalize_tse_product_line(product_line)
     source = get_tse_source(key)
@@ -371,10 +371,12 @@ def build_tse_display_query(
     start_date = target_date - timedelta(days=day_count - 1)
 
     select_columns = [
-        'id', 'batch_id', 'country', 'account_name', 'item',
-        'crawl_datetime',
+        'id', 'item', 'sku', 'retailer_sku_name', 'final_sku_price',
     ]
-    field_groups = (spec.get('field1'), spec.get('field2'), 'product_url')
+    field_groups = (
+        spec.get('field1'), spec.get('field2'),
+        'crawl_datetime', 'product_url',
+    )
     for field_group in field_groups:
         for column in str(field_group or '').split('|'):
             column = column.strip()
@@ -383,7 +385,7 @@ def build_tse_display_query(
                 and column not in select_columns
             ):
                 select_columns.append(column)
-    select_sql = ', '.join(f'source.{column}' for column in select_columns)
+    select_sql = ',\n'.join(f'    {column}' for column in select_columns)
 
     pair_values = set()
     for pair in retailer_item_pairs or []:
@@ -419,101 +421,64 @@ def build_tse_display_query(
         and str(value).strip().upper() != 'ALL'
     })
 
-    batch_filters = []
-    source_filters = []
-    if len(retailer_values) == 1:
-        retailer_literal = _display_sql_literal(retailer_values[0])
-        batch_filters.append(
-            'AND LOWER(TRIM(account_name)) = '
-            f'LOWER(TRIM({retailer_literal}))'
-        )
-        source_filters.append(
-            'AND LOWER(TRIM(source.account_name)) = '
-            f'LOWER(TRIM({retailer_literal}))'
-        )
-    elif retailer_values:
-        retailer_literals = ', '.join(
-            f'LOWER(TRIM({_display_sql_literal(value)}))'
-            for value in retailer_values
-        )
-        batch_filters.append(
-            f'AND LOWER(TRIM(account_name)) IN ({retailer_literals})'
-        )
-        source_filters.append(
-            'AND LOWER(TRIM(source.account_name)) '
-            f'IN ({retailer_literals})'
-        )
-
+    scope_filters = []
     if pair_values:
         pair_clauses = []
         for pair_retailer, pair_item in pair_values:
             retailer_literal = _display_sql_literal(pair_retailer)
             item_scope = (
-                "(source.item IS NULL "
-                "OR TRIM(CAST(source.item AS TEXT)) = '')"
+                "(item IS NULL OR TRIM(CAST(item AS TEXT)) = '')"
                 if pair_item is None
-                else f'source.item = {_display_sql_literal(pair_item)}'
+                else f'item = {_display_sql_literal(pair_item)}'
             )
             pair_clauses.append(
-                '(LOWER(TRIM(source.account_name)) = '
+                '(LOWER(TRIM(account_name)) = '
                 f'LOWER(TRIM({retailer_literal})) AND {item_scope})'
             )
-        source_filters.append(
-            'AND (\n          '
-            + '\n       OR '.join(pair_clauses)
-            + '\n      )'
+        scope_filters.append(
+            '(\n      ' + '\n   OR '.join(pair_clauses) + '\n  )'
         )
     else:
+        if len(retailer_values) == 1:
+            retailer_literal = _display_sql_literal(retailer_values[0])
+            scope_filters.append(
+                'LOWER(TRIM(account_name)) = '
+                f'LOWER(TRIM({retailer_literal}))'
+            )
+        elif retailer_values:
+            retailer_literals = ', '.join(
+                f'LOWER(TRIM({_display_sql_literal(value)}))'
+                for value in retailer_values
+            )
+            scope_filters.append(
+                f'LOWER(TRIM(account_name)) IN ({retailer_literals})'
+            )
+
         item_values = sorted({
             str(item) for item in (items or [])
             if item is not None and str(item) != ''
         })
         if item_values:
-            item_literals = ', '.join(
-                _display_sql_literal(item) for item in item_values
+            item_literals = ',\n'.join(
+                f'      {_display_sql_literal(item)}' for item in item_values
             )
-            source_filters.append(f'AND source.item IN ({item_literals})')
+            scope_filters.append(f'item IN (\n{item_literals}\n  )')
 
     start_literal = _display_sql_literal(start_date)
-    end_literal = _display_sql_literal(target_date)
+    end_literal = _display_sql_literal(target_date + timedelta(days=1))
     country_literal = _display_sql_literal(TSE_COUNTRY)
-    batch_filter_sql = ''.join(f'\n          {line}' for line in batch_filters)
-    source_filter_sql = ''.join(f'\n      {line}' for line in source_filters)
+    where_filters = [f'country = {country_literal}', *scope_filters]
+    where_filters.extend((
+        f'DATE(crawl_datetime::timestamp) >= DATE {start_literal}',
+        f'DATE(crawl_datetime::timestamp) <= DATE {end_literal}',
+    ))
+    where_sql = '\n  AND '.join(where_filters)
 
-    return f"""WITH batches AS (
-    SELECT LEFT(TRIM(crawl_datetime), 10) AS collection_date,
-           account_name,
-           batch_id,
-           MAX(id) AS max_id
-    FROM {source['table_name']}
-    WHERE LEFT(TRIM(crawl_datetime), 10)
-          BETWEEN {start_literal} AND {end_literal}
-      AND country = {country_literal}
-      AND NULLIF(TRIM(account_name), '') IS NOT NULL
-      AND NULLIF(TRIM(batch_id), '') IS NOT NULL{batch_filter_sql}
-    GROUP BY LEFT(TRIM(crawl_datetime), 10), account_name, batch_id
-), ranked_batches AS (
-    SELECT collection_date,
-           account_name,
-           batch_id,
-           ROW_NUMBER() OVER (
-               PARTITION BY collection_date, LOWER(TRIM(account_name))
-               ORDER BY max_id DESC
-           ) AS batch_rank
-    FROM batches
-)
-SELECT {select_sql}
-FROM {source['table_name']} source
-JOIN ranked_batches latest
-  ON latest.collection_date = LEFT(TRIM(source.crawl_datetime), 10)
- AND LOWER(TRIM(latest.account_name)) = LOWER(TRIM(source.account_name))
- AND latest.batch_id = source.batch_id
- AND latest.batch_rank = 1
-WHERE LEFT(TRIM(source.crawl_datetime), 10)
-      BETWEEN {start_literal} AND {end_literal}
-  AND source.country = {country_literal}{source_filter_sql}
-ORDER BY LEFT(TRIM(source.crawl_datetime), 10),
-         LOWER(TRIM(source.account_name)), source.item, source.id;"""
+    return f"""SELECT
+{select_sql}
+FROM {source['table_name']}
+WHERE {where_sql}
+ORDER BY item, crawl_datetime;"""
 
 
 def _load_normal_corrections(cursor, target_date, table_name, rule_ids=None):

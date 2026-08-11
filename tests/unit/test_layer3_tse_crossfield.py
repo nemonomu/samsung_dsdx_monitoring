@@ -127,7 +127,7 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
-    def test_display_query_uses_canonical_latest_batch_scope_and_quotes_literals(self):
+    def test_display_query_is_compact_edit_scope_and_quotes_literals(self):
         query = tse_services.build_tse_display_query(
             date(2026, 8, 10), 'tse_tv',
             _rule(1, 'review_count_match'), days=3,
@@ -135,17 +135,19 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
 
         self.assertIn('FROM dx_tse.dx_tse_tv_retail_com', query)
-        self.assertIn('LEFT(TRIM(crawl_datetime), 10)', query)
-        self.assertIn("BETWEEN '2026-08-08' AND '2026-08-10'", query)
-        self.assertIn("country = 'TSE'", query)
-        self.assertIn("NULLIF(TRIM(account_name), '') IS NOT NULL", query)
-        self.assertIn("NULLIF(TRIM(batch_id), '') IS NOT NULL", query)
+        self.assertNotIn('WITH batches AS', query)
+        self.assertIn('retailer_sku_name', query)
         self.assertIn(
-            'PARTITION BY collection_date, LOWER(TRIM(account_name))', query,
+            "DATE(crawl_datetime::timestamp) >= DATE '2026-08-08'", query,
         )
-        self.assertIn('ORDER BY max_id DESC', query)
+        self.assertIn(
+            "DATE(crawl_datetime::timestamp) <= DATE '2026-08-11'", query,
+        )
+        self.assertIn("country = 'TSE'", query)
         self.assertIn("LOWER(TRIM('Homepro''s'))", query)
-        self.assertIn("source.item IN ('TV''1', 'TV-2')", query)
+        self.assertIn("'TV''1'", query)
+        self.assertIn("'TV-2'", query)
+        self.assertIn('ORDER BY item, crawl_datetime', query)
 
     def test_display_query_splits_composite_rule_fields_into_allowlisted_columns(self):
         query = tse_services.build_tse_display_query(
@@ -153,12 +155,10 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
             _rule(1, 'savings_amount_match'),
         )
 
-        self.assertIn('source.savings', query)
-        self.assertIn('source.original_sku_price', query)
-        self.assertIn('source.final_sku_price', query)
-        self.assertNotIn(
-            'source.original_sku_price|final_sku_price', query,
-        )
+        self.assertIn('    savings,', query)
+        self.assertIn('    original_sku_price,', query)
+        self.assertIn('    final_sku_price,', query)
+        self.assertNotIn('original_sku_price|final_sku_price', query)
 
     def test_latest_batch_query_uses_text_date_and_greatest_id(self):
         cursor = ScriptedCursor([{
@@ -214,11 +214,16 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         query = result['rule_summary'][0]['query']
 
         self.assertNotIn('DELETE FROM something', query)
-        self.assertIn('WITH batches AS', query)
+        self.assertNotIn('WITH batches AS', query)
         self.assertIn('FROM dx_tse.dx_tse_tv_retail_com', query)
-        self.assertIn("BETWEEN '2026-08-10' AND '2026-08-10'", query)
+        self.assertIn(
+            "DATE(crawl_datetime::timestamp) >= DATE '2026-08-10'", query,
+        )
+        self.assertIn(
+            "DATE(crawl_datetime::timestamp) <= DATE '2026-08-11'", query,
+        )
         self.assertIn("LOWER(TRIM('Homepro'))", query)
-        self.assertIn("source.item = 'A-1'", query)
+        self.assertIn("item = 'A-1'", query)
 
     def test_display_query_supports_multiple_scoped_retailers(self):
         query = tse_services.build_tse_display_query(
@@ -229,17 +234,16 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
             ],
         )
 
-        self.assertIn('LOWER(TRIM(account_name)) IN (', query)
         self.assertIn("LOWER(TRIM('Future''s Shop'))", query)
         self.assertIn("LOWER(TRIM('Homepro'))", query)
-        self.assertIn("source.item = 'TV-1'", query)
-        self.assertIn("source.item = 'TV-2'", query)
-        self.assertNotIn("source.item IN ('TV-1', 'TV-2')", query)
+        self.assertIn("item = 'TV-1'", query)
+        self.assertIn("item = 'TV-2'", query)
+        self.assertNotIn("item IN ('TV-1', 'TV-2')", query)
         self.assertIn(
-            "LOWER(TRIM('Homepro')) AND source.item = 'TV-1'", query,
+            "LOWER(TRIM('Homepro')) AND item = 'TV-1'", query,
         )
         self.assertIn(
-            "LOWER(TRIM('Future''s Shop')) AND source.item = 'TV-2'", query,
+            "LOWER(TRIM('Future''s Shop')) AND item = 'TV-2'", query,
         )
 
     def test_rule_detail_uses_same_retailer_key_for_summary_and_rows(self):
@@ -257,13 +261,13 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
 
         self.assertEqual(['Homepro'], list(result['retailer_summary']))
         self.assertEqual('Homepro', result['anomalies'][0]['account_name'])
-        self.assertIn('WITH batches AS', result['query'])
+        self.assertNotIn('WITH batches AS', result['query'])
         self.assertIn(
-            "BETWEEN '2026-08-08' AND '2026-08-10'",
+            "DATE(crawl_datetime::timestamp) >= DATE '2026-08-08'",
             result['queries']['Homepro'],
         )
         self.assertIn(
-            "source.item = 'A-1'", result['queries']['Homepro'],
+            "item = 'A-1'", result['queries']['Homepro'],
         )
 
     def test_rule_detail_query_keeps_null_item_anomaly_scope(self):
@@ -280,9 +284,9 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
         query = result['queries']['Homepro']
 
-        self.assertIn('source.item IS NULL', query)
+        self.assertIn('item IS NULL', query)
         self.assertIn("LOWER(TRIM('Homepro'))", query)
-        self.assertNotIn('source.item IN (', query)
+        self.assertNotIn('item IN (', query)
 
     def test_normal_history_excludes_same_record_and_rule(self):
         cursor = ScriptedCursor([
