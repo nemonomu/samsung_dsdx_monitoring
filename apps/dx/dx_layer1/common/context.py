@@ -15,7 +15,8 @@ LAYER_CONTEXT = {
 # check_type → 섹션 페이지 표시명 (기본값, DB에 check_name이 없을 때 사용)
 SECTION_TITLES = {
     'dashboard': '대시보드',
-    'retail': 'Retail',
+    'retail': 'SEA Retail',
+    'tse_retail': 'TSE Retail',
     'sentiment': 'Retail 감성분석',
     'youtube': 'YouTube',
     'market_trend': 'Market Trend',
@@ -35,6 +36,12 @@ SECTION_TITLES = {
     'macro_rpi': '소매 가격 지수',
 }
 
+_PRIMARY_SECTION_ORDER = {
+    'retail': 0,
+    'tse_retail': 1,
+    'youtube': 2,
+}
+
 
 def _build_sidebar_groups(section):
     """스케줄 DB에서 동적으로 사이드바 그룹 생성"""
@@ -44,7 +51,14 @@ def _build_sidebar_groups(section):
     period_sections = []
     seen = set()
 
-    for s in schedules:
+    ordered_schedules = sorted(
+        enumerate(schedules),
+        key=lambda item: (
+            _PRIMARY_SECTION_ORDER.get(item[1]['check_type'], 100),
+            item[0],
+        ),
+    )
+    for _index, s in ordered_schedules:
         ct = s['check_type']
         if ct in DISABLED_CHECK_TYPES:
             continue

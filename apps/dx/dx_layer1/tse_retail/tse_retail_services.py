@@ -82,6 +82,8 @@ def _build_category(cursor, product_line, source, target_date, phase):
             'retailer': display_tse_retailer(raw_retailer),
             'batch_id': row.get('batch_id'),
             'actual_count': int(row.get('actual_count') or 0),
+            'main_count': int(row.get('main_count') or 0),
+            'bsr_count': int(row.get('bsr_count') or 0),
         }
 
     retailer_keys = sorted(
@@ -100,6 +102,8 @@ def _build_category(cursor, product_line, source, target_date, phase):
             'actual': actual,
             'count': actual,
             'total': actual,
+            'main_count': int(data.get('main_count') or 0),
+            'bsr_count': int(data.get('bsr_count') or 0),
             'rate': round(actual / TSE_EXPECTED_COUNT * 100, 1),
             'status': status,
         })

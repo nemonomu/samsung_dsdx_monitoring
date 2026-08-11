@@ -51,6 +51,28 @@ _SERVICE_MAP = {
 
 _YOUTUBE_SAVEPOINT = 'layer1_youtube_monitoring'
 _TSE_RETAIL_SAVEPOINT = 'layer1_tse_retail_monitoring'
+_DISPLAY_CHECK_PRIORITY = {
+    'retail': 0,
+    'tse_retail': 1,
+    'youtube': 2,
+}
+
+
+def _sort_checks_for_display(checks):
+    """Order primary daily cards without changing service execution order."""
+    return [
+        check
+        for _index, check in sorted(
+            enumerate(checks),
+            key=lambda item: (
+                0,
+                _DISPLAY_CHECK_PRIORITY[item[1].get('check_type')],
+            ) if item[1].get('check_type') in _DISPLAY_CHECK_PRIORITY else (
+                1,
+                item[0],
+            ),
+        )
+    ]
 
 
 def _rollback_youtube_savepoint(cursor):
@@ -202,6 +224,8 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                 check_data['is_target_date'] = check_type in target_date_types
                 results['checks'].append(check_data)
                 results['failed_items'].extend(svc_result.get('failed_items', []))
+
+        results['checks'] = _sort_checks_for_display(results['checks'])
 
         if not check_type_filter:
             check_items = [

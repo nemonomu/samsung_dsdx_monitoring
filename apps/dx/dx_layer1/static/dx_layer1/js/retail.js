@@ -320,7 +320,7 @@ function toggleRetailCategory(element, checkIdx, catIdx) {
 var rawView = new RawDataView({
     apiUrl: '/dx/layer1/retail/api/raw-data/',
     backUrl: '/dx/layer1/retail/',
-    title: function(p) { return p.category + ' Retail - ' + p.retailer + ' (' + p.period + ')'; },
+    title: function(p) { return 'SEA Retail - ' + p.retailer + ' (' + p.period + ')'; },
     urlParams: ['category', 'retailer', 'period']
 });
 
@@ -448,7 +448,7 @@ async function loadSectionData() {
 
         var check = data.checks ? data.checks.find(function(c) { return c.check_type === 'retail'; }) : null;
         var checkIdx = check ? data.checks.indexOf(check) : 0;
-        if (!check) check = { name: 'Retail', description: '데이터 없음', check_type: 'retail', status: 'PENDING', categories: [] };
+        if (!check) check = { name: 'SEA Retail', description: '데이터 없음', check_type: 'retail', status: 'PENDING', categories: [] };
 
         var container = document.getElementById('section-content');
         var html = renderRetailCheck(check, checkIdx);

@@ -223,6 +223,15 @@ function renderDemandMissingTable() {
 
 
 // 백업 실행
+function formatBackupCounts(data) {
+    return [
+        'SEA TV: ' + Number(data.tv_count || 0).toLocaleString() + '건',
+        'TSE TV: ' + Number(data.tse_tv_count || 0).toLocaleString() + '건',
+        'TSE REF: ' + Number(data.tse_ref_count || 0).toLocaleString() + '건',
+        'TSE LDY: ' + Number(data.tse_ldy_count || 0).toLocaleString() + '건'
+    ].join('\n');
+}
+
 function runBackup() {
     var btn = document.getElementById('btn-backup');
     var targetDate = getSelectedDate();
@@ -230,8 +239,11 @@ function runBackup() {
     btn.textContent = '확인 중...';
 
     // 1. 먼저 백업 대상 건수 조회 (GET)
-    fetch('/dx/layer1/retail/api/backup/?date=' + targetDate)
-        .then(function(r) { return r.json(); })
+    fetch('/dx/layer1/retail/api/backup/?date=' + encodeURIComponent(targetDate))
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
         .then(function(res) {
             btn.disabled = false;
             btn.textContent = '백업 실행';
@@ -242,7 +254,8 @@ function runBackup() {
             }
 
             // 2. 건수 표시 및 확인 팝업
-            var msg = targetDate + ' 수집 데이터 백업\nTV: ' + res.tv_count + '건\n백업을 진행하시겠습니까?';
+            var msg = targetDate + ' 수집 데이터 백업\n' +
+                formatBackupCounts(res) + '\n백업을 진행하시겠습니까?';
             showConfirm(msg).then(function(confirmed) {
                 if (!confirmed) return;
 
@@ -250,14 +263,17 @@ function runBackup() {
                 btn.disabled = true;
                 btn.textContent = '백업 중...';
 
-                fetch('/dx/layer1/retail/api/backup/?date=' + targetDate, {
+                fetch('/dx/layer1/retail/api/backup/?date=' + encodeURIComponent(targetDate), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': getCsrfToken()
                     }
                 })
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
                 .then(function(result) {
                     btn.disabled = false;
                     btn.textContent = '백업 실행';

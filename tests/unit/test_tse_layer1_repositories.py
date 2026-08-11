@@ -29,8 +29,8 @@ class TseLayer1RepositoryTests(unittest.TestCase):
     def test_latest_batch_is_selected_by_greatest_id(self):
         cursor = ScriptedCursor([{
             'fetchall': [
-                ('Homepro', 'h20260810_095803', 300),
-                ('Future Retailer', 'future-batch', 245),
+                ('Homepro', 'h20260810_095803', 300, 180, 100),
+                ('Future Retailer', 'future-batch', 245, 150, 80),
             ],
         }])
 
@@ -44,8 +44,12 @@ class TseLayer1RepositoryTests(unittest.TestCase):
         self.assertIn('DISTINCT ON (LOWER(TRIM(account_name)))', sql)
         self.assertIn('ORDER BY LOWER(TRIM(account_name)), id DESC', sql)
         self.assertNotIn('MAX(BATCH_ID)', sql.upper())
+        self.assertIn('WHERE rows.main_rank IS NOT NULL', sql)
+        self.assertIn('WHERE rows.bsr_rank IS NOT NULL', sql)
         self.assertEqual(('2026-08-10',), params)
         self.assertEqual(300, result[0]['actual_count'])
+        self.assertEqual(180, result[0]['main_count'])
+        self.assertEqual(100, result[0]['bsr_count'])
         self.assertEqual('Future Retailer', result[1]['retailer'])
 
     def test_mapping_rows_are_supported(self):
@@ -54,6 +58,8 @@ class TseLayer1RepositoryTests(unittest.TestCase):
                 'account_name': 'Homepro',
                 'batch_id': 'batch-1',
                 'actual_count': 287,
+                'main_count': 200,
+                'bsr_count': 90,
             }],
         }])
 
@@ -65,6 +71,8 @@ class TseLayer1RepositoryTests(unittest.TestCase):
             'retailer': 'Homepro',
             'batch_id': 'batch-1',
             'actual_count': 287,
+            'main_count': 200,
+            'bsr_count': 90,
         }], result)
 
 

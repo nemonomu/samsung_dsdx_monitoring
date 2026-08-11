@@ -88,8 +88,14 @@ class TseLayer1ServiceTests(unittest.TestCase):
     def test_response_contract_and_future_retailer_are_dynamic(self):
         self._set_counts({
             'tse_tv': [
-                {'retailer': 'Homepro', 'batch_id': 'tv-home', 'actual_count': 300},
-                {'retailer': 'New Retail', 'batch_id': 'tv-new', 'actual_count': 250},
+                {
+                    'retailer': 'Homepro', 'batch_id': 'tv-home',
+                    'actual_count': 300, 'main_count': 180, 'bsr_count': 100,
+                },
+                {
+                    'retailer': 'New Retail', 'batch_id': 'tv-new',
+                    'actual_count': 250, 'main_count': 150, 'bsr_count': 80,
+                },
             ],
             'tse_ref': [
                 {'retailer': 'Homepro', 'batch_id': 'ref-home', 'actual_count': 300},
@@ -120,6 +126,8 @@ class TseLayer1ServiceTests(unittest.TestCase):
             [item['retailer'] for item in tv['retailers']],
         )
         self.assertEqual('tv-new', tv['retailers'][1]['batch_id'])
+        self.assertEqual(150, tv['retailers'][1]['main_count'])
+        self.assertEqual(80, tv['retailers'][1]['bsr_count'])
         self.assertEqual(1200, check['expected'])
         self.assertEqual(1137, check['actual'])
 

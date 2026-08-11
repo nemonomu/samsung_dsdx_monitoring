@@ -149,7 +149,9 @@ var L1 = (function() {
 // ============================================================
 function onSubitemClick(groupKey, itemName) {
     var urls = {
+        'SEA Retail': '/dx/layer1/retail/',
         'Retail': '/dx/layer1/retail/',
+        'TSE Retail': '/dx/layer1/',
         'Retail 감성분석': '/dx/layer1/sentiment/',
         'YouTube': '/dx/layer1/youtube/',
         'Market Trend': '/dx/layer1/market-trend/',

@@ -182,7 +182,7 @@ def get_layer1_stats(cursor, target_date, now):
             if r['status'] != 'OK':
                 error_type = '수집 없음' if r['count'] == 0 else ('주의' if r['status'] == 'WARNING' else '수집량 부족')
                 failed_items.append({
-                    'source': f"TV Retail - {r['retailer']}",
+                    'source': f"SEA Retail - {r['retailer']}",
                     'error_type': error_type,
                     'expected': f">= {OK_THRESHOLD}",
                     'actual': r['count'],

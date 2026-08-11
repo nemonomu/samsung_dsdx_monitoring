@@ -8,19 +8,35 @@ function tseNumber(value) {
 }
 
 function renderTseRetailerRow(retailer) {
-    var expected = tseNumber(retailer.expected);
+    var mainCount = tseNumber(retailer.main_count);
+    var bsrCount = tseNumber(retailer.bsr_count);
     var actual = tseNumber(retailer.actual !== undefined ? retailer.actual : retailer.count);
-    var rate = retailer.rate !== undefined
-        ? tseNumber(retailer.rate)
-        : (expected > 0 ? Math.round(actual / expected * 1000) / 10 : 0);
 
     return '<tr>' +
         '<td class="rt-name">' + esc(retailer.retailer || '-') + '</td>' +
-        '<td>' + esc(retailer.batch_id || '-') + '</td>' +
-        '<td>' + expected.toLocaleString() + '</td>' +
+        '<td>' + mainCount.toLocaleString() + '</td>' +
+        '<td>' + bsrCount.toLocaleString() + '</td>' +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
-        '<td>' + rate.toLocaleString() + '%</td>' +
         '<td class="rt-status ct-nc">' + getStatusBadge(retailer.status) + '</td>' +
+    '</tr>';
+}
+
+function renderTseTotalRow(retailers) {
+    var totals = retailers.reduce(function(result, retailer) {
+        result.main += tseNumber(retailer.main_count);
+        result.bsr += tseNumber(retailer.bsr_count);
+        result.actual += tseNumber(
+            retailer.actual !== undefined ? retailer.actual : retailer.count
+        );
+        return result;
+    }, { main: 0, bsr: 0, actual: 0 });
+
+    return '<tr class="rt-sum">' +
+        '<td>합계</td>' +
+        '<td>' + totals.main.toLocaleString() + '</td>' +
+        '<td>' + totals.bsr.toLocaleString() + '</td>' +
+        '<td>' + totals.actual.toLocaleString() + '</td>' +
+        '<td></td>' +
     '</tr>';
 }
 
@@ -29,8 +45,8 @@ function renderTseCategory(cat, checkIdx, catIdx) {
     var actual = tseNumber(cat.actual !== undefined ? cat.actual : cat.total);
     var retailers = cat.retailers || [];
     var rowsHtml = retailers.length > 0
-        ? retailers.map(renderTseRetailerRow).join('')
-        : '<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">설정된 리테일러 데이터 없음</td></tr>';
+        ? retailers.map(renderTseRetailerRow).join('') + renderTseTotalRow(retailers)
+        : '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">설정된 리테일러 데이터 없음</td></tr>';
 
     return '<div class="sentiment-category-item">' +
         '<div class="sentiment-category-header" onclick="toggleTseCategory(this, ' + checkIdx + ', ' + catIdx + ')">' +
@@ -48,19 +64,17 @@ function renderTseCategory(cat, checkIdx, catIdx) {
                 '<div class="retail-rank-wrap">' +
                     '<table class="ct ct-grid">' +
                         '<colgroup>' +
-                            '<col style="width:18%">' +
                             '<col style="width:28%">' +
-                            '<col style="width:13%">' +
-                            '<col style="width:13%">' +
-                            '<col style="width:12%">' +
-                            '<col style="width:16%">' +
+                            '<col style="width:18%">' +
+                            '<col style="width:18%">' +
+                            '<col style="width:18%">' +
+                            '<col style="width:18%">' +
                         '</colgroup>' +
                         '<thead><tr>' +
                             '<th style="text-align:left">리테일러</th>' +
-                            '<th>최신 배치</th>' +
-                            '<th>예상 건수</th>' +
-                            '<th>수집 건수</th>' +
-                            '<th>수집률</th>' +
+                            '<th>MAIN</th>' +
+                            '<th>BSR</th>' +
+                            '<th>총 건수</th>' +
                             '<th></th>' +
                         '</tr></thead>' +
                         '<tbody>' + rowsHtml + '</tbody>' +

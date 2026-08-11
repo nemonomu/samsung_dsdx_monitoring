@@ -202,6 +202,34 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         self.assertEqual({'retail'}, daily_types)
         self.assertEqual({'retail'}, target_types)
 
+    def test_primary_cards_are_sorted_without_reordering_other_checks(self):
+        checks = [
+            {'check_type': 'macro_cpi'},
+            {'check_type': 'youtube'},
+            {'check_type': 'sentiment'},
+            {'check_type': 'retail'},
+            {'check_type': 'tse_retail'},
+            {'check_type': 'macro_rpi'},
+        ]
+
+        ordered = self.service._sort_checks_for_display(checks)
+
+        self.assertEqual(
+            [
+                'retail', 'tse_retail', 'youtube',
+                'macro_cpi', 'sentiment', 'macro_rpi',
+            ],
+            [check['check_type'] for check in ordered],
+        )
+        self.assertEqual(
+            ['macro_cpi', 'sentiment', 'macro_rpi'],
+            [
+                check['check_type']
+                for check in ordered
+                if check['check_type'] not in {'retail', 'tse_retail', 'youtube'}
+            ],
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
