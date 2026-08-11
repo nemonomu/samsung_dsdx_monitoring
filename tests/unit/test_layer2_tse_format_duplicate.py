@@ -143,7 +143,23 @@ class TSEFormatValidationTests(unittest.TestCase):
             {'final_sku_price', 'original_sku_price'}, set(errors)
         )
 
-    def test_original_and_savings_are_bidirectional_optional_pair(self):
+    def test_out_of_stock_final_price_and_zero_percent_savings_are_valid(self):
+        self.assertEqual(
+            {},
+            self.service.evaluate_tse_format_row(self.valid_row(
+                final_sku_price='สินค้าหมด',
+            )),
+        )
+        self.assertEqual(
+            {},
+            self.service.evaluate_tse_format_row(self.valid_row(
+                final_sku_price='฿6,490',
+                original_sku_price='฿6,499',
+                savings='฿9 (-0%)',
+            )),
+        )
+
+    def test_original_and_savings_are_one_way_optional_pair(self):
         self.assertEqual(
             {},
             self.service.evaluate_tse_format_row(self.valid_row(
@@ -156,9 +172,13 @@ class TSEFormatValidationTests(unittest.TestCase):
                 original_sku_price='-', savings='-',
             )),
         )
-        self.assertIn(
-            'savings',
-            self.service.evaluate_tse_format_row(self.valid_row(savings=None)),
+        self.assertEqual(
+            {},
+            self.service.evaluate_tse_format_row(self.valid_row(
+                final_sku_price='฿5,990',
+                original_sku_price='฿6,290',
+                savings='-',
+            )),
         )
         self.assertIn(
             'original_sku_price',
