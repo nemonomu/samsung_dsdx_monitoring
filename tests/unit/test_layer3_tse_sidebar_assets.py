@@ -22,9 +22,13 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
                 'expanded': True,
                 'active': True,
                 'items': [
-                    {'name': 'TV Retail', 'active': False},
                     {
-                        'name': 'TSE',
+                        'name': 'SEA Retail',
+                        'detail_code': 'tv',
+                        'active': False,
+                    },
+                    {
+                        'name': 'TSE Retail',
                         'active': True,
                         'children': [{
                             'name': 'TSE REF',
@@ -37,9 +41,13 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             }],
         }))
 
-        self.assertIn("onSubitemClick('cross_field', 'TV Retail', '')", rendered)
+        self.assertIn(
+            "onSubitemClick('cross_field', 'SEA Retail', 'tv')", rendered
+        )
         self.assertIn('class="sidebar-subgroup active"', rendered)
-        self.assertIn('class="sidebar-subgroup-title">TSE</div>', rendered)
+        self.assertIn(
+            'class="sidebar-subgroup-title">TSE Retail</div>', rendered
+        )
         self.assertIn('data-item-name="TSE REF"', rendered)
         self.assertIn('data-detail-code="tse_ref"', rendered)
         self.assertIn(
@@ -72,7 +80,50 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             source,
         )
         self.assertIn(
+            "if (detailCode === 'tv') type = 'tv';",
+            source,
+        )
+        self.assertIn(
+            "checkName === 'TV 논리적 일관성'",
+            source,
+        )
+        self.assertIn(
+            "return 'SEA Retail';",
+            source,
+        )
+        self.assertIn(
+            'const displayName = getLayer3DisplayName(check.name, check.detail_code || \'\');',
+            source,
+        )
+        self.assertIn(
+            'let title = getLayer3DisplayName(checkName, detailCode);',
+            source,
+        )
+        self.assertIn(
+            "getLayer3DisplayName(checkName, '') + ' - 검증 규칙'",
+            source,
+        )
+        self.assertIn(
+            "const crossfieldChecks = ['TV 논리적 일관성'",
+            source,
+        )
+        self.assertIn(
             "if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';",
+            source,
+        )
+
+    def test_crossfield_detail_shows_a_message_when_retailer_rows_are_missing(self):
+        source = (
+            REPO_ROOT
+            / 'apps/dx/dx_layer3/static/dx_layer3/js/cross-field.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn(
+            '해당 리테일러의 상세 데이터를 찾을 수 없습니다. 다시 조회해 주세요.',
+            source,
+        )
+        self.assertNotIn(
+            'if (!retailerData || !retailerData[retailer]) return;',
             source,
         )
 

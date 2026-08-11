@@ -14,7 +14,23 @@ function backToCrossfieldSummary() {
 function showRetailerDetail(retailer) {
     const inline = isCrossFieldInline();
     const retailerData = window.crossfieldRetailerData;
-    if (!retailerData || !retailerData[retailer]) return;
+    if (!retailerData || !retailerData[retailer]) {
+        const message = `
+            <div class="inline-detail">
+                ${inline ? '<button class="btn-back" onclick="ViewStack.pop()">← 뒤로가기</button>' : ''}
+                <div class="inline-detail-body">
+                    <p>해당 리테일러의 상세 데이터를 찾을 수 없습니다. 다시 조회해 주세요.</p>
+                </div>
+            </div>`;
+        if (inline) {
+            ViewStack.push(message);
+        } else {
+            AppModal.setTitle('detail', `${retailer} - 상세 조회`);
+            AppModal.setBody('detail', message);
+            AppModal.open('detail');
+        }
+        return;
+    }
 
     const data = retailerData[retailer];
     const rows = data.rows;

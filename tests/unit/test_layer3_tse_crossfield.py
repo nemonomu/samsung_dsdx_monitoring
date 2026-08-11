@@ -147,7 +147,9 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
     def test_active_metadata_drives_dynamic_retailer_summary(self):
         cursor = ScriptedCursor([
             {'fetchall': [_rule(1, 'review_count_match')]},
-            {'fetchall': [_valid_row(count_of_reviews='9')]},
+            {'fetchall': [_valid_row(
+                account_name='homepro', count_of_reviews='9',
+            )]},
             {'fetchall': []},
         ])
         result = tse_services.build_tse_crossfield_result(
@@ -159,6 +161,26 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertEqual(result['retailers'][0]['retailer'], 'Homepro')
         self.assertEqual(result['retailers'][0]['batch_id'], 'batch-new')
         self.assertEqual(result['retailers'][0]['rules'][0]['error_count'], 1)
+        self.assertEqual(
+            result['rule_results'][0]['error_details'][0]['account_name'],
+            'Homepro',
+        )
+
+    def test_rule_detail_uses_same_retailer_key_for_summary_and_rows(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'review_count_match')]},
+            {'fetchall': [_valid_row(
+                account_name='homepro', count_of_reviews='9',
+            )]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.get_tse_cross_field_rule_detail(
+            cursor, date(2026, 8, 10), 'tse_tv', 1,
+        )
+
+        self.assertEqual(['Homepro'], list(result['retailer_summary']))
+        self.assertEqual('Homepro', result['anomalies'][0]['account_name'])
 
     def test_normal_history_excludes_same_record_and_rule(self):
         cursor = ScriptedCursor([

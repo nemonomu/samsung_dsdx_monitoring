@@ -82,6 +82,17 @@ function copyQueryToClipboard(element) {
 
 let currentData = null;
 
+// 기존 API/규칙 식별자는 유지하고 화면 표시명만 통일한다.
+function getLayer3DisplayName(checkName, detailCode) {
+    if (
+        checkName === 'TV 논리적 일관성'
+        || (detailCode === 'tv' && (checkName === 'TV Retail' || checkName === 'SEA Retail'))
+    ) {
+        return 'SEA Retail';
+    }
+    return checkName;
+}
+
 // product_url 렌더링 헬퍼: 아이콘(링크) + URL 텍스트(잘림)
 function renderProductUrl(url) {
     var safe = safeUrl(url);
@@ -167,19 +178,28 @@ document.addEventListener('DOMContentLoaded', function() {
     loadData();
 });
 
+function formatBackupPendingCounts(data) {
+    return `SEA TV: ${Number(data.tv_count || 0).toLocaleString()}, ` +
+        `TSE TV: ${Number(data.tse_tv_count || 0).toLocaleString()}, ` +
+        `TSE REF: ${Number(data.tse_ref_count || 0).toLocaleString()}, ` +
+        `TSE LDY: ${Number(data.tse_ldy_count || 0).toLocaleString()}`;
+}
+
 async function checkBackupStatus() {
     const date = getSelectedDate();
     if (!date) return;
     try {
-        const res = await fetch(`/dx/layer1/retail/api/backup-status/?date=${date}`);
+        const res = await fetch(`/dx/layer1/retail/api/backup-status/?date=${encodeURIComponent(date)}`);
+        if (!res.ok) return;
         const data = await res.json();
         if (!data.success || data.pending_count === 0) return;
+        const counts = formatBackupPendingCounts(data);
 
         if (!data.has_backup) {
-            const goBackup = await showConfirm(`${date} 미백업 ${data.pending_count}건 (TV: ${data.tv_count}, HHP: ${data.hhp_count})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
+            const goBackup = await showConfirm(`${date} 미백업 ${data.pending_count}건 (${counts})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
             if (goBackup) window.location.href = '/dx/layer1/';
         } else {
-            const goBackup = await showConfirm(`추가 수집 데이터 ${data.pending_count}건 미백업 (TV: ${data.tv_count}, HHP: ${data.hhp_count})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
+            const goBackup = await showConfirm(`추가 수집 데이터 ${data.pending_count}건 미백업 (${counts})\n백업 후 검수를 진행해주세요.`, 'warning', { okText: 'Layer 1 이동', cancelText: '계속 조회' });
             if (goBackup) window.location.href = '/dx/layer1/';
         }
     } catch (e) { /* 백업 상태 조회 실패 시 무시 */ }
@@ -371,6 +391,7 @@ function renderData(data) {
 
         checks.forEach((check, checkIdx) => {
             const status = (check.status || 'OK').toLowerCase();
+            const displayName = getLayer3DisplayName(check.name, check.detail_code || '');
             // 카테고리별 특성은 모두 검증 규칙 버튼 표시, 크로스 필드는 특정 항목만
             const hasRules = categoryName === '카테고리별 특성'
                 || crossfieldChecksWithRules.includes(check.name)
@@ -381,7 +402,7 @@ function renderData(data) {
                 <div class="check-item clickable-row" onclick="showDetail('${escJs(categoryName)}', '${escJs(check.name)}', '${escJs(check.detail_code || '')}')">
                     <div class="check-info">
                         <div class="check-name">
-                            ${esc(check.name)}
+                            ${esc(displayName)}
                             ${check.threshold ? `<span class="threshold-badge">${esc(String(check.threshold))}</span>` : ''}
                             ${rulesBtn}
                         </div>
@@ -468,7 +489,7 @@ async function showDetail(category, checkName, detailCode) {
     }
 
     let apiUrl = '';
-    let title = checkName;
+    let title = getLayer3DisplayName(checkName, detailCode);
 
     // API URL 결정
     if (category === '시계열 이상치') {
@@ -495,7 +516,8 @@ async function showDetail(category, checkName, detailCode) {
         } else {
             // TV/HHP 논리적 일관성
             let type = 'hhp';
-            if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
+            if (detailCode === 'tv') type = 'tv';
+            else if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
             else if (detailCode === 'tse_ref' || checkName.includes('TSE REF')) type = 'tse_ref';
             else if (detailCode === 'tse_ldy' || checkName.includes('TSE LDY')) type = 'tse_ldy';
             else if (checkName.includes('TV')) type = 'tv';
@@ -996,7 +1018,7 @@ function _showReviewDialog(checkType, callback) {
 }
 
 async function showRulesModal(checkName) {
-    AppModal.setTitle('detail', checkName + ' - 검증 규칙');
+    AppModal.setTitle('detail', getLayer3DisplayName(checkName, '') + ' - 검증 규칙');
     AppModal.setBody('detail', '<p style="text-align:center;">로딩 중...</p>');
     AppModal.open('detail');
 

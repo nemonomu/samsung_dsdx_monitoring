@@ -417,6 +417,7 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
             if (row_id, str(rule['rule_id'])) in normal_pairs:
                 continue
             detail = dict(row)
+            detail['account_name'] = retailer
             detail['validation_tag'] = rule['error_message']
             detail['rule_key'] = rule['rule_key']
             error_details.append(detail)

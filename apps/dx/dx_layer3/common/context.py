@@ -43,11 +43,28 @@ def _get_sidebar_items():
     tse_section_codes = {
         source['section_code'] for source in TSE_SOURCE_CONFIG.values()
     }
-    sidebar['cross_field'] = list(dict.fromkeys(
-        r['section_name']
-        for r in crossfield_rules
-        if r.get('section_name') and r.get('section_code') not in tse_section_codes
-    ))
+    crossfield_items = []
+    seen_crossfield_sections = set()
+    sea_item_index = None
+    for rule in crossfield_rules:
+        section_code = str(rule.get('section_code') or '').strip()
+        section_name = str(rule.get('section_name') or '').strip()
+        if not section_name or section_code in tse_section_codes:
+            continue
+
+        identity = section_code or section_name
+        if identity in seen_crossfield_sections:
+            continue
+        seen_crossfield_sections.add(identity)
+
+        if section_code == 'tv_retail':
+            sea_item_index = len(crossfield_items)
+            crossfield_items.append({
+                'name': 'SEA Retail',
+                'detail_code': 'tv',
+            })
+        else:
+            crossfield_items.append(section_name)
 
     active_tse_sections = {
         r.get('section_code') for r in crossfield_rules
@@ -62,10 +79,18 @@ def _get_sidebar_items():
             'detail_code': detail_code,
         })
     if tse_children:
-        sidebar['cross_field'].append({
-            'name': 'TSE',
+        tse_item = {
+            'name': 'TSE Retail',
             'children': tse_children,
-        })
+        }
+        insert_at = (
+            sea_item_index + 1
+            if sea_item_index is not None
+            else len(crossfield_items)
+        )
+        crossfield_items.insert(insert_at, tse_item)
+
+    sidebar['cross_field'] = crossfield_items
 
     sidebar['category_spec'] = list(dict.fromkeys(
         r['section_name'] for r in load_category_rules() if r.get('section_name')
@@ -83,6 +108,21 @@ def _build_sidebar_groups(section, focus='', detail_code=''):
     for item in sidebar['cross_field']:
         if not isinstance(item, dict):
             crossfield_items.append({'name': item, 'active': False})
+            continue
+
+        if not item.get('children'):
+            item_detail_code = item.get('detail_code', '')
+            crossfield_items.append({
+                'name': item['name'],
+                'detail_code': item_detail_code,
+                'active': (
+                    section == 'cross_field'
+                    and (
+                        focus == item['name']
+                        or (item_detail_code and detail_code == item_detail_code)
+                    )
+                ),
+            })
             continue
 
         children = []
