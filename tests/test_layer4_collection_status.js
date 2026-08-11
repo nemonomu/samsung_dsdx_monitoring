@@ -261,6 +261,17 @@ async function run() {
             }
         }
     };
+    const tseDaily = loadPage(
+        '?focus=' + encodeURIComponent('일일 수집 현황'),
+        tseLayer1Data,
+        tseCollections
+    );
+    tseDaily.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const tseDailyHtml = tseDaily.elements['cs-daily-container'].innerHTML;
+    assert(tseDailyHtml.includes('TSE TV 수집 데이터'));
+    assert(tseDailyHtml.includes('dx_tse.dx_tse_tv_retail_com'));
+
     const tseEmail = loadPage(
         '?focus=' + encodeURIComponent('이메일 보고'),
         tseLayer1Data,
@@ -269,21 +280,20 @@ async function run() {
     tseEmail.L4._sectionHandler.collection_status();
     await flushPromises();
     const tseEmailHtml = tseEmail.elements['cs-email-container'].innerHTML;
-    assert(tseEmailHtml.includes('TSE TV 수집 데이터'));
-    assert(tseEmailHtml.includes('dx_tse.dx_tse_tv_retail_com'));
-    assert(tseEmailHtml.includes('TSE - TV'));
-    assert(tseEmailHtml.includes('TSE - REF'));
-    assert(tseEmailHtml.includes('TSE - LDY'));
-    assert(tseEmailHtml.includes('ldy_capacity'));
+    assert(!tseEmailHtml.includes('TSE TV 수집 데이터'));
+    assert(!tseEmailHtml.includes('dx_tse.dx_tse_tv_retail_com'));
+    assert(!tseEmailHtml.includes('TSE - TV'));
+    assert(!tseEmailHtml.includes('TSE - REF'));
+    assert(!tseEmailHtml.includes('TSE - LDY'));
+    assert(!tseEmailHtml.includes('ldy_capacity'));
     assert(!tseEmailHtml.includes('TSE Cross-field 검증 현황'));
     assert(!tseEmailHtml.includes('할인율 불일치'));
-    assert(tseEmailHtml.includes('>6</td>'));
     assert(!tseEmail.requests.some(request =>
         request.url.startsWith('/dx/layer3/api/tse-crossfield-summary/')
     ));
-    assert(tseEmail.requests.some(request => request.url.includes('category=tse_tv')));
-    assert(tseEmail.requests.some(request => request.url.includes('category=tse_ref')));
-    assert(tseEmail.requests.some(request => request.url.includes('category=tse_ldy')));
+    assert(!tseEmail.requests.some(request => request.url.includes('category=tse_tv')));
+    assert(!tseEmail.requests.some(request => request.url.includes('category=tse_ref')));
+    assert(!tseEmail.requests.some(request => request.url.includes('category=tse_ldy')));
 
     assert(source.includes("fetch('/dx/layer4/api/collection-status/send-email/'"));
     assert(source.includes('date: getSelectedDate()'));

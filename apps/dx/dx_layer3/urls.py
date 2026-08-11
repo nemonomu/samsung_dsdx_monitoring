@@ -29,7 +29,6 @@ urlpatterns = [
 
     # API — 크로스 필드
     path('api/cross-field-detail/', cf_api.cross_field_detail, name='api_cross_field_detail'),
-    path('api/tse-crossfield-summary/', cf_api.tse_crossfield_summary, name='api_tse_crossfield_summary'),
     path('api/sentiment-cross-detail/', cf_api.sentiment_cross_detail, name='api_sentiment_cross_detail'),
     path('api/crossfield-rules/', cf_api.crossfield_rules, name='api_crossfield_rules'),
 

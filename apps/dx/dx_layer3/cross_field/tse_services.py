@@ -18,7 +18,6 @@ from apps.common.retail_columns import (
 )
 from apps.common.tse_retail import (
     TSE_COUNTRY,
-    TSE_SOURCE_CONFIG,
     display_tse_retailer,
     get_tse_editable_columns,
     get_tse_source,
@@ -784,27 +783,4 @@ def get_tse_cross_field_rule_detail(
             target_date, result['product_line'], selected, days=days,
         ),
         'queries': display_queries,
-    }
-
-
-def get_tse_email_crossfield_summary(cursor, target_date):
-    """Return the stable read-only contract consumed by Layer 4 email UI."""
-    product_lines = []
-    for product_line in TSE_SOURCE_CONFIG:
-        result = build_tse_crossfield_result(cursor, target_date, product_line)
-        if not result['configured']:
-            continue
-        product_lines.append({
-            'product_line': product_line,
-            'label': result['label'],
-            'table_name': result['table_name'],
-            'total_checked': result['total_checked'],
-            'failed_records': result['failed_records'],
-            'total_errors': result['total_anomalies'],
-            'retailers': result['retailers'],
-        })
-    return {
-        'success': True,
-        'date': str(target_date),
-        'product_lines': product_lines,
     }

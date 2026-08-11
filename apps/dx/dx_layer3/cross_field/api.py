@@ -70,29 +70,6 @@ def cross_field_detail(request):
         return safe_error(e)
 
 
-def tse_crossfield_summary(request):
-    """Layer 4/email용 TSE 크로스필드 요약(읽기 전용)."""
-    date_str = request.GET.get('date')
-    try:
-        target_date = (
-            datetime.strptime(date_str, '%Y-%m-%d').date()
-            if date_str
-            else (datetime.now() - timedelta(days=1)).date()
-        )
-    except ValueError:
-        return JsonResponse({'error': '잘못된 날짜 형식입니다.'}, status=400)
-
-    try:
-        with dx_connection() as (conn, cursor):
-            result = tse_services.get_tse_email_crossfield_summary(
-                cursor, target_date,
-            )
-        return JsonResponse(result)
-    except Exception as e:
-        log_error(e)
-        return safe_error(e, product_lines=[])
-
-
 def sentiment_cross_detail(request):
     """Sentiment ↔ 리뷰 일관성 상세 API"""
     date_str = request.GET.get('date')

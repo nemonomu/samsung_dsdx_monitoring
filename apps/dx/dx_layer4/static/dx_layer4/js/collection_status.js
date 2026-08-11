@@ -214,21 +214,14 @@
         var container = document.getElementById('cs-email-container');
         container.innerHTML = '<div class="l4-empty-state"><p>조회 중...</p></div>';
 
-        // 일일 수집 현황 + TV/TSE Missing + 발송 여부 동시 조회
+        // 일일 수집 현황 + SEA TV Missing + 발송 여부 동시 조회
         Promise.all([
             fetchJsonRequired('/dx/layer1/api/stats/?date=' + encodeURIComponent(date)),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tv', { success: true, retailers: [] }),
-            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_tv', { success: true, retailers: [] }),
-            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_ref', { success: true, retailers: [] }),
-            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tse_ldy', { success: true, retailers: [] }),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/email-check/?date=' + encodeURIComponent(date), { count: 0 })
         ]).then(function(results) {
-            renderEmailReport(results[0], results[1], {
-                tse_tv: results[2],
-                tse_ref: results[3],
-                tse_ldy: results[4]
-            }, date);
-            updateSendButton(results[5].count || 0, results[5]);
+            renderEmailReport(results[0], results[1], date);
+            updateSendButton(results[2].count || 0, results[2]);
         }).catch(function(e) {
             console.error(e);
             container.innerHTML = '<div class="l4-empty-state"><p>오류가 발생했습니다.</p></div>';
@@ -289,6 +282,7 @@
             } else if (check.is_target_date === false) {
                 return;
             } else if (checkType === 'tse_retail') {
+                if (options.excludeTseRetail) return;
                 (check.categories || []).forEach(function(cat) {
                     var productLine = String(cat.product_line || ('tse_' + String(cat.name || '').toLowerCase())).toLowerCase();
                     var retailerRows = cat.retailers || [];
@@ -416,7 +410,7 @@
         return html;
     }
 
-    function renderEmailReport(dailyData, tvData, tseData, date) {
+    function renderEmailReport(dailyData, tvData, date) {
         var container = document.getElementById('cs-email-container');
 
         var emailRetailers = (tvData.retailers || []).map(function(retailer) {
@@ -433,7 +427,10 @@
             return copy;
         });
 
-        var dailyRows = buildDailyRows(dailyData, { emailYoutubeVideoOnly: true });
+        var dailyRows = buildDailyRows(dailyData, {
+            emailYoutubeVideoOnly: true,
+            excludeTseRetail: true
+        });
         var totalExpected = 0, totalActual = 0;
         dailyRows.forEach(function(r) {
             if (typeof r.expected === 'number') totalExpected += r.expected;
@@ -488,15 +485,6 @@
         // 2. R.com 수집 항목 Missing Value 현황
         html += '<b style="font-size:14px;">2. R.com 수집 항목 Missing Value 현황</b><br>';
         if (tvData.success) html += buildNullTable(emailRetailers, 'TV');
-        if (tseData && tseData.tse_tv && tseData.tse_tv.success) {
-            html += buildNullTable(tseData.tse_tv.retailers || [], 'TSE - TV');
-        }
-        if (tseData && tseData.tse_ref && tseData.tse_ref.success) {
-            html += buildNullTable(tseData.tse_ref.retailers || [], 'TSE - REF');
-        }
-        if (tseData && tseData.tse_ldy && tseData.tse_ldy.success) {
-            html += buildNullTable(tseData.tse_ldy.retailers || [], 'TSE - LDY');
-        }
 
         html += '<br>감사합니다.';
 
