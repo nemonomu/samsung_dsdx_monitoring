@@ -70,13 +70,43 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             [item['name'] for item in null_group['items']],
         )
         self.assertEqual(
-            ['SEA Retail', 'YouTube'],
+            ['SEA Retail', 'TSE Retail', 'YouTube'],
             [item['name'] for item in format_group['items']],
         )
         self.assertEqual(
-            ['SEA Retail', 'YouTube'],
+            ['SEA Retail', 'TSE Retail', 'YouTube'],
             [item['name'] for item in anomaly_group['items']],
         )
+
+        self.assertFalse(format_group['items'][1]['active'])
+        self.assertFalse(anomaly_group['items'][1]['active'])
+
+    def test_tse_children_are_active_in_format_and_duplicate_sections(self):
+        context, stubs = self._load_context([
+            'tv_retail', 'youtube',
+            'tse_tv_retail', 'tse_ref_retail', 'tse_ldy_retail',
+        ])
+
+        with patch.dict('sys.modules', stubs):
+            format_group = context.build_sidebar_groups(
+                'format_validation', focus='tse_tv_retail'
+            )[1]
+            anomaly_group = context.build_sidebar_groups(
+                'anomaly_validation', focus='TSE LDY'
+            )[2]
+
+        format_tse = next(
+            item for item in format_group['items']
+            if item['name'] == 'TSE Retail'
+        )
+        anomaly_tse = next(
+            item for item in anomaly_group['items']
+            if item['name'] == 'TSE Retail'
+        )
+        self.assertTrue(format_tse['active'])
+        self.assertTrue(format_tse['children'][0]['active'])
+        self.assertTrue(anomaly_tse['active'])
+        self.assertTrue(anomaly_tse['children'][2]['active'])
 
     def test_display_focus_activates_child_and_inactive_sources_are_hidden(self):
         context, stubs = self._load_context([

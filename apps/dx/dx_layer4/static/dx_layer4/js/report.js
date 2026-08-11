@@ -9,8 +9,25 @@
 
     // 리테일러 고정 정렬 순서
     var RETAILER_ORDER = [
-        'TV Amazon', 'TV Bestbuy', 'TV Walmart'
+        'TV Amazon', 'TV Bestbuy', 'TV Walmart',
+        'HOMEPRO TV', 'HOMEPRO REF', 'HOMEPRO LDY'
     ];
+
+    var TSE_TABLE_CATEGORY = {
+        'dx_tse.dx_tse_tv_retail_com': 'TV',
+        'dx_tse.dx_tse_ref_retail_com': 'REF',
+        'dx_tse.dx_tse_ldy_retail_com': 'LDY'
+    };
+
+    function reportRetailerName(tableName, retailer, fallbackCategory) {
+        var tseCategory = TSE_TABLE_CATEGORY[tableName];
+        if (tseCategory) {
+            var tseRetailer = String(retailer || 'TSE').trim().toUpperCase();
+            return tseRetailer + ' ' + tseCategory;
+        }
+        var category = fallbackCategory || tableName;
+        return retailer ? (category + ' ' + retailer) : category;
+    }
 
     function sortRetailerKeys(keys) {
         return keys.sort(function(a, b) {
@@ -134,7 +151,7 @@
         Object.keys(tableGroups).forEach(function(tn) {
             var category = TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
-                var retailerName = d.retailer ? (category + ' ' + d.retailer) : category;
+                var retailerName = reportRetailerName(tn, d.retailer, category);
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, groups: {} };
                 retailerData[retailerName].total++;
 
@@ -250,7 +267,7 @@
         Object.keys(tableGroups).forEach(function(tn) {
             var category = TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
-                var retailerName = d.retailer ? (category + ' ' + d.retailer) : category;
+                var retailerName = reportRetailerName(tn, d.retailer, category);
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, items: [], action: '' };
                 retailerData[retailerName].total++;
                 if (d.item) retailerData[retailerName].items.push(d.item);
@@ -306,6 +323,7 @@
                 if (!ruleGroups[ruleKey]) ruleGroups[ruleKey] = { name: d.rule_name || ruleKey, items: [] };
                 var item = Object.assign({}, d);
                 item._category = category;
+                item._tableName = tn;
                 ruleGroups[ruleKey].items.push(item);
             });
         });
@@ -318,7 +336,9 @@
 
             var retailerData = {};
             rg.items.forEach(function(d) {
-                var retailerName = d.retailer ? (d._category + ' ' + d.retailer) : d._category;
+                var retailerName = reportRetailerName(
+                    d._tableName, d.retailer, d._category
+                );
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, groups: {} };
                 retailerData[retailerName].total++;
 
@@ -451,9 +471,11 @@
                 var tableGroups = groupedDetails[ct] || {};
                 var sectionStats = {};
                 Object.keys(tableGroups).forEach(function(tn) {
-                    var sName = TABLE_SECTION[tn] || tn;
-                    if (!sectionStats[sName]) sectionStats[sName] = { corrected: 0, normal: 0 };
                     tableGroups[tn].forEach(function(d) {
+                        var sName = TSE_TABLE_CATEGORY[tn]
+                            ? reportRetailerName(tn, d.retailer, tn)
+                            : (TABLE_SECTION[tn] || tn);
+                        if (!sectionStats[sName]) sectionStats[sName] = { corrected: 0, normal: 0 };
                         if (d.status === 'corrected') sectionStats[sName].corrected++;
                         else if (d.status === 'normal') sectionStats[sName].normal++;
                     });

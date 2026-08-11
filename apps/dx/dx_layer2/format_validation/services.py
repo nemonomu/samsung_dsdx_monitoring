@@ -3,6 +3,7 @@
 """
 
 from datetime import timedelta
+import re
 
 from apps.common.retail_columns import (
     validate_field,
@@ -15,17 +16,419 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 
+try:
+    from apps.common.retail_columns import get_tse_retailer_columns
+    from apps.common.tse_retail import (
+        TSE_COUNTRY,
+        TSE_SOURCE_CONFIG,
+        get_tse_editable_columns,
+    )
+except ImportError:  # Backward-compatible fallback for isolated legacy tests.
+    get_tse_retailer_columns = None
+    TSE_COUNTRY = 'TSE'
+    TSE_SOURCE_CONFIG = {}
+    get_tse_editable_columns = None
+
 
 # table 파라미터 화이트리스트
 VALID_TABLES_FORMAT = {
     'tv_retail',
     'market',
+} | {
+    source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
-} - DISABLED_SOURCE_TABLES
+} | set(TSE_SOURCE_CONFIG)
+VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
+
+
+TSE_FORMAT_FIELDS = (
+    'final_sku_price',
+    'original_sku_price',
+    'savings',
+    'count_of_reviews',
+    'count_of_star_ratings',
+    'star_rating',
+)
+
+TSE_FORMAT_RULES = (
+    {
+        'field': 'final_sku_price',
+        'description': '태국 바트 금액 형식',
+        'pattern': '฿10,820 또는 ฿10,820.00',
+    },
+    {
+        'field': 'original_sku_price',
+        'description': '값이 있으면 태국 바트 금액 형식',
+        'pattern': '฿13,820 또는 ฿13,820.00',
+    },
+    {
+        'field': 'savings',
+        'description': '값이 있으면 할인금액과 음수 할인율 형식',
+        'pattern': '฿3,000 (-3%)',
+    },
+    {
+        'field': 'original_sku_price / savings',
+        'description': '원가와 할인정보는 둘 다 있거나 둘 다 없어야 함',
+        'pattern': 'original_sku_price 있음 ⇔ savings 있음',
+    },
+    {
+        'field': 'count_of_reviews',
+        'description': '0 이상의 정수',
+        'pattern': '0, 128, 1,234',
+    },
+    {
+        'field': 'count_of_star_ratings',
+        'description': '0 이상의 정수',
+        'pattern': '0, 128, 1,234',
+    },
+    {
+        'field': 'star_rating',
+        'description': '0~5 범위, 소수점 한 자리까지',
+        'pattern': '0, 4.5, 5.0',
+    },
+)
+
+_TSE_MONEY_PATTERN = re.compile(
+    r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{2})?$'
+)
+_TSE_SAVINGS_PATTERN = re.compile(
+    r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{2})? '
+    r'\(-(?:100|[1-9]\d?)%\)$'
+)
+_TSE_COUNT_PATTERN = re.compile(
+    r'^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$'
+)
+_TSE_RATING_PATTERN = re.compile(r'^(?:[0-4](?:\.\d)?|5(?:\.0)?)$')
+
+
+def _has_tse_format_value(value):
+    return value is not None and str(value).strip() != ''
+
+
+def _has_tse_optional_value(value):
+    if not _has_tse_format_value(value):
+        return False
+    return str(value).strip().casefold() not in {'-', 'none', 'null', 'n/a'}
+
+
+def evaluate_tse_format_row(row):
+    """Return field-keyed TSE format errors without NULL-rule overlap."""
+    errors = {}
+    final_price = row.get('final_sku_price')
+    original_price = row.get('original_sku_price')
+    savings = row.get('savings')
+    original_present = _has_tse_optional_value(original_price)
+    savings_present = _has_tse_optional_value(savings)
+
+    if _has_tse_format_value(final_price) and not _TSE_MONEY_PATTERN.fullmatch(
+        str(final_price).strip()
+    ):
+        errors['final_sku_price'] = '฿10,820 형식이 아닙니다.'
+    if original_present and not _TSE_MONEY_PATTERN.fullmatch(
+        str(original_price).strip()
+    ):
+        errors['original_sku_price'] = '฿13,820 형식이 아닙니다.'
+    if savings_present and not _TSE_SAVINGS_PATTERN.fullmatch(
+        str(savings).strip()
+    ):
+        errors['savings'] = '฿3,000 (-3%) 형식이 아닙니다.'
+
+    if original_present and not savings_present:
+        errors['savings'] = 'original_sku_price가 있으면 savings도 필요합니다.'
+    elif savings_present and not original_present:
+        errors['original_sku_price'] = 'savings가 있으면 original_sku_price도 필요합니다.'
+
+    for field in ('count_of_reviews', 'count_of_star_ratings'):
+        value = row.get(field)
+        if _has_tse_format_value(value) and not _TSE_COUNT_PATTERN.fullmatch(
+            str(value).strip()
+        ):
+            errors[field] = '0 이상의 정수 형식이 아닙니다.'
+
+    rating = row.get('star_rating')
+    if _has_tse_format_value(rating) and not _TSE_RATING_PATTERN.fullmatch(
+        str(rating).strip()
+    ):
+        errors['star_rating'] = '0~5 범위의 숫자 형식이 아닙니다.'
+    return errors
+
+
+def _tse_format_product_line(table):
+    value = str(table or '').strip().lower()
+    for product_line, source in TSE_SOURCE_CONFIG.items():
+        if value in (product_line, source['section_code'].lower()):
+            return product_line
+    return None
+
+
+def _resolve_tse_format_retailer(product_line, retailer):
+    if not get_tse_retailer_columns:
+        return None
+    configs = get_tse_retailer_columns(product_line)
+    retailer_key = str(retailer or '').strip().casefold()
+    if not retailer_key and len(configs) == 1:
+        return next(iter(configs.items()))
+    for display_name, config in configs.items():
+        if retailer_key in {
+            str(display_name).strip().casefold(),
+            str(config.get('retailer') or '').strip().casefold(),
+        }:
+            return display_name, config
+    return None
+
+
+def _safe_tse_format_editable_columns(product_line, retailer_config):
+    if not get_tse_editable_columns:
+        return []
+    allowed = set(get_tse_editable_columns(product_line))
+    return [
+        column for column in retailer_config.get('editable_columns', [])
+        if column in allowed
+    ]
+
+
+def _fetch_tse_format_rows(
+        cursor, start_date, end_date, source, retailer_value,
+        include_unassigned=False):
+    """Fetch each day's latest TSE retailer batch in a bounded date range."""
+    canonical_table = source['table_name']
+    account_scope = 'LOWER(source.account_name) = LOWER(%s)'
+    if include_unassigned:
+        account_scope = f"""(
+            {account_scope}
+            OR source.account_name IS NULL
+            OR TRIM(CAST(source.account_name AS TEXT)) = ''
+        )"""
+    country_scope = """(
+        source.country = %s
+        OR source.country IS NULL
+        OR TRIM(CAST(source.country AS TEXT)) = ''
+    )"""
+    select_columns = [
+        'id', 'batch_id', 'country', 'account_name', 'item', 'sku',
+        'retailer_sku_name', 'final_sku_price', 'original_sku_price',
+        'savings', 'count_of_reviews', 'count_of_star_ratings',
+        'star_rating', 'crawl_datetime', 'product_url',
+    ]
+    cursor.execute(f"""
+        WITH latest_batches AS (
+            SELECT DISTINCT ON (LEFT(TRIM(source.crawl_datetime), 10))
+                   LEFT(TRIM(source.crawl_datetime), 10) AS crawl_date,
+                   source.batch_id
+            FROM {canonical_table} source
+            WHERE LEFT(TRIM(source.crawl_datetime), 10) >= %s
+              AND LEFT(TRIM(source.crawl_datetime), 10) <= %s
+              AND LOWER(source.account_name) = LOWER(%s)
+              AND {country_scope}
+            ORDER BY LEFT(TRIM(source.crawl_datetime), 10), source.id DESC
+        )
+        SELECT {', '.join('source.' + column for column in select_columns)}
+        FROM {canonical_table} source
+        JOIN latest_batches latest
+          ON LEFT(TRIM(source.crawl_datetime), 10) = latest.crawl_date
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE LEFT(TRIM(source.crawl_datetime), 10) >= %s
+          AND LEFT(TRIM(source.crawl_datetime), 10) <= %s
+          AND {account_scope}
+          AND {country_scope}
+        ORDER BY source.item, source.crawl_datetime, source.id
+    """, (
+        str(start_date), str(end_date), retailer_value, TSE_COUNTRY,
+        str(start_date), str(end_date), retailer_value, TSE_COUNTRY,
+    ))
+    return [
+        dict(zip(select_columns, row))
+        for row in cursor.fetchall()
+    ]
+
+
+def _load_tse_format_normal_reviews(
+        cursor, canonical_table, target_date, retailer_value):
+    cursor.execute("""
+        SELECT record_id, column_name, memo, created_id, created_at, reason
+        FROM monitoring_corrections
+        WHERE table_name = %s AND crawl_date = %s
+          AND correction_type = 'format_check' AND status = 'normal'
+          AND LOWER(retailer) = LOWER(%s)
+    """, (canonical_table, str(target_date), retailer_value))
+    reviews = {}
+    for row in cursor.fetchall():
+        reviews[f'{row[0]}_{row[1]}'] = {
+            'memo': row[2],
+            'created_id': row[3],
+            'created_at': (
+                row[4].strftime('%Y-%m-%d %H:%M:%S')
+                if hasattr(row[4], 'strftime') else str(row[4] or '') or None
+            ),
+            'reason': row[5],
+        }
+    return reviews
+
+
+def _format_tse_record(row):
+    record = {
+        key: (str(value) if value is not None and key != 'id' else value)
+        for key, value in row.items()
+    }
+    error_map = evaluate_tse_format_row(row)
+    record['error_fields'] = list(error_map)
+    record['error_details'] = {
+        field: {'rule': 'TSE 형식 검증', 'reason': reason}
+        for field, reason in error_map.items()
+    }
+    return record
+
+
+def _get_tse_format_detail(cursor, target_date, table, retailer, days):
+    product_line = _tse_format_product_line(table)
+    source = TSE_SOURCE_CONFIG.get(product_line)
+    resolved = (
+        _resolve_tse_format_retailer(product_line, retailer)
+        if source else None
+    )
+    if not source or not resolved:
+        return {
+            'date': str(target_date), 'table': table, 'retailer': retailer,
+            'column_names': [], 'editable_cols': [], 'actual_table': '',
+            'normal_reviews': {}, 'results': [], 'field_counts': {},
+            'total_format_count': 0,
+        }
+
+    display_name, retailer_config = resolved
+    retailer_value = retailer_config['retailer']
+    include_unassigned = len(get_tse_retailer_columns(product_line)) == 1
+    target_rows = _fetch_tse_format_rows(
+        cursor, target_date, target_date, source, retailer_value,
+        include_unassigned,
+    )
+    normal_reviews = _load_tse_format_normal_reviews(
+        cursor, source['table_name'], target_date, retailer_value,
+    )
+    target_records = []
+    for row in target_rows:
+        record = _format_tse_record(row)
+        record['error_fields'] = [
+            field for field in record['error_fields']
+            if f"{record['id']}_{field}" not in normal_reviews
+        ]
+        if record['error_fields']:
+            target_records.append(record)
+
+    history_days = min(max(int(days or 1), 1), 30)
+    results = target_records
+    if history_days > 1 and target_records:
+        identities = {
+            (
+                str(record.get('item') or '').strip().casefold(),
+                str(record.get('retailer_sku_name') or '').strip().casefold(),
+            )
+            for record in target_records
+        }
+        history_rows = _fetch_tse_format_rows(
+            cursor, target_date - timedelta(days=history_days - 1),
+            target_date, source, retailer_value, include_unassigned,
+        )
+        results = [
+            _format_tse_record(row) for row in history_rows
+            if (
+                str(row.get('item') or '').strip().casefold(),
+                str(row.get('retailer_sku_name') or '').strip().casefold(),
+            ) in identities
+        ]
+
+    field_counts = {}
+    for record in target_records:
+        for field in record['error_fields']:
+            field_counts[field] = field_counts.get(field, 0) + 1
+
+    column_names = [
+        'id', 'crawl_datetime', 'item', 'retailer_sku_name',
+        *TSE_FORMAT_FIELDS, 'sku', 'product_url',
+    ]
+    query_columns = [
+        'id', 'item', 'sku', 'retailer_sku_name', *TSE_FORMAT_FIELDS,
+        'crawl_datetime', 'product_url',
+    ]
+    return {
+        'date': str(target_date),
+        'table': table,
+        'retailer': display_name,
+        'column_names': column_names,
+        'select_cols': column_names,
+        'editable_cols': _safe_tse_format_editable_columns(
+            product_line, retailer_config
+        ),
+        'actual_table': source['table_name'],
+        'normal_reviews': normal_reviews,
+        'results': results,
+        'field_counts': field_counts,
+        'total_format_count': sum(field_counts.values()),
+        'query_config': {
+            field: query_columns for field in TSE_FORMAT_FIELDS
+        },
+        'query_retailer': retailer_value,
+        'query_include_unassigned': include_unassigned,
+        'supports_day_history': True,
+        'history_days': history_days,
+        'date_column': 'crawl_datetime',
+    }
+
+
+def _append_tse_format_stats(cursor, target_date, validation):
+    if not TSE_SOURCE_CONFIG or not get_tse_retailer_columns:
+        return 0
+    savepoint = 'layer2_tse_format_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    total_issues = 0
+    try:
+        for product_line, source in TSE_SOURCE_CONFIG.items():
+            configs = get_tse_retailer_columns(product_line)
+            retailer_rows = []
+            table_checked = 0
+            table_issues = 0
+            for display_name, retailer_config in configs.items():
+                retailer_value = retailer_config['retailer']
+                rows = _fetch_tse_format_rows(
+                    cursor, target_date, target_date, source, retailer_value,
+                    len(configs) == 1,
+                )
+                normal_reviews = _load_tse_format_normal_reviews(
+                    cursor, source['table_name'], target_date, retailer_value,
+                )
+                issue_count = 0
+                for row in rows:
+                    for field in evaluate_tse_format_row(row):
+                        if f"{row['id']}_{field}" not in normal_reviews:
+                            issue_count += 1
+                retailer_rows.append({
+                    'retailer': display_name,
+                    'total': len(rows),
+                    'issue_count': issue_count,
+                    'status': get_status(issue_count),
+                })
+                table_checked += len(rows)
+                table_issues += issue_count
+            if retailer_rows:
+                validation['tables'].append({
+                    'table': source['section_code'],
+                    'table_name': source['display_name'],
+                    'total_checked': table_checked,
+                    'total_issues': table_issues,
+                    'status': get_status(table_issues),
+                    'retailers': retailer_rows,
+                })
+                total_issues += table_issues
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        print(f'[WARN] layer2_tse_format_stats: {exc}')
+        return 0
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return total_issues
 
 
 # ── thin wrappers ──────────────────────────────────────────
@@ -47,6 +450,11 @@ def get_format_detail(cursor, target_date, table, retailer, days):
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if _tse_format_product_line(table):
+        return _get_tse_format_detail(
+            cursor, target_date, table, retailer, days
+        )
+
     results = []
     select_cols = []
     column_names = []
@@ -610,6 +1018,9 @@ def get_format_rules(cursor, table_name, retailer):
     형식검증 규칙 조회.
     Returns dict: {rules: [...]}
     """
+    if table_name in TSE_SOURCE_CONFIG:
+        return {'rules': [dict(rule) for rule in TSE_FORMAT_RULES]}
+
     tbl_rules = dx_table('monitoring_format_rules')
     tbl_templates = dx_table('monitoring_format_templates')
 
@@ -1080,6 +1491,10 @@ def get_format_stats(cursor, target_date):
             total_format_issues += market_total_format_issues
     except Exception as e:
         print(f'[WARN] layer_stats market_format: {e}')
+
+    total_format_issues += _append_tse_format_stats(
+        cursor, target_date, format_validation
+    )
 
     format_validation['total_issues'] = total_format_issues
     format_validation['status'] = get_status(total_format_issues)

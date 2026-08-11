@@ -1419,10 +1419,14 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             tse_product_line = runtime['product_line_for_table'](table_name)
         except ValueError:
             tse_product_line = None
-    if tse_product_line and column_name not in set(
-        runtime['max_required'](tse_product_line)
-    ):
-        return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+    if tse_product_line:
+        tse_allowed_columns = (
+            runtime['max_editable'](tse_product_line)
+            if correction_type_value == 'format_check'
+            else runtime['max_required'](tse_product_line)
+        )
+        if column_name not in set(tse_allowed_columns):
+            return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     youtube_columns = _YOUTUBE_REVIEW_COLUMNS.get(table_name)
     if youtube_columns is not None and column_name not in youtube_columns:
@@ -1472,10 +1476,16 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             return {'error': '허용되지 않는 리테일러', 'status_code': 400}
         if not retailer:
             retailer = retailer_config[1].get('retailer') or retailer_config[0]
-        required_columns = _safe_tse_required_columns(
-            tse_product_line, retailer_config[1], runtime
+        configured_columns = (
+            _safe_tse_editable_columns(
+                tse_product_line, retailer_config[1], runtime
+            )
+            if correction_type_value == 'format_check'
+            else _safe_tse_required_columns(
+                tse_product_line, retailer_config[1], runtime
+            )
         )
-        if column_name not in required_columns:
+        if column_name not in configured_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     # 중복 정상처리 체크

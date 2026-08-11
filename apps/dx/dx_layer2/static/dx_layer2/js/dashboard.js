@@ -324,6 +324,7 @@ function renderDXTableDetail(vType, table) {
     if (vType.type === 'duplicate' && table.retailers) {
         const isYouTube = table.table === 'youtube';
         const isMarket = table.table === 'market';
+        const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
         html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
@@ -349,6 +350,8 @@ function renderDXTableDetail(vType, table) {
                 detailText = 'batch_id + samsung_series + comp_brand + comp_series 중복';
             } else if (isMarket && retailer.retailer === 'Event') {
                 detailText = 'batch_id + comp_brand + comp_sku 중복';
+            } else if (isTseRetail) {
+                detailText = '완전 중복 및 Item↔Retailer SKU Name 매핑 충돌';
             }
             html += `
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}"

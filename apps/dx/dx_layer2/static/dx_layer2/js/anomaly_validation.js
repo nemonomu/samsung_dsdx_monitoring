@@ -136,12 +136,22 @@ function renderDetailTable(type, data, tableParam) {
     // 컨테이너 HTML 생성
     var containerHtml = buildDetailContainerHtml({});
     body.innerHTML = containerHtml;
+    if (data.readonly) {
+        var readOnlyBar = document.getElementById('detail-action-bar');
+        if (readOnlyBar) {
+            readOnlyBar.innerHTML = '<div style="padding:8px 12px;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;font-size:12px;">TSE 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.</div>';
+        }
+    }
 
     // 렌더링
     if (isServerPaging) {
         // 서버 사이드 페이징: 전체 데이터를 한 번에 표시, 서버 페이지네이션 별도 표시
         var allCols = getAllColumns(config);
-        var ctColumns = [{ key: '_chk', label: '', width: 40, sortable: false, align: 'center' }];
+        var allowCleanup = !data.readonly && !isTseDuplicateTable(tableParam);
+        var ctColumns = [];
+        if (allowCleanup) {
+            ctColumns.push({ key: '_chk', label: '', width: 40, sortable: false, align: 'center' });
+        }
         allCols.forEach(function(col) {
             ctColumns.push({ key: col.key, label: col.label, width: col.width, sortable: false, align: col.align });
         });
@@ -170,8 +180,10 @@ function renderDetailTable(type, data, tableParam) {
         detailViewState.table.renderBody(flatData, function(row) {
             var tr = '<tr>';
             // 체크박스 (매 행, rowspan 없음)
-            tr += '<td style="text-align:center"><input type="checkbox" class="dup-check" data-id="' + row.id + '"' +
-                  (row._isGroupLast ? ' data-group-last="1"' : '') + '></td>';
+            if (allowCleanup) {
+                tr += '<td style="text-align:center"><input type="checkbox" class="dup-check" data-id="' + row.id + '"' +
+                      (row._isGroupLast ? ' data-group-last="1"' : '') + '></td>';
+            }
             if (row._isGroupFirst) {
                 config.group.forEach(function(col) {
                     var inner = getCellHtml(row, col, tableParam).replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '');
@@ -190,8 +202,10 @@ function renderDetailTable(type, data, tableParam) {
             }
             return tr + '</tr>';
         });
-        _injectDupCheckboxHeader();
-        _renderDupActionBar();
+        if (allowCleanup) {
+            _injectDupCheckboxHeader();
+            _renderDupActionBar();
+        }
 
         // 서버 사이드 페이지네이션
         var pagerEl = document.getElementById('detail-pagination');

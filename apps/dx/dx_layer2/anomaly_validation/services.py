@@ -11,11 +11,21 @@ from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 
+try:
+    from apps.common.retail_columns import get_tse_retailer_columns
+    from apps.common.tse_retail import TSE_COUNTRY, TSE_SOURCE_CONFIG
+except ImportError:  # Backward-compatible fallback for isolated legacy tests.
+    get_tse_retailer_columns = None
+    TSE_COUNTRY = 'TSE'
+    TSE_SOURCE_CONFIG = {}
+
 
 # table 파라미터 화이트리스트
 VALID_TABLES_ANOMALY = {
     'tv_retail', 'youtube_videos',
     'market_trend', 'market_product', 'market_event',
+} | {
+    source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 }
 _YOUTUBE_VIDEO_DUP_KEYS = (
     'video_id', 'keyword', 'collection_country', 'collection_batch_id'
@@ -67,6 +77,296 @@ for _table_key, _table_config in tuple(_DUP_TABLE_CONFIG.items()):
         _DUP_TABLE_CONFIG.pop(_table_key)
 
 
+def _tse_duplicate_product_line(table):
+    value = str(table or '').strip().lower()
+    for product_line, source in TSE_SOURCE_CONFIG.items():
+        if value in (product_line, source['section_code'].lower()):
+            return product_line
+    return None
+
+
+def _resolve_tse_duplicate_retailer(product_line, retailer):
+    if not get_tse_retailer_columns:
+        return None
+    configs = get_tse_retailer_columns(product_line)
+    retailer_key = str(retailer or '').strip().casefold()
+    if not retailer_key and len(configs) == 1:
+        return next(iter(configs.items()))
+    for display_name, config in configs.items():
+        if retailer_key in {
+            str(display_name).strip().casefold(),
+            str(config.get('retailer') or '').strip().casefold(),
+        }:
+            return display_name, config
+    return None
+
+
+def _fetch_tse_duplicate_rows(
+        cursor, target_date, source, retailer_value,
+        include_unassigned=False):
+    canonical_table = source['table_name']
+    account_scope = 'LOWER(source.account_name) = LOWER(%s)'
+    if include_unassigned:
+        account_scope = f"""(
+            {account_scope}
+            OR source.account_name IS NULL
+            OR TRIM(CAST(source.account_name AS TEXT)) = ''
+        )"""
+    country_scope = """(
+        source.country = %s
+        OR source.country IS NULL
+        OR TRIM(CAST(source.country AS TEXT)) = ''
+    )"""
+    select_columns = [
+        'id', 'batch_id', 'country', 'account_name', 'item', 'sku',
+        'retailer_sku_name', 'final_sku_price', 'crawl_datetime',
+        'product_url',
+    ]
+    cursor.execute(f"""
+        WITH latest_batch AS (
+            SELECT source.batch_id
+            FROM {canonical_table} source
+            WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+              AND LOWER(source.account_name) = LOWER(%s)
+              AND {country_scope}
+            ORDER BY source.id DESC
+            LIMIT 1
+        )
+        SELECT {', '.join('source.' + column for column in select_columns)}
+        FROM {canonical_table} source
+        WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+          AND {account_scope}
+          AND {country_scope}
+          AND source.batch_id IS NOT DISTINCT FROM
+              (SELECT batch_id FROM latest_batch)
+          AND EXISTS (SELECT 1 FROM latest_batch)
+        ORDER BY source.item, source.retailer_sku_name, source.id
+    """, (
+        str(target_date), retailer_value, TSE_COUNTRY,
+        str(target_date), retailer_value, TSE_COUNTRY,
+    ))
+    return [
+        dict(zip(select_columns, row))
+        for row in cursor.fetchall()
+    ]
+
+
+def _duplicate_text(value):
+    return str(value or '').strip()
+
+
+def _duplicate_key(value):
+    text = _duplicate_text(value)
+    return text.casefold() if text else None
+
+
+def _serialize_tse_duplicate_row(row):
+    return {
+        key: (str(value) if value is not None and key != 'id' else value)
+        for key, value in row.items()
+    }
+
+
+def build_tse_duplicate_groups(rows):
+    """Build exact duplicates and bidirectional item/SKU mapping conflicts."""
+    exact = {}
+    by_item = {}
+    by_retailer_sku = {}
+    for row in rows:
+        item_key = _duplicate_key(row.get('item'))
+        retailer_sku_key = _duplicate_key(row.get('retailer_sku_name'))
+        if item_key:
+            by_item.setdefault(item_key, []).append(row)
+        if retailer_sku_key:
+            by_retailer_sku.setdefault(retailer_sku_key, []).append(row)
+        if item_key and retailer_sku_key:
+            exact.setdefault((item_key, retailer_sku_key), []).append(row)
+
+    groups = []
+    for duplicate_rows in exact.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        first = duplicate_rows[0]
+        groups.append({
+            'duplicate_type': '완전 중복',
+            'item': _duplicate_text(first.get('item')),
+            'retailer_sku_name': _duplicate_text(
+                first.get('retailer_sku_name')
+            ),
+            'dup_count': len(duplicate_rows),
+            'reason': '동일 item + retailer_sku_name이 최신 배치에 2건 이상 있습니다.',
+            'records': [
+                _serialize_tse_duplicate_row(row) for row in duplicate_rows
+            ],
+        })
+
+    for duplicate_rows in by_item.values():
+        retailer_skus = {
+            _duplicate_key(row.get('retailer_sku_name'))
+            for row in duplicate_rows
+            if _duplicate_key(row.get('retailer_sku_name'))
+        }
+        if len(retailer_skus) <= 1:
+            continue
+        first = duplicate_rows[0]
+        display_values = sorted({
+            _duplicate_text(row.get('retailer_sku_name'))
+            for row in duplicate_rows
+            if _duplicate_text(row.get('retailer_sku_name'))
+        })
+        groups.append({
+            'duplicate_type': 'Item 매핑 충돌',
+            'item': _duplicate_text(first.get('item')),
+            'retailer_sku_name': ', '.join(display_values),
+            'dup_count': len(duplicate_rows),
+            'reason': '동일 item에 서로 다른 retailer_sku_name이 연결되어 있습니다.',
+            'records': [
+                _serialize_tse_duplicate_row(row) for row in duplicate_rows
+            ],
+        })
+
+    for duplicate_rows in by_retailer_sku.values():
+        items = {
+            _duplicate_key(row.get('item'))
+            for row in duplicate_rows
+            if _duplicate_key(row.get('item'))
+        }
+        if len(items) <= 1:
+            continue
+        first = duplicate_rows[0]
+        display_values = sorted({
+            _duplicate_text(row.get('item'))
+            for row in duplicate_rows
+            if _duplicate_text(row.get('item'))
+        })
+        groups.append({
+            'duplicate_type': 'SKU명 매핑 충돌',
+            'item': ', '.join(display_values),
+            'retailer_sku_name': _duplicate_text(
+                first.get('retailer_sku_name')
+            ),
+            'dup_count': len(duplicate_rows),
+            'reason': '동일 retailer_sku_name에 서로 다른 item이 연결되어 있습니다.',
+            'records': [
+                _serialize_tse_duplicate_row(row) for row in duplicate_rows
+            ],
+        })
+
+    groups.sort(key=lambda group: (
+        group['duplicate_type'], group['item'], group['retailer_sku_name']
+    ))
+    return groups
+
+
+def _get_tse_anomaly_detail(
+        cursor, target_date, table, retailer, page, page_size):
+    product_line = _tse_duplicate_product_line(table)
+    source = TSE_SOURCE_CONFIG.get(product_line)
+    resolved = (
+        _resolve_tse_duplicate_retailer(product_line, retailer)
+        if source else None
+    )
+    if not source or not resolved:
+        return {
+            'date': str(target_date), 'table': table, 'retailer': retailer,
+            'select_cols': {'group': [], 'record': []},
+            'editable_cols': [], 'actual_table': '', 'readonly': True,
+            'results': {
+                'duplicates': [], 'total_groups': 0, 'page': page,
+                'page_size': page_size, 'total_pages': 0,
+            },
+        }
+
+    display_name, retailer_config = resolved
+    configs = get_tse_retailer_columns(product_line)
+    rows = _fetch_tse_duplicate_rows(
+        cursor, target_date, source, retailer_config['retailer'],
+        len(configs) == 1,
+    )
+    groups = build_tse_duplicate_groups(rows)
+    total_groups = len(groups)
+    total_pages = (
+        (total_groups + page_size - 1) // page_size if total_groups else 0
+    )
+    offset = (page - 1) * page_size
+    return {
+        'date': str(target_date),
+        'table': table,
+        'retailer': display_name,
+        'select_cols': {
+            'group': [
+                'duplicate_type', 'item', 'retailer_sku_name',
+                'dup_count', 'reason',
+            ],
+            'record': [
+                'id', 'sku', 'retailer_sku_name', 'final_sku_price',
+                'crawl_datetime', 'product_url',
+            ],
+        },
+        'editable_cols': [],
+        'actual_table': source['table_name'],
+        'readonly': True,
+        'results': {
+            'duplicates': groups[offset:offset + page_size],
+            'total_groups': total_groups,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+        },
+    }
+
+
+def _append_tse_anomaly_stats(cursor, target_date, validation):
+    if not TSE_SOURCE_CONFIG or not get_tse_retailer_columns:
+        return 0
+    savepoint = 'layer2_tse_duplicate_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    total_issues = 0
+    try:
+        for product_line, source in TSE_SOURCE_CONFIG.items():
+            configs = get_tse_retailer_columns(product_line)
+            retailer_rows = []
+            table_records = 0
+            table_issues = 0
+            for display_name, retailer_config in configs.items():
+                rows = _fetch_tse_duplicate_rows(
+                    cursor, target_date, source,
+                    retailer_config['retailer'], len(configs) == 1,
+                )
+                duplicate_count = len(build_tse_duplicate_groups(rows))
+                retailer_rows.append({
+                    'retailer': display_name,
+                    'total': len(rows),
+                    'duplicate_groups': duplicate_count,
+                    'duplicate_keys': [
+                        'item + retailer_sku_name',
+                        'item → retailer_sku_name',
+                        'retailer_sku_name → item',
+                    ],
+                    'status': get_status(duplicate_count),
+                })
+                table_records += len(rows)
+                table_issues += duplicate_count
+            if retailer_rows:
+                validation['tables'].append({
+                    'table': source['section_code'],
+                    'table_name': source['display_name'],
+                    'total_records': table_records,
+                    'total_issues': table_issues,
+                    'duplicate_groups': table_issues,
+                    'status': get_status(table_issues),
+                    'retailers': retailer_rows,
+                })
+                total_issues += table_issues
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        print(f'[WARN] layer2_tse_duplicate_stats: {exc}')
+        return 0
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return total_issues
+
+
 def _build_dup_delete_query(table, retailer=''):
     """
     중복 그룹에서 최신 1건만 남기고 삭제할 대상의 id + row_to_json 을 조회하는 쿼리를 생성.
@@ -116,6 +416,11 @@ def _build_dup_delete_query(table, retailer=''):
 
 def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
+    if _tse_duplicate_product_line(table):
+        return _get_tse_anomaly_detail(
+            cursor, target_date, table, retailer, page, page_size
+        )
+
     offset = (page - 1) * page_size
     if table == 'hhp_retail':
         return {
@@ -855,7 +1160,7 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
         SELECT COUNT(*) FROM tv_retail_com
         WHERE DATE(crawl_datetime::timestamp) = %s
         AND {get_tv_validation_condition()}
-        AND final_sku_price ~ '^\$[\d,]+\.?\d*$'
+        AND final_sku_price ~ '^\\$[\\d,]+\\.?\\d*$'
         AND (
             CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) < 0
             OR CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) > 50000
@@ -996,6 +1301,10 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
             'retailers': market_retailers
         })
         total_anomaly_issues += market_total_dup
+
+    total_anomaly_issues += _append_tse_anomaly_stats(
+        cursor, target_date, anomaly_validation
+    )
 
     anomaly_validation['total_issues'] = total_anomaly_issues
     anomaly_validation['status'] = get_status(total_anomaly_issues)

@@ -116,6 +116,23 @@ const DETAIL_COLUMNS = {
             { key: 'product_url', label: 'URL', width: 80 },
         ]
     },
+    dup_tse_retail: {
+        group: [
+            { key: '_no', label: 'No', width: 50, align: 'center' },
+            { key: 'duplicate_type', label: '중복 유형', width: 130 },
+            { key: 'item', label: 'Item', width: 150 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 220 },
+            { key: 'reason', label: '중복사유', width: 260 },
+        ],
+        detail: [
+            { key: 'id', label: 'ID', width: 80 },
+            { key: 'sku', label: 'SKU', width: 130 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 200 },
+            { key: 'final_sku_price', label: '판매가', width: 110 },
+            { key: 'crawl_datetime', label: '수집시각', width: 150 },
+            { key: 'product_url', label: 'URL', width: 80 },
+        ]
+    },
 };
 
 // ==================== 상세 뷰 공통 함수 ====================
@@ -135,6 +152,9 @@ var detailViewState = {
 
 function getColumnConfig(type, tableParam) {
     if (type === 'duplicate') {
+        if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
+            return DETAIL_COLUMNS.dup_tse_retail;
+        }
         var key = 'dup_' + tableParam;
         return DETAIL_COLUMNS[key] || DETAIL_COLUMNS.dup_default;
     }
@@ -142,6 +162,10 @@ function getColumnConfig(type, tableParam) {
     if (tableParam === 'youtube') return DETAIL_COLUMNS.null_youtube;
     if (tableParam.startsWith('market_')) return DETAIL_COLUMNS.null_market;
     return DETAIL_COLUMNS.null_retail_fallback;
+}
+
+function isTseDuplicateTable(tableParam) {
+    return /^tse_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
 }
 
 function getAllColumns(config) {
@@ -412,7 +436,7 @@ function renderDetailWithTable(options) {
     _buildDetailTable();
 
     // 중복 검증: 액션 버튼바
-    if (isRowspan && type === 'duplicate') {
+    if (isRowspan && type === 'duplicate' && !isTseDuplicateTable(tableParam)) {
         _renderDupActionBar();
     }
 
@@ -464,7 +488,7 @@ function _buildDetailTable() {
     // No 컬럼을 항상 맨 앞에 추가 (컬럼 선택과 무관)
     var isDuplicate = detailViewState.type === 'duplicate';
     var ctColumns = [];
-    if (isDuplicate) {
+    if (isDuplicate && !isTseDuplicateTable(detailViewState.tableParam)) {
         ctColumns.push({ key: '_chk', label: '', width: 40, sortable: false, align: 'center' });
     }
     ctColumns.push({ key: '_no', label: 'No', width: 50, sortable: false, align: 'center' });
@@ -525,7 +549,9 @@ function _buildDetailTable() {
         }
     });
     detailViewState.table.render();
-    if (isDuplicate) _injectDupCheckboxHeader();
+    if (isDuplicate && !isTseDuplicateTable(detailViewState.tableParam)) {
+        _injectDupCheckboxHeader();
+    }
 
     // 정렬 상태 복원
     if (!isRowspan && detailViewState.sortColumns.length > 0) {
@@ -1088,7 +1114,7 @@ function detailRenderPage(page) {
         if (isRowspan) {
             var tr = '<tr>';
             // 중복 검증: 체크박스 (매 행, rowspan 없음)
-            if (isDup) {
+            if (isDup && !isTseDuplicateTable(tableParam)) {
                 tr += '<td style="text-align:center"><input type="checkbox" class="dup-check" data-id="' + row.id + '"' +
                       (row._isGroupLast ? ' data-group-last="1"' : '') + '></td>';
             }
@@ -1313,6 +1339,9 @@ async function openRuleModal(tableName, retailer) {
     const tableNameMap = {
         'TV Retail': 'tv_retail_com',
         'HHP Retail': 'hhp_retail_com',
+        'TSE TV': 'tse_tv',
+        'TSE REF': 'tse_ref',
+        'TSE LDY': 'tse_ldy',
         'YouTube': 'youtube_videos',
         'Market': 'market_trend'
     };

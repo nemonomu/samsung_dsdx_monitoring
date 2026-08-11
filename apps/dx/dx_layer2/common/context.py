@@ -18,7 +18,7 @@ SECTION_TITLES = {
 }
 
 
-TSE_NULL_SIDEBAR_CHILDREN = (
+TSE_RETAIL_SIDEBAR_CHILDREN = (
     {
         'name': 'TSE TV',
         'label': 'TV',
@@ -97,20 +97,26 @@ def build_sidebar_groups(section, focus=''):
             })
         return items
 
-    null_items = make_items('null_validation')
+    section_items = {
+        'null_validation': make_items('null_validation'),
+        'format_validation': make_items('format_validation'),
+        'anomaly_validation': make_items('anomaly_validation'),
+    }
     active_categories = set(get_all_categories())
-    tse_children = []
-    for child in TSE_NULL_SIDEBAR_CHILDREN:
-        if child['detail_code'] not in active_categories:
-            continue
-        child_item = dict(child)
-        child_item['active'] = (
-            section == 'null_validation'
-            and focus in (child['name'], child['detail_code'])
-        )
-        tse_children.append(child_item)
+    for section_name, items in section_items.items():
+        tse_children = []
+        for child in TSE_RETAIL_SIDEBAR_CHILDREN:
+            if child['detail_code'] not in active_categories:
+                continue
+            child_item = dict(child)
+            child_item['active'] = (
+                section == section_name
+                and focus in (child['name'], child['detail_code'])
+            )
+            tse_children.append(child_item)
 
-    if tse_children:
+        if not tse_children:
+            continue
         tse_parent = {
             'name': 'TSE Retail',
             'active': any(child['active'] for child in tse_children),
@@ -118,22 +124,22 @@ def build_sidebar_groups(section, focus=''):
         }
         youtube_index = next(
             (
-                index for index, item in enumerate(null_items)
+                index for index, item in enumerate(items)
                 if item['name'] == _get_display_name(
                     'youtube', config.get('youtube', {'display_name': 'YouTube'})
                 )
             ),
-            len(null_items),
+            len(items),
         )
-        null_items.insert(youtube_index, tse_parent)
+        items.insert(youtube_index, tse_parent)
 
     return [
         {'key': 'null_validation', 'icon': '🔍', 'label': 'NULL 검증',
-         'expanded': section == 'null_validation', 'active': section == 'null_validation', 'items': null_items},
+         'expanded': section == 'null_validation', 'active': section == 'null_validation', 'items': section_items['null_validation']},
         {'key': 'format_validation', 'icon': '📋', 'label': '형식 검증',
-         'expanded': section == 'format_validation', 'active': section == 'format_validation', 'items': make_items('format_validation')},
+         'expanded': section == 'format_validation', 'active': section == 'format_validation', 'items': section_items['format_validation']},
         {'key': 'anomaly_validation', 'icon': '🔄', 'label': '중복 검증',
-         'expanded': section == 'anomaly_validation', 'active': section == 'anomaly_validation', 'items': make_items('anomaly_validation')},
+         'expanded': section == 'anomaly_validation', 'active': section == 'anomaly_validation', 'items': section_items['anomaly_validation']},
     ]
 
 

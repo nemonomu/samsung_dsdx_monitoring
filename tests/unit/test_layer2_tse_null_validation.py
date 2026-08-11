@@ -577,6 +577,28 @@ class TSELayer2NullTests(unittest.TestCase):
         self.assertEqual(400, result['status_code'])
         self.assertEqual([], cursor.calls)
 
+    def test_format_review_allows_configured_edit_only_price_column(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('13,820', 'Homepro', 'TV-1')},
+            {'fetchone': None},
+            {},
+        ])
+        conn = Mock()
+
+        result = self.service.save_null_review(
+            cursor, conn, 'dx_tse.dx_tse_tv_retail_com', 11,
+            'original_sku_price', 'normal', 'checked', 'source_issue',
+            date(2026, 8, 10), 'format', 'tester',
+        )
+
+        self.assertTrue(result['success'])
+        self.assertIn(
+            'SELECT original_sku_price, account_name, item',
+            cursor.calls[0][0],
+        )
+        self.assertEqual('format_check', cursor.calls[2][1][1])
+        conn.commit.assert_called_once_with()
+
     def test_single_retailer_config_can_review_missing_account_name(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, None, 'TV-1')},

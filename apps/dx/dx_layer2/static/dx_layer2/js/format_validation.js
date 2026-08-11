@@ -48,7 +48,8 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const records = data.records || data.results || [];
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
-    const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail';
+    const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail' || isTseRetail;
     const currentDays = modalState.days || 1;
 
     var filteredRecords;
@@ -87,7 +88,9 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     var columns;
     var selectCols = [];
     if (isRetail && columnNames.length > 0) {
-        var defaultKeys = ['id', 'item', 'crawl_datetime', fieldName, 'product_url'];
+        var defaultKeys = isTseRetail
+            ? ['id', 'item', 'retailer_sku_name', 'crawl_datetime', fieldName, 'product_url']
+            : ['id', 'item', 'crawl_datetime', fieldName, 'product_url'];
         var _seen = {};
         columns = [];
         defaultKeys.forEach(function(k) {
@@ -121,6 +124,12 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 <input type="date" id="fmt-modal-date" value="${date}"
                     onchange="reloadFormatData(this.value)">
             </div>
+            ${isTseRetail ? `<div class="modal-date-picker">
+                <label>일수:</label>
+                <input type="number" id="fmt-modal-days" value="${currentDays}" min="1" max="30"
+                    style="width:58px;" onkeydown="if(event.key==='Enter')reloadFormatDays()">
+                <button class="btn-detail" onclick="reloadFormatDays()">조회</button>
+            </div>` : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} 형식 오류 (${filteredRecords.length}건)</h4>`;
     }
@@ -147,7 +156,12 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     // Item/쿼리 섹션 (retail만)
     if (isRetail) {
         const items = [...new Set(filteredRecords.map(r => r.item).filter(Boolean))].sort();
-        if (isInlineMode() && items.length > 0) {
+        if (isTseRetail) {
+            const queryColumns = ((data.query_config || {})[fieldName]) || [];
+            itemQueryHtml += _buildTseNullQueryHtml(
+                fieldName, data, filteredRecords, queryColumns, date, currentDays
+            );
+        } else if (isInlineMode() && items.length > 0) {
             itemQueryHtml += `<div class="item-toggle-section">
                 <div class="item-toggle-header" onclick="var c=this.nextElementSibling;var h=c.style.display==='none';c.style.display=h?'':'none';this.querySelector('.toggle-arrow').textContent=h?'▾':'▸';">
                     <span class="toggle-arrow">▸</span> Item 목록 (${items.length}개)
@@ -304,9 +318,10 @@ function reloadNullDays() {
 }
 
 function reloadFormatDays() {
-    var daysInput = document.getElementById('fmt-detail-days');
+    var daysInput = document.getElementById('fmt-detail-days') || document.getElementById('fmt-modal-days');
     var days = parseInt(daysInput && daysInput.value) || 1;
     if (days < 1) days = 1;
+    if (days > 30) days = 30;
     modalState.days = days;
 
     var date;
