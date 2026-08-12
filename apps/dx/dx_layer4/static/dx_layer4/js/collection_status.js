@@ -381,7 +381,6 @@
                 category: source.country || '',
                 name: source.label || ((source.country || '') + ' ' + productLine + ' 수집 데이터').trim(),
                 table_name: source.table_name || '',
-                expected: typeof source.expected_count === 'number' ? source.expected_count : '-',
                 actual: typeof source.total_count === 'number' ? source.total_count : 0
             });
         });
@@ -542,9 +541,8 @@
     function renderEmailReport(dailyData, emailData, date) {
         var container = document.getElementById('cs-email-container');
         var dailyRows = buildEmailDailyRows(dailyData, emailData);
-        var totalExpected = 0, totalActual = 0;
+        var totalActual = 0;
         dailyRows.forEach(function(r) {
-            if (typeof r.expected === 'number') totalExpected += r.expected;
             totalActual += r.actual;
         });
 
@@ -579,7 +577,7 @@
         html += '<b>1. 일일 수집 현황</b><br><br>';
         html += '<b>&nbsp;기준일: ' + dateDisplay + '</b><br><br>';
         html += '<table class="e" border="1" cellpadding="5" cellspacing="0"><tr>';
-        html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>예상건수</th><th>일일수집건수</th>';
+        html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
         html += '</tr>';
         dailyRows.forEach(function(r) {
             html += '<tr>';
@@ -587,26 +585,14 @@
             html += '<td align="center">' + L4.escapeHtml(r.category) + '</td>';
             html += '<td>' + L4.escapeHtml(r.name) + '</td>';
             html += '<td>' + L4.escapeHtml(r.table_name) + '</td>';
-            html += '<td align="center">' + (typeof r.expected === 'number' ? L4.formatNumber(r.expected) : r.expected) + '</td>';
             html += '<td align="center">' + L4.formatNumber(r.actual) + '</td>';
             html += '</tr>';
         });
         html += '<tr><th colspan="4">합 계</th>';
-        html += '<th>' + L4.formatNumber(totalExpected) + '</th>';
         html += '<th>' + L4.formatNumber(totalActual) + '</th></tr>';
         html += '</table>';
 
-        // 비고
-        html += '<br><span class="ew">'
-            + '&nbsp;&nbsp;※ YouTube 영상 데이터는 업로드 현황에 따라 수집 건수가 결정되어 예상 건수를 사전에 산정할 수 없습니다.<br>'
-            + '&nbsp;&nbsp;※ Retail 항목은 중복 데이터 및 제외 키워드·비대상 제품을 필터링하여 수집하므로, 일일 수집건수가 예상건수보다 적을 수 있습니다.'
-            + '</span><br><br>'
-            + '<span class="ef">'
-            + 'Retail 항목의 일일 수집건수가 예상건수보다 적은 이유는 아래 필터링 기준에 의한 정상 처리 결과입니다.<br><br>'
-            + '1. 중복 제품: 동일 제품이 여러 페이지에 중복 노출되는 경우, item 기준으로 판별하여 중복 수집을 제외합니다.<br>'
-            + '2. 제외 키워드: 제품명에 사전 정의된 제외 키워드가 포함된 경우 수집 대상에서 제외됩니다.<br>'
-            + '3. 비대상 제품: 제외 키워드에 해당하지 않더라도, 수집 대상 제품이 아닌 것으로 확인된 경우 비제품으로 등록하여 이후 수집에서 제외됩니다.'
-            + '</span><br><br>';
+        html += '<br><br>';
 
         // 2. R.com 수집 항목 Missing Value 현황
         html += '<b>2. R.com 수집 항목 Missing Value 현황</b><br>';

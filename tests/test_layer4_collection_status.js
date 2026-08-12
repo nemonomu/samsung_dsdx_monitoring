@@ -54,7 +54,6 @@ const emailReportData = {
         product: 'TV',
         label: 'SEA TV 수집 데이터',
         table_name: 'tv_retail_com',
-        expected_count: 900,
         total_count: 879,
         column_order: ['item'],
         retailers: [{
@@ -74,12 +73,10 @@ const emailReportData = {
         product: 'REF',
         label: 'SEA REF 수집 데이터',
         table_name: 'public.ref_retail_com',
-        expected_count: 600,
         total_count: 590,
         column_order: ['sku', 'offer', 'ref_capacity'],
         retailers: [{
             retailer: 'Bestbuy',
-            expected_count: 300,
             total_count: 290,
             collected_count: 290,
             has_data: true,
@@ -89,7 +86,6 @@ const emailReportData = {
             ]
         }, {
             retailer: 'Lowes',
-            expected_count: 300,
             total_count: 300,
             collected_count: 300,
             has_data: true,
@@ -105,7 +101,6 @@ const emailReportData = {
         product: 'TV',
         label: 'SEDA TV 수집 데이터',
         table_name: 'dx_seda.dx_seda_tv_retail_com',
-        expected_count: 600,
         total_count: 546,
         column_order: ['screen_size'],
         retailers: [{
@@ -118,7 +113,6 @@ const emailReportData = {
         product: 'TV',
         label: 'SEG TV 수집 데이터',
         table_name: 'dx_seg.dx_seg_tv_retail_com',
-        expected_count: 900,
         total_count: 935,
         column_order: ['screen_size'],
         retailers: []
@@ -128,7 +122,6 @@ const emailReportData = {
         product: 'TV',
         label: 'SIEL TV 수집 데이터',
         table_name: 'dx_siel.dx_siel_tv_retail_com',
-        expected_count: 600,
         total_count: 602,
         column_order: ['screen_size'],
         retailers: []
@@ -138,7 +131,6 @@ const emailReportData = {
         product: 'LDY',
         label: 'TSE LDY 수집 데이터',
         table_name: 'dx_tse.dx_tse_ldy_retail_com',
-        expected_count: 300,
         total_count: 287,
         column_order: ['ldy_capacity'],
         retailers: [{
@@ -271,6 +263,10 @@ async function run() {
     assert(!emailHtml.includes('>youtube_videos</td>'));
     assert(!emailHtml.includes('youtube_comments'));
     assert(emailHtml.includes('>841</td>'));
+    assert(!emailHtml.includes('예상건수'));
+    assert(!emailHtml.includes('예상 건수'));
+    assert(!emailHtml.includes('필터링 기준'));
+    assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4680</th></tr>'));
     assert(!emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
     assert(!emailHtml.includes('RAW_EXT_TV_RETAIL_COM_VIEW'));
     assert(emailHtml.includes('SEA TV 수집 데이터'));
@@ -331,6 +327,7 @@ async function run() {
     const dailyHtml = daily.elements['cs-daily-container'].innerHTML;
     assert(dailyHtml.includes('YouTube 영상 데이터 (HHP)'));
     assert(!dailyHtml.includes('YouTube 국가 실행 (HHP)'));
+    assert(dailyHtml.includes('예상건수'));
 
     const tseLayer1Data = {
         checks: [{

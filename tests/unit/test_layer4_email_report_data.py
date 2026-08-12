@@ -1,3 +1,4 @@
+import json
 import unittest
 from contextlib import contextmanager
 from datetime import date
@@ -9,15 +10,19 @@ class DummyConnection:
     pass
 
 
+def load_registry():
+    return load_module(
+        'apps/dx/dx_layer4/collection_status/email_registry.py',
+        'layer4_email_registry_under_test',
+    )
+
+
 def load_service(cursor):
     @contextmanager
     def dx_connection():
         yield DummyConnection(), cursor
 
-    registry = load_module(
-        'apps/dx/dx_layer4/collection_status/email_registry.py',
-        'layer4_email_registry_under_test',
-    )
+    registry = load_registry()
     package_name = 'apps.dx.dx_layer4.collection_status'
     return load_module(
         'apps/dx/dx_layer4/collection_status/email_services.py',
@@ -35,6 +40,7 @@ def load_service(cursor):
 def source(key='siel_tv', date_mode='timestamp'):
     return {
         'key': key,
+        'product_line': key,
         'country': 'SIEL',
         'product': 'TV',
         'label': 'SIEL TV',
@@ -46,21 +52,50 @@ def source(key='siel_tv', date_mode='timestamp'):
         'account_column': 'account_name',
         'has_page_type': True,
         'include_unassigned': False,
+        'latest_batch': True,
+        'collection_scope': 'main',
+        'special_rules': None,
+        'business_timezone': 'Asia/Seoul' if date_mode == 'timestamp' else None,
         'retailers': ({
             'name': 'Amazon',
             'aliases': ('Amazon',),
-            'columns': ('sku', 'final_sku_price'),
-            'expected_count': 300,
             'exclude_redirect': False,
         },),
     }
 
 
+class EmailRegistryTests(unittest.TestCase):
+    def test_registry_has_metadata_and_aliases_but_no_column_matrix(self):
+        registry = load_registry()
+
+        self.assertEqual(15, len(registry.EMAIL_REPORT_SOURCES))
+        self.assertFalse(any(
+            name.endswith('_COLUMNS') for name in vars(registry)
+        ))
+        for configured_source in registry.EMAIL_REPORT_SOURCES:
+            self.assertNotIn('expected_count', configured_source)
+            self.assertIn('product_line', configured_source)
+            for retailer in configured_source['retailers']:
+                self.assertNotIn('columns', retailer)
+                self.assertNotIn('expected_count', retailer)
+                self.assertTrue(retailer['aliases'])
+
+        sea_tv = registry.EMAIL_REPORT_SOURCES[0]
+        self.assertEqual('tv', sea_tv['product_line'])
+        self.assertEqual('batch', sea_tv['date_mode'])
+        self.assertFalse(sea_tv['latest_batch'])
+
+
 class EmailReportDataTests(unittest.TestCase):
-    def test_latest_batch_and_whitespace_missing_counts(self):
+    def test_db_columns_latest_batch_and_whitespace_missing_counts(self):
         cursor = ScriptedCursor([
+            {'fetchall': [
+                ('sku', 'amazon'),
+                ('final_sku_price', 'Amazon'),
+                ('ignored', 'another-retailer'),
+            ]},
             {'fetchone': ('a_20260811_000011',)},
-            {'fetchone': (287, 2, 5)},
+            {'fetchone': (287, 287, 2, 287, 5)},
         ])
         service = load_service(cursor)
 
@@ -74,17 +109,58 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(row['total_count'], 287)
         self.assertEqual(row['retailers'][0]['batch_id'], 'a_20260811_000011')
         self.assertEqual(row['retailers'][0]['columns'][1]['null_count'], 5)
-        latest_sql, params = cursor.calls[0]
-        count_sql, count_params = cursor.calls[1]
-        self.assertIn('DATE(source.crawl_datetime::timestamp) = %s', latest_sql)
+        self.assertNotIn('expected_count', json.dumps(result))
+
+        config_sql, config_params = cursor.calls[0]
+        latest_sql, latest_params = cursor.calls[1]
+        count_sql, count_params = cursor.calls[2]
+        self.assertIn('FROM monitoring_retail_columns', config_sql)
+        self.assertIn('is_active IS TRUE', config_sql)
+        self.assertIn('COALESCE(is_del, FALSE) IS FALSE', config_sql)
+        self.assertIn(
+            'COALESCE(skip_missing_check, FALSE) IS FALSE', config_sql,
+        )
+        self.assertEqual(config_params, ['siel_tv'])
+        self.assertIn(
+            "source.crawl_datetime >= (%s::date::timestamp AT TIME ZONE "
+            "'Asia/Seoul')",
+            latest_sql,
+        )
+        self.assertIn("source.crawl_datetime < ((%s::date + 1)", latest_sql)
+        self.assertIn("= 'main'", latest_sql)
         self.assertIn('ORDER BY source.id DESC LIMIT 1', latest_sql)
         self.assertIn('BTRIM(CAST(source.final_sku_price AS TEXT))', count_sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM %s', count_sql)
-        self.assertEqual(params, ['amazon', '2026-08-11'])
+        self.assertEqual(
+            latest_params, ['amazon', '2026-08-11', '2026-08-11'],
+        )
         self.assertEqual(count_params[-1], 'a_20260811_000011')
 
-    def test_missing_batch_returns_zero_without_second_query(self):
-        cursor = ScriptedCursor([{'fetchone': None}])
+    def test_bsr_denominator_is_actual_bsr_rows(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [('bsr_rank', 'Amazon')]},
+            {'fetchone': ('a_20260811_000011',)},
+            {'fetchone': (287, 83, 4)},
+        ])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 11), sources=(source(),)
+        )
+
+        metric = result['sources'][0]['retailers'][0]['columns'][0]
+        self.assertEqual(metric['total_count'], 83)
+        self.assertEqual(metric['null_count'], 4)
+        self.assertEqual(metric['remark'], 'BSR 페이지 실제 수집 건수')
+        aggregate_sql = cursor.calls[2][0]
+        self.assertIn("= 'bsr'", aggregate_sql)
+        self.assertNotIn('100', aggregate_sql)
+
+    def test_missing_batch_returns_zero_without_aggregate_query(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [('sku', 'amazon')]},
+            {'fetchone': None},
+        ])
         service = load_service(cursor)
 
         result = service.get_email_report_data(
@@ -92,23 +168,120 @@ class EmailReportDataTests(unittest.TestCase):
         )
 
         retailer = result['sources'][0]['retailers'][0]
+        self.assertTrue(result['complete'])
         self.assertFalse(retailer['has_data'])
         self.assertEqual(retailer['total_count'], 0)
-        self.assertEqual(len(cursor.calls), 1)
-        self.assertIn('LEFT(BTRIM(CAST(source.crawl_datetime AS TEXT)), 10)', cursor.calls[0][0])
+        self.assertEqual(len(cursor.calls), 2)
+        self.assertIn(
+            'LEFT(BTRIM(CAST(source.crawl_datetime AS TEXT)), 10)',
+            cursor.calls[1][0],
+        )
 
-    def test_partial_failure_is_not_reported_as_complete(self):
-        cursor = ScriptedCursor([])
+    def test_sea_tv_keeps_batch_scope_and_special_rules(self):
+        configured_source = {
+            **source(key='sea_tv', date_mode='batch'),
+            'product_line': 'tv',
+            'country': 'SEA',
+            'table_name': 'tv_retail_com',
+            'date_column': 'batch_id',
+            'latest_batch': False,
+            'collection_scope': 'all',
+            'special_rules': 'sea_tv',
+            'retailers': ({
+                'name': 'Amazon',
+                'aliases': ('Amazon',),
+                'exclude_redirect': True,
+            },),
+        }
+        cursor = ScriptedCursor([
+            {'fetchall': [
+                ('original_sku_price', 'amazon'),
+                ('bsr_rank', 'amazon'),
+            ]},
+            {'fetchone': (350, 350, 7, 87, 4)},
+            {'fetchone': (2,)},
+        ])
         service = load_service(cursor)
 
         result = service.get_email_report_data(
-            date(2026, 8, 11), sources=(source(key='broken'),)
+            date(2026, 8, 11), sources=(configured_source,)
         )
 
-        self.assertFalse(result['success'])
-        self.assertFalse(result['complete'])
-        self.assertEqual(result['sources'], [])
-        self.assertEqual(result['errors'][0]['source'], 'broken')
+        retailer = result['sources'][0]['retailers'][0]
+        self.assertEqual(retailer['total_count'], 350)
+        self.assertEqual(retailer['columns'][1]['total_count'], 87)
+        self.assertEqual(retailer['columns'][1]['null_count'], 4)
+        self.assertEqual(retailer['redirect_true_count'], 2)
+        aggregate_sql, aggregate_params = cursor.calls[1]
+        self.assertIn("from '([0-9]{8})'", aggregate_sql)
+        self.assertIn('COALESCE(source.redirect, FALSE) IS NOT TRUE', aggregate_sql)
+        self.assertIn("= 'bsr'", aggregate_sql)
+        self.assertEqual(aggregate_params[-1], '20260811')
+        redirect_sql = cursor.calls[2][0]
+        self.assertIn('source.redirect IS TRUE', redirect_sql)
+        self.assertNotIn('ORDER BY source.id DESC LIMIT 1', aggregate_sql)
+
+        promotion_total, promotion_missing, promotion_remark = (
+            service._column_metrics(
+                configured_source, configured_source['retailers'][0],
+                'promotion_type',
+            )
+        )
+        self.assertIn('source.promotion_position', promotion_total)
+        self.assertIn('GREATEST', promotion_missing)
+        self.assertIn('source.promotion_type', promotion_missing)
+        self.assertEqual(promotion_remark, '프로모션 페이지 수집 항목')
+
+    def test_tse_latest_batch_anchor_excludes_unassigned_rows(self):
+        tse_source = {
+            **source(key='tse_tv', date_mode='text'),
+            'product_line': 'tse_tv',
+            'country': 'TSE',
+            'table_name': 'dx_tse.dx_tse_tv_retail_com',
+            'has_page_type': False,
+            'include_unassigned': True,
+            'collection_scope': 'all',
+            'retailers': ({
+                'name': 'Homepro',
+                'aliases': ('Homepro',),
+                'exclude_redirect': False,
+            },),
+        }
+        cursor = ScriptedCursor([
+            {'fetchall': [('sku', 'homepro')]},
+            {'fetchone': ('homepro_20260811',)},
+            {'fetchone': (11, 11, 0)},
+        ])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 11), sources=(tse_source,)
+        )
+
+        self.assertTrue(result['complete'])
+        latest_sql = cursor.calls[1][0]
+        aggregate_sql = cursor.calls[2][0]
+        self.assertNotIn('source.account_name IS NULL', latest_sql)
+        self.assertIn('source.account_name IS NULL', aggregate_sql)
+
+    def test_missing_or_unsafe_db_configuration_marks_source_incomplete(self):
+        for configured_rows in (
+            [],
+            [('sku;drop table x', 'amazon')],
+        ):
+            with self.subTest(configured_rows=configured_rows):
+                cursor = ScriptedCursor([{'fetchall': configured_rows}])
+                service = load_service(cursor)
+
+                result = service.get_email_report_data(
+                    date(2026, 8, 11), sources=(source(key='broken'),)
+                )
+
+                self.assertFalse(result['success'])
+                self.assertFalse(result['complete'])
+                self.assertEqual(result['sources'], [])
+                self.assertEqual(result['errors'][0]['source'], 'broken')
+                self.assertEqual(len(cursor.calls), 1)
 
 
 if __name__ == '__main__':
