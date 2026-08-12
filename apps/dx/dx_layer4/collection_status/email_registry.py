@@ -2,7 +2,7 @@
 
 Collection columns intentionally do not live in application code.  Each
 source's ``product_line`` selects the active rows in
-``monitoring_retail_columns`` at request time.  This module only allow-lists
+``public.monitoring_retail_columns`` at request time.  This module only allow-lists
 SQL identifiers and the account-name aliases needed to find source rows.
 """
 
@@ -80,16 +80,16 @@ EMAIL_REPORT_SOURCES = (
     # SEA TV keeps its established batch-date/all-row collection semantics.
     # Only the email's BSR field denominator changes to actual BSR rows.
     _source(
-        'sea_tv', 'SEA', 'TV', 'tv_retail_com', 'batch_id', 'batch',
+        'sea_tv', 'SEA', 'TV', 'public.tv_retail_com', 'batch_id', 'batch',
         _SEA_TV_RETAILERS, product_line='tv', latest_batch=False,
         collection_scope='all', special_rules='sea_tv',
     ),
     _source(
-        'sea_ref', 'SEA', 'REF', 'ref_retail_com', 'crawl_strdatetime',
+        'sea_ref', 'SEA', 'REF', 'public.ref_retail_com', 'crawl_strdatetime',
         'text', _SEA_APPLIANCE_RETAILERS,
     ),
     _source(
-        'sea_ldy', 'SEA', 'LDY', 'ldy_retail_com', 'crawl_strdatetime',
+        'sea_ldy', 'SEA', 'LDY', 'public.ldy_retail_com', 'crawl_strdatetime',
         'text', _SEA_APPLIANCE_RETAILERS,
     ),
     *(
@@ -139,6 +139,11 @@ def _validate_registry():
         keys.add(source['key'])
         if not _TABLE_IDENTIFIER.fullmatch(source['table_name']):
             raise ValueError(f"Unsafe email table: {source['table_name']}")
+        if '.' not in source['table_name']:
+            raise ValueError(
+                f"Email table must be schema-qualified: "
+                f"{source['table_name']}"
+            )
         if source['date_mode'] not in {'batch', 'text', 'timestamp'}:
             raise ValueError(f"Unsafe date mode: {source['date_mode']}")
         if source['business_timezone'] not in {None, 'Asia/Seoul'}:

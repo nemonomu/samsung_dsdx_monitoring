@@ -8,7 +8,7 @@ from .email_registry import EMAIL_REPORT_SOURCES
 
 
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
-_CONFIG_TABLE = 'monitoring_retail_columns'
+_CONFIG_TABLE = 'public.monitoring_retail_columns'
 _MAIN_SCOPE = "LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'"
 _BSR_SCOPE = "LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'bsr'"
 

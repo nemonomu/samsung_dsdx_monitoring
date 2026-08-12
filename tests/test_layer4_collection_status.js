@@ -53,7 +53,7 @@ const emailReportData = {
         country: 'SEA',
         product: 'TV',
         label: 'SEA TV 수집 데이터',
-        table_name: 'tv_retail_com',
+        table_name: 'public.tv_retail_com',
         total_count: 879,
         column_order: ['item'],
         retailers: [{

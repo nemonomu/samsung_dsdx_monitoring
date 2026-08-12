@@ -75,6 +75,7 @@ class EmailRegistryTests(unittest.TestCase):
         for configured_source in registry.EMAIL_REPORT_SOURCES:
             self.assertNotIn('expected_count', configured_source)
             self.assertIn('product_line', configured_source)
+            self.assertIn('.', configured_source['table_name'])
             for retailer in configured_source['retailers']:
                 self.assertNotIn('columns', retailer)
                 self.assertNotIn('expected_count', retailer)
@@ -84,6 +85,14 @@ class EmailRegistryTests(unittest.TestCase):
         self.assertEqual('tv', sea_tv['product_line'])
         self.assertEqual('batch', sea_tv['date_mode'])
         self.assertFalse(sea_tv['latest_batch'])
+        self.assertEqual(
+            [
+                'public.tv_retail_com',
+                'public.ref_retail_com',
+                'public.ldy_retail_com',
+            ],
+            [source['table_name'] for source in registry.EMAIL_REPORT_SOURCES[:3]],
+        )
 
 
 class EmailReportDataTests(unittest.TestCase):
@@ -114,7 +123,7 @@ class EmailReportDataTests(unittest.TestCase):
         config_sql, config_params = cursor.calls[0]
         latest_sql, latest_params = cursor.calls[1]
         count_sql, count_params = cursor.calls[2]
-        self.assertIn('FROM monitoring_retail_columns', config_sql)
+        self.assertIn('FROM public.monitoring_retail_columns', config_sql)
         self.assertIn('is_active IS TRUE', config_sql)
         self.assertIn('COALESCE(is_del, FALSE) IS FALSE', config_sql)
         self.assertIn(
@@ -182,7 +191,7 @@ class EmailReportDataTests(unittest.TestCase):
             **source(key='sea_tv', date_mode='batch'),
             'product_line': 'tv',
             'country': 'SEA',
-            'table_name': 'tv_retail_com',
+            'table_name': 'public.tv_retail_com',
             'date_column': 'batch_id',
             'latest_batch': False,
             'collection_scope': 'all',
@@ -213,11 +222,13 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(retailer['columns'][1]['null_count'], 4)
         self.assertEqual(retailer['redirect_true_count'], 2)
         aggregate_sql, aggregate_params = cursor.calls[1]
+        self.assertIn('FROM public.tv_retail_com source', aggregate_sql)
         self.assertIn("from '([0-9]{8})'", aggregate_sql)
         self.assertIn('COALESCE(source.redirect, FALSE) IS NOT TRUE', aggregate_sql)
         self.assertIn("= 'bsr'", aggregate_sql)
         self.assertEqual(aggregate_params[-1], '20260811')
         redirect_sql = cursor.calls[2][0]
+        self.assertIn('FROM public.tv_retail_com source', redirect_sql)
         self.assertIn('source.redirect IS TRUE', redirect_sql)
         self.assertNotIn('ORDER BY source.id DESC LIMIT 1', aggregate_sql)
 
