@@ -29,10 +29,8 @@ def collection_phase(current_time):
 
 
 def count_status(actual, expected=300):
-    if int(actual or 0) >= int(expected or 300):
+    if int(actual or 0) >= int(expected or 300) - 100:
         return 'ok'
-    if int(actual or 0) >= 200:
-        return 'warning'
     return 'critical'
 
 
@@ -112,7 +110,8 @@ class TseLayer1ServiceTests(unittest.TestCase):
 
         self.assertEqual('tse_retail', check['check_type'])
         self.assertEqual('RDP 09:00~09:30', check['collection_window'])
-        self.assertEqual('WARNING', check['status'])
+        self.assertEqual('OK', check['status'])
+        self.assertEqual([], result['failed_items'])
         self.assertEqual(['TV', 'REF', 'LDY'], [c['category'] for c in check['categories']])
 
         tv = check['categories'][0]
@@ -160,8 +159,8 @@ class TseLayer1ServiceTests(unittest.TestCase):
 
     def test_count_status_boundaries(self):
         self.assertEqual('OK', self.service._status_for_count(300, 'complete'))
-        self.assertEqual('WARNING', self.service._status_for_count(299, 'complete'))
-        self.assertEqual('WARNING', self.service._status_for_count(200, 'complete'))
+        self.assertEqual('OK', self.service._status_for_count(299, 'complete'))
+        self.assertEqual('OK', self.service._status_for_count(200, 'complete'))
         self.assertEqual('CRITICAL', self.service._status_for_count(199, 'complete'))
 
     def test_configured_retailer_without_data_is_zero_and_failed(self):

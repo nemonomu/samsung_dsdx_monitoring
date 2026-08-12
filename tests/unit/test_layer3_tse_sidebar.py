@@ -67,7 +67,17 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
             ['SEA Retail', 'TSE Retail', 'Sentiment'],
             [item['name'] for item in crossfield_group['items']],
         )
-        self.assertEqual('tv', crossfield_group['items'][0]['detail_code'])
+        sea_parent = crossfield_group['items'][0]
+        self.assertEqual(
+            [('SEA Retail', 'TV', 'tv', False)],
+            [
+                (
+                    child['name'], child['label'],
+                    child['detail_code'], child['active'],
+                )
+                for child in sea_parent['children']
+            ],
+        )
         tse_parent = crossfield_group['items'][1]
         self.assertTrue(tse_parent['active'])
         self.assertEqual(
@@ -110,13 +120,17 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
 
         crossfield_group = context._build_sidebar_groups('cross_field')[1]
 
+        self.assertEqual('SEA Retail', crossfield_group['items'][0]['name'])
+        self.assertFalse(crossfield_group['items'][0]['active'])
         self.assertEqual(
-            [{
-                'name': 'SEA Retail',
-                'detail_code': 'tv',
-                'active': False,
-            }],
-            crossfield_group['items'],
+            [('SEA Retail', 'TV', 'tv', False)],
+            [
+                (
+                    child['name'], child['label'],
+                    child['detail_code'], child['active'],
+                )
+                for child in crossfield_group['items'][0]['children']
+            ],
         )
 
     def test_sea_identity_activates_renamed_item_without_text_inference(self):
@@ -129,6 +143,7 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         )[1]
 
         self.assertTrue(crossfield_group['items'][0]['active'])
+        self.assertTrue(crossfield_group['items'][0]['children'][0]['active'])
 
     def test_build_context_preserves_selected_date_and_tse_identity(self):
         context = self._load_context([

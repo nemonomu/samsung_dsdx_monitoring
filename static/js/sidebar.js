@@ -28,4 +28,28 @@ function toggleSidebarGroup(rowEl) {
     if (group) group.classList.toggle('expanded');
 }
 
+function toggleSidebarSubgroup(buttonEl) {
+    var subgroup = buttonEl.closest('.sidebar-subgroup');
+    if (!subgroup) return;
+
+    var subgroupList = subgroup.parentElement;
+    var willExpand = !subgroup.classList.contains('expanded');
+
+    if (subgroupList) {
+        subgroupList.querySelectorAll('.sidebar-subgroup.expanded').forEach(function(item) {
+            if (item === subgroup) return;
+            item.classList.remove('expanded');
+            var otherButton = item.querySelector('.sidebar-subgroup-title');
+            var otherChildren = item.querySelector('.sidebar-subgroup-children');
+            if (otherButton) otherButton.setAttribute('aria-expanded', 'false');
+            if (otherChildren) otherChildren.hidden = true;
+        });
+    }
+
+    subgroup.classList.toggle('expanded', willExpand);
+    buttonEl.setAttribute('aria-expanded', willExpand ? 'true' : 'false');
+    var children = subgroup.querySelector('.sidebar-subgroup-children');
+    if (children) children.hidden = !willExpand;
+}
+
 document.addEventListener('DOMContentLoaded', initSidebar);

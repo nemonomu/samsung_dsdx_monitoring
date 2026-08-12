@@ -488,7 +488,8 @@ function getCheckBadgeHtml(sectionType) {
     if (currentStatsData && currentStatsData.checks) {
         check = currentStatsData.checks.find(function(c) { return c.check_type === sectionType; });
     }
-    var isFullRate = check && check.rate >= 100 && sectionType !== 'retail';
+    var isRetailSection = sectionType === 'retail' || sectionType === 'tse_retail';
+    var isFullRate = check && check.rate >= 100 && !isRetailSection;
 
     if (!currentCheckStatus || !currentCheckStatus.sections) {
         if (isFullRate) {
@@ -514,9 +515,9 @@ function getCheckBadgeHtml(sectionType) {
         return '<button class="btn-check-confirm completed" onclick="event.stopPropagation(); deleteCheck(\'' + sectionType + '\', 2)" title="' + esc(who) + ' ' + timeStr + '">완료 ✓</button>';
     }
     if (sec.confirm_step === 1) {
-        // 1차 확인됨: [취소] + [완료] (retail이거나 rate >= 100이면 완료 가능)
+        // 1차 확인됨: [취소] + [완료] (Retail이거나 rate >= 100이면 완료 가능)
         var cancelBtn = '<button class="btn-check-confirm cancel" onclick="event.stopPropagation(); deleteCheck(\'' + sectionType + '\')" title="확인 취소">취소</button>';
-        if (sectionType === 'retail' || isFullRate) {
+        if (isRetailSection || isFullRate) {
             return cancelBtn + '<button class="btn-check-confirm checked" onclick="event.stopPropagation(); saveCheck(\'' + sectionType + '\', 2)" title="' + esc(who) + ' ' + timeStr + '">완료</button>';
         }
         return cancelBtn + '<button class="btn-check-confirm checked" disabled title="' + esc(who) + ' ' + timeStr + ' (완료율 100% 미달)">확인됨</button>';

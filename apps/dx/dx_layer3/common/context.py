@@ -61,7 +61,11 @@ def _get_sidebar_items():
             sea_item_index = len(crossfield_items)
             crossfield_items.append({
                 'name': 'SEA Retail',
-                'detail_code': 'tv',
+                'children': [{
+                    'name': 'SEA Retail',
+                    'label': 'TV',
+                    'detail_code': 'tv',
+                }],
             })
         else:
             crossfield_items.append(section_name)

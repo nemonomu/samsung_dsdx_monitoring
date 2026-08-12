@@ -26,7 +26,7 @@ def _detail_long_text(value):
 
 
 ALL_SECTIONS = [
-    'retail', 'sentiment', 'youtube', 'market_trend',
+    'retail', 'tse_retail', 'sentiment', 'youtube', 'market_trend',
     'market_competitor', 'market_competitor_event',
     'market_demand', 'market_promotion',
 ]
@@ -167,8 +167,8 @@ def save_check(cursor, conn, date_str, layer, step, sections, username):
                     'error': '미해결 이슈 ' + str(open_count) + '건이 있습니다. 이슈를 먼저 처리하세요.'
                 }
 
-            # 2차 완료: 완료율 100% 체크 (retail 제외)
-            if section != 'retail' and rate < 100:
+            # 2차 완료: 완료율 100% 체크 (Retail 수집 섹션 제외)
+            if section not in ('retail', 'tse_retail') and rate < 100:
                 conn.rollback()
                 return {
                     'success': False,

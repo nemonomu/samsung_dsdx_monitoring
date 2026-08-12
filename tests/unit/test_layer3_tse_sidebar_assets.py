@@ -6,7 +6,7 @@ from tests.unit.support import REPO_ROOT
 
 
 class Layer3TseSidebarAssetTests(unittest.TestCase):
-    def test_shared_sidebar_renders_flat_items_and_non_click_tse_children(self):
+    def test_shared_sidebar_renders_clickable_expanded_subgroup(self):
         template_path = REPO_ROOT / 'templates/includes/_sidebar.html'
         template = Engine(debug=True).from_string(
             template_path.read_text(encoding='utf-8')
@@ -24,8 +24,13 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
                 'items': [
                     {
                         'name': 'SEA Retail',
-                        'detail_code': 'tv',
                         'active': False,
+                        'children': [{
+                            'name': 'SEA Retail',
+                            'label': 'TV',
+                            'detail_code': 'tv',
+                            'active': False,
+                        }],
                     },
                     {
                         'name': 'TSE Retail',
@@ -44,10 +49,22 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
         self.assertIn(
             "onSubitemClick('cross_field', 'SEA Retail', 'tv')", rendered
         )
-        self.assertIn('class="sidebar-subgroup active"', rendered)
-        self.assertIn(
-            'class="sidebar-subgroup-title">TSE Retail</div>', rendered
+        self.assertEqual(
+            2, rendered.count('onclick="toggleSidebarSubgroup(this)"')
         )
+        self.assertIn('class="sidebar-subgroup active expanded"', rendered)
+        self.assertIn(
+            'class="sidebar-subgroup-title" type="button"', rendered
+        )
+        self.assertIn('aria-expanded="true"', rendered)
+        self.assertIn(
+            'aria-controls="sidebar-subgroup-cross_field-sea-retail"', rendered
+        )
+        self.assertIn(
+            'id="sidebar-subgroup-cross_field-sea-retail" hidden', rendered
+        )
+        self.assertIn('onclick="toggleSidebarSubgroup(this)"', rendered)
+        self.assertIn('<span>TSE Retail</span>', rendered)
         self.assertIn('data-item-name="TSE REF"', rendered)
         self.assertIn('data-detail-code="tse_ref"', rendered)
         self.assertIn(
@@ -127,13 +144,21 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             source,
         )
 
-    def test_sidebar_css_keeps_children_visible_without_a_nested_toggle(self):
+    def test_sidebar_assets_support_nested_accordion(self):
         source = (REPO_ROOT / 'static/css/sidebar.css').read_text(encoding='utf-8')
+        script = (REPO_ROOT / 'static/js/sidebar.js').read_text(encoding='utf-8')
 
         self.assertIn('.dx-sidebar .sidebar-subgroup-title {', source)
-        self.assertIn('.dx-sidebar .sidebar-subgroup-children {', source)
+        self.assertIn(
+            '.dx-sidebar .sidebar-subgroup-children {\n    display: none;\n}',
+            source,
+        )
+        self.assertIn(
+            '.dx-sidebar .sidebar-subgroup.expanded .sidebar-subgroup-children {\n    display: block;\n}',
+            source,
+        )
         self.assertIn('.dx-sidebar .sidebar-subgroup-child {', source)
-        self.assertNotIn('.sidebar-subgroup.expanded', source)
+        self.assertIn('function toggleSidebarSubgroup(buttonEl) {', script)
 
 
 if __name__ == '__main__':

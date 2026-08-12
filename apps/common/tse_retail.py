@@ -11,6 +11,7 @@ from datetime import time
 TSE_CHECK_TYPE = 'tse_retail'
 TSE_COUNTRY = 'TSE'
 TSE_EXPECTED_COUNT = 300
+TSE_ALLOWED_SHORTFALL = 100
 TSE_COLLECTION_START = time(9, 0)
 TSE_COLLECTION_END = time(9, 30)
 
@@ -141,11 +142,10 @@ def get_tse_collection_phase(current_time):
 
 
 def get_tse_count_status(actual_count, expected_count=TSE_EXPECTED_COUNT):
-    """Classify a completed collection count using the agreed thresholds."""
+    """Classify a completed count while allowing the normal daily variance."""
     actual = int(actual_count or 0)
     expected = int(expected_count or TSE_EXPECTED_COUNT)
-    if actual >= expected:
+    normal_threshold = max(0, expected - TSE_ALLOWED_SHORTFALL)
+    if actual >= normal_threshold:
         return 'ok'
-    if actual >= 200:
-        return 'warning'
     return 'critical'

@@ -87,7 +87,6 @@ function renderTseCategory(cat, checkIdx, catIdx) {
 
 function renderTseRetailCheck(check, checkIdx) {
     var categories = check.categories || [];
-    var expected = tseNumber(check.expected);
     var actual = tseNumber(check.actual !== undefined ? check.actual : check.total);
     var categoriesHtml = categories.map(function(cat, catIdx) {
         return renderTseCategory(cat, checkIdx, catIdx);
@@ -100,13 +99,12 @@ function renderTseRetailCheck(check, checkIdx) {
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +
             '</div>' +
             '<div class="check-criteria">' +
-                '<span class="criteria-item ok">정상: 300건 이상</span>' +
-                '<span class="criteria-item warning">경고: 200~299건</span>' +
+                '<span class="criteria-item ok">정상: 200건 이상</span>' +
                 '<span class="criteria-item critical">위험: 200건 미만</span>' +
             '</div>' +
             '<div class="check-stats">' +
                 '<div class="check-stat">' +
-                    '<div class="value">' + actual.toLocaleString() + '/' + expected.toLocaleString() + '</div>' +
+                    '<div class="value">' + actual.toLocaleString() + '</div>' +
                     '<div class="label">총 수집량</div>' +
                 '</div>' +
                 getStatusBadge(check.status) +

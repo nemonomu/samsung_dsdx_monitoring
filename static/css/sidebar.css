@@ -160,14 +160,52 @@
 }
 
 .dx-sidebar .sidebar-subgroup-title {
-    padding: 8px 12px 4px;
+    width: 100%;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
     color: var(--text-secondary);
+    font-family: inherit;
     font-size: 13px;
     font-weight: 600;
-    cursor: default;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: left;
+    transition: all 0.2s;
+}
+
+.dx-sidebar .sidebar-subgroup-title:hover {
+    background: color-mix(in srgb, var(--layer-color) 6%, transparent);
+    color: var(--text-primary);
+}
+
+.dx-sidebar .sidebar-subgroup-title:focus-visible {
+    outline: 2px solid var(--layer-color);
+    outline-offset: -2px;
+}
+
+.dx-sidebar .sidebar-subgroup.active .sidebar-subgroup-title {
+    color: var(--layer-color);
+}
+
+.dx-sidebar .sidebar-subgroup-arrow {
+    font-size: 9px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+}
+
+.dx-sidebar .sidebar-subgroup.expanded .sidebar-subgroup-arrow {
+    transform: rotate(90deg);
 }
 
 .dx-sidebar .sidebar-subgroup-children {
+    display: none;
+}
+
+.dx-sidebar .sidebar-subgroup.expanded .sidebar-subgroup-children {
     display: block;
 }
 

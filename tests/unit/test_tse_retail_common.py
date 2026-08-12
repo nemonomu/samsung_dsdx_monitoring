@@ -52,8 +52,8 @@ class TseRetailCommonTests(unittest.TestCase):
 
     def test_count_status_boundaries(self):
         self.assertEqual(get_tse_count_status(300), 'ok')
-        self.assertEqual(get_tse_count_status(299), 'warning')
-        self.assertEqual(get_tse_count_status(200), 'warning')
+        self.assertEqual(get_tse_count_status(299), 'ok')
+        self.assertEqual(get_tse_count_status(200), 'ok')
         self.assertEqual(get_tse_count_status(199), 'critical')
 
 if __name__ == '__main__':

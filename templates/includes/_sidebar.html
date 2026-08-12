@@ -20,9 +20,16 @@
             <div class="sidebar-subitems">
                 {% for item in group.items %}
                 {% if item.children %}
-                <div class="sidebar-subgroup {% if item.active %}active{% endif %}">
-                    <div class="sidebar-subgroup-title">{{ item.name }}</div>
-                    <div class="sidebar-subgroup-children">
+                <div class="sidebar-subgroup {% if item.active %}active expanded{% endif %}">
+                    <button class="sidebar-subgroup-title" type="button"
+                            aria-expanded="{% if item.active %}true{% else %}false{% endif %}"
+                            aria-controls="sidebar-subgroup-{{ group.key }}-{{ item.name|slugify }}"
+                            onclick="toggleSidebarSubgroup(this)">
+                        <span>{{ item.name }}</span>
+                        <span class="sidebar-subgroup-arrow" aria-hidden="true">▶</span>
+                    </button>
+                    <div class="sidebar-subgroup-children"
+                         id="sidebar-subgroup-{{ group.key }}-{{ item.name|slugify }}"{% if not item.active %} hidden{% endif %}>
                         {% for child in item.children %}
                         <a class="sidebar-subitem sidebar-subgroup-child {% if child.active %}active{% endif %}"
                            data-item-name="{{ child.name }}"

@@ -78,8 +78,37 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             [item['name'] for item in anomaly_group['items']],
         )
 
+        sea_parent = null_group['items'][0]
+        self.assertEqual('SEA Retail', sea_parent['name'])
+        self.assertEqual(
+            [('SEA Retail', 'TV', 'tv_retail', False)],
+            [
+                (
+                    child['name'], child['label'],
+                    child['detail_code'], child['active'],
+                )
+                for child in sea_parent['children']
+            ],
+        )
+
         self.assertFalse(format_group['items'][1]['active'])
         self.assertFalse(anomaly_group['items'][1]['active'])
+
+    def test_sea_parent_activates_its_tv_child(self):
+        context, stubs = self._load_context([
+            'tv_retail', 'youtube',
+            'tse_tv_retail', 'tse_ref_retail', 'tse_ldy_retail',
+        ])
+
+        for focus in ('SEA Retail', 'TV Retail', 'tv_retail'):
+            with self.subTest(focus=focus), patch.dict('sys.modules', stubs):
+                null_group = context.build_sidebar_groups(
+                    'null_validation', focus=focus
+                )[0]
+
+            sea_parent = null_group['items'][0]
+            self.assertTrue(sea_parent['active'])
+            self.assertTrue(sea_parent['children'][0]['active'])
 
     def test_tse_children_are_active_in_format_and_duplicate_sections(self):
         context, stubs = self._load_context([

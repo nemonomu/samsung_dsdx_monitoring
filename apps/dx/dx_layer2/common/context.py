@@ -36,6 +36,12 @@ TSE_RETAIL_SIDEBAR_CHILDREN = (
     },
 )
 
+SEA_RETAIL_SIDEBAR_CHILD = {
+    'name': 'SEA Retail',
+    'label': 'TV',
+    'detail_code': 'tv_retail',
+}
+
 
 DISPLAY_NAME_OVERRIDES = {
     'tv_retail': 'SEA Retail',
@@ -86,14 +92,24 @@ def build_sidebar_groups(section, focus=''):
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
             display_name = _get_display_name(category, info)
+            item_active = (
+                section == sec
+                and focus in (
+                    display_name, info['display_name'], category,
+                )
+            )
+            if category == 'tv_retail':
+                sea_child = dict(SEA_RETAIL_SIDEBAR_CHILD)
+                sea_child['active'] = item_active
+                items.append({
+                    'name': 'SEA Retail',
+                    'active': item_active,
+                    'children': [sea_child],
+                })
+                continue
             items.append({
                 'name': display_name,
-                'active': (
-                    section == sec
-                    and focus in (
-                        display_name, info['display_name'], category,
-                    )
-                ),
+                'active': item_active,
             })
         return items
 

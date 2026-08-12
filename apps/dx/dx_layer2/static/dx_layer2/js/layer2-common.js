@@ -1420,6 +1420,14 @@ function onSubitemClick(parentSection, tableName, detailCode) {
             : el.textContent.trim() === tableName;
         el.classList.toggle('active', isActive);
     });
+    document.querySelectorAll('.sidebar-subgroup').forEach(function(subgroup) {
+        const hasActiveChild = Boolean(subgroup.querySelector('.sidebar-subgroup-child.active'));
+        subgroup.classList.toggle('active', hasActiveChild);
+        if (hasActiveChild && !subgroup.classList.contains('expanded')) {
+            const title = subgroup.querySelector('.sidebar-subgroup-title');
+            if (title) toggleSidebarSubgroup(title);
+        }
+    });
 }
 
 function scrollToTable(tableName) {
