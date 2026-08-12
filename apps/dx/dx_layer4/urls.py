@@ -22,6 +22,7 @@ urlpatterns = [
 
     # API — 수집 현황
     path('api/collection-status/', cs_api.collection_status_data, name='api_collection_status'),
+    path('api/collection-status/email-report-data/', cs_api.email_report_data, name='api_email_report_data'),
     path('api/collection-status/null-detail/', cs_api.collection_null_detail, name='api_collection_null_detail'),
     path('api/collection-status/send-email/', cs_api.send_email_report, name='api_send_email'),
     path('api/collection-status/email-check/', cs_api.email_sent_check, name='api_email_check'),

@@ -30,6 +30,7 @@ media/
 
 # 민감 정보
 config/config.py
+config/secrets.py
 config/secrets.txt
 config/create_admin.py
 *.ppk

@@ -44,6 +44,111 @@ const layer1Data = {
     }]
 };
 
+const emailReportData = {
+    success: true,
+    complete: true,
+    date: '2026-07-29',
+    sources: [{
+        key: 'sea_tv',
+        country: 'SEA',
+        product: 'TV',
+        label: 'SEA TV 수집 데이터',
+        table_name: 'tv_retail_com',
+        expected_count: 900,
+        total_count: 879,
+        column_order: ['item'],
+        retailers: [{
+            retailer: 'Amazon',
+            total_count: 248,
+            redirect_true_count: 2,
+            columns: [{ column: 'item', total_count: 248, null_count: 0 }]
+        }, {
+            retailer: 'Bestbuy',
+            total_count: 315,
+            redirect_true_count: 0,
+            columns: [{ column: 'item', total_count: 315, null_count: 0 }]
+        }]
+    }, {
+        key: 'sea_ref',
+        country: 'SEA',
+        product: 'REF',
+        label: 'SEA REF 수집 데이터',
+        table_name: 'public.ref_retail_com',
+        expected_count: 600,
+        total_count: 590,
+        column_order: ['sku', 'offer', 'ref_capacity'],
+        retailers: [{
+            retailer: 'Bestbuy',
+            expected_count: 300,
+            total_count: 290,
+            collected_count: 290,
+            has_data: true,
+            columns: [
+                { column: 'sku', total_count: 290, null_count: 0 },
+                { column: 'ref_capacity', total_count: 290, null_count: 3 }
+            ]
+        }, {
+            retailer: 'Lowes',
+            expected_count: 300,
+            total_count: 300,
+            collected_count: 300,
+            has_data: true,
+            columns: [
+                { column: 'sku', total_count: 300, null_count: 1 },
+                { column: 'offer', total_count: 300, null_count: 5 },
+                { column: 'ref_capacity', total_count: 300, null_count: 2 }
+            ]
+        }]
+    }, {
+        key: 'seda_tv',
+        country: 'SEDA',
+        product: 'TV',
+        label: 'SEDA TV 수집 데이터',
+        table_name: 'dx_seda.dx_seda_tv_retail_com',
+        expected_count: 600,
+        total_count: 546,
+        column_order: ['screen_size'],
+        retailers: [{
+            retailer: 'Magalu',
+            columns: [{ column: 'screen_size', total_count: 238, null_count: 3 }]
+        }]
+    }, {
+        key: 'seg_tv',
+        country: 'SEG',
+        product: 'TV',
+        label: 'SEG TV 수집 데이터',
+        table_name: 'dx_seg.dx_seg_tv_retail_com',
+        expected_count: 900,
+        total_count: 935,
+        column_order: ['screen_size'],
+        retailers: []
+    }, {
+        key: 'siel_tv',
+        country: 'SIEL',
+        product: 'TV',
+        label: 'SIEL TV 수집 데이터',
+        table_name: 'dx_siel.dx_siel_tv_retail_com',
+        expected_count: 600,
+        total_count: 602,
+        column_order: ['screen_size'],
+        retailers: []
+    }, {
+        key: 'tse_ldy',
+        country: 'TSE',
+        product: 'LDY',
+        label: 'TSE LDY 수집 데이터',
+        table_name: 'dx_tse.dx_tse_ldy_retail_com',
+        expected_count: 300,
+        total_count: 287,
+        column_order: ['ldy_capacity'],
+        retailers: [{
+            retailer: 'Homepro',
+            columns: [{ column: 'ldy_capacity', total_count: 287, null_count: 6 }]
+        }]
+    }],
+    errors: []
+};
+
 function response(data) {
     return Promise.resolve({
         ok: true,
@@ -54,10 +159,12 @@ function response(data) {
 function loadPage(
     search,
     statsData = layer1Data,
-    collectionData = { success: true, retailers: [] }
+    collectionData = { success: true, retailers: [] },
+    integratedEmailData = emailReportData
 ) {
     const requests = [];
     const listeners = {};
+    const selectedDate = { value: '2026-07-29' };
     const elements = {
         'cs-daily-container': { innerHTML: '' },
         'cs-container': { innerHTML: '' },
@@ -99,7 +206,7 @@ function loadPage(
         setTimeout,
         clearTimeout,
         L4,
-        getSelectedDate: () => '2026-07-29',
+        getSelectedDate: () => selectedDate.value,
         showToast: () => {},
         showConfirm: () => Promise.resolve(true),
         fetch: (url, options) => {
@@ -109,6 +216,9 @@ function loadPage(
             }
             if (url.includes('email-check')) {
                 return response({ count: 0 });
+            }
+            if (url.includes('email-report-data')) {
+                return response(integratedEmailData);
             }
             if (url.startsWith('/dx/layer4/api/collection-status/')) {
                 if (collectionData.byCategory) {
@@ -138,7 +248,7 @@ function loadPage(
     };
     vm.createContext(context);
     vm.runInContext(source, context);
-    return { L4, elements, requests, listeners };
+    return { L4, elements, requests, listeners, selectedDate };
 }
 
 async function flushPromises() {
@@ -161,9 +271,34 @@ async function run() {
     assert(!emailHtml.includes('>youtube_videos</td>'));
     assert(!emailHtml.includes('youtube_comments'));
     assert(emailHtml.includes('>841</td>'));
-    assert(emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
-    assert(emailHtml.includes('RAW_EXT_TV_RETAIL_COM_VIEW'));
-    assert(emailHtml.includes('>879</td>'));
+    assert(!emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
+    assert(!emailHtml.includes('RAW_EXT_TV_RETAIL_COM_VIEW'));
+    assert(emailHtml.includes('SEA TV 수집 데이터'));
+    assert(emailHtml.includes('SEA REF 수집 데이터'));
+    assert(emailHtml.includes('SEDA TV 수집 데이터'));
+    assert(emailHtml.includes('SEG TV 수집 데이터'));
+    assert(emailHtml.includes('SIEL TV 수집 데이터'));
+    assert(emailHtml.includes('TSE LDY 수집 데이터'));
+    assert(emailHtml.indexOf('public.ref_retail_com') < emailHtml.indexOf('dx_seda.dx_seda_tv_retail_com'));
+    assert(emailHtml.indexOf('dx_seda.dx_seda_tv_retail_com') < emailHtml.indexOf('dx_seg.dx_seg_tv_retail_com'));
+    assert(emailHtml.indexOf('dx_seg.dx_seg_tv_retail_com') < emailHtml.indexOf('dx_siel.dx_siel_tv_retail_com'));
+    assert(emailHtml.indexOf('dx_siel.dx_siel_tv_retail_com') < emailHtml.indexOf('dx_tse.dx_tse_ldy_retail_com'));
+    assert(emailHtml.includes('SEA - REF'));
+    assert(emailHtml.includes('SEDA - TV'));
+    assert(emailHtml.includes('TSE - LDY'));
+    assert(emailHtml.includes('redirect'));
+    assert(emailHtml.includes('Amazon redirect=TRUE 건수'));
+    assert(emailHtml.includes('>2</td>'));
+    assert(emailHtml.indexOf('>sku</td>') < emailHtml.indexOf('>offer</td>'));
+    assert(emailHtml.indexOf('>offer</td>') < emailHtml.indexOf('>ref_capacity</td>'));
+    const offerRow = emailHtml.match(/<tr><td[^>]*>offer<\/td>([\s\S]*?)<\/tr>/);
+    assert(offerRow);
+    assert.strictEqual((offerRow[1].match(/>-<\/td>/g) || []).length, 2);
+    assert.strictEqual(email.elements['email-send-btn'].disabled, false);
+    assert(email.requests.some(request => request.url ===
+        '/dx/layer4/api/collection-status/email-report-data/?date=2026-07-29'
+    ));
+    assert(!email.requests.some(request => request.url.includes('category=tv')));
 
     const redirectData = {
         success: true,
@@ -179,18 +314,6 @@ async function run() {
             columns: [{ column: 'item', total_count: 315, null_count: 0 }]
         }]
     };
-    const redirectEmail = loadPage(
-        '?focus=' + encodeURIComponent('이메일 보고'),
-        layer1Data,
-        redirectData
-    );
-    redirectEmail.L4._sectionHandler.collection_status();
-    await flushPromises();
-    const redirectEmailHtml = redirectEmail.elements['cs-email-container'].innerHTML;
-    assert(redirectEmailHtml.includes('redirect'));
-    assert(redirectEmailHtml.includes('Amazon redirect=TRUE'));
-    assert(redirectEmailHtml.includes('>2</td>'));
-
     const nullPage = loadPage(
         '?focus=' + encodeURIComponent('항목별 NULL 현황'),
         layer1Data,
@@ -275,17 +398,18 @@ async function run() {
     const tseEmail = loadPage(
         '?focus=' + encodeURIComponent('이메일 보고'),
         tseLayer1Data,
-        tseCollections
+        tseCollections,
+        emailReportData
     );
     tseEmail.L4._sectionHandler.collection_status();
     await flushPromises();
     const tseEmailHtml = tseEmail.elements['cs-email-container'].innerHTML;
     assert(!tseEmailHtml.includes('TSE TV 수집 데이터'));
     assert(!tseEmailHtml.includes('dx_tse.dx_tse_tv_retail_com'));
-    assert(!tseEmailHtml.includes('TSE - TV'));
-    assert(!tseEmailHtml.includes('TSE - REF'));
-    assert(!tseEmailHtml.includes('TSE - LDY'));
-    assert(!tseEmailHtml.includes('ldy_capacity'));
+    assert(tseEmailHtml.includes('TSE LDY 수집 데이터'));
+    assert(tseEmailHtml.includes('dx_tse.dx_tse_ldy_retail_com'));
+    assert(tseEmailHtml.includes('TSE - LDY'));
+    assert(tseEmailHtml.includes('ldy_capacity'));
     assert(!tseEmailHtml.includes('TSE Cross-field 검증 현황'));
     assert(!tseEmailHtml.includes('할인율 불일치'));
     assert(!tseEmail.requests.some(request =>
@@ -296,7 +420,7 @@ async function run() {
     assert(!tseEmail.requests.some(request => request.url.includes('category=tse_ldy')));
 
     assert(source.includes("fetch('/dx/layer4/api/collection-status/send-email/'"));
-    assert(source.includes('date: getSelectedDate()'));
+    assert(source.includes('date: renderedDate'));
 
     email.listeners['email-send-btn:click']();
     await flushPromises();
@@ -310,6 +434,17 @@ async function run() {
     assert.strictEqual(sendPayload.subject, 'monitoring subject');
     assert.strictEqual(sendPayload.html, '<div>email body</div>');
     assert.strictEqual(sendPayload.date, '2026-07-29');
+
+    const staleDate = loadPage('?focus=' + encodeURIComponent('이메일 보고'));
+    staleDate.L4._sectionHandler.collection_status();
+    await flushPromises();
+    staleDate.selectedDate.value = '2026-07-30';
+    staleDate.listeners['email-send-btn:click']();
+    await flushPromises();
+    assert(!staleDate.requests.some(request =>
+        request.url === '/dx/layer4/api/collection-status/send-email/'
+    ));
+    assert.strictEqual(staleDate.elements['email-send-btn'].disabled, true);
 
     const tseNull = loadPage(
         '?focus=' + encodeURIComponent('항목별 NULL 현황') + '&category=tse_ldy',
@@ -377,8 +512,48 @@ async function run() {
     failed.L4._sectionHandler.collection_status();
     await flushPromises();
     const failedHtml = failed.elements['cs-email-container'].innerHTML;
-    assert(failedHtml.includes('오류가 발생했습니다.'));
+    assert(failedHtml.includes('이메일 보고 데이터가 불완전하여 발송할 수 없습니다.'));
     assert(!failedHtml.includes('합 계'));
+    assert.strictEqual(failed.elements['email-send-btn'].disabled, true);
+
+    const incompleteData = {
+        success: true,
+        complete: false,
+        date: '2026-07-29',
+        sources: emailReportData.sources.slice(0, 1),
+        errors: [{ key: 'seg_tv', message: 'SEG TV 조회 실패' }]
+    };
+    const incomplete = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        layer1Data,
+        { success: true, retailers: [] },
+        incompleteData
+    );
+    incomplete.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const incompleteHtml = incomplete.elements['cs-email-container'].innerHTML;
+    assert(incompleteHtml.includes('이메일 보고 데이터가 불완전하여 발송할 수 없습니다.'));
+    assert(incompleteHtml.includes('SEG TV 조회 실패'));
+    assert(incompleteHtml.includes('SEA TV 수집 데이터'));
+    assert.strictEqual(incomplete.elements['email-send-btn'].disabled, true);
+    incomplete.listeners['email-send-btn:click']();
+    await flushPromises();
+    assert(!incomplete.requests.some(request =>
+        request.url === '/dx/layer4/api/collection-status/send-email/'
+    ));
+
+    const requiredApiFailed = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        layer1Data,
+        { success: true, retailers: [] },
+        { error: 'email report API unavailable' }
+    );
+    requiredApiFailed.L4._sectionHandler.collection_status();
+    await flushPromises();
+    assert(requiredApiFailed.elements['cs-email-container'].innerHTML.includes(
+        '이메일 보고 데이터가 불완전하여 발송할 수 없습니다.'
+    ));
+    assert.strictEqual(requiredApiFailed.elements['email-send-btn'].disabled, true);
 }
 
 run().catch(error => {

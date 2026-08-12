@@ -192,6 +192,9 @@
     // ── 이메일 보고 ────────────────────────────────
 
     var emailSentCount = 0;
+    var emailReportComplete = false;
+    var emailRequestSequence = 0;
+    var emailRenderedDate = '';
 
     function updateSendButton(count, info) {
         var sendBtn = document.getElementById('email-send-btn');
@@ -204,27 +207,57 @@
             sendBtn.textContent = '발송';
             sendBtn.title = '';
         }
-        sendBtn.disabled = false;
+        sendBtn.disabled = !emailReportComplete;
+    }
+
+    function disableEmailSend() {
+        emailReportComplete = false;
+        emailRenderedDate = '';
+        var sendBtn = document.getElementById('email-send-btn');
+        if (sendBtn) sendBtn.disabled = true;
+    }
+
+    function renderIncompleteEmailWarning(errors) {
+        var container = document.getElementById('cs-email-container');
+        var html = '<div class="l4-empty-state"><p>이메일 보고 데이터가 불완전하여 발송할 수 없습니다.</p>';
+        var messages = (errors || []).map(function(error) {
+            if (typeof error === 'string') return error;
+            if (!error) return '';
+            return error.message || error.error || error.label || '';
+        }).filter(function(message) { return Boolean(message); });
+        if (messages.length > 0) {
+            html += '<p style="font-size:12px;color:#888;">' + L4.escapeHtml(messages.join(' / ')) + '</p>';
+        }
+        html += '</div>';
+        container.innerHTML = html;
     }
 
     function loadEmailReport() {
         var date = getSelectedDate();
         if (!date) return;
+        var requestSequence = ++emailRequestSequence;
+        var requestedDate = date;
 
         var container = document.getElementById('cs-email-container');
         container.innerHTML = '<div class="l4-empty-state"><p>조회 중...</p></div>';
+        disableEmailSend();
 
-        // 일일 수집 현황 + SEA TV Missing + 발송 여부 동시 조회
+        // Layer 1 YouTube + 이메일 전용 통합 데이터 + 발송 여부 동시 조회
         Promise.all([
             fetchJsonRequired('/dx/layer1/api/stats/?date=' + encodeURIComponent(date)),
-            fetchJsonOrFallback('/dx/layer4/api/collection-status/?date=' + encodeURIComponent(date) + '&category=tv', { success: true, retailers: [] }),
+            fetchJsonRequired('/dx/layer4/api/collection-status/email-report-data/?date=' + encodeURIComponent(date)),
             fetchJsonOrFallback('/dx/layer4/api/collection-status/email-check/?date=' + encodeURIComponent(date), { count: 0 })
         ]).then(function(results) {
-            renderEmailReport(results[0], results[1], date);
+            if (requestSequence !== emailRequestSequence || getSelectedDate() !== requestedDate) return;
+            var emailData = results[1] || {};
+            emailReportComplete = emailData.success === true && emailData.complete === true;
+            renderEmailReport(results[0], emailData, requestedDate);
             updateSendButton(results[2].count || 0, results[2]);
         }).catch(function(e) {
+            if (requestSequence !== emailRequestSequence || getSelectedDate() !== requestedDate) return;
             console.error(e);
-            container.innerHTML = '<div class="l4-empty-state"><p>오류가 발생했습니다.</p></div>';
+            disableEmailSend();
+            renderIncompleteEmailWarning([e && e.message]);
         });
     }
 
@@ -270,6 +303,7 @@
         checks.forEach(function(check) {
             var checkType = check.check_type;
             if (DISABLED_CHECK_TYPES[checkType]) return;
+            if (options.emailOnlyYoutube && checkType !== 'youtube') return;
 
             if (checkType === 'retail' && check.categories) {
                 check.categories.forEach(function(cat) {
@@ -336,20 +370,75 @@
         return rows;
     }
 
+    function buildEmailDailyRows(dailyData, emailData) {
+        var rows = [];
+        var no = 1;
+
+        (emailData.sources || []).forEach(function(source) {
+            var productLine = String(source.product || '').toUpperCase();
+            rows.push({
+                no: no++,
+                category: source.country || '',
+                name: source.label || ((source.country || '') + ' ' + productLine + ' 수집 데이터').trim(),
+                table_name: source.table_name || '',
+                expected: typeof source.expected_count === 'number' ? source.expected_count : '-',
+                actual: typeof source.total_count === 'number' ? source.total_count : 0
+            });
+        });
+
+        buildDailyRows(dailyData, {
+            emailOnlyYoutube: true,
+            emailYoutubeVideoOnly: true
+        }).forEach(function(row) {
+            row.no = no++;
+            rows.push(row);
+        });
+
+        return rows;
+    }
+
+    function prepareEmailMissingSource(source) {
+        var columnOrder = (source.column_order || []).slice();
+        var isSeaTv = String(source.key || '').toLowerCase() === 'sea_tv'
+            || (String(source.country || '').toUpperCase() === 'SEA'
+                && String(source.product || '').toUpperCase() === 'TV');
+        var retailers = (source.retailers || []).map(function(retailer) {
+            var copy = Object.assign({}, retailer);
+            copy.columns = (retailer.columns || []).slice();
+            if (isSeaTv && retailer.retailer === 'Amazon'
+                    && !copy.columns.some(function(column) { return column.column === 'redirect'; })) {
+                copy.columns.push({
+                    column: 'redirect',
+                    total_count: retailer.redirect_true_count || 0,
+                    null_count: 0,
+                    remark: 'Amazon redirect=TRUE 건수'
+                });
+            }
+            return copy;
+        });
+        if (isSeaTv && retailers.some(function(retailer) { return retailer.retailer === 'Amazon'; })
+                && columnOrder.indexOf('redirect') === -1) {
+            columnOrder.push('redirect');
+        }
+        return { retailers: retailers, columnOrder: columnOrder };
+    }
+
     var TH = 'padding:6px 10px;background:#f5f5f5;border:1px solid #ccc;font-weight:700;text-align:center;font-size:12px;font-family:Malgun Gothic,sans-serif;';
     var TD = 'padding:5px 10px;border:1px solid #ccc;font-size:12px;font-family:Malgun Gothic,sans-serif;';
     var TD_NUM = 'padding:5px 10px;border:1px solid #ccc;font-size:12px;font-family:Malgun Gothic,sans-serif;text-align:center;';
     var TABLE = 'border-collapse:collapse;width:100%;margin-bottom:8px;';
     var TITLE = 'font-size:14px;font-weight:700;margin:24px 0 10px;font-family:Malgun Gothic,sans-serif;';
 
-    function buildNullTable(retailers, label, withLinks) {
+    function buildNullTable(retailers, label, withLinks, columnOrder) {
         if (!retailers || retailers.length === 0) return '';
 
         var colSet = {};
         retailers.forEach(function(r) {
             (r.columns || []).forEach(function(c) { colSet[c.column] = true; });
         });
-        var allColumns = Object.keys(colSet).sort();
+        var allColumns = Array.isArray(columnOrder) && columnOrder.length > 0
+            ? columnOrder.slice()
+            : Object.keys(colSet).sort();
 
         var retailerMaps = {};
         retailers.forEach(function(r) {
@@ -410,27 +499,49 @@
         return html;
     }
 
-    function renderEmailReport(dailyData, tvData, date) {
+    function buildEmailNullTable(retailers, label, columnOrder) {
+        if (!retailers || retailers.length === 0) return '';
+        var retailerMaps = {};
+        var remarkMap = {};
+        retailers.forEach(function(retailer) {
+            var map = {};
+            (retailer.columns || []).forEach(function(column) {
+                map[column.column] = column;
+                if (column.remark) remarkMap[column.column] = column.remark;
+            });
+            retailerMaps[retailer.retailer] = map;
+        });
+        var hasRemarks = Object.keys(remarkMap).length > 0;
+        var html = '<div class="et">' + label + '</div>';
+        html += '<table class="e" border="1" cellpadding="5" cellspacing="0"><tr><th rowspan="2">수집항목</th>';
+        retailers.forEach(function(retailer) {
+            html += '<th colspan="2">' + L4.escapeHtml(retailer.retailer) + '</th>';
+        });
+        if (hasRemarks) html += '<th rowspan="2">비고</th>';
+        html += '</tr><tr>';
+        retailers.forEach(function() { html += '<th>전체</th><th>Missing</th>'; });
+        html += '</tr>';
+        (columnOrder || []).forEach(function(columnName) {
+            html += '<tr><td class="ec">' + L4.escapeHtml(columnName) + '</td>';
+            retailers.forEach(function(retailer) {
+                var info = retailerMaps[retailer.retailer][columnName];
+                if (!info) {
+                    html += '<td align="center">-</td><td align="center">-</td>';
+                } else {
+                    var total = info.total_count !== undefined ? info.total_count : retailer.total_count;
+                    html += '<td align="center">' + L4.formatNumber(total) + '</td>';
+                    html += '<td align="center">' + L4.formatNumber(info.null_count) + '</td>';
+                }
+            });
+            if (hasRemarks) html += '<td class="er">' + L4.escapeHtml(remarkMap[columnName] || '') + '</td>';
+            html += '</tr>';
+        });
+        return html + '</table>';
+    }
+
+    function renderEmailReport(dailyData, emailData, date) {
         var container = document.getElementById('cs-email-container');
-
-        var emailRetailers = (tvData.retailers || []).map(function(retailer) {
-            var copy = Object.assign({}, retailer);
-            copy.columns = (retailer.columns || []).slice();
-            if (retailer.retailer === 'Amazon') {
-                copy.columns.push({
-                    column: 'redirect',
-                    total_count: retailer.redirect_true_count || 0,
-                    null_count: 0,
-                    remark: 'Amazon redirect=TRUE 건수'
-                });
-            }
-            return copy;
-        });
-
-        var dailyRows = buildDailyRows(dailyData, {
-            emailYoutubeVideoOnly: true,
-            excludeTseRetail: true
-        });
+        var dailyRows = buildEmailDailyRows(dailyData, emailData);
         var totalExpected = 0, totalActual = 0;
         dailyRows.forEach(function(r) {
             if (typeof r.expected === 'number') totalExpected += r.expected;
@@ -442,40 +553,55 @@
         var FONT = 'font-size:13px;font-family:Malgun Gothic,sans-serif;';
 
         var html = '<div class="email-preview" id="email-preview-content">';
-        html += '<span class="email-subject" style="display:none;">[데이터 수집 모니터링] ' + dateDisplay + ' 수집 현황</span>';
+        html += '<style>.e{border-collapse:collapse;width:100%;margin-bottom:8px;font:12px "Malgun Gothic",sans-serif}.e th{background:#f5f5f5;font-weight:700;text-align:center}.e td,.e th{border:1px solid #ccc}.et{font:700 13px "Malgun Gothic",sans-serif;margin:16px 0 8px}.ec{white-space:nowrap}.er{font-size:12px;color:#666}.en{text-align:center}.ew{font-size:12px;color:#888;line-height:1.8}.ef{font-size:12px;color:#555;line-height:1.8}</style>';
+        html += '<span class="email-subject" hidden>[데이터 수집 모니터링] ' + dateDisplay + ' 수집 현황</span>';
+
+        if (!emailReportComplete) {
+            html += '<div style="padding:10px 12px;margin-bottom:16px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;font-weight:700;">'
+                + '※ 이메일 보고 데이터가 불완전하여 발송할 수 없습니다.';
+            var errorMessages = (emailData.errors || []).map(function(error) {
+                if (typeof error === 'string') return error;
+                if (!error) return '';
+                return error.message || error.error || error.label || '';
+            }).filter(function(message) { return Boolean(message); });
+            if (errorMessages.length > 0) {
+                html += '<br><span style="font-size:12px;font-weight:400;">' + L4.escapeHtml(errorMessages.join(' / ')) + '</span>';
+            }
+            html += '</div>';
+        }
 
         // 전체를 하나의 table로 래핑 (Gmail 접힘 방지)
-        html += '<table style="width:100%;border:none;border-collapse:collapse;" cellpadding="0" cellspacing="0"><tr><td style="border:none;' + FONT + 'line-height:1.7;">';
+        html += '<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="border:0;font:13px Malgun Gothic,sans-serif;line-height:1.7">';
 
         html += dateDisplay + ' 기준 데이터 수집 모니터링 현황 공유드립니다.<br><br>';
 
         // 1. 일일 수집 현황
-        html += '<b style="font-size:14px;">1. 일일 수집 현황</b><br><br>';
+        html += '<b>1. 일일 수집 현황</b><br><br>';
         html += '<b>&nbsp;기준일: ' + dateDisplay + '</b><br><br>';
-        html += '<table style="' + TABLE + '"><tr>';
-        html += '<th style="' + TH + '">No</th><th style="' + TH + '">카테고리</th><th style="' + TH + '">수집 항목</th><th style="' + TH + '">테이블명</th><th style="' + TH + '">예상건수</th><th style="' + TH + '">일일수집건수</th>';
+        html += '<table class="e" border="1" cellpadding="5" cellspacing="0"><tr>';
+        html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>예상건수</th><th>일일수집건수</th>';
         html += '</tr>';
         dailyRows.forEach(function(r) {
             html += '<tr>';
-            html += '<td style="' + TD_NUM + '">' + r.no + '</td>';
-            html += '<td style="' + TD + 'text-align:center;">' + r.category + '</td>';
-            html += '<td style="' + TD + '">' + r.name + '</td>';
-            html += '<td style="' + TD + '">' + r.table_name + '</td>';
-            html += '<td style="' + TD_NUM + '">' + (typeof r.expected === 'number' ? L4.formatNumber(r.expected) : r.expected) + '</td>';
-            html += '<td style="' + TD_NUM + '">' + L4.formatNumber(r.actual) + '</td>';
+            html += '<td align="center">' + r.no + '</td>';
+            html += '<td align="center">' + L4.escapeHtml(r.category) + '</td>';
+            html += '<td>' + L4.escapeHtml(r.name) + '</td>';
+            html += '<td>' + L4.escapeHtml(r.table_name) + '</td>';
+            html += '<td align="center">' + (typeof r.expected === 'number' ? L4.formatNumber(r.expected) : r.expected) + '</td>';
+            html += '<td align="center">' + L4.formatNumber(r.actual) + '</td>';
             html += '</tr>';
         });
-        html += '<tr><td colspan="4" style="' + TH + 'text-align:center;">합 계</td>';
-        html += '<td style="' + TH + 'text-align:right;">' + L4.formatNumber(totalExpected) + '</td>';
-        html += '<td style="' + TH + 'text-align:right;">' + L4.formatNumber(totalActual) + '</td></tr>';
+        html += '<tr><th colspan="4">합 계</th>';
+        html += '<th>' + L4.formatNumber(totalExpected) + '</th>';
+        html += '<th>' + L4.formatNumber(totalActual) + '</th></tr>';
         html += '</table>';
 
         // 비고
-        html += '<br><span style="font-size:12px;color:#888;line-height:1.8;">'
+        html += '<br><span class="ew">'
             + '&nbsp;&nbsp;※ YouTube 영상 데이터는 업로드 현황에 따라 수집 건수가 결정되어 예상 건수를 사전에 산정할 수 없습니다.<br>'
             + '&nbsp;&nbsp;※ Retail 항목은 중복 데이터 및 제외 키워드·비대상 제품을 필터링하여 수집하므로, 일일 수집건수가 예상건수보다 적을 수 있습니다.'
             + '</span><br><br>'
-            + '<span style="font-size:12px;color:#555;line-height:1.8;">'
+            + '<span class="ef">'
             + 'Retail 항목의 일일 수집건수가 예상건수보다 적은 이유는 아래 필터링 기준에 의한 정상 처리 결과입니다.<br><br>'
             + '1. 중복 제품: 동일 제품이 여러 페이지에 중복 노출되는 경우, item 기준으로 판별하여 중복 수집을 제외합니다.<br>'
             + '2. 제외 키워드: 제품명에 사전 정의된 제외 키워드가 포함된 경우 수집 대상에서 제외됩니다.<br>'
@@ -483,8 +609,18 @@
             + '</span><br><br>';
 
         // 2. R.com 수집 항목 Missing Value 현황
-        html += '<b style="font-size:14px;">2. R.com 수집 항목 Missing Value 현황</b><br>';
-        if (tvData.success) html += buildNullTable(emailRetailers, 'TV');
+        html += '<b>2. R.com 수집 항목 Missing Value 현황</b><br>';
+        (emailData.sources || []).forEach(function(source) {
+            var missingSource = prepareEmailMissingSource(source);
+            var label = [source.country, String(source.product || '').toUpperCase()].filter(function(value) {
+                return Boolean(value);
+            }).join(' - ');
+            html += buildEmailNullTable(
+                missingSource.retailers,
+                L4.escapeHtml(label),
+                missingSource.columnOrder
+            );
+        });
 
         html += '<br>감사합니다.';
 
@@ -492,6 +628,7 @@
         html += '</td></tr></table>';
         html += '</div>';
         container.innerHTML = html;
+        emailRenderedDate = date;
     }
 
     // 이메일 HTML 복사 + 발송
@@ -517,7 +654,17 @@
         var sendBtn = document.getElementById('email-send-btn');
         if (sendBtn) {
             sendBtn.addEventListener('click', function() {
+                if (!emailReportComplete) {
+                    showToast('이메일 보고 데이터가 불완전하여 발송할 수 없습니다.', 'warning');
+                    return;
+                }
                 var selectedDate = getSelectedDate();
+                if (!emailRenderedDate || selectedDate !== emailRenderedDate) {
+                    disableEmailSend();
+                    showToast('조회 날짜가 변경되었습니다. 다시 조회해주세요.', 'warning');
+                    return;
+                }
+                var renderedDate = emailRenderedDate;
                 var today = new Date();
                 var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
                 if (selectedDate === todayStr) {
@@ -549,6 +696,13 @@
                     .then(function(ok) {
                 if (!ok) return;
 
+                if (!emailReportComplete || emailRenderedDate !== renderedDate
+                        || getSelectedDate() !== renderedDate) {
+                    disableEmailSend();
+                    showToast('조회 날짜가 변경되었습니다. 다시 조회해주세요.', 'warning');
+                    return;
+                }
+
                 var preview = document.getElementById('email-preview-content');
                 if (!preview) { showToast('먼저 조회해주세요.', 'error'); return; }
 
@@ -570,7 +724,7 @@
                             ? document.querySelector('[name=csrfmiddlewaretoken]').value
                             : document.cookie.match(/csrftoken=([^;]+)/)?.[1] || ''
                     },
-                    body: JSON.stringify({ subject: subject, html: htmlContent, date: getSelectedDate() })
+                    body: JSON.stringify({ subject: subject, html: htmlContent, date: renderedDate })
                 })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
