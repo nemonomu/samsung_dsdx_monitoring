@@ -74,7 +74,7 @@ const emailReportData = {
         label: 'SEA REF 수집 데이터',
         table_name: 'public.ref_retail_com',
         total_count: 590,
-        column_order: ['sku', 'offer', 'ref_capacity'],
+        column_order: ['sku', 'bsr_rank', 'offer', 'ref_capacity'],
         retailers: [{
             retailer: 'Bestbuy',
             total_count: 290,
@@ -82,6 +82,12 @@ const emailReportData = {
             has_data: true,
             columns: [
                 { column: 'sku', total_count: 290, null_count: 0 },
+                {
+                    column: 'bsr_rank',
+                    total_count: 100,
+                    null_count: 0,
+                    remark: 'BSR page count'
+                },
                 { column: 'ref_capacity', total_count: 290, null_count: 3 }
             ]
         }, {
@@ -268,17 +274,36 @@ async function run() {
     assert(!emailHtml.includes('필터링 기준'));
     assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4680</th></tr>'));
     assert(!emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
-    assert(!emailHtml.includes('RAW_EXT_TV_RETAIL_COM_VIEW'));
+    const emailDailyTable = emailHtml.match(
+        /<table class="e"[^>]*>[\s\S]*?<\/table>/
+    )[0];
+    assert(emailDailyTable.includes(
+        'SEA TV 수집 데이터</td><td>RAW_EXT_TV_RETAIL_COM_VIEW'
+    ));
+    assert(emailDailyTable.includes(
+        'SEDA TV 수집 데이터</td><td>RAW_EXT_TV_RETAIL_COM_VIEW'
+    ));
+    assert(emailDailyTable.includes(
+        'SEA REF 수집 데이터</td><td>RAW_EXT_REF_RETAIL_COM_VIEW'
+    ));
+    assert(emailDailyTable.includes(
+        'TSE LDY 수집 데이터</td><td>RAW_EXT_LDY_RETAIL_COM_VIEW'
+    ));
+    assert(!emailDailyTable.includes('public.tv_retail_com'));
+    assert(!emailDailyTable.includes('dx_tse.dx_tse_ldy_retail_com'));
     assert(emailHtml.includes('SEA TV 수집 데이터'));
     assert(emailHtml.includes('SEA REF 수집 데이터'));
     assert(emailHtml.includes('SEDA TV 수집 데이터'));
     assert(emailHtml.includes('SEG TV 수집 데이터'));
     assert(emailHtml.includes('SIEL TV 수집 데이터'));
     assert(emailHtml.includes('TSE LDY 수집 데이터'));
-    assert(emailHtml.indexOf('public.ref_retail_com') < emailHtml.indexOf('dx_seda.dx_seda_tv_retail_com'));
-    assert(emailHtml.indexOf('dx_seda.dx_seda_tv_retail_com') < emailHtml.indexOf('dx_seg.dx_seg_tv_retail_com'));
-    assert(emailHtml.indexOf('dx_seg.dx_seg_tv_retail_com') < emailHtml.indexOf('dx_siel.dx_siel_tv_retail_com'));
-    assert(emailHtml.indexOf('dx_siel.dx_siel_tv_retail_com') < emailHtml.indexOf('dx_tse.dx_tse_ldy_retail_com'));
+    assert(!emailHtml.includes('>bsr_rank</td>'));
+    assert(!emailHtml.includes('BSR page count'));
+    assert(emailHtml.includes('cellpadding="6"'));
+    assert(!emailHtml.includes('cellpadding="5"'));
+    assert(emailHtml.includes(
+        '.e td,.e th{border:1px solid #ccc;padding:6px;text-align:center}'
+    ));
     assert(emailHtml.includes('SEA - REF'));
     assert(emailHtml.includes('SEDA - TV'));
     assert(emailHtml.includes('TSE - LDY'));
@@ -402,9 +427,8 @@ async function run() {
     await flushPromises();
     const tseEmailHtml = tseEmail.elements['cs-email-container'].innerHTML;
     assert(!tseEmailHtml.includes('TSE TV 수집 데이터'));
-    assert(!tseEmailHtml.includes('dx_tse.dx_tse_tv_retail_com'));
     assert(tseEmailHtml.includes('TSE LDY 수집 데이터'));
-    assert(tseEmailHtml.includes('dx_tse.dx_tse_ldy_retail_com'));
+    assert(tseEmailHtml.includes('RAW_EXT_LDY_RETAIL_COM_VIEW'));
     assert(tseEmailHtml.includes('TSE - LDY'));
     assert(tseEmailHtml.includes('ldy_capacity'));
     assert(!tseEmailHtml.includes('TSE Cross-field 검증 현황'));

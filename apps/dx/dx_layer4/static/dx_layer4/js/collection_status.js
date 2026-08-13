@@ -47,6 +47,14 @@
         'market_promotion': 'RAW_EXT_OPENAI_RETAILER_PROMOTIONS_VIEW'
     };
 
+    // Email daily-status display names are standardized by product line.
+    // Physical source table names remain unchanged for database queries.
+    var EMAIL_TABLE_NAME_MAP = {
+        'TV': 'RAW_EXT_TV_RETAIL_COM_VIEW',
+        'REF': 'RAW_EXT_REF_RETAIL_COM_VIEW',
+        'LDY': 'RAW_EXT_LDY_RETAIL_COM_VIEW'
+    };
+
     // 수집이 중단된 항목은 Layer 1 응답에 남아 있어도 일일 현황·이메일에서 제외한다.
     var DISABLED_CHECK_TYPES = {
         'market_trend': true,
@@ -380,7 +388,7 @@
                 no: no++,
                 category: source.country || '',
                 name: source.label || ((source.country || '') + ' ' + productLine + ' 수집 데이터').trim(),
-                table_name: source.table_name || '',
+                table_name: EMAIL_TABLE_NAME_MAP[productLine] || source.table_name || '',
                 actual: typeof source.total_count === 'number' ? source.total_count : 0
             });
         });
@@ -397,13 +405,19 @@
     }
 
     function prepareEmailMissingSource(source) {
-        var columnOrder = (source.column_order || []).slice();
+        function isVisibleColumn(columnName) {
+            return String(columnName || '').trim().toLowerCase() !== 'bsr_rank';
+        }
+
+        var columnOrder = (source.column_order || []).filter(isVisibleColumn);
         var isSeaTv = String(source.key || '').toLowerCase() === 'sea_tv'
             || (String(source.country || '').toUpperCase() === 'SEA'
                 && String(source.product || '').toUpperCase() === 'TV');
         var retailers = (source.retailers || []).map(function(retailer) {
             var copy = Object.assign({}, retailer);
-            copy.columns = (retailer.columns || []).slice();
+            copy.columns = (retailer.columns || []).filter(function(column) {
+                return isVisibleColumn(column.column);
+            });
             if (isSeaTv && retailer.retailer === 'Amazon'
                     && !copy.columns.some(function(column) { return column.column === 'redirect'; })) {
                 copy.columns.push({
@@ -512,7 +526,7 @@
         });
         var hasRemarks = Object.keys(remarkMap).length > 0;
         var html = '<div class="et">' + label + '</div>';
-        html += '<table class="e" border="1" cellpadding="5" cellspacing="0"><tr><th rowspan="2">수집항목</th>';
+        html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr><th rowspan="2">수집항목</th>';
         retailers.forEach(function(retailer) {
             html += '<th colspan="2">' + L4.escapeHtml(retailer.retailer) + '</th>';
         });
@@ -551,7 +565,7 @@
         var FONT = 'font-size:13px;font-family:Malgun Gothic,sans-serif;';
 
         var html = '<div class="email-preview" id="email-preview-content">';
-        html += '<style>.e{border-collapse:collapse;width:100%;margin-bottom:8px;font:12px "Malgun Gothic",sans-serif}.e th{background:#f5f5f5;font-weight:700;text-align:center}.e td,.e th{border:1px solid #ccc}.et{font:700 13px "Malgun Gothic",sans-serif;margin:16px 0 8px}.ec{white-space:nowrap}.er{font-size:12px;color:#666}.en{text-align:center}.ew{font-size:12px;color:#888;line-height:1.8}.ef{font-size:12px;color:#555;line-height:1.8}</style>';
+        html += '<style>.e{border-collapse:collapse;width:100%;margin-bottom:8px;font:12px "Malgun Gothic",sans-serif}.e th{background:#f5f5f5;font-weight:700}.e td,.e th{border:1px solid #ccc;padding:6px;text-align:center}.et{font:700 13px "Malgun Gothic",sans-serif;margin:16px 0 8px}.ec{white-space:nowrap}.er{font-size:12px;color:#666}.en{text-align:center}.ew{font-size:12px;color:#888;line-height:1.8}.ef{font-size:12px;color:#555;line-height:1.8}</style>';
         html += '<span class="email-subject" hidden>[데이터 수집 모니터링] ' + dateDisplay + ' 수집 현황</span>';
 
         if (!emailReportComplete) {
@@ -576,7 +590,7 @@
         // 1. 일일 수집 현황
         html += '<b>1. 일일 수집 현황</b><br><br>';
         html += '<b>&nbsp;기준일: ' + dateDisplay + '</b><br><br>';
-        html += '<table class="e" border="1" cellpadding="5" cellspacing="0"><tr>';
+        html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
         html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
         html += '</tr>';
         dailyRows.forEach(function(r) {
