@@ -55,6 +55,15 @@
         'LDY': 'RAW_EXT_LDY_RETAIL_COM_VIEW'
     };
 
+    var EMAIL_PRODUCT_ORDER = { 'TV': 0, 'REF': 1, 'LDY': 2 };
+    var EMAIL_COUNTRY_ORDER = {
+        'SEA': 0,
+        'SEG': 1,
+        'SIEL': 2,
+        'SEDA': 3,
+        'TSE': 4
+    };
+
     // 수집이 중단된 항목은 Layer 1 응답에 남아 있어도 일일 현황·이메일에서 제외한다.
     var DISABLED_CHECK_TYPES = {
         'market_trend': true,
@@ -380,15 +389,39 @@
 
     function buildEmailDailyRows(dailyData, emailData) {
         var rows = [];
-        var no = 1;
+        var sources = (emailData.sources || []).map(function(source, index) {
+            return { source: source, index: index };
+        }).sort(function(left, right) {
+            var leftProduct = String(left.source.product || '').toUpperCase();
+            var rightProduct = String(right.source.product || '').toUpperCase();
+            var leftProductOrder = EMAIL_PRODUCT_ORDER[leftProduct];
+            var rightProductOrder = EMAIL_PRODUCT_ORDER[rightProduct];
+            if (leftProductOrder === undefined) leftProductOrder = 99;
+            if (rightProductOrder === undefined) rightProductOrder = 99;
+            if (leftProductOrder !== rightProductOrder) {
+                return leftProductOrder - rightProductOrder;
+            }
 
-        (emailData.sources || []).forEach(function(source) {
+            var leftCountry = String(left.source.country || '').toUpperCase();
+            var rightCountry = String(right.source.country || '').toUpperCase();
+            var leftCountryOrder = EMAIL_COUNTRY_ORDER[leftCountry];
+            var rightCountryOrder = EMAIL_COUNTRY_ORDER[rightCountry];
+            if (leftCountryOrder === undefined) leftCountryOrder = 99;
+            if (rightCountryOrder === undefined) rightCountryOrder = 99;
+            if (leftCountryOrder !== rightCountryOrder) {
+                return leftCountryOrder - rightCountryOrder;
+            }
+            return left.index - right.index;
+        });
+
+        sources.forEach(function(entry) {
+            var source = entry.source;
             var productLine = String(source.product || '').toUpperCase();
             rows.push({
-                no: no++,
                 category: source.country || '',
                 name: source.label || ((source.country || '') + ' ' + productLine + ' 수집 데이터').trim(),
                 table_name: EMAIL_TABLE_NAME_MAP[productLine] || source.table_name || '',
+                table_group: 'product:' + (productLine || source.key || entry.index),
                 actual: typeof source.total_count === 'number' ? source.total_count : 0
             });
         });
@@ -397,8 +430,27 @@
             emailOnlyYoutube: true,
             emailYoutubeVideoOnly: true
         }).forEach(function(row) {
-            row.no = no++;
+            row.table_group = 'youtube:' + row.table_name;
             rows.push(row);
+        });
+
+        var index = 0;
+        while (index < rows.length) {
+            var groupEnd = index + 1;
+            while (groupEnd < rows.length
+                    && rows[groupEnd].table_group === rows[index].table_group) {
+                groupEnd += 1;
+            }
+            rows[index].table_rowspan = groupEnd - index;
+            for (var groupedIndex = index + 1;
+                    groupedIndex < groupEnd; groupedIndex += 1) {
+                rows[groupedIndex].table_rowspan = 0;
+            }
+            index = groupEnd;
+        }
+
+        rows.forEach(function(row, rowIndex) {
+            row.no = rowIndex + 1;
         });
 
         return rows;
@@ -433,6 +485,29 @@
                 && columnOrder.indexOf('redirect') === -1) {
             columnOrder.push('redirect');
         }
+
+        columnOrder = columnOrder.map(function(columnName, index) {
+            var missingTotal = 0;
+            retailers.forEach(function(retailer) {
+                var info = (retailer.columns || []).find(function(column) {
+                    return column.column === columnName;
+                });
+                if (!info) return;
+                var nullCount = Number(info.null_count);
+                if (!isNaN(nullCount)) missingTotal += nullCount;
+            });
+            return {
+                columnName: columnName,
+                index: index,
+                missingTotal: missingTotal
+            };
+        }).sort(function(left, right) {
+            return left.missingTotal - right.missingTotal
+                || left.index - right.index;
+        }).map(function(item) {
+            return item.columnName;
+        });
+
         return { retailers: retailers, columnOrder: columnOrder };
     }
 
@@ -524,18 +599,17 @@
             });
             retailerMaps[retailer.retailer] = map;
         });
-        var hasRemarks = Object.keys(remarkMap).length > 0;
         var html = '<div class="et">' + label + '</div>';
-        html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr><th rowspan="2">수집항목</th>';
+        html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr><th class="ec" width="250" rowspan="2">수집항목</th>';
         retailers.forEach(function(retailer) {
             html += '<th colspan="2">' + L4.escapeHtml(retailer.retailer) + '</th>';
         });
-        if (hasRemarks) html += '<th rowspan="2">비고</th>';
+        html += '<th rowspan="2">비고</th>';
         html += '</tr><tr>';
         retailers.forEach(function() { html += '<th>전체</th><th>Missing</th>'; });
         html += '</tr>';
         (columnOrder || []).forEach(function(columnName) {
-            html += '<tr><td class="ec">' + L4.escapeHtml(columnName) + '</td>';
+            html += '<tr><td class="ec" width="250">' + L4.escapeHtml(columnName) + '</td>';
             retailers.forEach(function(retailer) {
                 var info = retailerMaps[retailer.retailer][columnName];
                 if (!info) {
@@ -546,7 +620,7 @@
                     html += '<td align="center">' + L4.formatNumber(info.null_count) + '</td>';
                 }
             });
-            if (hasRemarks) html += '<td class="er">' + L4.escapeHtml(remarkMap[columnName] || '') + '</td>';
+            html += '<td class="er">' + L4.escapeHtml(remarkMap[columnName] || '') + '</td>';
             html += '</tr>';
         });
         return html + '</table>';
@@ -565,7 +639,7 @@
         var FONT = 'font-size:13px;font-family:Malgun Gothic,sans-serif;';
 
         var html = '<div class="email-preview" id="email-preview-content">';
-        html += '<style>.e{border-collapse:collapse;width:100%;margin-bottom:8px;font:12px "Malgun Gothic",sans-serif}.e th{background:#f5f5f5;font-weight:700}.e td,.e th{border:1px solid #ccc;padding:6px;text-align:center}.et{font:700 13px "Malgun Gothic",sans-serif;margin:16px 0 8px}.ec{white-space:nowrap}.er{font-size:12px;color:#666}.en{text-align:center}.ew{font-size:12px;color:#888;line-height:1.8}.ef{font-size:12px;color:#555;line-height:1.8}</style>';
+        html += '<style>.e{border-collapse:collapse;width:100%;margin-bottom:8px;font:12px "Malgun Gothic",sans-serif}.e th{background:#f5f5f5;font-weight:700}.e td,.e th{border:1px solid #ccc;padding:6px;text-align:center}.et{font:700 13px "Malgun Gothic",sans-serif;margin:16px 0 8px}.ec{width:250px;white-space:nowrap}.er{font-size:12px;color:#666}.en{text-align:center}.ew{font-size:12px;color:#888;line-height:1.8}.ef{font-size:12px;color:#555;line-height:1.8}</style>';
         html += '<span class="email-subject" hidden>[데이터 수집 모니터링] ' + dateDisplay + ' 수집 현황</span>';
 
         if (!emailReportComplete) {
@@ -598,7 +672,10 @@
             html += '<td align="center">' + r.no + '</td>';
             html += '<td align="center">' + L4.escapeHtml(r.category) + '</td>';
             html += '<td>' + L4.escapeHtml(r.name) + '</td>';
-            html += '<td>' + L4.escapeHtml(r.table_name) + '</td>';
+            if (r.table_rowspan > 0) {
+                html += '<td rowspan="' + r.table_rowspan + '" align="center" valign="middle">'
+                    + L4.escapeHtml(r.table_name) + '</td>';
+            }
             html += '<td align="center">' + L4.formatNumber(r.actual) + '</td>';
             html += '</tr>';
         });

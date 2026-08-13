@@ -11,6 +11,9 @@ _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 _CONFIG_TABLE = 'public.monitoring_retail_columns'
 _MAIN_SCOPE = "LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'"
 _BSR_SCOPE = "LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'bsr'"
+_MAIN_AND_BSR_SCOPE = (
+    "LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')"
+)
 
 
 class EmailConfigurationError(ValueError):
@@ -126,6 +129,10 @@ def _configured_retailers(cursor, source):
             raise EmailConfigurationError(
                 f"No active columns for {source['key']}/{retailer['name']}"
             )
+        # Every email Missing table includes the physical item identifier.
+        # Keep it email-only so shared Layer 1-3 DB column settings are not
+        # changed just to satisfy this report layout.
+        columns = ['item'] + [column for column in columns if column != 'item']
         configured.append({**retailer, 'columns': tuple(columns)})
     return configured
 
@@ -185,8 +192,8 @@ def _column_metrics(source, retailer, column):
 
     if source.get('has_page_type') and source['collection_scope'] == 'main':
         return (
-            _count_when(_MAIN_SCOPE),
-            _count_when(f"{_MAIN_SCOPE} AND {missing}"),
+            _count_when(_MAIN_AND_BSR_SCOPE),
+            _count_when(f"{_MAIN_AND_BSR_SCOPE} AND {missing}"),
             '',
         )
     return ('COUNT(*)', _count_when(missing), '')
@@ -254,7 +261,7 @@ def _query_retailer(cursor, source, retailer, target_date):
         batch_id = latest_row[0]
 
     total_expr = (
-        _count_when(_MAIN_SCOPE)
+        _count_when(_MAIN_AND_BSR_SCOPE)
         if source.get('has_page_type')
         and source['collection_scope'] == 'main'
         else 'COUNT(*)'

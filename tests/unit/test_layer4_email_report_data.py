@@ -104,7 +104,7 @@ class EmailReportDataTests(unittest.TestCase):
                 ('ignored', 'another-retailer'),
             ]},
             {'fetchone': ('a_20260811_000011',)},
-            {'fetchone': (287, 287, 2, 287, 5)},
+            {'fetchone': (287, 287, 0, 287, 2, 287, 5)},
         ])
         service = load_service(cursor)
 
@@ -114,10 +114,12 @@ class EmailReportDataTests(unittest.TestCase):
 
         self.assertTrue(result['complete'])
         row = result['sources'][0]
-        self.assertEqual(row['column_order'], ['sku', 'final_sku_price'])
+        self.assertEqual(
+            row['column_order'], ['item', 'sku', 'final_sku_price'],
+        )
         self.assertEqual(row['total_count'], 287)
         self.assertEqual(row['retailers'][0]['batch_id'], 'a_20260811_000011')
-        self.assertEqual(row['retailers'][0]['columns'][1]['null_count'], 5)
+        self.assertEqual(row['retailers'][0]['columns'][2]['null_count'], 5)
         self.assertNotIn('expected_count', json.dumps(result))
 
         config_sql, config_params = cursor.calls[0]
@@ -137,7 +139,9 @@ class EmailReportDataTests(unittest.TestCase):
         )
         self.assertIn("source.crawl_datetime < ((%s::date + 1)", latest_sql)
         self.assertIn("= 'main'", latest_sql)
+        self.assertNotIn("IN ('main', 'bsr')", latest_sql)
         self.assertIn('ORDER BY source.id DESC LIMIT 1', latest_sql)
+        self.assertEqual(count_sql.count("IN ('main', 'bsr')"), 7)
         self.assertIn('BTRIM(CAST(source.final_sku_price AS TEXT))', count_sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM %s', count_sql)
         self.assertEqual(
@@ -149,7 +153,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [('bsr_rank', 'Amazon')]},
             {'fetchone': ('a_20260811_000011',)},
-            {'fetchone': (287, 83, 4)},
+            {'fetchone': (370, 370, 1, 83, 4)},
         ])
         service = load_service(cursor)
 
@@ -157,11 +161,17 @@ class EmailReportDataTests(unittest.TestCase):
             date(2026, 8, 11), sources=(source(),)
         )
 
-        metric = result['sources'][0]['retailers'][0]['columns'][0]
+        columns = result['sources'][0]['retailers'][0]['columns']
+        self.assertEqual(columns[0]['column'], 'item')
+        self.assertEqual(result['sources'][0]['total_count'], 370)
+        self.assertEqual(columns[0]['total_count'], 370)
+        self.assertEqual(columns[0]['null_count'], 1)
+        metric = columns[1]
         self.assertEqual(metric['total_count'], 83)
         self.assertEqual(metric['null_count'], 4)
         self.assertEqual(metric['remark'], 'BSR 페이지 실제 수집 건수')
         aggregate_sql = cursor.calls[2][0]
+        self.assertIn("IN ('main', 'bsr')", aggregate_sql)
         self.assertIn("= 'bsr'", aggregate_sql)
         self.assertNotIn('100', aggregate_sql)
 
@@ -207,7 +217,7 @@ class EmailReportDataTests(unittest.TestCase):
                 ('original_sku_price', 'amazon'),
                 ('bsr_rank', 'amazon'),
             ]},
-            {'fetchone': (350, 350, 7, 87, 4)},
+            {'fetchone': (350, 350, 0, 350, 7, 87, 4)},
             {'fetchone': (2,)},
         ])
         service = load_service(cursor)
@@ -218,14 +228,16 @@ class EmailReportDataTests(unittest.TestCase):
 
         retailer = result['sources'][0]['retailers'][0]
         self.assertEqual(retailer['total_count'], 350)
-        self.assertEqual(retailer['columns'][1]['total_count'], 87)
-        self.assertEqual(retailer['columns'][1]['null_count'], 4)
+        self.assertEqual(retailer['columns'][0]['column'], 'item')
+        self.assertEqual(retailer['columns'][2]['total_count'], 87)
+        self.assertEqual(retailer['columns'][2]['null_count'], 4)
         self.assertEqual(retailer['redirect_true_count'], 2)
         aggregate_sql, aggregate_params = cursor.calls[1]
         self.assertIn('FROM public.tv_retail_com source', aggregate_sql)
         self.assertIn("from '([0-9]{8})'", aggregate_sql)
         self.assertIn('COALESCE(source.redirect, FALSE) IS NOT TRUE', aggregate_sql)
         self.assertIn("= 'bsr'", aggregate_sql)
+        self.assertNotIn("IN ('main', 'bsr')", aggregate_sql)
         self.assertEqual(aggregate_params[-1], '20260811')
         redirect_sql = cursor.calls[2][0]
         self.assertIn('FROM public.tv_retail_com source', redirect_sql)
@@ -261,7 +273,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [('sku', 'homepro')]},
             {'fetchone': ('homepro_20260811',)},
-            {'fetchone': (11, 11, 0)},
+            {'fetchone': (11, 11, 0, 11, 0)},
         ])
         service = load_service(cursor)
 
@@ -274,6 +286,8 @@ class EmailReportDataTests(unittest.TestCase):
         aggregate_sql = cursor.calls[2][0]
         self.assertNotIn('source.account_name IS NULL', latest_sql)
         self.assertIn('source.account_name IS NULL', aggregate_sql)
+        self.assertNotIn('source.page_type', aggregate_sql)
+        self.assertNotIn("IN ('main', 'bsr')", aggregate_sql)
 
     def test_missing_or_unsafe_db_configuration_marks_source_incomplete(self):
         for configured_rows in (
