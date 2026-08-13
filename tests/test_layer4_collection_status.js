@@ -300,17 +300,23 @@ async function run() {
     assert(emailDailyTable.includes(
         '<td rowspan="1" align="center" valign="middle">RAW_EXT_LDY_RETAIL_COM_VIEW</td>'
     ));
-    assert(emailDailyTable.indexOf('SEA TV 수집 데이터')
-        < emailDailyTable.indexOf('SEG TV 수집 데이터'));
-    assert(emailDailyTable.indexOf('SEG TV 수집 데이터')
-        < emailDailyTable.indexOf('SIEL TV 수집 데이터'));
-    assert(emailDailyTable.indexOf('SIEL TV 수집 데이터')
-        < emailDailyTable.indexOf('SEDA TV 수집 데이터'));
-    assert(emailDailyTable.indexOf('SEDA TV 수집 데이터')
-        < emailDailyTable.indexOf('SEA REF 수집 데이터'));
-    assert(emailDailyTable.indexOf('SEA REF 수집 데이터')
-        < emailDailyTable.indexOf('TSE LDY 수집 데이터'));
-    assert(emailDailyTable.indexOf('TSE LDY 수집 데이터')
+    const seaTvRow = '<td align="center">SEA</td><td>TV 수집 데이터</td>';
+    const segTvRow = '<td align="center">SEG</td><td>TV 수집 데이터</td>';
+    const sielTvRow = '<td align="center">SIEL</td><td>TV 수집 데이터</td>';
+    const sedaTvRow = '<td align="center">SEDA</td><td>TV 수집 데이터</td>';
+    const seaRefRow = '<td align="center">SEA</td><td>REF 수집 데이터</td>';
+    const tseLdyRow = '<td align="center">TSE</td><td>LDY 수집 데이터</td>';
+    assert(emailDailyTable.indexOf(seaTvRow)
+        < emailDailyTable.indexOf(segTvRow));
+    assert(emailDailyTable.indexOf(segTvRow)
+        < emailDailyTable.indexOf(sielTvRow));
+    assert(emailDailyTable.indexOf(sielTvRow)
+        < emailDailyTable.indexOf(sedaTvRow));
+    assert(emailDailyTable.indexOf(sedaTvRow)
+        < emailDailyTable.indexOf(seaRefRow));
+    assert(emailDailyTable.indexOf(seaRefRow)
+        < emailDailyTable.indexOf(tseLdyRow));
+    assert(emailDailyTable.indexOf(tseLdyRow)
         < emailDailyTable.indexOf('YouTube 영상 데이터 (HHP)'));
     assert.deepStrictEqual(
         Array.from(
@@ -323,12 +329,15 @@ async function run() {
     assert(!emailDailyTable.includes('한 번만 표시'));
     assert(!emailDailyTable.includes('public.tv_retail_com'));
     assert(!emailDailyTable.includes('dx_tse.dx_tse_ldy_retail_com'));
-    assert(emailHtml.includes('SEA TV 수집 데이터'));
-    assert(emailHtml.includes('SEA REF 수집 데이터'));
-    assert(emailHtml.includes('SEDA TV 수집 데이터'));
-    assert(emailHtml.includes('SEG TV 수집 데이터'));
-    assert(emailHtml.includes('SIEL TV 수집 데이터'));
-    assert(emailHtml.includes('TSE LDY 수집 데이터'));
+    assert.strictEqual((emailDailyTable.match(/TV 수집 데이터/g) || []).length, 4);
+    assert.strictEqual((emailDailyTable.match(/REF 수집 데이터/g) || []).length, 1);
+    assert.strictEqual((emailDailyTable.match(/LDY 수집 데이터/g) || []).length, 1);
+    assert(!emailHtml.includes('SEA TV 수집 데이터'));
+    assert(!emailHtml.includes('SEA REF 수집 데이터'));
+    assert(!emailHtml.includes('SEDA TV 수집 데이터'));
+    assert(!emailHtml.includes('SEG TV 수집 데이터'));
+    assert(!emailHtml.includes('SIEL TV 수집 데이터'));
+    assert(!emailHtml.includes('TSE LDY 수집 데이터'));
     assert(!emailHtml.includes('>bsr_rank</td>'));
     assert(!emailHtml.includes('BSR page count'));
     assert(emailHtml.includes('cellpadding="6"'));
@@ -475,8 +484,12 @@ async function run() {
     tseEmail.L4._sectionHandler.collection_status();
     await flushPromises();
     const tseEmailHtml = tseEmail.elements['cs-email-container'].innerHTML;
-    assert(!tseEmailHtml.includes('TSE TV 수집 데이터'));
-    assert(tseEmailHtml.includes('TSE LDY 수집 데이터'));
+    assert(!tseEmailHtml.includes(
+        '<td align="center">TSE</td><td>TV 수집 데이터</td>'
+    ));
+    assert(tseEmailHtml.includes(
+        '<td align="center">TSE</td><td>LDY 수집 데이터</td>'
+    ));
     assert(tseEmailHtml.includes('RAW_EXT_LDY_RETAIL_COM_VIEW'));
     assert(tseEmailHtml.includes('TSE - LDY'));
     assert(tseEmailHtml.includes('ldy_capacity'));
@@ -604,7 +617,8 @@ async function run() {
     const incompleteHtml = incomplete.elements['cs-email-container'].innerHTML;
     assert(incompleteHtml.includes('이메일 보고 데이터가 불완전하여 발송할 수 없습니다.'));
     assert(incompleteHtml.includes('SEG TV 조회 실패'));
-    assert(incompleteHtml.includes('SEA TV 수집 데이터'));
+    assert(incompleteHtml.includes('TV 수집 데이터'));
+    assert(!incompleteHtml.includes('SEA TV 수집 데이터'));
     assert.strictEqual(incomplete.elements['email-send-btn'].disabled, true);
     incomplete.listeners['email-send-btn:click']();
     await flushPromises();

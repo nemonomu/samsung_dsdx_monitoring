@@ -419,7 +419,7 @@
             var productLine = String(source.product || '').toUpperCase();
             rows.push({
                 category: source.country || '',
-                name: source.label || ((source.country || '') + ' ' + productLine + ' 수집 데이터').trim(),
+                name: productLine ? productLine + ' 수집 데이터' : (source.label || '수집 데이터'),
                 table_name: EMAIL_TABLE_NAME_MAP[productLine] || source.table_name || '',
                 table_group: 'product:' + (productLine || source.key || entry.index),
                 actual: typeof source.total_count === 'number' ? source.total_count : 0
