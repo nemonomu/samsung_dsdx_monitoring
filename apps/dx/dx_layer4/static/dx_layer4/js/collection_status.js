@@ -671,8 +671,9 @@
             html += '<tr>';
             html += '<td align="center">' + r.no + '</td>';
             html += '<td align="center">' + L4.escapeHtml(r.category) + '</td>';
-            html += '<td>' + L4.escapeHtml(r.name) + '</td>';
             if (r.table_rowspan > 0) {
+                html += '<td rowspan="' + r.table_rowspan + '" align="center" valign="middle">'
+                    + L4.escapeHtml(r.name) + '</td>';
                 html += '<td rowspan="' + r.table_rowspan + '" align="center" valign="middle">'
                     + L4.escapeHtml(r.table_name) + '</td>';
             }
