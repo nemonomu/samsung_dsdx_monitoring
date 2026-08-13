@@ -20,6 +20,20 @@ class TseRetailColumnLoaderTests(unittest.TestCase):
                 'skip_missing_check': True,
                 'is_editable': True,
             },
+            {
+                'product_line': 'tse_ref',
+                'column_name': 'ref_refrigerator_type',
+                'retailer': 'homepro',
+                'skip_missing_check': True,
+                'is_editable': False,
+            },
+            {
+                'product_line': 'tse_ldy',
+                'column_name': 'ldy_loading_type',
+                'retailer': 'homepro',
+                'skip_missing_check': True,
+                'is_editable': False,
+            },
         ]
         module = load_module(
             'apps/common/retail_columns.py',
@@ -43,6 +57,18 @@ class TseRetailColumnLoaderTests(unittest.TestCase):
         self.assertEqual(
             homepro['editable_columns'],
             ['final_sku_price', 'savings'],
+        )
+        self.assertEqual(
+            loaded['tse_ref']['Homepro']['required_columns'], [],
+        )
+        self.assertEqual(
+            loaded['tse_ref']['Homepro']['editable_columns'], [],
+        )
+        self.assertEqual(
+            loaded['tse_ldy']['Homepro']['required_columns'], [],
+        )
+        self.assertEqual(
+            loaded['tse_ldy']['Homepro']['editable_columns'], [],
         )
 
 

@@ -91,17 +91,20 @@ def _configured_retailers(cursor, source):
     """Load the source's active Missing columns from the existing DB table."""
     cursor.execute(
         f"""
-        SELECT column_name, retailer
+        SELECT column_name, retailer,
+               COALESCE(skip_missing_check, FALSE) AS skip_missing_check
         FROM {_CONFIG_TABLE}
         WHERE LOWER(BTRIM(CAST(product_line AS TEXT))) = %s
           AND is_active IS TRUE
           AND COALESCE(is_del, FALSE) IS FALSE
-          AND COALESCE(skip_missing_check, FALSE) IS FALSE
         ORDER BY id
         """,
         [_normalize_name(source['product_line'])],
     )
     rows = cursor.fetchall()
+    email_include_skipped = set(
+        source.get('email_include_skipped_columns', ())
+    )
 
     configured = []
     for retailer in source['retailers']:
@@ -113,11 +116,18 @@ def _configured_retailers(cursor, source):
             if isinstance(row, dict):
                 column_name = row.get('column_name')
                 retailer_name = row.get('retailer')
+                skip_missing_check = row.get('skip_missing_check', False)
             else:
                 column_name, retailer_name = row[0], row[1]
+                skip_missing_check = row[2] if len(row) > 2 else False
             if _normalize_name(retailer_name) not in accepted_names:
                 continue
             column_name = str(column_name or '').strip()
+            if (
+                skip_missing_check
+                and column_name not in email_include_skipped
+            ):
+                continue
             if not _IDENTIFIER.fullmatch(column_name):
                 raise EmailConfigurationError(
                     f"Unsafe configured column for {source['key']}"

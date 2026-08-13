@@ -75,6 +75,7 @@ class EmailRegistryTests(unittest.TestCase):
         for configured_source in registry.EMAIL_REPORT_SOURCES:
             self.assertNotIn('expected_count', configured_source)
             self.assertIn('product_line', configured_source)
+            self.assertIn('email_include_skipped_columns', configured_source)
             self.assertIn('.', configured_source['table_name'])
             for retailer in configured_source['retailers']:
                 self.assertNotIn('columns', retailer)
@@ -92,6 +93,23 @@ class EmailRegistryTests(unittest.TestCase):
                 'public.ldy_retail_com',
             ],
             [source['table_name'] for source in registry.EMAIL_REPORT_SOURCES[:3]],
+        )
+        tse_sources = {
+            source['key']: source
+            for source in registry.EMAIL_REPORT_SOURCES
+            if source['country'] == 'TSE'
+        }
+        self.assertEqual(
+            tse_sources['tse_tv']['email_include_skipped_columns'],
+            ('original_sku_price', 'savings'),
+        )
+        self.assertEqual(
+            tse_sources['tse_ref']['email_include_skipped_columns'],
+            ('original_sku_price', 'savings', 'ref_refrigerator_type'),
+        )
+        self.assertEqual(
+            tse_sources['tse_ldy']['email_include_skipped_columns'],
+            ('original_sku_price', 'savings', 'ldy_loading_type'),
         )
 
 
@@ -128,7 +146,8 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertIn('FROM public.monitoring_retail_columns', config_sql)
         self.assertIn('is_active IS TRUE', config_sql)
         self.assertIn('COALESCE(is_del, FALSE) IS FALSE', config_sql)
-        self.assertIn(
+        self.assertIn('COALESCE(skip_missing_check, FALSE)', config_sql)
+        self.assertNotIn(
             'COALESCE(skip_missing_check, FALSE) IS FALSE', config_sql,
         )
         self.assertEqual(config_params, ['siel_tv'])
@@ -288,6 +307,118 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertIn('source.account_name IS NULL', aggregate_sql)
         self.assertNotIn('source.page_type', aggregate_sql)
         self.assertNotIn("IN ('main', 'bsr')", aggregate_sql)
+
+    def test_tse_email_includes_only_approved_skipped_columns(self):
+        registry = load_registry()
+        tse_source = next(
+            source for source in registry.EMAIL_REPORT_SOURCES
+            if source['key'] == 'tse_tv'
+        )
+        cursor = ScriptedCursor([
+            {'fetchall': [
+                ('sku', 'homepro', False),
+                ('original_sku_price', 'homepro', True),
+                ('savings', 'homepro', True),
+                ('product_url', 'homepro', True),
+            ]},
+            {'fetchone': ('homepro_20260811',)},
+            {'fetchone': (11, 11, 0, 11, 1, 11, 2, 11, 3)},
+        ])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 11), sources=(tse_source,)
+        )
+
+        self.assertTrue(result['complete'])
+        columns = result['sources'][0]['column_order']
+        self.assertEqual(
+            columns, ['item', 'sku', 'original_sku_price', 'savings'],
+        )
+        self.assertNotIn('product_url', columns)
+        config_sql = cursor.calls[0][0]
+        self.assertIn(
+            'AS skip_missing_check', config_sql,
+        )
+        self.assertNotIn(
+            'COALESCE(skip_missing_check, FALSE) IS FALSE', config_sql,
+        )
+
+    def test_tse_email_column_counts_match_the_approved_source_schema(self):
+        registry = load_registry()
+        base_columns = {
+            'tse_tv': (
+                'country', 'retailer_sku_name', 'star_rating', 'sku',
+                'count_of_star_ratings', 'count_of_reviews', 'screen_size',
+                'item', 'final_sku_price', 'product_url', 'account_name',
+            ),
+            'tse_ref': (
+                'country', 'ref_capacity', 'sku', 'retailer_sku_name',
+                'star_rating', 'count_of_reviews', 'item',
+                'count_of_star_ratings', 'final_sku_price', 'product_url',
+                'account_name',
+            ),
+            'tse_ldy': (
+                'country', 'star_rating', 'retailer_sku_name', 'sku',
+                'count_of_star_ratings', 'count_of_reviews', 'item',
+                'ldy_capacity', 'final_sku_price', 'product_url',
+                'account_name',
+            ),
+        }
+        expected_counts = {'tse_tv': 13, 'tse_ref': 14, 'tse_ldy': 14}
+
+        for key, expected_count in expected_counts.items():
+            with self.subTest(product_line=key):
+                configured_source = next(
+                    source for source in registry.EMAIL_REPORT_SOURCES
+                    if source['key'] == key
+                )
+                extras = configured_source['email_include_skipped_columns']
+                configured_rows = [
+                    (column, 'homepro', False)
+                    for column in base_columns[key]
+                ] + [
+                    (column, 'homepro', True) for column in extras
+                ] + [
+                    ('unapproved_email_skip', 'homepro', True),
+                ]
+                cursor = ScriptedCursor([{'fetchall': configured_rows}])
+                service = load_service(cursor)
+
+                retailer = service._configured_retailers(
+                    cursor, configured_source,
+                )[0]
+                columns = retailer['columns']
+
+                self.assertEqual(len(columns), expected_count)
+                self.assertEqual(columns[0], 'item')
+                self.assertEqual(columns.count('item'), 1)
+                self.assertEqual(columns.count('product_url'), 1)
+                self.assertNotIn('unapproved_email_skip', columns)
+                for column in extras:
+                    self.assertIn(column, columns)
+
+    def test_non_tse_columns_remain_db_driven_without_product_url_injection(self):
+        configured_source = source(key='sea_ref', date_mode='text')
+        configured_source['product_line'] = 'sea_ref'
+        configured_source['email_include_skipped_columns'] = ()
+        configured_source['retailers'] = ({
+            'name': 'Bestbuy',
+            'aliases': ('Bestbuy', 'BestBuy'),
+            'exclude_redirect': False,
+        },)
+        cursor = ScriptedCursor([{'fetchall': [
+            ('original_sku_price', 'bestbuy', False),
+            ('product_url', 'bestbuy', True),
+        ]}])
+        service = load_service(cursor)
+
+        columns = service._configured_retailers(
+            cursor, configured_source,
+        )[0]['columns']
+
+        self.assertEqual(columns, ('item', 'original_sku_price'))
+        self.assertNotIn('product_url', columns)
 
     def test_missing_or_unsafe_db_configuration_marks_source_incomplete(self):
         for configured_rows in (

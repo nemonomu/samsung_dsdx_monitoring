@@ -1,9 +1,10 @@
 """Allow-listed source metadata for the Layer 4 email report.
 
-Collection columns intentionally do not live in application code.  Each
-source's ``product_line`` selects the active rows in
-``public.monitoring_retail_columns`` at request time.  This module only allow-lists
-SQL identifiers and the account-name aliases needed to find source rows.
+Collection columns normally do not live in application code.  Each source's
+``product_line`` selects the active rows in
+``public.monitoring_retail_columns`` at request time.  The one exception is an
+explicit email-only allow-list for fields which remain excluded from shared
+Layer 1-3 Missing checks (``skip_missing_check = TRUE``).
 """
 
 import re
@@ -27,7 +28,7 @@ def _source(key, country, product, table_name, date_column, date_mode,
             retailers, *, product_line=None, has_page_type=True,
             include_unassigned=False, latest_batch=True,
             collection_scope='main', special_rules=None,
-            business_timezone=None):
+            business_timezone=None, email_include_skipped_columns=()):
     return {
         'key': key,
         'product_line': product_line or key,
@@ -46,6 +47,9 @@ def _source(key, country, product, table_name, date_column, date_mode,
         'collection_scope': collection_scope,
         'special_rules': special_rules,
         'business_timezone': business_timezone,
+        'email_include_skipped_columns': tuple(
+            email_include_skipped_columns
+        ),
         'retailers': tuple(retailers),
     }
 
@@ -74,6 +78,15 @@ _SIEL_RETAILERS = (
     _retailer('Flipkart'),
 )
 _TSE_RETAILERS = (_retailer('Homepro'),)
+_TSE_EMAIL_SKIPPED_ALLOWLIST = {
+    'TV': ('original_sku_price', 'savings'),
+    'REF': (
+        'original_sku_price', 'savings', 'ref_refrigerator_type',
+    ),
+    'LDY': (
+        'original_sku_price', 'savings', 'ldy_loading_type',
+    ),
+}
 
 
 EMAIL_REPORT_SOURCES = (
@@ -125,6 +138,9 @@ EMAIL_REPORT_SOURCES = (
             'crawl_datetime', 'text', _TSE_RETAILERS,
             has_page_type=False, include_unassigned=True,
             collection_scope='all',
+            email_include_skipped_columns=(
+                _TSE_EMAIL_SKIPPED_ALLOWLIST[product]
+            ),
         )
         for product in ('TV', 'REF', 'LDY')
     ),
@@ -158,6 +174,7 @@ def _validate_registry():
             source['key'], source['product_line'], source['date_column'],
             source['id_column'], source['batch_column'],
             source['account_column'],
+            *source['email_include_skipped_columns'],
         )
         for identifier in identifiers:
             if not _IDENTIFIER.fullmatch(identifier):
