@@ -298,19 +298,19 @@ async function run() {
         '<td rowspan="4" align="center" valign="middle">TV 수집 데이터</td>'
     ));
     assert(emailDailyTable.includes(
-        '<td rowspan="1" align="center" valign="middle">RAW_EXT_REF_RETAIL_COM_VIEW</td>'
+        '<td rowspan="1" align="center" valign="middle" style="border-top:2px solid #1f4e78;">RAW_EXT_REF_RETAIL_COM_VIEW</td>'
     ));
     assert(emailDailyTable.includes(
-        '<td rowspan="1" align="center" valign="middle">REF 수집 데이터</td>'
+        '<td rowspan="1" align="center" valign="middle" style="border-top:2px solid #1f4e78;">REF 수집 데이터</td>'
     ));
     assert(emailDailyTable.includes(
-        '<td rowspan="1" align="center" valign="middle">RAW_EXT_LDY_RETAIL_COM_VIEW</td>'
+        '<td rowspan="1" align="center" valign="middle" style="border-top:2px solid #1f4e78;">RAW_EXT_LDY_RETAIL_COM_VIEW</td>'
     ));
     assert(emailDailyTable.includes(
-        '<td rowspan="1" align="center" valign="middle">LDY 수집 데이터</td>'
+        '<td rowspan="1" align="center" valign="middle" style="border-top:2px solid #1f4e78;">LDY 수집 데이터</td>'
     ));
     const dailyCategories = Array.from(
-        emailDailyTable.matchAll(/<tr><td align="center">\d+<\/td><td align="center">([^<]+)<\/td>/g),
+        emailDailyTable.matchAll(/<tr><td align="center"[^>]*>\d+<\/td><td align="center"[^>]*>([^<]+)<\/td>/g),
         match => match[1]
     );
     assert.deepStrictEqual(
@@ -321,11 +321,23 @@ async function run() {
         < emailDailyTable.indexOf('YouTube 영상 데이터 (HHP)'));
     assert.deepStrictEqual(
         Array.from(
-            emailDailyTable.matchAll(/<tr><td align="center">(\d+)<\/td>/g),
+            emailDailyTable.matchAll(/<tr><td align="center"[^>]*>(\d+)<\/td>/g),
             match => Number(match[1])
         ),
         [1, 2, 3, 4, 5, 6, 7]
     );
+    assert.strictEqual(
+        (emailDailyTable.match(/border-top:2px solid #1f4e78;/g) || []).length,
+        15
+    );
+    const dividerRows = Array.from(
+        emailDailyTable.matchAll(/<tr><td align="center" style="border-top:2px solid #1f4e78;">(\d+)<\/td>/g),
+        match => Number(match[1])
+    );
+    assert.deepStrictEqual(dividerRows, [5, 6, 7]);
+    assert(!emailDailyTable.includes(
+        '<tr><th colspan="4" style="border-top:2px solid #1f4e78;">합 계</th>'
+    ));
     assert(!emailDailyTable.includes('국가 공통'));
     assert(!emailDailyTable.includes('한 번만 표시'));
     assert(!emailDailyTable.includes('public.tv_retail_com'));
@@ -488,9 +500,7 @@ async function run() {
     assert(!tseEmailHtml.includes(
         '<td rowspan="1" align="center" valign="middle">TV 수집 데이터</td>'
     ));
-    assert(tseEmailHtml.includes(
-        '<td rowspan="1" align="center" valign="middle">LDY 수집 데이터</td>'
-    ));
+    assert(tseEmailHtml.includes('>LDY 수집 데이터</td>'));
     assert(tseEmailHtml.includes('RAW_EXT_LDY_RETAIL_COM_VIEW'));
     assert(tseEmailHtml.includes('TSE - LDY'));
     assert(tseEmailHtml.includes('ldy_capacity'));
