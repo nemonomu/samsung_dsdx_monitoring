@@ -53,7 +53,11 @@ function renderTseCategory(cat, checkIdx, catIdx) {
     var rowsHtml = retailers.length > 0
         ? retailers.map(renderTseRetailerRow).join('') + renderTseTotalRow(retailers)
         : '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">설정된 리테일러 데이터 없음</td></tr>';
-    var countLabel = cat.baseline_pending
+    var hasUnavailableBaseline = retailers.some(function(retailer) {
+        return retailer.status_basis === 'previous_main_average' &&
+            retailer.expected === null;
+    });
+    var countLabel = hasUnavailableBaseline
         ? actual.toLocaleString() + '건'
         : actual.toLocaleString() + '/' + expected.toLocaleString() + '건';
 

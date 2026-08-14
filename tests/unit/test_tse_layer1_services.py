@@ -55,7 +55,6 @@ class TseLayer1ServiceTests(unittest.TestCase):
                 TSE_EXPECTED_COUNT=300,
                 TSE_LOTUSS_RETAILER='lotuss',
                 TSE_LOTUSS_HISTORY_DAYS=7,
-                TSE_LOTUSS_MIN_HISTORY_DAYS=3,
                 TSE_LOTUSS_CRITICAL_DEVIATION=20,
                 TSE_SOURCE_CONFIG=SOURCE_CONFIG,
                 display_tse_retailer=lambda value: (
@@ -244,11 +243,14 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertTrue(tv['retailers'][0]['bsr_applicable'])
         self.assertEqual('previous_main_average', lotuss['status_basis'])
         self.assertEqual(7, lotuss['history_day_count'])
+        self.assertNotIn('history_days_required', lotuss)
+        self.assertNotIn('baseline_ready', lotuss)
         self.assertEqual(10.0, lotuss['deviation'])
         self.assertEqual('OK', lotuss['status'])
         self.assertEqual(376.0, tv['expected'])
         self.assertEqual(386, tv['actual'])
-        self.assertFalse(tv['baseline_pending'])
+        self.assertNotIn('baseline_pending', tv)
+        self.assertNotIn('baseline_pending', result['check'])
         self.assertEqual([], result['failed_items'])
 
     def test_lotuss_exact_twenty_main_difference_is_critical(self):
@@ -271,7 +273,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
                 'main_count': 300, 'bsr_count': 100,
             }],
         })
-        self._set_history({('tse_tv', 'lotuss'): [65, 65, 65]})
+        self._set_history({('tse_tv', 'lotuss'): [65]})
 
         result = self.service.get_layer1_stats(
             object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
@@ -286,8 +288,12 @@ class TseLayer1ServiceTests(unittest.TestCase):
             '최근 MAIN 평균 대비 수집 건수 차이',
             result['failed_items'][0]['error_type'],
         )
+        self.assertEqual(
+            ('CRITICAL', 105.0),
+            self.service._status_for_lotuss_main(85, 'complete', [105]),
+        )
 
-    def test_lotuss_missing_three_history_days_is_critical_after_completion(self):
+    def test_lotuss_first_day_without_history_is_ok_after_completion(self):
         self.service.get_tse_retailer_columns = lambda product_line: (
             {'Lotuss': {'retailer': 'lotuss'}}
             if product_line == 'tse_tv'
@@ -307,7 +313,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
                 'main_count': 300, 'bsr_count': 100,
             }],
         })
-        self._set_history({('tse_tv', 'lotuss'): [80, 82]})
+        self._set_history({('tse_tv', 'lotuss'): []})
 
         result = self.service.get_layer1_stats(
             object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
@@ -315,20 +321,62 @@ class TseLayer1ServiceTests(unittest.TestCase):
         tv = result['check']['categories'][0]
         lotuss = tv['retailers'][0]
 
-        self.assertIsNone(lotuss['expected'])
-        self.assertEqual(2, lotuss['history_day_count'])
-        self.assertFalse(lotuss['baseline_ready'])
-        self.assertEqual('CRITICAL', lotuss['status'])
-        self.assertTrue(tv['baseline_pending'])
-        self.assertEqual('CRITICAL', result['check']['status'])
-        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual(86.0, lotuss['expected'])
+        self.assertEqual(0, lotuss['history_day_count'])
+        self.assertEqual(0.0, lotuss['deviation'])
+        self.assertEqual('OK', lotuss['status'])
+        self.assertEqual(86.0, tv['expected'])
+        self.assertEqual(100.0, tv['rate'])
+        self.assertEqual('OK', result['check']['status'])
+        self.assertEqual([], result['failed_items'])
         self.assertEqual(
             ('PENDING', None),
-            self.service._status_for_lotuss_main(86, 'pending', [80, 82]),
+            self.service._status_for_lotuss_main(86, 'pending', []),
         )
         self.assertEqual(
             ('COLLECTING', None),
-            self.service._status_for_lotuss_main(86, 'collecting', [80, 82]),
+            self.service._status_for_lotuss_main(86, 'collecting', []),
+        )
+
+    def test_lotuss_without_history_or_current_main_is_critical(self):
+        self.assertEqual(
+            ('CRITICAL', None),
+            self.service._status_for_lotuss_main(0, 'complete', []),
+        )
+
+    def test_lotuss_without_current_main_is_reported_as_no_collection(self):
+        self.service.get_tse_retailer_columns = lambda product_line: (
+            {'Lotuss': {'retailer': 'lotuss'}}
+            if product_line == 'tse_tv'
+            else {'Homepro': {'retailer': 'homepro'}}
+        )
+        self._set_counts({
+            'tse_tv': [],
+            'tse_ref': [{
+                'retailer': 'Homepro', 'actual_count': 300,
+                'main_count': 300, 'bsr_count': 100,
+            }],
+            'tse_ldy': [{
+                'retailer': 'Homepro', 'actual_count': 300,
+                'main_count': 300, 'bsr_count': 100,
+            }],
+        })
+        self._set_history({('tse_tv', 'lotuss'): []})
+
+        result = self.service.get_layer1_stats(
+            object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
+        )
+
+        self.assertEqual('CRITICAL', result['check']['categories'][0]['status'])
+        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual('수집 건수 없음', result['failed_items'][0]['error_type'])
+        self.assertIsNone(result['failed_items'][0]['expected'])
+        self.assertEqual(0, result['failed_items'][0]['actual'])
+
+    def test_lotuss_one_history_day_difference_nineteen_is_ok(self):
+        self.assertEqual(
+            ('OK', 67.0),
+            self.service._status_for_lotuss_main(86, 'complete', [67]),
         )
 
     def test_configured_retailer_without_data_is_zero_and_failed(self):

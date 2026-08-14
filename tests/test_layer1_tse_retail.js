@@ -84,7 +84,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=5"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=6"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
@@ -123,9 +123,7 @@ const lotussHtml = context.renderTseCategory({
         expected: 76,
         status: 'OK',
         status_basis: 'previous_main_average',
-        baseline_ready: true,
         history_day_count: 7,
-        history_days_required: 3,
     }],
 }, 0, 1);
 
@@ -134,30 +132,27 @@ assert(lotussHtml.includes('<td class="rt-name">Lotuss</td><td>86</td><td>-</td>
 assert(lotussHtml.includes('<tr class="rt-sum"><td>합계</td><td>386</td><td>100</td><td>386</td>'));
 assert(lotussHtml.includes('386/376건'));
 
-const pendingBaselineHtml = context.renderTseCategory({
+const firstDayHtml = context.renderTseCategory({
     name: 'TV',
-    expected: 300,
-    actual: 386,
-    baseline_pending: true,
-    status: 'CRITICAL',
+    expected: 86,
+    actual: 86,
+    status: 'OK',
     retailers: [{
         retailer: 'Lotuss',
         main_count: 86,
         bsr_count: 0,
         bsr_applicable: false,
         actual: 86,
-        expected: null,
-        status: 'CRITICAL',
+        expected: 86,
+        status: 'OK',
         status_basis: 'previous_main_average',
-        baseline_ready: false,
-        history_day_count: 2,
-        history_days_required: 3,
+        history_day_count: 0,
     }],
 }, 0, 1);
 
-assert(!pendingBaselineHtml.includes('기준 산정 중'));
-assert(!pendingBaselineHtml.includes('일부 기준 산정 중'));
-assert(pendingBaselineHtml.includes('<span class="sentiment-category-count">386건</span>'));
+assert(!firstDayHtml.includes('기준 산정 중'));
+assert(!firstDayHtml.includes('일부 기준 산정 중'));
+assert(firstDayHtml.includes('<span class="sentiment-category-count">86/86건</span>'));
 
 const commonContext = {
     window: {},

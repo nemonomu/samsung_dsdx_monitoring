@@ -7,7 +7,6 @@ from apps.common.tse_retail import (
     TSE_EXPECTED_COUNT,
     TSE_LOTUSS_CRITICAL_DEVIATION,
     TSE_LOTUSS_HISTORY_DAYS,
-    TSE_LOTUSS_MIN_HISTORY_DAYS,
     TSE_LOTUSS_RETAILER,
     TSE_SOURCE_CONFIG,
     display_tse_retailer,
@@ -61,13 +60,15 @@ def _status_for_lotuss_main(main_count, phase, history_counts):
     """Classify Lotuss from its prior MAIN history, never from BSR.
 
     The baseline is the arithmetic mean of up to seven latest valid days
-    before the target date.  Three days are required for a baseline; a
-    completed run without them is critical.  An absolute difference of
-    exactly 20 rows is critical (not only a decrease).
+    before the target date.  On the first completed collection day, a
+    positive current MAIN count becomes the initial baseline and is normal;
+    no prior history and no current collection is critical.  Once any prior
+    valid day exists, an absolute difference of exactly 20 rows is critical
+    (not only a decrease).
     """
     baseline = (
         sum(history_counts) / len(history_counts)
-        if len(history_counts) >= TSE_LOTUSS_MIN_HISTORY_DAYS
+        if history_counts
         else None
     )
     if phase == 'pending':
@@ -75,7 +76,8 @@ def _status_for_lotuss_main(main_count, phase, history_counts):
     if phase == 'collecting':
         return 'COLLECTING', baseline
     if baseline is None:
-        return 'CRITICAL', None
+        current = int(main_count or 0)
+        return ('OK', float(current)) if current > 0 else ('CRITICAL', None)
 
     deviation = abs(int(main_count or 0) - baseline)
     status = 'CRITICAL' if deviation >= TSE_LOTUSS_CRITICAL_DEVIATION else 'OK'
@@ -156,7 +158,6 @@ def _build_category(cursor, product_line, source, target_date, phase):
                 if baseline is not None
                 else None
             )
-            baseline_ready = baseline is not None
             status_basis = 'previous_main_average'
         else:
             history_counts = []
@@ -165,7 +166,6 @@ def _build_category(cursor, product_line, source, target_date, phase):
             rate = round(actual / TSE_EXPECTED_COUNT * 100, 1)
             status = _status_for_count(actual, phase)
             deviation = None
-            baseline_ready = True
             status_basis = 'fixed_count'
 
         retailers.append({
@@ -182,11 +182,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
             'rate': rate,
             'status': status,
             'status_basis': status_basis,
-            'baseline_ready': baseline_ready,
             'history_day_count': len(history_counts),
-            'history_days_required': (
-                TSE_LOTUSS_MIN_HISTORY_DAYS if is_lotuss else None
-            ),
             'allowed_deviation': (
                 TSE_LOTUSS_CRITICAL_DEVIATION if is_lotuss else None
             ),
@@ -201,11 +197,6 @@ def _build_category(cursor, product_line, source, target_date, phase):
         )
     else:
         expected_total = TSE_EXPECTED_COUNT
-    baseline_pending = any(
-        item['status_basis'] == 'previous_main_average'
-        and not item['baseline_ready']
-        for item in retailers
-    )
     if retailers:
         category_status = _worst_status([item['status'] for item in retailers])
     else:
@@ -224,7 +215,6 @@ def _build_category(cursor, product_line, source, target_date, phase):
             if expected_total else 0
         ),
         'status': category_status,
-        'baseline_pending': baseline_pending,
         'retailers': retailers,
     }
 
@@ -259,9 +249,16 @@ def get_layer1_stats(cursor, target_date, now=None):
                 failed_items.append({
                     'source': source_name,
                     'error_type': (
-                        '최근 MAIN 평균 대비 수집 건수 차이'
-                        if retailer.get('status_basis') == 'previous_main_average'
-                        else '수집 건수 부족'
+                        '수집 건수 없음'
+                        if (
+                            retailer.get('status_basis') == 'previous_main_average'
+                            and int(retailer.get('actual') or 0) == 0
+                        )
+                        else (
+                            '최근 MAIN 평균 대비 수집 건수 차이'
+                            if retailer.get('status_basis') == 'previous_main_average'
+                            else '수집 건수 부족'
+                        )
                     ),
                     'expected': retailer['expected'],
                     'actual': retailer['actual'],
@@ -281,9 +278,6 @@ def get_layer1_stats(cursor, target_date, now=None):
         'actual': actual_total,
         'total': actual_total,
         'rate': round(actual_total / expected_total * 100, 1) if expected_total else 0,
-        'baseline_pending': any(
-            category.get('baseline_pending') for category in categories
-        ),
         'categories': categories,
     }
     return {'check': check, 'failed_items': failed_items}

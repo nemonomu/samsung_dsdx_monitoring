@@ -4,7 +4,6 @@ from datetime import time
 from apps.common.tse_retail import (
     TSE_LOTUSS_CRITICAL_DEVIATION,
     TSE_LOTUSS_HISTORY_DAYS,
-    TSE_LOTUSS_MIN_HISTORY_DAYS,
     display_tse_retailer,
     get_tse_crossfield_rule_keys,
     get_tse_collection_phase,
@@ -67,7 +66,6 @@ class TseRetailCommonTests(unittest.TestCase):
 
     def test_lotuss_history_policy_constants_and_display_name(self):
         self.assertEqual(7, TSE_LOTUSS_HISTORY_DAYS)
-        self.assertEqual(3, TSE_LOTUSS_MIN_HISTORY_DAYS)
         self.assertEqual(20, TSE_LOTUSS_CRITICAL_DEVIATION)
         self.assertEqual('Lotuss', display_tse_retailer('lotuss'))
         self.assertEqual('Lotuss', display_tse_retailer('LOTUSS'))
