@@ -437,7 +437,7 @@ class EmailReportDataTests(unittest.TestCase):
                 self.assertIn('source.savings', missing)
                 self.assertIn(' OR ', missing)
                 self.assertIn(f'source.{column}', missing)
-                self.assertEqual(remark, '할인 정보가 있는 상품 기준')
+                self.assertEqual(remark, '')
 
     def test_tse_email_includes_only_approved_skipped_columns(self):
         registry = load_registry()

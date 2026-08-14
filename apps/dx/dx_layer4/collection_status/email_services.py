@@ -180,7 +180,7 @@ def _column_metrics(source, retailer, column):
         return (
             _count_when(discount_scope),
             _count_when(f"{discount_scope} AND {missing}"),
-            '할인 정보가 있는 상품 기준',
+            '',
         )
 
     if source.get('has_page_type') and column == 'bsr_rank':
