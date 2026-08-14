@@ -240,6 +240,8 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(76.0, lotuss['expected'])
         self.assertEqual(86, lotuss['actual'])
         self.assertEqual(0, lotuss['bsr_count'])
+        self.assertFalse(lotuss['bsr_applicable'])
+        self.assertTrue(tv['retailers'][0]['bsr_applicable'])
         self.assertEqual('previous_main_average', lotuss['status_basis'])
         self.assertEqual(7, lotuss['history_day_count'])
         self.assertEqual(10.0, lotuss['deviation'])
@@ -285,7 +287,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
             result['failed_items'][0]['error_type'],
         )
 
-    def test_lotuss_waits_for_three_valid_history_days(self):
+    def test_lotuss_missing_three_history_days_is_critical_after_completion(self):
         self.service.get_tse_retailer_columns = lambda product_line: (
             {'Lotuss': {'retailer': 'lotuss'}}
             if product_line == 'tse_tv'
@@ -316,9 +318,18 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertIsNone(lotuss['expected'])
         self.assertEqual(2, lotuss['history_day_count'])
         self.assertFalse(lotuss['baseline_ready'])
-        self.assertEqual('PENDING', lotuss['status'])
+        self.assertEqual('CRITICAL', lotuss['status'])
         self.assertTrue(tv['baseline_pending'])
-        self.assertEqual([], result['failed_items'])
+        self.assertEqual('CRITICAL', result['check']['status'])
+        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual(
+            ('PENDING', None),
+            self.service._status_for_lotuss_main(86, 'pending', [80, 82]),
+        )
+        self.assertEqual(
+            ('COLLECTING', None),
+            self.service._status_for_lotuss_main(86, 'collecting', [80, 82]),
+        )
 
     def test_configured_retailer_without_data_is_zero_and_failed(self):
         self._set_counts({product_line: [] for product_line in SOURCE_CONFIG})

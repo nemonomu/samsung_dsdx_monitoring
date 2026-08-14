@@ -84,7 +84,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=4"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=5"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
@@ -96,8 +96,9 @@ const checkHtml = context.renderTseRetailCheck({
 
 assert(checkHtml.includes('<div class="value">882</div>'));
 assert(!checkHtml.includes('882/900'));
-assert(checkHtml.includes('Homepro: 200건 이상 정상'));
-assert(checkHtml.includes('Lotuss: 최근 7개 유효일 MAIN 평균과 차이 20건 이상 심각'));
+assert(!checkHtml.includes('check-criteria'));
+assert(!checkHtml.includes('Homepro: 200건 이상 정상'));
+assert(!checkHtml.includes('Lotuss: 최근 7개 유효일 MAIN 평균과 차이 20건 이상 심각'));
 assert(!checkHtml.includes('경고: 200~299건'));
 
 const lotussHtml = context.renderTseCategory({
@@ -106,9 +107,18 @@ const lotussHtml = context.renderTseCategory({
     actual: 386,
     status: 'OK',
     retailers: [{
+        retailer: 'Homepro',
+        main_count: 300,
+        bsr_count: 100,
+        bsr_applicable: true,
+        actual: 300,
+        expected: 300,
+        status: 'OK',
+    }, {
         retailer: 'Lotuss',
         main_count: 86,
         bsr_count: 0,
+        bsr_applicable: false,
         actual: 86,
         expected: 76,
         status: 'OK',
@@ -119,8 +129,9 @@ const lotussHtml = context.renderTseCategory({
     }],
 }, 0, 1);
 
-assert(lotussHtml.includes('최근 7일 MAIN 평균 76건'));
-assert(lotussHtml.includes('<td>0</td>'));
+assert(!lotussHtml.includes('최근 7일 MAIN 평균 76건'));
+assert(lotussHtml.includes('<td class="rt-name">Lotuss</td><td>86</td><td>-</td>'));
+assert(lotussHtml.includes('<tr class="rt-sum"><td>합계</td><td>386</td><td>100</td><td>386</td>'));
 assert(lotussHtml.includes('386/376건'));
 
 const pendingBaselineHtml = context.renderTseCategory({
@@ -128,14 +139,15 @@ const pendingBaselineHtml = context.renderTseCategory({
     expected: 300,
     actual: 386,
     baseline_pending: true,
-    status: 'PENDING',
+    status: 'CRITICAL',
     retailers: [{
         retailer: 'Lotuss',
         main_count: 86,
         bsr_count: 0,
+        bsr_applicable: false,
         actual: 86,
         expected: null,
-        status: 'PENDING',
+        status: 'CRITICAL',
         status_basis: 'previous_main_average',
         baseline_ready: false,
         history_day_count: 2,
@@ -143,8 +155,9 @@ const pendingBaselineHtml = context.renderTseCategory({
     }],
 }, 0, 1);
 
-assert(pendingBaselineHtml.includes('기준 산정 중 (2/3일)'));
-assert(pendingBaselineHtml.includes('386건 / 일부 기준 산정 중'));
+assert(!pendingBaselineHtml.includes('기준 산정 중'));
+assert(!pendingBaselineHtml.includes('일부 기준 산정 중'));
+assert(pendingBaselineHtml.includes('<span class="sentiment-category-count">386건</span>'));
 
 const commonContext = {
     window: {},

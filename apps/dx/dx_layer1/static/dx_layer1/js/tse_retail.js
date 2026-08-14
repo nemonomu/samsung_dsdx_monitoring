@@ -12,24 +12,14 @@ function renderTseRetailerRow(retailer) {
     var bsrCount = tseNumber(retailer.bsr_count);
     var actual = tseNumber(retailer.actual !== undefined ? retailer.actual : retailer.count);
     var retailerLabel = esc(retailer.retailer || '-');
-
-    if (retailer.status_basis === 'previous_main_average') {
-        var historyDays = tseNumber(retailer.history_day_count);
-        if (retailer.baseline_ready && retailer.expected !== null) {
-            retailerLabel += '<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;">' +
-                '최근 ' + historyDays + '일 MAIN 평균 ' +
-                tseNumber(retailer.expected).toLocaleString() + '건</div>';
-        } else {
-            retailerLabel += '<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;">' +
-                '기준 산정 중 (' + historyDays + '/' +
-                tseNumber(retailer.history_days_required) + '일)</div>';
-        }
-    }
+    var bsrDisplay = retailer.bsr_applicable === false
+        ? '-'
+        : bsrCount.toLocaleString();
 
     return '<tr>' +
         '<td class="rt-name">' + retailerLabel + '</td>' +
         '<td>' + mainCount.toLocaleString() + '</td>' +
-        '<td>' + bsrCount.toLocaleString() + '</td>' +
+        '<td>' + bsrDisplay + '</td>' +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
         '<td class="rt-status ct-nc">' + getStatusBadge(retailer.status) + '</td>' +
     '</tr>';
@@ -38,7 +28,9 @@ function renderTseRetailerRow(retailer) {
 function renderTseTotalRow(retailers) {
     var totals = retailers.reduce(function(result, retailer) {
         result.main += tseNumber(retailer.main_count);
-        result.bsr += tseNumber(retailer.bsr_count);
+        if (retailer.bsr_applicable !== false) {
+            result.bsr += tseNumber(retailer.bsr_count);
+        }
         result.actual += tseNumber(
             retailer.actual !== undefined ? retailer.actual : retailer.count
         );
@@ -62,7 +54,7 @@ function renderTseCategory(cat, checkIdx, catIdx) {
         ? retailers.map(renderTseRetailerRow).join('') + renderTseTotalRow(retailers)
         : '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">설정된 리테일러 데이터 없음</td></tr>';
     var countLabel = cat.baseline_pending
-        ? actual.toLocaleString() + '건 / 일부 기준 산정 중'
+        ? actual.toLocaleString() + '건'
         : actual.toLocaleString() + '/' + expected.toLocaleString() + '건';
 
     return '<div class="sentiment-category-item">' +
@@ -114,10 +106,6 @@ function renderTseRetailCheck(check, checkIdx) {
             '<div class="check-info">' +
                 '<div class="check-name"><span class="toggle-icon">▶</span>' + esc(check.name || 'TSE Retail') + '</div>' +
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +
-            '</div>' +
-            '<div class="check-criteria">' +
-                '<span class="criteria-item ok">Homepro: 200건 이상 정상</span>' +
-                '<span class="criteria-item critical">Lotuss: 최근 7개 유효일 MAIN 평균과 차이 20건 이상 심각</span>' +
             '</div>' +
             '<div class="check-stats">' +
                 '<div class="check-stat">' +

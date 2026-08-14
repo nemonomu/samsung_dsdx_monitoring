@@ -61,8 +61,9 @@ def _status_for_lotuss_main(main_count, phase, history_counts):
     """Classify Lotuss from its prior MAIN history, never from BSR.
 
     The baseline is the arithmetic mean of up to seven latest valid days
-    before the target date.  Three days are required to make a decision.  An
-    absolute difference of exactly 20 rows is critical (not only a decrease).
+    before the target date.  Three days are required for a baseline; a
+    completed run without them is critical.  An absolute difference of
+    exactly 20 rows is critical (not only a decrease).
     """
     baseline = (
         sum(history_counts) / len(history_counts)
@@ -74,7 +75,7 @@ def _status_for_lotuss_main(main_count, phase, history_counts):
     if phase == 'collecting':
         return 'COLLECTING', baseline
     if baseline is None:
-        return 'PENDING', None
+        return 'CRITICAL', None
 
     deviation = abs(int(main_count or 0) - baseline)
     status = 'CRITICAL' if deviation >= TSE_LOTUSS_CRITICAL_DEVIATION else 'OK'
@@ -177,6 +178,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
             'raw_count': raw_count,
             'main_count': main_count,
             'bsr_count': int(data.get('bsr_count') or 0),
+            'bsr_applicable': not is_lotuss,
             'rate': rate,
             'status': status,
             'status_basis': status_basis,
