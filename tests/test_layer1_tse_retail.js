@@ -31,6 +31,18 @@ const commonSource = fs.readFileSync(
     ),
     'utf8'
 );
+const dashboardSource = fs.readFileSync(
+    path.join(
+        __dirname,
+        '..',
+        'apps',
+        'dx',
+        'dx_layer1',
+        'templates',
+        'dx_layer1_dashboard.html'
+    ),
+    'utf8'
+);
 
 const context = {
     L1: { renderers: {} },
@@ -72,6 +84,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=4"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
@@ -83,8 +96,55 @@ const checkHtml = context.renderTseRetailCheck({
 
 assert(checkHtml.includes('<div class="value">882</div>'));
 assert(!checkHtml.includes('882/900'));
-assert(checkHtml.includes('정상: 200건 이상'));
+assert(checkHtml.includes('Homepro: 200건 이상 정상'));
+assert(checkHtml.includes('Lotuss: 최근 7개 유효일 MAIN 평균과 차이 20건 이상 심각'));
 assert(!checkHtml.includes('경고: 200~299건'));
+
+const lotussHtml = context.renderTseCategory({
+    name: 'TV',
+    expected: 376,
+    actual: 386,
+    status: 'OK',
+    retailers: [{
+        retailer: 'Lotuss',
+        main_count: 86,
+        bsr_count: 0,
+        actual: 86,
+        expected: 76,
+        status: 'OK',
+        status_basis: 'previous_main_average',
+        baseline_ready: true,
+        history_day_count: 7,
+        history_days_required: 3,
+    }],
+}, 0, 1);
+
+assert(lotussHtml.includes('최근 7일 MAIN 평균 76건'));
+assert(lotussHtml.includes('<td>0</td>'));
+assert(lotussHtml.includes('386/376건'));
+
+const pendingBaselineHtml = context.renderTseCategory({
+    name: 'TV',
+    expected: 300,
+    actual: 386,
+    baseline_pending: true,
+    status: 'PENDING',
+    retailers: [{
+        retailer: 'Lotuss',
+        main_count: 86,
+        bsr_count: 0,
+        actual: 86,
+        expected: null,
+        status: 'PENDING',
+        status_basis: 'previous_main_average',
+        baseline_ready: false,
+        history_day_count: 2,
+        history_days_required: 3,
+    }],
+}, 0, 1);
+
+assert(pendingBaselineHtml.includes('기준 산정 중 (2/3일)'));
+assert(pendingBaselineHtml.includes('386건 / 일부 기준 산정 중'));
 
 const commonContext = {
     window: {},

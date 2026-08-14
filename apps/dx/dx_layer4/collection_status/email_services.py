@@ -62,7 +62,10 @@ def _retailer_condition(source, retailer, alias='source', *,
         f"LOWER(BTRIM(CAST({alias}.{account_column} AS TEXT))) "
         f"IN ({placeholders})"
     )
-    if source.get('include_unassigned') and include_unassigned:
+    allows_unassigned = retailer.get(
+        'include_unassigned', source.get('include_unassigned', False),
+    )
+    if allows_unassigned and include_unassigned:
         condition = (
             f"({condition} OR {alias}.{account_column} IS NULL "
             f"OR BTRIM(CAST({alias}.{account_column} AS TEXT)) = '')"
@@ -111,6 +114,7 @@ def _configured_retailers(cursor, source):
         accepted_names = {
             _normalize_name(alias) for alias in retailer['aliases']
         }
+        unsupported_columns = set(retailer.get('unsupported_columns', ()))
         columns = []
         for row in rows:
             if isinstance(row, dict):
@@ -123,6 +127,8 @@ def _configured_retailers(cursor, source):
             if _normalize_name(retailer_name) not in accepted_names:
                 continue
             column_name = str(column_name or '').strip()
+            if column_name in unsupported_columns:
+                continue
             if (
                 skip_missing_check
                 and column_name not in email_include_skipped
@@ -165,6 +171,17 @@ def _present(column):
 def _column_metrics(source, retailer, column):
     """Return SQL expressions for the real denominator and Missing count."""
     missing = _missing(column)
+
+    if column in set(retailer.get('conditional_columns', ())):
+        discount_scope = (
+            f"({_present('original_sku_price')} OR "
+            f"{_present('savings')})"
+        )
+        return (
+            _count_when(discount_scope),
+            _count_when(f"{discount_scope} AND {missing}"),
+            '할인 정보가 있는 상품 기준',
+        )
 
     if source.get('has_page_type') and column == 'bsr_rank':
         return (
@@ -248,8 +265,9 @@ def _query_retailer(cursor, source, retailer, target_date):
     batch_id = None
 
     if source.get('latest_batch', True):
-        # TSE rows with a blank account belong to Homepro's batch, but the
-        # anchor batch itself must be selected from an explicitly named row.
+        # A retailer may own blank-account rows (currently Homepro only), but
+        # the anchor batch itself must always come from an explicitly named
+        # row. Other retailers, including Lotuss, never inherit those rows.
         latest_scope = _source_scope(
             source, retailer, include_unassigned=False,
         )

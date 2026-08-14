@@ -12,6 +12,10 @@ TSE_CHECK_TYPE = 'tse_retail'
 TSE_COUNTRY = 'TSE'
 TSE_EXPECTED_COUNT = 300
 TSE_ALLOWED_SHORTFALL = 100
+TSE_LOTUSS_RETAILER = 'lotuss'
+TSE_LOTUSS_HISTORY_DAYS = 7
+TSE_LOTUSS_MIN_HISTORY_DAYS = 3
+TSE_LOTUSS_CRITICAL_DEVIATION = 20
 TSE_COLLECTION_START = time(9, 0)
 TSE_COLLECTION_END = time(9, 30)
 
@@ -33,6 +37,75 @@ TSE_EDIT_ONLY_COLUMNS = (
     'savings',
 )
 
+TSE_REVIEW_COLUMNS = (
+    'count_of_reviews',
+    'star_rating',
+    'count_of_star_ratings',
+)
+
+TSE_DEFAULT_FORMAT_FIELDS = (
+    'final_sku_price',
+    'original_sku_price',
+    'savings',
+    *TSE_REVIEW_COLUMNS,
+)
+
+TSE_LOTUSS_FORMAT_FIELDS = {
+    'tse_tv': (
+        'item', 'product_url', 'final_sku_price', 'original_sku_price',
+        'savings', 'screen_size',
+    ),
+    'tse_ref': (
+        'item', 'product_url', 'final_sku_price', 'ref_capacity',
+        'ref_refrigerator_type',
+    ),
+    'tse_ldy': (
+        'item', 'product_url', 'final_sku_price', 'ldy_capacity',
+        'ldy_loading_type',
+    ),
+}
+
+TSE_LOTUSS_CROSSFIELD_RULE_KEYS = {
+    'tse_tv': frozenset({
+        'final_original_price',
+        'savings_requires_original',
+        'savings_format',
+        'original_price_zero',
+        'savings_amount_match',
+        'savings_rate_match',
+    }),
+    'tse_ref': frozenset(),
+    'tse_ldy': frozenset(),
+}
+
+TSE_RETAILER_POLICIES = {
+    'homepro': {
+        'display_name': 'Homepro',
+        # Blank account names predate the retailer split and belong only to
+        # the original Homepro feed.  Do not infer this from config counts.
+        'include_unassigned': True,
+    },
+    TSE_LOTUSS_RETAILER: {
+        'display_name': 'Lotuss',
+        'include_unassigned': False,
+        'unsupported_columns': {
+            'tse_tv': frozenset(TSE_REVIEW_COLUMNS),
+            'tse_ref': frozenset({
+                *TSE_REVIEW_COLUMNS,
+                'original_sku_price',
+                'savings',
+            }),
+            'tse_ldy': frozenset({
+                *TSE_REVIEW_COLUMNS,
+                'original_sku_price',
+                'savings',
+            }),
+        },
+        'format_fields': TSE_LOTUSS_FORMAT_FIELDS,
+        'crossfield_rule_keys': TSE_LOTUSS_CROSSFIELD_RULE_KEYS,
+    },
+}
+
 TSE_SOURCE_CONFIG = {
     'tse_tv': {
         'category': 'TV',
@@ -40,6 +113,7 @@ TSE_SOURCE_CONFIG = {
         'display_name': 'TSE TV',
         'table_name': 'dx_tse.dx_tse_tv_retail_com',
         'extra_required_columns': ('screen_size',),
+        'extra_format_columns': ('screen_size',),
     },
     'tse_ref': {
         'category': 'REF',
@@ -47,6 +121,9 @@ TSE_SOURCE_CONFIG = {
         'display_name': 'TSE REF',
         'table_name': 'dx_tse.dx_tse_ref_retail_com',
         'extra_required_columns': ('ref_capacity',),
+        'extra_format_columns': (
+            'ref_capacity', 'ref_refrigerator_type',
+        ),
     },
     'tse_ldy': {
         'category': 'LDY',
@@ -54,6 +131,7 @@ TSE_SOURCE_CONFIG = {
         'display_name': 'TSE LDY',
         'table_name': 'dx_tse.dx_tse_ldy_retail_com',
         'extra_required_columns': ('ldy_capacity',),
+        'extra_format_columns': ('ldy_capacity', 'ldy_loading_type'),
     },
 }
 
@@ -127,9 +205,60 @@ def display_tse_retailer(value):
     retailer = str(value or '').strip()
     if not retailer:
         return ''
-    if retailer.lower() == 'homepro':
-        return 'Homepro'
+    policy = TSE_RETAILER_POLICIES.get(retailer.casefold())
+    if policy:
+        return policy['display_name']
     return retailer
+
+
+def normalize_tse_retailer(value):
+    """Return a stable case-insensitive retailer key."""
+    return str(value or '').strip().casefold()
+
+
+def get_tse_retailer_policy(retailer):
+    """Return a copy of the explicit policy for a known TSE retailer."""
+    policy = TSE_RETAILER_POLICIES.get(normalize_tse_retailer(retailer), {})
+    return dict(policy)
+
+
+def tse_retailer_include_unassigned(retailer):
+    """Whether blank ``account_name`` rows belong to this retailer."""
+    return bool(get_tse_retailer_policy(retailer).get('include_unassigned'))
+
+
+def tse_retailer_supports_column(product_line, retailer, column_name):
+    """Return whether a source column is meaningful for this retailer."""
+    key = normalize_tse_product_line(product_line)
+    policy = get_tse_retailer_policy(retailer)
+    unsupported = policy.get('unsupported_columns', {}).get(key, frozenset())
+    return str(column_name or '').strip() not in unsupported
+
+
+def get_tse_format_fields(product_line, retailer):
+    """Return the retailer/product fields that receive format validation."""
+    key = normalize_tse_product_line(product_line)
+    policy = get_tse_retailer_policy(retailer)
+    configured = policy.get('format_fields', {}).get(key)
+    if configured is not None:
+        return tuple(configured)
+    return TSE_DEFAULT_FORMAT_FIELDS
+
+
+def get_tse_crossfield_rule_keys(product_line, retailer):
+    """Return supported cross-field keys, or ``None`` for no restriction."""
+    key = normalize_tse_product_line(product_line)
+    policy = get_tse_retailer_policy(retailer)
+    configured = policy.get('crossfield_rule_keys')
+    if configured is None:
+        return None
+    return frozenset(configured.get(key, frozenset()))
+
+
+def tse_crossfield_rule_supported(product_line, retailer, rule_key):
+    """Return whether one cross-field rule applies to this retailer."""
+    supported = get_tse_crossfield_rule_keys(product_line, retailer)
+    return supported is None or str(rule_key or '').strip() in supported
 
 
 def get_tse_collection_phase(current_time):

@@ -199,6 +199,108 @@ class TSEFormatValidationTests(unittest.TestCase):
             'star_rating',
         }, set(errors))
 
+    def test_lotuss_tv_uses_percentage_savings_and_ignores_reviews(self):
+        row = {
+            'account_name': 'Lotuss',
+            'item': '51397644',
+            'product_url': (
+                'https://www.lotuss.com/th/product/'
+                'hisense32a3100g32-51397644'
+            ),
+            'final_sku_price': '฿3,790',
+            'original_sku_price': '฿8,990',
+            'savings': '-57%',
+            'screen_size': '32 inch',
+            'count_of_reviews': 'not-supported',
+            'count_of_star_ratings': 'not-supported',
+            'star_rating': 'not-supported',
+        }
+
+        self.assertEqual(
+            {},
+            self.service.evaluate_tse_format_row(
+                row, 'tse_tv', 'Lotuss'
+            ),
+        )
+
+    def test_lotuss_out_of_stock_is_exact_and_null_pair_is_not_format_error(self):
+        base = {
+            'account_name': 'Lotuss',
+            'item': '50173824',
+            'product_url': (
+                'https://www.lotuss.com/th/product/50173824'
+            ),
+            'final_sku_price': 'Out of stock',
+            'screen_size': '32 inch',
+        }
+        self.assertEqual({}, self.service.evaluate_tse_format_row(
+            base, 'tse_tv', 'Lotuss'
+        ))
+        errors = self.service.evaluate_tse_format_row(
+            {
+                **base,
+                'final_sku_price': 'out of stock',
+                'original_sku_price': '฿8,990',
+            },
+            'tse_tv', 'Lotuss',
+        )
+        self.assertEqual({'final_sku_price'}, set(errors))
+        self.assertEqual({}, self.service.evaluate_tse_format_row(
+            {
+                **base,
+                'original_sku_price': None,
+                'savings': '-57%',
+            },
+            'tse_tv', 'Lotuss',
+        ))
+
+    def test_lotuss_ref_capacity_accepts_cu_ft_l_and_liter(self):
+        base = {
+            'account_name': 'Lotuss',
+            'item': '50840542',
+            'product_url': (
+                'https://www.lotuss.com/th/product/50840542'
+            ),
+            'final_sku_price': '฿6,790',
+            'ref_refrigerator_type': 'Freezer-on-Top (Top Mount)',
+        }
+        for capacity in ('5.2 cu ft', '300 l', '300 L', '300 liter'):
+            with self.subTest(capacity=capacity):
+                self.assertEqual({}, self.service.evaluate_tse_format_row(
+                    {**base, 'ref_capacity': capacity},
+                    'tse_ref', 'Lotuss',
+                ))
+        errors = self.service.evaluate_tse_format_row(
+            {**base, 'ref_capacity': '300 kg'},
+            'tse_ref', 'Lotuss',
+        )
+        self.assertIn('ref_capacity', errors)
+
+    def test_lotuss_ldy_optional_loading_type_validates_when_present(self):
+        base = {
+            'account_name': 'Lotuss',
+            'item': '50548802',
+            'product_url': (
+                'https://www.lotuss.com/th/product/50548802'
+            ),
+            'final_sku_price': '฿9,990',
+            'ldy_capacity': '10 kg',
+        }
+        self.assertEqual({}, self.service.evaluate_tse_format_row(
+            base, 'tse_ldy', 'Lotuss'
+        ))
+        self.assertEqual({}, self.service.evaluate_tse_format_row(
+            {**base, 'ldy_loading_type': 'Twin Tub'},
+            'tse_ldy', 'Lotuss'
+        ))
+        self.assertIn(
+            'ldy_loading_type',
+            self.service.evaluate_tse_format_row(
+                {**base, 'ldy_loading_type': 'Unknown'},
+                'tse_ldy', 'Lotuss',
+            ),
+        )
+
     def test_static_tse_rule_api_does_not_require_database_rows(self):
         result = self.service.get_format_rules(None, 'tse_tv', 'Homepro')
         self.assertEqual(
@@ -246,6 +348,36 @@ class TSEFormatValidationTests(unittest.TestCase):
         self.assertEqual(1, validation['tables'][1]['total_issues'])
         self.assertEqual('SAVEPOINT layer2_tse_format_stats', cursor.calls[0][0])
         self.assertEqual('RELEASE SAVEPOINT layer2_tse_format_stats', cursor.calls[1][0])
+
+    def test_stats_apply_unassigned_scope_per_retailer(self):
+        configs = {
+            'Homepro': {
+                'retailer': 'homepro', 'editable_columns': [],
+            },
+            'Lotuss': {
+                'retailer': 'lotuss', 'editable_columns': [],
+            },
+        }
+        validation = {'tables': []}
+        cursor = ScriptedCursor([{}, {}])
+        with patch.object(
+            self.service, 'get_tse_retailer_columns',
+            side_effect=lambda product: configs if product == 'tse_tv' else {},
+        ), patch.object(
+            self.service, '_fetch_tse_format_rows', return_value=[]
+        ) as fetch_rows, patch.object(
+            self.service, '_load_tse_format_normal_reviews', return_value={}
+        ):
+            self.service._append_tse_format_stats(
+                cursor, date(2026, 8, 14), validation
+            )
+
+        self.assertEqual(True, fetch_rows.call_args_list[0].args[-1])
+        self.assertEqual(False, fetch_rows.call_args_list[1].args[-1])
+        self.assertEqual(
+            ['Homepro', 'Lotuss'],
+            [row['retailer'] for row in validation['tables'][0]['retailers']],
+        )
 
 
 class TSEDuplicateValidationTests(unittest.TestCase):
@@ -338,6 +470,30 @@ class TSEDuplicateValidationTests(unittest.TestCase):
         )
         self.assertEqual(
             'RELEASE SAVEPOINT layer2_tse_duplicate_stats', cursor.calls[1][0]
+        )
+
+    def test_duplicate_stats_apply_unassigned_scope_per_retailer(self):
+        configs = {
+            'Homepro': {'retailer': 'homepro'},
+            'Lotuss': {'retailer': 'lotuss'},
+        }
+        validation = {'tables': []}
+        cursor = ScriptedCursor([{}, {}])
+        with patch.object(
+            self.service, 'get_tse_retailer_columns',
+            side_effect=lambda product: configs if product == 'tse_tv' else {},
+        ), patch.object(
+            self.service, '_fetch_tse_duplicate_rows', return_value=[]
+        ) as fetch_rows:
+            self.service._append_tse_anomaly_stats(
+                cursor, date(2026, 8, 14), validation
+            )
+
+        self.assertEqual(True, fetch_rows.call_args_list[0].args[-1])
+        self.assertEqual(False, fetch_rows.call_args_list[1].args[-1])
+        self.assertEqual(
+            ['Homepro', 'Lotuss'],
+            [row['retailer'] for row in validation['tables'][0]['retailers']],
         )
 
 

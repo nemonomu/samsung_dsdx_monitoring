@@ -111,6 +111,35 @@ class EmailRegistryTests(unittest.TestCase):
             tse_sources['tse_ldy']['email_include_skipped_columns'],
             ('original_sku_price', 'savings', 'ldy_loading_type'),
         )
+        for configured_source in tse_sources.values():
+            retailers = {
+                retailer['name']: retailer
+                for retailer in configured_source['retailers']
+            }
+            self.assertEqual(set(retailers), {'Homepro', 'Lotuss'})
+            self.assertTrue(retailers['Homepro']['include_unassigned'])
+            self.assertFalse(retailers['Lotuss']['include_unassigned'])
+            self.assertEqual(
+                set(retailers['Lotuss']['unsupported_columns'])
+                & {
+                    'count_of_reviews', 'star_rating',
+                    'count_of_star_ratings',
+                },
+                {
+                    'count_of_reviews', 'star_rating',
+                    'count_of_star_ratings',
+                },
+            )
+        self.assertEqual(
+            tse_sources['tse_tv']['retailers'][1]['conditional_columns'],
+            ('original_sku_price', 'savings'),
+        )
+        for key in ('tse_ref', 'tse_ldy'):
+            self.assertEqual(
+                set(tse_sources[key]['retailers'][1]['unsupported_columns'])
+                & {'original_sku_price', 'savings'},
+                {'original_sku_price', 'savings'},
+            )
 
 
 class EmailReportDataTests(unittest.TestCase):
@@ -308,12 +337,118 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertNotIn('source.page_type', aggregate_sql)
         self.assertNotIn("IN ('main', 'bsr')", aggregate_sql)
 
+    def test_tse_retailers_keep_separate_unassigned_scope_and_sum_counts(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([
+            {'fetchall': [
+                ('sku', 'homepro', False),
+                ('sku', 'lotuss', False),
+            ]},
+            {'fetchone': ('homepro_20260814',)},
+            {'fetchone': (300, 300, 0, 300, 0)},
+            {'fetchone': ('l20260814_094943',)},
+            {'fetchone': (45, 45, 0, 45, 0)},
+        ])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 14), sources=(tse_source,)
+        )
+
+        self.assertTrue(result['complete'])
+        configured = result['sources'][0]
+        self.assertEqual(configured['total_count'], 345)
+        self.assertEqual(
+            [retailer['retailer'] for retailer in configured['retailers']],
+            ['Homepro', 'Lotuss'],
+        )
+        self.assertEqual(
+            [retailer['total_count'] for retailer in configured['retailers']],
+            [300, 45],
+        )
+        homepro_latest_sql = cursor.calls[1][0]
+        homepro_count_sql = cursor.calls[2][0]
+        lotuss_latest_sql = cursor.calls[3][0]
+        lotuss_count_sql = cursor.calls[4][0]
+        self.assertNotIn('source.account_name IS NULL', homepro_latest_sql)
+        self.assertIn('source.account_name IS NULL', homepro_count_sql)
+        self.assertNotIn('source.account_name IS NULL', lotuss_latest_sql)
+        self.assertNotIn('source.account_name IS NULL', lotuss_count_sql)
+
+    def test_lotuss_unsupported_columns_are_omitted_but_partial_fields_remain(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False),
+            ('count_of_reviews', 'homepro', False),
+            ('original_sku_price', 'homepro', True),
+            ('savings', 'homepro', True),
+            ('ref_refrigerator_type', 'homepro', True),
+            ('sku', 'lotuss', False),
+            ('count_of_reviews', 'lotuss', False),
+            ('star_rating', 'lotuss', False),
+            ('count_of_star_ratings', 'lotuss', False),
+            ('original_sku_price', 'lotuss', True),
+            ('savings', 'lotuss', True),
+            ('ref_refrigerator_type', 'lotuss', True),
+        ]}])
+        service = load_service(cursor)
+
+        configured = service._configured_retailers(cursor, tse_source)
+        homepro_columns = configured[0]['columns']
+        lotuss_columns = configured[1]['columns']
+
+        self.assertIn('count_of_reviews', homepro_columns)
+        self.assertIn('original_sku_price', homepro_columns)
+        self.assertIn('savings', homepro_columns)
+        self.assertIn('ref_refrigerator_type', homepro_columns)
+        self.assertEqual(
+            lotuss_columns, ('item', 'sku', 'ref_refrigerator_type'),
+        )
+
+    def test_lotuss_tv_discount_columns_use_conditional_denominator(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_tv'
+        )
+        lotuss = tse_source['retailers'][1]
+        service = load_service(ScriptedCursor([]))
+
+        for column in ('original_sku_price', 'savings'):
+            with self.subTest(column=column):
+                denominator, missing, remark = service._column_metrics(
+                    tse_source, lotuss, column,
+                )
+                self.assertIn('source.original_sku_price', denominator)
+                self.assertIn('source.savings', denominator)
+                self.assertIn(' OR ', denominator)
+                self.assertIn('source.original_sku_price', missing)
+                self.assertIn('source.savings', missing)
+                self.assertIn(' OR ', missing)
+                self.assertIn(f'source.{column}', missing)
+                self.assertEqual(remark, '할인 정보가 있는 상품 기준')
+
     def test_tse_email_includes_only_approved_skipped_columns(self):
         registry = load_registry()
         tse_source = next(
             source for source in registry.EMAIL_REPORT_SOURCES
             if source['key'] == 'tse_tv'
         )
+        tse_source = {
+            **tse_source,
+            'retailers': (tse_source['retailers'][0],),
+        }
         cursor = ScriptedCursor([
             {'fetchall': [
                 ('sku', 'homepro', False),
@@ -373,6 +508,10 @@ class EmailReportDataTests(unittest.TestCase):
                     source for source in registry.EMAIL_REPORT_SOURCES
                     if source['key'] == key
                 )
+                configured_source = {
+                    **configured_source,
+                    'retailers': (configured_source['retailers'][0],),
+                }
                 extras = configured_source['email_include_skipped_columns']
                 configured_rows = [
                     (column, 'homepro', False)

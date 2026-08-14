@@ -2,12 +2,21 @@ import unittest
 from datetime import time
 
 from apps.common.tse_retail import (
+    TSE_LOTUSS_CRITICAL_DEVIATION,
+    TSE_LOTUSS_HISTORY_DAYS,
+    TSE_LOTUSS_MIN_HISTORY_DAYS,
+    display_tse_retailer,
+    get_tse_crossfield_rule_keys,
     get_tse_collection_phase,
     get_tse_count_status,
     get_tse_editable_columns,
+    get_tse_format_fields,
     get_tse_required_columns,
     get_tse_product_line_for_table,
     resolve_tse_table,
+    tse_crossfield_rule_supported,
+    tse_retailer_include_unassigned,
+    tse_retailer_supports_column,
     validate_tse_editable_column,
 )
 
@@ -55,6 +64,49 @@ class TseRetailCommonTests(unittest.TestCase):
         self.assertEqual(get_tse_count_status(299), 'ok')
         self.assertEqual(get_tse_count_status(200), 'ok')
         self.assertEqual(get_tse_count_status(199), 'critical')
+
+    def test_lotuss_history_policy_constants_and_display_name(self):
+        self.assertEqual(7, TSE_LOTUSS_HISTORY_DAYS)
+        self.assertEqual(3, TSE_LOTUSS_MIN_HISTORY_DAYS)
+        self.assertEqual(20, TSE_LOTUSS_CRITICAL_DEVIATION)
+        self.assertEqual('Lotuss', display_tse_retailer('lotuss'))
+        self.assertEqual('Lotuss', display_tse_retailer('LOTUSS'))
+
+    def test_retailer_policy_is_not_based_on_config_count(self):
+        self.assertTrue(tse_retailer_include_unassigned('Homepro'))
+        self.assertFalse(tse_retailer_include_unassigned('Lotuss'))
+
+    def test_lotuss_column_and_format_capabilities_are_product_specific(self):
+        self.assertFalse(tse_retailer_supports_column(
+            'tse_tv', 'Lotuss', 'count_of_reviews'
+        ))
+        self.assertTrue(tse_retailer_supports_column(
+            'tse_tv', 'Lotuss', 'original_sku_price'
+        ))
+        self.assertFalse(tse_retailer_supports_column(
+            'tse_ref', 'Lotuss', 'original_sku_price'
+        ))
+        self.assertIn(
+            'ref_capacity', get_tse_format_fields('tse_ref', 'Lotuss')
+        )
+        self.assertNotIn(
+            'count_of_reviews', get_tse_format_fields('tse_ref', 'Lotuss')
+        )
+
+    def test_lotuss_crossfield_capability_excludes_review_rules(self):
+        tv_rules = get_tse_crossfield_rule_keys('tse_tv', 'Lotuss')
+        self.assertIn('savings_rate_match', tv_rules)
+        self.assertNotIn('review_count_match', tv_rules)
+        self.assertEqual(
+            frozenset(),
+            get_tse_crossfield_rule_keys('tse_ref', 'Lotuss'),
+        )
+        self.assertFalse(tse_crossfield_rule_supported(
+            'tse_ldy', 'Lotuss', 'savings_format'
+        ))
+        self.assertTrue(tse_crossfield_rule_supported(
+            'tse_ref', 'Homepro', 'review_count_match'
+        ))
 
 if __name__ == '__main__':
     unittest.main()

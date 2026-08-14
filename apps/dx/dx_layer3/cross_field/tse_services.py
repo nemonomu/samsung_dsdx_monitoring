@@ -22,6 +22,7 @@ from apps.common.tse_retail import (
     get_tse_editable_columns,
     get_tse_source,
     normalize_tse_product_line,
+    tse_crossfield_rule_supported,
 )
 
 
@@ -549,6 +550,9 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
             row_id = str(row.get('id'))
             if not _rule_applies_to_retailer(rule, retailer):
                 continue
+            if not tse_crossfield_rule_supported(
+                    key, retailer, rule['rule_key']):
+                continue
             if rule['rule_key'] not in evaluations[row_id]:
                 continue
             if (row_id, str(rule['rule_id'])) in normal_pairs:
@@ -572,6 +576,9 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
         retailer_error_count = 0
         retailer_failed_records = set()
         for result in rule_results:
+            if not tse_crossfield_rule_supported(
+                    key, retailer, result['rule_key']):
+                continue
             count = sum(
                 1 for detail in result['error_details']
                 if display_tse_retailer(detail.get('account_name')) == retailer
@@ -622,6 +629,12 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
     ]
     for rule in result['rule_results']:
         error_rows = rule.get('error_details') or []
+        supported_retailers = [
+            retailer for retailer in available_retailers
+            if tse_crossfield_rule_supported(
+                result['product_line'], retailer, rule['rule_key'],
+            )
+        ]
         scoped_pairs = [
             (
                 str(row.get('account_name')).strip(),
@@ -637,12 +650,16 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
         })
         if not scoped_retailers:
             configured_retailer = str(rule.get('retailer') or 'ALL').strip()
-            scoped_retailers = (
-                [configured_retailer]
-                if configured_retailer
-                and configured_retailer.upper() != 'ALL'
-                else available_retailers
-            )
+            if configured_retailer and configured_retailer.upper() != 'ALL':
+                if tse_crossfield_rule_supported(
+                    result['product_line'], configured_retailer,
+                    rule['rule_key'],
+                ):
+                    scoped_retailers = [configured_retailer]
+            else:
+                scoped_retailers = supported_retailers
+        if not scoped_pairs and not scoped_retailers:
+            continue
         rule_summary.append({
             'rule_id': rule['rule_id'],
             'detail_code': rule['detail_code'],

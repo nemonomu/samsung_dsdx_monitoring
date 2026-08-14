@@ -75,6 +75,56 @@ class TseLayer1RepositoryTests(unittest.TestCase):
             'bsr_count': 90,
         }], result)
 
+    def test_previous_main_counts_use_latest_batch_and_prior_valid_days(self):
+        cursor = ScriptedCursor([{
+            'fetchall': [
+                ('2026-08-13', 84),
+                ('2026-08-12', 86),
+                ('2026-08-11', 82),
+            ],
+        }])
+
+        result = self.repo.get_previous_main_counts(
+            cursor,
+            'tse_tv',
+            'Lotuss',
+            '2026-08-14',
+            limit=7,
+        )
+
+        sql, params = cursor.calls[0]
+        self.assertIn('FROM dx_tse.dx_tse_tv_retail_com', sql)
+        self.assertIn('LOWER(TRIM(account_name)) = LOWER(TRIM(%s))', sql)
+        self.assertIn("LEFT(TRIM(crawl_datetime), 10) < %s", sql)
+        self.assertIn('DISTINCT ON (collection_date)', sql)
+        self.assertIn('ORDER BY collection_date, id DESC', sql)
+        self.assertIn('WHERE rows.main_rank IS NOT NULL', sql)
+        self.assertIn('HAVING COUNT(rows.id) FILTER', sql)
+        self.assertIn('ORDER BY latest.collection_date DESC', sql)
+        self.assertIn('LIMIT %s', sql)
+        self.assertEqual(('Lotuss', '2026-08-14', 7), params)
+        self.assertEqual([
+            {'collection_date': '2026-08-13', 'main_count': 84},
+            {'collection_date': '2026-08-12', 'main_count': 86},
+            {'collection_date': '2026-08-11', 'main_count': 82},
+        ], result)
+
+    def test_previous_main_counts_support_mapping_rows(self):
+        cursor = ScriptedCursor([{
+            'fetchall': [{
+                'collection_date': '2026-08-13',
+                'main_count': 39,
+            }],
+        }])
+
+        result = self.repo.get_previous_main_counts(
+            cursor, 'tse_ldy', 'lotuss', '2026-08-14'
+        )
+
+        self.assertEqual([
+            {'collection_date': '2026-08-13', 'main_count': 39},
+        ], result)
+
 
 if __name__ == '__main__':
     unittest.main()

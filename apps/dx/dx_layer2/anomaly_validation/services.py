@@ -19,6 +19,12 @@ except ImportError:  # Backward-compatible fallback for isolated legacy tests.
     TSE_COUNTRY = 'TSE'
     TSE_SOURCE_CONFIG = {}
 
+try:
+    from apps.common.tse_retail import tse_retailer_include_unassigned
+except (ImportError, AttributeError):
+    def tse_retailer_include_unassigned(retailer):
+        return str(retailer or '').strip().casefold() == 'homepro'
+
 
 # table 파라미터 화이트리스트
 VALID_TABLES_ANOMALY = {
@@ -90,8 +96,16 @@ def _resolve_tse_duplicate_retailer(product_line, retailer):
         return None
     configs = get_tse_retailer_columns(product_line)
     retailer_key = str(retailer or '').strip().casefold()
-    if not retailer_key and len(configs) == 1:
-        return next(iter(configs.items()))
+    if not retailer_key:
+        unassigned_configs = [
+            (display_name, config)
+            for display_name, config in configs.items()
+            if tse_retailer_include_unassigned(
+                config.get('retailer') or display_name
+            )
+        ]
+        if len(unassigned_configs) == 1:
+            return unassigned_configs[0]
     for display_name, config in configs.items():
         if retailer_key in {
             str(display_name).strip().casefold(),
@@ -278,10 +292,9 @@ def _get_tse_anomaly_detail(
         }
 
     display_name, retailer_config = resolved
-    configs = get_tse_retailer_columns(product_line)
     rows = _fetch_tse_duplicate_rows(
         cursor, target_date, source, retailer_config['retailer'],
-        len(configs) == 1,
+        tse_retailer_include_unassigned(retailer_config['retailer']),
     )
     groups = build_tse_duplicate_groups(rows)
     total_groups = len(groups)
@@ -331,7 +344,10 @@ def _append_tse_anomaly_stats(cursor, target_date, validation):
             for display_name, retailer_config in configs.items():
                 rows = _fetch_tse_duplicate_rows(
                     cursor, target_date, source,
-                    retailer_config['retailer'], len(configs) == 1,
+                    retailer_config['retailer'],
+                    tse_retailer_include_unassigned(
+                        retailer_config['retailer']
+                    ),
                 )
                 duplicate_count = len(build_tse_duplicate_groups(rows))
                 retailer_rows.append({

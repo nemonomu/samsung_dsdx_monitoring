@@ -65,3 +65,75 @@ def get_latest_batch_counts(cursor, product_line, target_date):
             'bsr_count': int(bsr_count or 0),
         })
     return results
+
+
+def get_previous_main_counts(
+    cursor,
+    product_line,
+    retailer,
+    target_date,
+    limit=7,
+):
+    """Return MAIN counts for the latest valid collection days before a date.
+
+    A valid history day has a latest retailer batch with at least one MAIN row.
+    The target date and any future dates are excluded.  Batch recency follows
+    the same greatest-``id`` rule as :func:`get_latest_batch_counts`.
+    """
+    source = get_tse_source(product_line)
+    table_name = source['table_name']
+    query = f"""
+        WITH retailer_rows AS (
+            SELECT id,
+                   batch_id,
+                   LEFT(TRIM(crawl_datetime), 10) AS collection_date,
+                   main_rank
+            FROM {table_name}
+            WHERE LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
+              AND LEFT(TRIM(crawl_datetime), 10) < %s
+        ),
+        latest_batches AS (
+            SELECT DISTINCT ON (collection_date)
+                   collection_date,
+                   batch_id
+            FROM retailer_rows
+            WHERE collection_date ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
+            ORDER BY collection_date, id DESC
+        ),
+        daily_counts AS (
+            SELECT latest.collection_date,
+                   COUNT(rows.id) FILTER (
+                       WHERE rows.main_rank IS NOT NULL
+                   ) AS main_count
+            FROM latest_batches latest
+            JOIN retailer_rows rows
+              ON rows.collection_date = latest.collection_date
+             AND rows.batch_id IS NOT DISTINCT FROM latest.batch_id
+            GROUP BY latest.collection_date
+            HAVING COUNT(rows.id) FILTER (
+                WHERE rows.main_rank IS NOT NULL
+            ) > 0
+            ORDER BY latest.collection_date DESC
+            LIMIT %s
+        )
+        SELECT collection_date, main_count
+        FROM daily_counts
+        ORDER BY collection_date DESC
+    """
+    cursor.execute(
+        query,
+        (str(retailer or '').strip(), str(target_date)[:10], int(limit)),
+    )
+
+    results = []
+    for row in cursor.fetchall():
+        if isinstance(row, Mapping):
+            collection_date = row.get('collection_date')
+            main_count = row.get('main_count')
+        else:
+            collection_date, main_count = row[:2]
+        results.append({
+            'collection_date': str(collection_date)[:10],
+            'main_count': int(main_count or 0),
+        })
+    return results

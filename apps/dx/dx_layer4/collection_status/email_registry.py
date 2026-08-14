@@ -16,12 +16,19 @@ _TABLE_IDENTIFIER = re.compile(
 )
 
 
-def _retailer(name, *aliases, exclude_redirect=False):
-    return {
+def _retailer(name, *aliases, exclude_redirect=False,
+              include_unassigned=None, unsupported_columns=(),
+              conditional_columns=()):
+    retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
         'exclude_redirect': exclude_redirect,
+        'unsupported_columns': tuple(unsupported_columns),
+        'conditional_columns': tuple(conditional_columns),
     }
+    if include_unassigned is not None:
+        retailer['include_unassigned'] = bool(include_unassigned)
+    return retailer
 
 
 def _source(key, country, product, table_name, date_column, date_mode,
@@ -77,7 +84,29 @@ _SIEL_RETAILERS = (
     _retailer('Amazon'),
     _retailer('Flipkart'),
 )
-_TSE_RETAILERS = (_retailer('Homepro'),)
+_TSE_LOTUSS_UNSUPPORTED_COMMON = (
+    'count_of_reviews', 'star_rating', 'count_of_star_ratings',
+)
+
+
+def _tse_retailers(product):
+    unsupported_columns = _TSE_LOTUSS_UNSUPPORTED_COMMON
+    conditional_columns = ()
+    if product in {'REF', 'LDY'}:
+        unsupported_columns += ('original_sku_price', 'savings')
+    elif product == 'TV':
+        conditional_columns = ('original_sku_price', 'savings')
+
+    return (
+        _retailer('Homepro', include_unassigned=True),
+        _retailer(
+            'Lotuss', include_unassigned=False,
+            unsupported_columns=unsupported_columns,
+            conditional_columns=conditional_columns,
+        ),
+    )
+
+
 _TSE_EMAIL_SKIPPED_ALLOWLIST = {
     'TV': ('original_sku_price', 'savings'),
     'REF': (
@@ -135,7 +164,7 @@ EMAIL_REPORT_SOURCES = (
         _source(
             f'tse_{product.lower()}', 'TSE', product,
             f'dx_tse.dx_tse_{product.lower()}_retail_com',
-            'crawl_datetime', 'text', _TSE_RETAILERS,
+            'crawl_datetime', 'text', _tse_retailers(product),
             has_page_type=False, include_unassigned=True,
             collection_scope='all',
             email_include_skipped_columns=(
@@ -184,6 +213,17 @@ def _validate_registry():
                 raise ValueError(
                     f"Retailer aliases are required: {source['key']}"
                 )
+            if retailer.get('include_unassigned') not in {None, True, False}:
+                raise ValueError(
+                    f"Unsafe unassigned policy: {source['key']}"
+                )
+            for identifier in (
+                    *retailer.get('unsupported_columns', ()),
+                    *retailer.get('conditional_columns', ())):
+                if not _IDENTIFIER.fullmatch(identifier):
+                    raise ValueError(
+                        f"Unsafe retailer column: {source['key']}"
+                    )
 
 
 _validate_registry()

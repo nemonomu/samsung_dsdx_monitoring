@@ -386,6 +386,66 @@ async function run() {
     const offerRow = emailHtml.match(/<tr><td[^>]*>offer<\/td>([\s\S]*?)<\/tr>/);
     assert(offerRow);
     assert.strictEqual((offerRow[1].match(/>-<\/td>/g) || []).length, 2);
+
+    const lotussEmailData = JSON.parse(JSON.stringify(emailReportData));
+    const lotussLdy = lotussEmailData.sources.find(source => source.key === 'tse_ldy');
+    lotussLdy.total_count = 326;
+    lotussLdy.column_order = [
+        'count_of_reviews', 'star_rating', 'count_of_star_ratings',
+        'original_sku_price', 'savings', 'ldy_loading_type',
+        'ldy_capacity', 'bsr_rank'
+    ];
+    lotussLdy.retailers = [{
+        retailer: 'Homepro',
+        total_count: 287,
+        columns: [
+            { column: 'count_of_reviews', total_count: 287, null_count: 0 },
+            { column: 'star_rating', total_count: 287, null_count: 0 },
+            { column: 'count_of_star_ratings', total_count: 287, null_count: 0 },
+            { column: 'original_sku_price', total_count: 287, null_count: 30 },
+            { column: 'savings', total_count: 287, null_count: 30 },
+            { column: 'ldy_loading_type', total_count: 287, null_count: 4 },
+            { column: 'ldy_capacity', total_count: 287, null_count: 0 },
+            { column: 'bsr_rank', total_count: 100, null_count: 0 }
+        ]
+    }, {
+        retailer: 'Lotuss',
+        total_count: 39,
+        columns: [
+            { column: 'ldy_loading_type', total_count: 39, null_count: 20 },
+            { column: 'ldy_capacity', total_count: 39, null_count: 0 }
+        ]
+    }];
+    const lotussEmail = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        layer1Data,
+        { success: true, retailers: [] },
+        lotussEmailData
+    );
+    lotussEmail.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const lotussHtml = lotussEmail.elements['cs-email-container'].innerHTML;
+    const lotussTable = lotussHtml.match(
+        /<div class="et">TSE - LDY<\/div>(<table[\s\S]*?<\/table>)/
+    )[1];
+    assert(lotussTable.indexOf('>Homepro</th>') < lotussTable.indexOf('>Lotuss</th>'));
+    ['count_of_reviews', 'star_rating', 'count_of_star_ratings',
+        'original_sku_price', 'savings'].forEach(function(columnName) {
+        const row = lotussTable.match(
+            new RegExp('<tr><td[^>]*>' + columnName + '<\\/td>([\\s\\S]*?)<\\/tr>')
+        );
+        assert(row);
+        assert(row[1].includes('<td align="center">-</td><td align="center">-</td>'));
+    });
+    const loadingTypeRow = lotussTable.match(
+        /<tr><td[^>]*>ldy_loading_type<\/td>([\s\S]*?)<\/tr>/
+    );
+    assert(loadingTypeRow);
+    assert(loadingTypeRow[1].includes(
+        '<td align="center">39</td><td align="center">20</td>'
+    ));
+    assert(!lotussTable.includes('>bsr_rank</td>'));
+    assert(lotussHtml.includes('>326</td>'));
     assert.strictEqual(email.elements['email-send-btn'].disabled, false);
     assert(email.requests.some(request => request.url ===
         '/dx/layer4/api/collection-status/email-report-data/?date=2026-07-29'

@@ -34,6 +34,18 @@ try:
 except (ImportError, AttributeError):
     TSE_COUNTRY = 'TSE'
 
+try:
+    from apps.common.tse_retail import (
+        tse_retailer_include_unassigned,
+        tse_retailer_supports_column,
+    )
+except (ImportError, AttributeError):
+    def tse_retailer_include_unassigned(retailer):
+        return str(retailer or '').strip().casefold() == 'homepro'
+
+    def tse_retailer_supports_column(_product_line, _retailer, _column):
+        return True
+
 
 # ==================== NULL 검증 설정 (monitoring_null_check 테이블) ====================
 
@@ -364,8 +376,16 @@ def _get_tse_retailer_config(product_line, retailer, runtime=None, config=None):
         config = runtime['load_columns']()
     retailer_key = str(retailer or '').strip().lower()
     product_configs = config.get(product_line, {})
-    if not retailer_key and len(product_configs) == 1:
-        return next(iter(product_configs.items()))
+    if not retailer_key:
+        unassigned_configs = [
+            (display_name, retailer_config)
+            for display_name, retailer_config in product_configs.items()
+            if tse_retailer_include_unassigned(
+                retailer_config.get('retailer') or display_name
+            )
+        ]
+        if len(unassigned_configs) == 1:
+            return unassigned_configs[0]
     for display_name, retailer_config in product_configs.items():
         if (
             str(display_name).strip().lower() == retailer_key
@@ -381,7 +401,9 @@ def _safe_tse_required_columns(product_line, retailer_config, runtime):
     allowed = set(runtime['max_required'](product_line))
     return [
         column for column in retailer_config.get('required_columns', [])
-        if column in allowed
+        if column in allowed and tse_retailer_supports_column(
+            product_line, retailer_config.get('retailer'), column
+        )
     ]
 
 
@@ -390,7 +412,9 @@ def _safe_tse_editable_columns(product_line, retailer_config, runtime):
     allowed = set(runtime['max_editable'](product_line))
     return [
         column for column in retailer_config.get('editable_columns', [])
-        if column in allowed
+        if column in allowed and tse_retailer_supports_column(
+            product_line, retailer_config.get('retailer'), column
+        )
     ]
 
 
@@ -541,7 +565,6 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
         table_fields = []
         canonical_table = source['table_name']
         product_configs = tse_config.get(product_line, {})
-        include_unassigned = len(product_configs) == 1
         country_scope = _build_tse_country_scope()
 
         for display_name, retailer_config in product_configs.items():
@@ -552,6 +575,9 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 continue
 
             retailer_value = retailer_config['retailer']
+            include_unassigned = tse_retailer_include_unassigned(
+                retailer_value
+            )
             account_scope = "LOWER(source.account_name) = LOWER(%s)"
             if include_unassigned:
                 account_scope = f"""(
@@ -753,7 +779,7 @@ def _get_tse_null_detail(
     history_days = min(max(int(days or 1), 1), 30)
     where_condition = _build_null_sql_condition(f'source.{column}', 'both')
     country_scope = _build_tse_country_scope()
-    include_unassigned = len(tse_config.get(product_line, {})) == 1
+    include_unassigned = tse_retailer_include_unassigned(retailer_value)
     account_scope = "LOWER(source.account_name) = LOWER(%s)"
     if include_unassigned:
         account_scope = f"""(

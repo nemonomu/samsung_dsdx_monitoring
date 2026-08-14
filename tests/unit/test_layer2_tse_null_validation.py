@@ -157,6 +157,32 @@ class TSELayer2NullTests(unittest.TestCase):
             params,
         )
 
+    def test_two_retailers_keep_homepro_unassigned_scope_but_not_lotuss(self):
+        config = tse_columns_config()
+        config['tse_tv']['Lotuss'] = {
+            'retailer': 'lotuss',
+            'required_columns': ['sku'],
+            'editable_columns': ['sku'],
+        }
+        cursor = ScriptedCursor([
+            {'fetchone': ('homepro-batch', 300, 0, 0, 0)},
+            {'fetchone': ('lotuss-batch', 86, 0)},
+        ])
+
+        tables, issue_count = self.service._get_tse_null_tables(
+            cursor, date(2026, 8, 14), self.runtime, config,
+        )
+
+        self.assertEqual(0, issue_count)
+        self.assertEqual(
+            ['Homepro', 'Lotuss'],
+            [row['retailer'] for row in tables[0]['retailers']],
+        )
+        homepro_sql = cursor.calls[0][0]
+        lotuss_sql = cursor.calls[1][0]
+        self.assertIn('OR source.account_name IS NULL', homepro_sql)
+        self.assertNotIn('OR source.account_name IS NULL', lotuss_sql)
+
     def test_tse_query_failure_rolls_back_only_tse_savepoint(self):
         class FailingCursor:
             def __init__(self):

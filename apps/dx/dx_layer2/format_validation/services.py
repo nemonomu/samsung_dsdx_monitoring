@@ -29,6 +29,22 @@ except ImportError:  # Backward-compatible fallback for isolated legacy tests.
     TSE_SOURCE_CONFIG = {}
     get_tse_editable_columns = None
 
+try:
+    from apps.common.tse_retail import (
+        get_tse_format_fields,
+        tse_retailer_include_unassigned,
+        tse_retailer_supports_column,
+    )
+except (ImportError, AttributeError):
+    def get_tse_format_fields(_product_line, _retailer):
+        return TSE_FORMAT_FIELDS
+
+    def tse_retailer_include_unassigned(retailer):
+        return str(retailer or '').strip().casefold() == 'homepro'
+
+    def tse_retailer_supports_column(_product_line, _retailer, _column):
+        return True
+
 
 # table 파라미터 화이트리스트
 VALID_TABLES_FORMAT = {
@@ -92,6 +108,59 @@ TSE_FORMAT_RULES = (
     },
 )
 
+TSE_LOTUSS_FORMAT_RULES = {
+    'item': {
+        'field': 'item',
+        'description': 'Lotuss 8자리 상품번호',
+        'pattern': '50173824',
+    },
+    'product_url': {
+        'field': 'product_url',
+        'description': 'Lotuss 상품 상세 URL',
+        'pattern': 'https://www.lotuss.com/th/product/{상품 slug 또는 번호}',
+    },
+    'final_sku_price': {
+        'field': 'final_sku_price',
+        'description': '태국 바트 금액 또는 영문 품절 표시',
+        'pattern': '฿10,820, ฿10,820.00 또는 Out of stock',
+    },
+    'original_sku_price': {
+        'field': 'original_sku_price',
+        'description': '값이 있으면 태국 바트 금액 형식',
+        'pattern': '฿13,820 또는 ฿13,820.00',
+    },
+    'savings': {
+        'field': 'savings',
+        'description': '값이 있으면 음수 할인율 형식',
+        'pattern': '-57%',
+    },
+    'screen_size': {
+        'field': 'screen_size',
+        'description': '숫자와 inch 형식',
+        'pattern': '32 inch',
+    },
+    'ref_capacity': {
+        'field': 'ref_capacity',
+        'description': '숫자와 cu ft, l 또는 liter 단위',
+        'pattern': '7.5 cu ft, 300 l 또는 300 liter',
+    },
+    'ref_refrigerator_type': {
+        'field': 'ref_refrigerator_type',
+        'description': '값이 있을 때 냉장고 타입 표준값',
+        'pattern': 'Freezer-on-Top (Top Mount), Side-by-Side 등',
+    },
+    'ldy_capacity': {
+        'field': 'ldy_capacity',
+        'description': '숫자와 kg 형식',
+        'pattern': '10 kg',
+    },
+    'ldy_loading_type': {
+        'field': 'ldy_loading_type',
+        'description': '값이 있을 때 세탁기 로딩 타입 표준값',
+        'pattern': 'Front Load, Top Load 또는 Twin Tub',
+    },
+}
+
 _TSE_MONEY_PATTERN = re.compile(
     r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{2})?$'
 )
@@ -104,6 +173,34 @@ _TSE_COUNT_PATTERN = re.compile(
 )
 _TSE_RATING_PATTERN = re.compile(r'^(?:[0-4](?:\.\d)?|5(?:\.0)?)$')
 _TSE_OUT_OF_STOCK_VALUES = frozenset({'สินค้าหมด'})
+_TSE_LOTUSS_OUT_OF_STOCK_VALUE = 'Out of stock'
+_TSE_LOTUSS_SAVINGS_PATTERN = re.compile(
+    r'^-(?:100|[1-9]?\d)%$'
+)
+_TSE_LOTUSS_ITEM_PATTERN = re.compile(r'^\d{8}$')
+_TSE_LOTUSS_PRODUCT_URL_PATTERN = re.compile(
+    r'^https://www\.lotuss\.com/(?:th|en)/product/'
+    r'[^\s/?#]+/?(?:[?#][^\s]*)?$'
+)
+_TSE_SCREEN_SIZE_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s+inch$', re.IGNORECASE
+)
+_TSE_REF_CAPACITY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*(?:cu\s+ft|l|liter)$', re.IGNORECASE
+)
+_TSE_LDY_CAPACITY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*kg$', re.IGNORECASE
+)
+_TSE_REF_TYPE_VALUES = frozenset({
+    'freezer-on-top (top mount)',
+    'side-by-side',
+    'single door',
+    'bottom freezer',
+    'french door',
+})
+_TSE_LDY_LOADING_TYPE_VALUES = frozenset({
+    'front load', 'top load', 'twin tub',
+})
 
 
 def _has_tse_format_value(value):
@@ -116,8 +213,124 @@ def _has_tse_optional_value(value):
     return str(value).strip().casefold() not in {'-', 'none', 'null', 'n/a'}
 
 
-def evaluate_tse_format_row(row):
+def _infer_tse_format_product_line(row, product_line):
+    value = str(product_line or '').strip().lower()
+    if value in TSE_SOURCE_CONFIG:
+        return value
+    if any(key in row for key in ('ref_capacity', 'ref_refrigerator_type')):
+        return 'tse_ref'
+    if any(key in row for key in ('ldy_capacity', 'ldy_loading_type')):
+        return 'tse_ldy'
+    return 'tse_tv'
+
+
+def _evaluate_lotuss_format_row(row, product_line):
+    """Return Lotuss-only format errors for one product row."""
+    errors = {}
+
+    item = row.get('item')
+    if (
+        _has_tse_format_value(item)
+        and not _TSE_LOTUSS_ITEM_PATTERN.fullmatch(str(item).strip())
+    ):
+        errors['item'] = '8자리 숫자 상품번호가 아닙니다.'
+
+    product_url = row.get('product_url')
+    if (
+        _has_tse_format_value(product_url)
+        and not _TSE_LOTUSS_PRODUCT_URL_PATTERN.fullmatch(
+            str(product_url).strip()
+        )
+    ):
+        errors['product_url'] = 'Lotuss 상품 상세 URL 형식이 아닙니다.'
+
+    final_price = row.get('final_sku_price')
+    if _has_tse_format_value(final_price):
+        normalized = str(final_price).strip()
+        if (
+            normalized != _TSE_LOTUSS_OUT_OF_STOCK_VALUE
+            and not _TSE_MONEY_PATTERN.fullmatch(normalized)
+        ):
+            errors['final_sku_price'] = (
+                '฿10,820 금액 또는 Out of stock 품절 표시가 아닙니다.'
+            )
+
+    if product_line == 'tse_tv':
+        original_price = row.get('original_sku_price')
+        savings = row.get('savings')
+        original_present = _has_tse_optional_value(original_price)
+        savings_present = _has_tse_optional_value(savings)
+        if original_present and not _TSE_MONEY_PATTERN.fullmatch(
+            str(original_price).strip()
+        ):
+            errors['original_sku_price'] = '฿13,820 형식이 아닙니다.'
+        if savings_present and not _TSE_LOTUSS_SAVINGS_PATTERN.fullmatch(
+            str(savings).strip()
+        ):
+            errors['savings'] = '-57% 형식이 아닙니다.'
+        screen_size = row.get('screen_size')
+        if (
+            _has_tse_format_value(screen_size)
+            and not _TSE_SCREEN_SIZE_PATTERN.fullmatch(
+                str(screen_size).strip()
+            )
+        ):
+            errors['screen_size'] = '32 inch 형식이 아닙니다.'
+
+    elif product_line == 'tse_ref':
+        capacity = row.get('ref_capacity')
+        if (
+            _has_tse_format_value(capacity)
+            and not _TSE_REF_CAPACITY_PATTERN.fullmatch(
+                str(capacity).strip()
+            )
+        ):
+            errors['ref_capacity'] = (
+                '숫자와 cu ft, l 또는 liter 단위 형식이 아닙니다.'
+            )
+        refrigerator_type = row.get('ref_refrigerator_type')
+        if (
+            _has_tse_format_value(refrigerator_type)
+            and str(refrigerator_type).strip().casefold()
+            not in _TSE_REF_TYPE_VALUES
+        ):
+            errors['ref_refrigerator_type'] = (
+                '허용된 냉장고 타입이 아닙니다.'
+            )
+
+    elif product_line == 'tse_ldy':
+        capacity = row.get('ldy_capacity')
+        if (
+            _has_tse_format_value(capacity)
+            and not _TSE_LDY_CAPACITY_PATTERN.fullmatch(
+                str(capacity).strip()
+            )
+        ):
+            errors['ldy_capacity'] = '숫자와 kg 단위 형식이 아닙니다.'
+        loading_type = row.get('ldy_loading_type')
+        if (
+            _has_tse_format_value(loading_type)
+            and str(loading_type).strip().casefold()
+            not in _TSE_LDY_LOADING_TYPE_VALUES
+        ):
+            errors['ldy_loading_type'] = (
+                'Front Load, Top Load 또는 Twin Tub 값이 아닙니다.'
+            )
+
+    return errors
+
+
+def evaluate_tse_format_row(row, product_line=None, retailer=None):
     """Return field-keyed TSE format errors without NULL-rule overlap."""
+    retailer_key = str(
+        retailer if retailer is not None else row.get('account_name') or ''
+    ).strip().casefold()
+    resolved_product_line = _infer_tse_format_product_line(
+        row, product_line
+    )
+    if retailer_key == 'lotuss':
+        return _evaluate_lotuss_format_row(row, resolved_product_line)
+
     errors = {}
     final_price = row.get('final_sku_price')
     original_price = row.get('original_sku_price')
@@ -174,8 +387,16 @@ def _resolve_tse_format_retailer(product_line, retailer):
         return None
     configs = get_tse_retailer_columns(product_line)
     retailer_key = str(retailer or '').strip().casefold()
-    if not retailer_key and len(configs) == 1:
-        return next(iter(configs.items()))
+    if not retailer_key:
+        unassigned_configs = [
+            (display_name, config)
+            for display_name, config in configs.items()
+            if tse_retailer_include_unassigned(
+                config.get('retailer') or display_name
+            )
+        ]
+        if len(unassigned_configs) == 1:
+            return unassigned_configs[0]
     for display_name, config in configs.items():
         if retailer_key in {
             str(display_name).strip().casefold(),
@@ -191,7 +412,9 @@ def _safe_tse_format_editable_columns(product_line, retailer_config):
     allowed = set(get_tse_editable_columns(product_line))
     return [
         column for column in retailer_config.get('editable_columns', [])
-        if column in allowed
+        if column in allowed and tse_retailer_supports_column(
+            product_line, retailer_config.get('retailer'), column
+        )
     ]
 
 
@@ -218,6 +441,9 @@ def _fetch_tse_format_rows(
         'savings', 'count_of_reviews', 'count_of_star_ratings',
         'star_rating', 'crawl_datetime', 'product_url',
     ]
+    for column in source.get('extra_format_columns', ()):
+        if column not in select_columns:
+            select_columns.append(column)
     cursor.execute(f"""
         WITH latest_batches AS (
             SELECT DISTINCT ON (LEFT(TRIM(source.crawl_datetime), 10))
@@ -273,12 +499,12 @@ def _load_tse_format_normal_reviews(
     return reviews
 
 
-def _format_tse_record(row):
+def _format_tse_record(row, product_line=None, retailer=None):
     record = {
         key: (str(value) if value is not None and key != 'id' else value)
         for key, value in row.items()
     }
-    error_map = evaluate_tse_format_row(row)
+    error_map = evaluate_tse_format_row(row, product_line, retailer)
     record['error_fields'] = list(error_map)
     record['error_details'] = {
         field: {'rule': 'TSE 형식 검증', 'reason': reason}
@@ -304,7 +530,7 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
 
     display_name, retailer_config = resolved
     retailer_value = retailer_config['retailer']
-    include_unassigned = len(get_tse_retailer_columns(product_line)) == 1
+    include_unassigned = tse_retailer_include_unassigned(retailer_value)
     target_rows = _fetch_tse_format_rows(
         cursor, target_date, target_date, source, retailer_value,
         include_unassigned,
@@ -314,7 +540,7 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
     )
     target_records = []
     for row in target_rows:
-        record = _format_tse_record(row)
+        record = _format_tse_record(row, product_line, retailer_value)
         record['error_fields'] = [
             field for field in record['error_fields']
             if f"{record['id']}_{field}" not in normal_reviews
@@ -337,7 +563,8 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
             target_date, source, retailer_value, include_unassigned,
         )
         results = [
-            _format_tse_record(row) for row in history_rows
+            _format_tse_record(row, product_line, retailer_value)
+            for row in history_rows
             if (
                 str(row.get('item') or '').strip().casefold(),
                 str(row.get('retailer_sku_name') or '').strip().casefold(),
@@ -349,14 +576,16 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
         for field in record['error_fields']:
             field_counts[field] = field_counts.get(field, 0) + 1
 
+    format_fields = get_tse_format_fields(product_line, retailer_value)
     column_names = [
         'id', 'crawl_datetime', 'item', 'retailer_sku_name',
-        *TSE_FORMAT_FIELDS, 'sku', 'product_url',
+        *format_fields, 'sku', 'product_url',
     ]
-    query_columns = [
-        'id', 'item', 'sku', 'retailer_sku_name', *TSE_FORMAT_FIELDS,
+    column_names = list(dict.fromkeys(column_names))
+    query_columns = list(dict.fromkeys([
+        'id', 'item', 'sku', 'retailer_sku_name', *format_fields,
         'crawl_datetime', 'product_url',
-    ]
+    ]))
     return {
         'date': str(target_date),
         'table': table,
@@ -372,7 +601,7 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
         'field_counts': field_counts,
         'total_format_count': sum(field_counts.values()),
         'query_config': {
-            field: query_columns for field in TSE_FORMAT_FIELDS
+            field: query_columns for field in format_fields
         },
         'query_retailer': retailer_value,
         'query_include_unassigned': include_unassigned,
@@ -398,14 +627,16 @@ def _append_tse_format_stats(cursor, target_date, validation):
                 retailer_value = retailer_config['retailer']
                 rows = _fetch_tse_format_rows(
                     cursor, target_date, target_date, source, retailer_value,
-                    len(configs) == 1,
+                    tse_retailer_include_unassigned(retailer_value),
                 )
                 normal_reviews = _load_tse_format_normal_reviews(
                     cursor, source['table_name'], target_date, retailer_value,
                 )
                 issue_count = 0
                 for row in rows:
-                    for field in evaluate_tse_format_row(row):
+                    for field in evaluate_tse_format_row(
+                        row, product_line, retailer_value
+                    ):
                         if f"{row['id']}_{field}" not in normal_reviews:
                             issue_count += 1
                 retailer_rows.append({
@@ -1017,13 +1248,25 @@ def _get_description_for_type(rule_type, rule_value, allowed):
     return '형식 검증'
 
 
+def _get_tse_static_format_rules(product_line, retailer):
+    if str(retailer or '').strip().casefold() != 'lotuss':
+        return [dict(rule) for rule in TSE_FORMAT_RULES]
+    return [
+        dict(TSE_LOTUSS_FORMAT_RULES[field])
+        for field in get_tse_format_fields(product_line, retailer)
+        if field in TSE_LOTUSS_FORMAT_RULES
+    ]
+
+
 def get_format_rules(cursor, table_name, retailer):
     """
     형식검증 규칙 조회.
     Returns dict: {rules: [...]}
     """
     if table_name in TSE_SOURCE_CONFIG:
-        return {'rules': [dict(rule) for rule in TSE_FORMAT_RULES]}
+        return {
+            'rules': _get_tse_static_format_rules(table_name, retailer)
+        }
 
     tbl_rules = dx_table('monitoring_format_rules')
     tbl_templates = dx_table('monitoring_format_templates')

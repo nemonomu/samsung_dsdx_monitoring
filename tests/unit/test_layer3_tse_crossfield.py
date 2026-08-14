@@ -199,6 +199,98 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
             'Homepro',
         )
 
+    def test_lotuss_review_rules_are_excluded_but_retailer_card_remains(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'review_count_match')]},
+            {'fetchall': [
+                _valid_row(
+                    id=10, account_name='Homepro', count_of_reviews='9',
+                ),
+                _valid_row(
+                    id=11, account_name='lotuss', item='L-1',
+                    count_of_reviews='9',
+                ),
+            ]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.build_tse_crossfield_result(
+            cursor, date(2026, 8, 10), 'tse_tv',
+        )
+
+        self.assertEqual(2, result['total_checked'])
+        self.assertEqual(1, result['total_anomalies'])
+        self.assertEqual(
+            ['Homepro'],
+            [row['account_name'] for row in result['rule_results'][0]['error_details']],
+        )
+        lotuss = next(
+            row for row in result['retailers']
+            if row['retailer'] == 'Lotuss'
+        )
+        self.assertEqual(0, lotuss['total_errors'])
+        self.assertEqual([], lotuss['rules'])
+
+    def test_lotuss_ref_has_no_unsupported_crossfield_rules(self):
+        rule = _rule(1, 'savings_requires_original')
+        rule.update({
+            'section_code': 'tse_ref_retail',
+            'table_name': 'dx_tse.dx_tse_ref_retail_com',
+            'product_line': 'tse_ref',
+        })
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]},
+            {'fetchall': [_valid_row(
+                account_name='Lotuss', item='REF-1',
+                original_sku_price=None, savings='-10%',
+            )]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.build_tse_crossfield_result(
+            cursor, date(2026, 8, 10), 'tse_ref',
+        )
+
+        self.assertEqual(1, result['total_checked'])
+        self.assertEqual(0, result['total_anomalies'])
+        self.assertEqual([], result['retailers'][0]['rules'])
+
+    def test_summary_query_does_not_scope_review_rule_to_lotuss(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'review_count_match')]},
+            {'fetchall': [
+                _valid_row(account_name='Homepro'),
+                _valid_row(id=11, account_name='Lotuss', item='L-1'),
+            ]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.get_tse_cross_field_summary(
+            cursor, date(2026, 8, 10), 'tse_tv',
+        )
+
+        query = result['rule_summary'][0]['query']
+        self.assertIn("LOWER(TRIM('Homepro'))", query)
+        self.assertNotIn("LOWER(TRIM('Lotuss'))", query)
+
+    def test_summary_omits_explicit_unsupported_lotuss_rule(self):
+        rule = _rule(1, 'review_count_match')
+        rule['retailer'] = 'Lotuss'
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]},
+            {'fetchall': [
+                _valid_row(account_name='Homepro'),
+                _valid_row(id=11, account_name='Lotuss', item='L-1'),
+            ]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.get_tse_cross_field_summary(
+            cursor, date(2026, 8, 10), 'tse_tv',
+        )
+
+        self.assertEqual([], result['rule_summary'])
+
     def test_summary_replaces_stored_query_with_canonical_display_query(self):
         rule = _rule(1, 'review_count_match')
         rule['query'] = 'DELETE FROM something'
