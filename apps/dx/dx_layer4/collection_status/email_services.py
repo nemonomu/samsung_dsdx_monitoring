@@ -116,6 +116,7 @@ def _configured_retailers(cursor, source):
         }
         unsupported_columns = set(retailer.get('unsupported_columns', ()))
         columns = []
+        matched_row_count = 0
         for row in rows:
             if isinstance(row, dict):
                 column_name = row.get('column_name')
@@ -126,6 +127,7 @@ def _configured_retailers(cursor, source):
                 skip_missing_check = row[2] if len(row) > 2 else False
             if _normalize_name(retailer_name) not in accepted_names:
                 continue
+            matched_row_count += 1
             column_name = str(column_name or '').strip()
             if column_name in unsupported_columns:
                 continue
@@ -141,6 +143,11 @@ def _configured_retailers(cursor, source):
             if column_name not in columns:
                 columns.append(column_name)
 
+        if not columns and (
+            retailer.get('optional_if_unconfigured')
+            and matched_row_count == 0
+        ):
+            continue
         if not columns:
             raise EmailConfigurationError(
                 f"No active columns for {source['key']}/{retailer['name']}"

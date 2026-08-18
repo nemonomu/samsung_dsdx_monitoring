@@ -132,6 +132,26 @@ assert(lotussHtml.includes('<td class="rt-name">Lotuss</td><td>86</td><td>-</td>
 assert(lotussHtml.includes('<tr class="rt-sum"><td>합계</td><td>386</td><td>100</td><td>386</td>'));
 assert(lotussHtml.includes('386/376건'));
 
+const inactiveLotussHtml = context.renderTseCategory({
+    name: 'TV',
+    expected: 300,
+    actual: 300,
+    status: 'OK',
+    retailers: [{
+        retailer: 'Homepro',
+        main_count: 300,
+        bsr_count: 100,
+        bsr_applicable: true,
+        actual: 300,
+        expected: 300,
+        status: 'OK',
+    }],
+}, 0, 1);
+
+assert(inactiveLotussHtml.includes('<td class="rt-name">Homepro</td>'));
+assert(!inactiveLotussHtml.includes('Lotuss'));
+assert(inactiveLotussHtml.includes('<tr class="rt-sum"><td>합계</td><td>300</td><td>100</td><td>300</td>'));
+
 const firstDayHtml = context.renderTseCategory({
     name: 'TV',
     expected: 86,

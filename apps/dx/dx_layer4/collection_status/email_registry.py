@@ -18,13 +18,14 @@ _TABLE_IDENTIFIER = re.compile(
 
 def _retailer(name, *aliases, exclude_redirect=False,
               include_unassigned=None, unsupported_columns=(),
-              conditional_columns=()):
+              conditional_columns=(), optional_if_unconfigured=False):
     retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
         'exclude_redirect': exclude_redirect,
         'unsupported_columns': tuple(unsupported_columns),
         'conditional_columns': tuple(conditional_columns),
+        'optional_if_unconfigured': bool(optional_if_unconfigured),
     }
     if include_unassigned is not None:
         retailer['include_unassigned'] = bool(include_unassigned)
@@ -103,6 +104,7 @@ def _tse_retailers(product):
             'Lotuss', include_unassigned=False,
             unsupported_columns=unsupported_columns,
             conditional_columns=conditional_columns,
+            optional_if_unconfigured=True,
         ),
     )
 
@@ -216,6 +218,10 @@ def _validate_registry():
             if retailer.get('include_unassigned') not in {None, True, False}:
                 raise ValueError(
                     f"Unsafe unassigned policy: {source['key']}"
+                )
+            if retailer.get('optional_if_unconfigured') not in {True, False}:
+                raise ValueError(
+                    f"Unsafe optional retailer policy: {source['key']}"
                 )
             for identifier in (
                     *retailer.get('unsupported_columns', ()),

@@ -361,6 +361,11 @@ async function run() {
     assert(emailHtml.includes('SEA - REF'));
     assert(emailHtml.includes('SEDA - TV'));
     assert(emailHtml.includes('TSE - LDY'));
+    const homeproOnlyTseTable = emailHtml.match(
+        /<div class="et">TSE - LDY<\/div>(<table[\s\S]*?<\/table>)/
+    )[1];
+    assert(homeproOnlyTseTable.includes('>Homepro</th>'));
+    assert(!homeproOnlyTseTable.includes('>Lotuss</th>'));
     assert(emailHtml.includes('redirect'));
     assert(emailHtml.includes('Amazon redirect=TRUE 건수'));
     assert(emailHtml.includes('>2</td>'));

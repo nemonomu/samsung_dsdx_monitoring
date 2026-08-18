@@ -117,6 +117,12 @@ def _build_category(cursor, product_line, source, target_date, phase):
             'bsr_count': int(row.get('bsr_count') or 0),
         }
 
+    # Lotuss is an explicitly managed retailer. Its source rows may remain
+    # after monitoring is disabled, so expose them only while active column
+    # settings exist. Other unregistered retailers remain dynamic as before.
+    if TSE_LOTUSS_RETAILER not in configured:
+        actual_by_retailer.pop(TSE_LOTUSS_RETAILER, None)
+
     retailer_keys = sorted(
         set(configured) | set(actual_by_retailer),
         key=lambda value: (configured.get(value) or actual_by_retailer[value]['retailer']).lower(),

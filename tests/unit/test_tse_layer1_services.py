@@ -157,6 +157,51 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(1200, check['expected'])
         self.assertEqual(1137, check['actual'])
 
+    def test_inactive_lotuss_is_hidden_but_future_retailer_remains_dynamic(self):
+        self._set_counts({
+            'tse_tv': [
+                {
+                    'retailer': 'Homepro', 'actual_count': 300,
+                    'main_count': 300, 'bsr_count': 100,
+                },
+                {
+                    'retailer': 'Lotuss', 'actual_count': 86,
+                    'main_count': 86, 'bsr_count': 0,
+                },
+                {
+                    'retailer': 'Future Retail', 'actual_count': 250,
+                    'main_count': 250, 'bsr_count': 0,
+                },
+            ],
+            'tse_ref': [{
+                'retailer': 'Homepro', 'actual_count': 300,
+                'main_count': 300, 'bsr_count': 100,
+            }],
+            'tse_ldy': [{
+                'retailer': 'Homepro', 'actual_count': 300,
+                'main_count': 300, 'bsr_count': 100,
+            }],
+        })
+        self.repo_module.get_previous_main_counts = lambda *_args, **_kwargs: (
+            self.fail('inactive Lotuss must not load collection history')
+        )
+
+        result = self.service.get_layer1_stats(
+            object(), date(2026, 8, 18), datetime(2026, 8, 18, 9, 31)
+        )
+        tv = result['check']['categories'][0]
+
+        self.assertEqual(
+            ['Future Retail', 'Homepro'],
+            [retailer['retailer'] for retailer in tv['retailers']],
+        )
+        self.assertEqual(550, tv['actual'])
+        self.assertEqual(600, tv['expected'])
+        self.assertNotIn(
+            'Lotuss',
+            [retailer['retailer'] for retailer in tv['retailers']],
+        )
+
     def test_time_phases_use_rdp_0900_to_0930(self):
         self._set_counts({
             product_line: [{

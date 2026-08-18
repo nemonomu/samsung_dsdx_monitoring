@@ -18,6 +18,7 @@ from apps.common.retail_columns import (
 )
 from apps.common.tse_retail import (
     TSE_COUNTRY,
+    TSE_LOTUSS_RETAILER,
     display_tse_retailer,
     get_tse_editable_columns,
     get_tse_source,
@@ -516,12 +517,34 @@ def _rule_applies_to_retailer(rule, retailer):
     return configured.upper() == 'ALL' or configured.lower() == str(retailer).strip().lower()
 
 
+def _retailer_key(value):
+    return str(value or '').strip().casefold()
+
+
+def _lotuss_monitoring_active(product_line):
+    """Return whether Lotuss has active column configuration for a source."""
+    for display_name, config in get_tse_retailer_columns(product_line).items():
+        retailer = config.get('retailer') or display_name
+        if _retailer_key(retailer) == TSE_LOTUSS_RETAILER:
+            return True
+    return False
+
+
 def build_tse_crossfield_result(cursor, target_date, product_line, from_date=None):
     """Return summary and detail material for one TSE product line."""
     key = normalize_tse_product_line(product_line)
     source = get_tse_source(key)
     rules = load_active_tse_rules(cursor, key)
     rows = load_latest_tse_rows(cursor, target_date, key, from_date=from_date)
+    if not _lotuss_monitoring_active(key):
+        rules = [
+            rule for rule in rules
+            if _retailer_key(rule.get('retailer')) != TSE_LOTUSS_RETAILER
+        ]
+        rows = [
+            row for row in rows
+            if _retailer_key(row.get('account_name')) != TSE_LOTUSS_RETAILER
+        ]
     rule_ids = [rule['rule_id'] for rule in rules]
     corrections = _load_normal_corrections(
         cursor, target_date, source['table_name'], rule_ids,

@@ -127,6 +127,34 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
+    def setUp(self):
+        tse_services.get_tse_retailer_columns = lambda *_: {
+            'Homepro': {
+                'retailer': 'homepro',
+                'required_columns': ['count_of_reviews', 'star_rating'],
+                'editable_columns': ['original_sku_price', 'savings'],
+            },
+        }
+
+    def _enable_lotuss(self, product_line='tse_tv'):
+        def configured(key):
+            retailers = {
+                'Homepro': {
+                    'retailer': 'homepro',
+                    'required_columns': ['count_of_reviews', 'star_rating'],
+                    'editable_columns': ['original_sku_price', 'savings'],
+                },
+            }
+            if key == product_line:
+                retailers['Lotuss'] = {
+                    'retailer': 'lotuss',
+                    'required_columns': ['item'],
+                    'editable_columns': [],
+                }
+            return retailers
+
+        tse_services.get_tse_retailer_columns = configured
+
     def test_display_query_is_compact_edit_scope_and_quotes_literals(self):
         query = tse_services.build_tse_display_query(
             date(2026, 8, 10), 'tse_tv',
@@ -200,6 +228,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
 
     def test_lotuss_review_rules_are_excluded_but_retailer_card_remains(self):
+        self._enable_lotuss()
         cursor = ScriptedCursor([
             {'fetchall': [_rule(1, 'review_count_match')]},
             {'fetchall': [
@@ -232,6 +261,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertEqual([], lotuss['rules'])
 
     def test_lotuss_ref_has_no_unsupported_crossfield_rules(self):
+        self._enable_lotuss('tse_ref')
         rule = _rule(1, 'savings_requires_original')
         rule.update({
             'section_code': 'tse_ref_retail',
@@ -256,6 +286,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertEqual([], result['retailers'][0]['rules'])
 
     def test_summary_query_does_not_scope_review_rule_to_lotuss(self):
+        self._enable_lotuss()
         cursor = ScriptedCursor([
             {'fetchall': [_rule(1, 'review_count_match')]},
             {'fetchall': [
@@ -274,6 +305,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertNotIn("LOWER(TRIM('Lotuss'))", query)
 
     def test_summary_omits_explicit_unsupported_lotuss_rule(self):
+        self._enable_lotuss()
         rule = _rule(1, 'review_count_match')
         rule['retailer'] = 'Lotuss'
         cursor = ScriptedCursor([
@@ -290,6 +322,65 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual([], result['rule_summary'])
+
+    def test_inactive_lotuss_is_removed_but_unknown_retailer_is_preserved(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'final_original_price')]},
+            {'fetchall': [
+                _valid_row(
+                    account_name='Homepro', final_sku_price='90',
+                    original_sku_price='100', savings=None,
+                ),
+                _valid_row(
+                    id=11, account_name='Lotuss', item='L-1',
+                    final_sku_price='120', original_sku_price='100',
+                    savings=None,
+                ),
+                _valid_row(
+                    id=12, account_name='Future Retail', item='F-1',
+                    final_sku_price='120', original_sku_price='100',
+                    savings=None,
+                ),
+            ]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.build_tse_crossfield_result(
+            cursor, date(2026, 8, 18), 'tse_tv',
+        )
+
+        self.assertEqual(2, result['total_checked'])
+        self.assertEqual(1, result['total_anomalies'])
+        self.assertEqual(
+            ['Future Retail', 'Homepro'],
+            [retailer['retailer'] for retailer in result['retailers']],
+        )
+        self.assertEqual(
+            ['Future Retail'],
+            [
+                row['account_name']
+                for row in result['rule_results'][0]['error_details']
+            ],
+        )
+
+    def test_inactive_lotuss_specific_rule_is_removed(self):
+        rule = _rule(1, 'final_original_price')
+        rule['retailer'] = 'Lotuss'
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]},
+            {'fetchall': [_valid_row(
+                account_name='Lotuss', final_sku_price='120',
+                original_sku_price='100', savings=None,
+            )]},
+        ])
+
+        result = tse_services.build_tse_crossfield_result(
+            cursor, date(2026, 8, 18), 'tse_tv',
+        )
+
+        self.assertEqual([], result['rule_results'])
+        self.assertEqual([], result['retailers'])
+        self.assertEqual(0, result['total_checked'])
 
     def test_summary_replaces_stored_query_with_canonical_display_query(self):
         rule = _rule(1, 'review_count_match')
