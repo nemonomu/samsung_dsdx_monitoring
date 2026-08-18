@@ -1,10 +1,11 @@
 """Allow-listed source metadata for the Layer 4 email report.
 
-Collection columns normally do not live in application code.  Each source's
-``product_line`` selects the active rows in
-``public.monitoring_retail_columns`` at request time.  The one exception is an
-explicit email-only allow-list for fields which remain excluded from shared
-Layer 1-3 Missing checks (``skip_missing_check = TRUE``).
+Collection columns normally do not live in application code. Each source's
+``product_line`` selects rows in ``public.monitoring_retail_columns`` at
+request time. Retailers use active rows by default; an explicit registry
+policy may select inactive rows for email only, without re-enabling shared
+Layer 1-3 monitoring. A separate email-only allow-list covers fields which
+remain excluded from shared Missing checks (``skip_missing_check = TRUE``).
 """
 
 import re
@@ -18,7 +19,8 @@ _TABLE_IDENTIFIER = re.compile(
 
 def _retailer(name, *aliases, exclude_redirect=False,
               include_unassigned=None, unsupported_columns=(),
-              conditional_columns=(), optional_if_unconfigured=False):
+              conditional_columns=(), optional_if_unconfigured=False,
+              email_config_activity='active'):
     retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
@@ -26,6 +28,7 @@ def _retailer(name, *aliases, exclude_redirect=False,
         'unsupported_columns': tuple(unsupported_columns),
         'conditional_columns': tuple(conditional_columns),
         'optional_if_unconfigured': bool(optional_if_unconfigured),
+        'email_config_activity': email_config_activity,
     }
     if include_unassigned is not None:
         retailer['include_unassigned'] = bool(include_unassigned)
@@ -105,6 +108,7 @@ def _tse_retailers(product):
             unsupported_columns=unsupported_columns,
             conditional_columns=conditional_columns,
             optional_if_unconfigured=True,
+            email_config_activity='inactive',
         ),
     )
 
@@ -222,6 +226,11 @@ def _validate_registry():
             if retailer.get('optional_if_unconfigured') not in {True, False}:
                 raise ValueError(
                     f"Unsafe optional retailer policy: {source['key']}"
+                )
+            if retailer.get('email_config_activity') not in {
+                    'active', 'inactive'}:
+                raise ValueError(
+                    f"Unsafe email config activity: {source['key']}"
                 )
             for identifier in (
                     *retailer.get('unsupported_columns', ()),

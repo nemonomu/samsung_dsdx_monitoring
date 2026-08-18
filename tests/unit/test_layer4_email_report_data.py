@@ -121,9 +121,15 @@ class EmailRegistryTests(unittest.TestCase):
             self.assertFalse(
                 retailers['Homepro']['optional_if_unconfigured']
             )
+            self.assertEqual(
+                retailers['Homepro']['email_config_activity'], 'active'
+            )
             self.assertFalse(retailers['Lotuss']['include_unassigned'])
             self.assertTrue(
                 retailers['Lotuss']['optional_if_unconfigured']
+            )
+            self.assertEqual(
+                retailers['Lotuss']['email_config_activity'], 'inactive'
             )
             self.assertEqual(
                 set(retailers['Lotuss']['unsupported_columns'])
@@ -352,8 +358,8 @@ class EmailReportDataTests(unittest.TestCase):
         )
         cursor = ScriptedCursor([
             {'fetchall': [
-                ('sku', 'homepro', False),
-                ('sku', 'lotuss', False),
+                ('sku', 'homepro', False, True),
+                ('sku', 'lotuss', False, False),
             ]},
             {'fetchone': ('homepro_20260814',)},
             {'fetchone': (300, 300, 0, 300, 0)},
@@ -385,8 +391,12 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertIn('source.account_name IS NULL', homepro_count_sql)
         self.assertNotIn('source.account_name IS NULL', lotuss_latest_sql)
         self.assertNotIn('source.account_name IS NULL', lotuss_count_sql)
+        config_sql = cursor.calls[0][0]
+        self.assertIn('is_active', config_sql)
+        self.assertNotIn('AND is_active IS TRUE', config_sql)
+        self.assertNotIn('AND is_active IS FALSE', config_sql)
 
-    def test_inactive_lotuss_config_is_omitted_but_tse_source_completes(self):
+    def test_physically_absent_lotuss_is_optional_but_tse_source_completes(self):
         registry = load_registry()
         tse_source = next(
             configured_source
@@ -423,7 +433,7 @@ class EmailReportDataTests(unittest.TestCase):
             if configured_source['key'] == 'tse_ref'
         )
         cursor = ScriptedCursor([
-            {'fetchall': [('sku', 'lotuss', False)]},
+            {'fetchall': [('sku', 'lotuss', False, False)]},
         ])
         service = load_service(cursor)
 
@@ -437,7 +447,7 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(result['errors'][0]['source'], 'tse_ref')
         self.assertEqual(len(cursor.calls), 1)
 
-    def test_active_but_unusable_lotuss_config_still_fails_closed(self):
+    def test_inactive_homepro_does_not_satisfy_active_mandatory_policy(self):
         registry = load_registry()
         tse_source = next(
             configured_source
@@ -445,8 +455,49 @@ class EmailReportDataTests(unittest.TestCase):
             if configured_source['key'] == 'tse_ref'
         )
         cursor = ScriptedCursor([{'fetchall': [
-            ('sku', 'homepro', False),
-            ('count_of_reviews', 'lotuss', False),
+            ('sku', 'homepro', False, False),
+            ('sku', 'lotuss', False, False),
+        ]}])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 18), sources=(tse_source,)
+        )
+
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['sources'], [])
+        self.assertEqual(result['errors'][0]['source'], 'tse_ref')
+        self.assertEqual(len(cursor.calls), 1)
+
+    def test_inactive_homepro_rows_do_not_leak_into_active_email_config(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False, True),
+            ('unsafe;column', 'homepro', False, False),
+        ]}])
+        service = load_service(cursor)
+
+        configured = service._configured_retailers(cursor, tse_source)
+
+        self.assertEqual(len(configured), 1)
+        self.assertEqual(configured[0]['name'], 'Homepro')
+        self.assertEqual(configured[0]['columns'], ('item', 'sku'))
+
+    def test_inactive_but_unusable_lotuss_config_still_fails_closed(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False, True),
+            ('count_of_reviews', 'lotuss', False, False),
         ]}])
         service = load_service(cursor)
 
@@ -460,6 +511,98 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(result['errors'][0]['source'], 'tse_ref')
         self.assertEqual(len(cursor.calls), 1)
 
+    def test_active_lotuss_cannot_replace_email_only_inactive_config(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False, True),
+            ('sku', 'lotuss', False, True),
+        ]}])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 18), sources=(tse_source,)
+        )
+
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['sources'], [])
+        self.assertEqual(result['errors'][0]['source'], 'tse_ref')
+
+    def test_mixed_active_and_inactive_lotuss_fails_closed(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False, True),
+            ('sku', 'lotuss', False, True),
+            ('product_url', 'lotuss', False, True),
+            ('sku', 'lotuss', False, False),
+            ('sku', 'lotuss', False, False),
+        ]}])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 18), sources=(tse_source,)
+        )
+
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['sources'], [])
+        self.assertEqual(result['errors'][0]['source'], 'tse_ref')
+        self.assertEqual(len(cursor.calls), 1)
+
+    def test_inactive_only_policy_still_detects_active_config_drift(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        tse_source = {
+            **tse_source,
+            'retailers': (tse_source['retailers'][1],),
+        }
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'lotuss', False, True),
+            ('sku', 'lotuss', False, False),
+        ]}])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 18), sources=(tse_source,)
+        )
+
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['sources'], [])
+        config_sql = cursor.calls[0][0]
+        self.assertNotIn('AND is_active IS TRUE', config_sql)
+        self.assertNotIn('AND is_active IS FALSE', config_sql)
+
+    def test_duplicate_inactive_lotuss_columns_are_deduplicated(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_ref'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False, True),
+            ('sku', 'lotuss', False, False),
+            ('sku', 'lotuss', False, False),
+        ]}])
+        service = load_service(cursor)
+
+        configured = service._configured_retailers(cursor, tse_source)
+
+        self.assertEqual(configured[0]['columns'], ('item', 'sku'))
+        self.assertEqual(configured[1]['columns'], ('item', 'sku'))
+
     def test_lotuss_unsupported_columns_are_omitted_but_partial_fields_remain(self):
         registry = load_registry()
         tse_source = next(
@@ -468,18 +611,18 @@ class EmailReportDataTests(unittest.TestCase):
             if configured_source['key'] == 'tse_ref'
         )
         cursor = ScriptedCursor([{'fetchall': [
-            ('sku', 'homepro', False),
-            ('count_of_reviews', 'homepro', False),
-            ('original_sku_price', 'homepro', True),
-            ('savings', 'homepro', True),
-            ('ref_refrigerator_type', 'homepro', True),
-            ('sku', 'lotuss', False),
-            ('count_of_reviews', 'lotuss', False),
-            ('star_rating', 'lotuss', False),
-            ('count_of_star_ratings', 'lotuss', False),
-            ('original_sku_price', 'lotuss', True),
-            ('savings', 'lotuss', True),
-            ('ref_refrigerator_type', 'lotuss', True),
+            ('sku', 'homepro', False, True),
+            ('count_of_reviews', 'homepro', False, True),
+            ('original_sku_price', 'homepro', True, True),
+            ('savings', 'homepro', True, True),
+            ('ref_refrigerator_type', 'homepro', True, True),
+            ('sku', 'lotuss', False, False),
+            ('count_of_reviews', 'lotuss', False, False),
+            ('star_rating', 'lotuss', False, False),
+            ('count_of_star_ratings', 'lotuss', False, False),
+            ('original_sku_price', 'lotuss', True, False),
+            ('savings', 'lotuss', True, False),
+            ('ref_refrigerator_type', 'lotuss', True, False),
         ]}])
         service = load_service(cursor)
 
