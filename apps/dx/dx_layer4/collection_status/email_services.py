@@ -17,7 +17,7 @@ _MAIN_AND_BSR_SCOPE = (
 
 
 class EmailConfigurationError(ValueError):
-    """Raised when a source has no safe rows for its email activity policy."""
+    """Raised when an email source has no safe active column settings."""
 
 
 def _normalize_name(value):
@@ -91,22 +91,14 @@ def _source_scope(source, retailer, *, include_excluded=False,
 
 
 def _configured_retailers(cursor, source):
-    """Load each retailer's explicitly allowed email Missing configuration."""
-    activity_policies = {
-        retailer.get('email_config_activity', 'active')
-        for retailer in source['retailers']
-    }
-    activity_clause = ''
-    if activity_policies == {'active'}:
-        activity_clause = 'AND is_active IS TRUE'
+    """Load the source's active Missing columns from the existing DB table."""
     cursor.execute(
         f"""
         SELECT column_name, retailer,
-               COALESCE(skip_missing_check, FALSE) AS skip_missing_check,
-               is_active
+               COALESCE(skip_missing_check, FALSE) AS skip_missing_check
         FROM {_CONFIG_TABLE}
         WHERE LOWER(BTRIM(CAST(product_line AS TEXT))) = %s
-          {activity_clause}
+          AND is_active IS TRUE
           AND COALESCE(is_del, FALSE) IS FALSE
         ORDER BY id
         """,
@@ -124,28 +116,18 @@ def _configured_retailers(cursor, source):
         }
         unsupported_columns = set(retailer.get('unsupported_columns', ()))
         columns = []
-        physical_row_count = 0
-        unexpected_active_row_count = 0
-        expected_active = (
-            retailer.get('email_config_activity', 'active') == 'active'
-        )
+        matched_row_count = 0
         for row in rows:
             if isinstance(row, dict):
                 column_name = row.get('column_name')
                 retailer_name = row.get('retailer')
                 skip_missing_check = row.get('skip_missing_check', False)
-                is_active = row.get('is_active', True)
             else:
                 column_name, retailer_name = row[0], row[1]
                 skip_missing_check = row[2] if len(row) > 2 else False
-                is_active = row[3] if len(row) > 3 else True
             if _normalize_name(retailer_name) not in accepted_names:
                 continue
-            physical_row_count += 1
-            if is_active is not expected_active:
-                if not expected_active and is_active is True:
-                    unexpected_active_row_count += 1
-                continue
+            matched_row_count += 1
             column_name = str(column_name or '').strip()
             if column_name in unsupported_columns:
                 continue
@@ -161,19 +143,14 @@ def _configured_retailers(cursor, source):
             if column_name not in columns:
                 columns.append(column_name)
 
-        if unexpected_active_row_count:
-            raise EmailConfigurationError(
-                f"Unexpected active email-only config for "
-                f"{source['key']}/{retailer['name']}"
-            )
         if not columns and (
             retailer.get('optional_if_unconfigured')
-            and physical_row_count == 0
+            and matched_row_count == 0
         ):
             continue
         if not columns:
             raise EmailConfigurationError(
-                f"No allowed columns for {source['key']}/{retailer['name']}"
+                f"No active columns for {source['key']}/{retailer['name']}"
             )
         # Every email Missing table includes the physical item identifier.
         # Keep it email-only so shared Layer 1-3 DB column settings are not
