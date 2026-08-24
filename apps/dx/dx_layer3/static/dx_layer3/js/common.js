@@ -81,6 +81,7 @@ function copyQueryToClipboard(element, preserveRaw) {
 }
 
 let currentData = null;
+let layer3StatsRequestId = 0;
 
 // 기존 API/규칙 식별자는 유지하고 화면 표시명만 통일한다.
 function getLayer3DisplayName(checkName, detailCode) {
@@ -213,11 +214,92 @@ const SECTION_CATEGORY_MAP = {
     'category_spec': '카테고리별 특성'
 };
 
+function createLayer3StatsState(date) {
+    return {
+        timestamp: null,
+        date: date,
+        layer: 3,
+        name: '이상치/특수 케이스 검수',
+        product_line: 'ALL',
+        checks: [],
+        summary: {
+            total_checked: 0,
+            passed: 0,
+            failed: 0,
+            pass_rate: 0,
+            status: 'OK'
+        }
+    };
+}
+
+function refreshLayer3Summary(data) {
+    const checks = (data.checks || []).filter(function(check) {
+        return !check.load_error;
+    });
+    const totalChecked = checks.reduce(function(sum, check) {
+        return sum + Number(check.checked || 0);
+    }, 0);
+    const totalFailed = checks.reduce(function(sum, check) {
+        return sum + Number(check.failed || 0);
+    }, 0);
+    const passed = totalChecked - totalFailed;
+    data.summary = {
+        total_checked: totalChecked,
+        passed: passed,
+        failed: totalFailed,
+        pass_rate: totalChecked > 0 ? Math.round((passed / totalChecked) * 10000) / 100 : 0,
+        status: totalFailed === 0 ? 'OK' : 'WARNING'
+    };
+}
+
+function sortLayer3Checks(checks) {
+    const categoryOrder = {
+        '시계열 이상치': 0,
+        '크로스 필드 검증': 1,
+        '카테고리별 특성': 2
+    };
+    checks.sort(function(left, right) {
+        return (categoryOrder[left.category] ?? 99) - (categoryOrder[right.category] ?? 99);
+    });
+}
+
+function mergeLayer3Stats(target, source, section) {
+    const category = SECTION_CATEGORY_MAP[section];
+    target.checks = target.checks.filter(function(check) {
+        return check.category !== category;
+    });
+    target.checks = target.checks.concat(source.checks || []);
+
+    sortLayer3Checks(target.checks);
+    target.timestamp = source.timestamp || target.timestamp;
+    refreshLayer3Summary(target);
+}
+
+function markLayer3SectionError(target, section) {
+    const category = SECTION_CATEGORY_MAP[section];
+    target.checks = target.checks.filter(function(check) {
+        return check.category !== category;
+    });
+    target.checks.push({
+        category: category,
+        name: '데이터 로딩 실패',
+        description: '해당 검사만 응답하지 않았습니다. 다른 검사 결과는 정상적으로 표시됩니다.',
+        checked: 0,
+        passed: 0,
+        failed: 0,
+        status: 'ERROR',
+        load_error: true
+    });
+    sortLayer3Checks(target.checks);
+    refreshLayer3Summary(target);
+}
+
 // 데이터 로드
 async function loadData() {
     checkBackupStatus();
     const date = getSelectedDate();
     const section = (window.LAYER3 && window.LAYER3.section) || 'dashboard';
+    const requestId = ++layer3StatsRequestId;
 
     // 인라인 상세보기 중이면 현재 보고 있는 항목 저장 (날짜 변경 후 복원용)
     let reopenDetail = null;
@@ -284,14 +366,43 @@ async function loadData() {
     // 필드 누락 캐시 초기화 (조회 시 항상 새로운 데이터 로드)
     if (typeof retailerMissingCache !== 'undefined') retailerMissingCache = {};
 
+    // 대시보드는 검사 세 개를 독립 요청한다. 시계열 쿼리 하나가
+    // 느려도 크로스 필드/카테고리 결과와 필드 누락은 먼저 표시된다.
+    if (section === 'dashboard') {
+        loadAllRetailersMissing();
+        const state = createLayer3StatsState(date);
+        currentData = state;
+        const sections = ['time_series', 'cross_field', 'category_spec'];
+
+        await Promise.allSettled(sections.map(async function(statsSection) {
+            try {
+                const data = await fetchAPI(
+                    `/layer3/api/stats/?date=${encodeURIComponent(date)}&type=all&section=${statsSection}`
+                );
+                if (requestId !== layer3StatsRequestId) return;
+                mergeLayer3Stats(state, data, statsSection);
+            } catch (error) {
+                if (requestId !== layer3StatsRequestId) return;
+                console.error(`Layer3 ${statsSection} Error:`, error);
+                markLayer3SectionError(state, statsSection);
+            }
+            if (requestId === layer3StatsRequestId) {
+                currentData = state;
+                renderData(state);
+            }
+        }));
+        return;
+    }
+
     try {
-        const sectionParam = section !== 'dashboard' ? `&section=${section}` : '';
+        const sectionParam = `&section=${section}`;
         const data = await fetchAPI(`/layer3/api/stats/?date=${date}&type=all${sectionParam}`);
+        if (requestId !== layer3StatsRequestId) return;
         currentData = data;
         renderData(data);
 
-        // 필드 누락 데이터 로드 (대시보드 또는 필드 누락 페이지에서만)
-        if (section === 'dashboard' || section === 'field_missing') {
+        // 필드 누락 데이터 로드
+        if (section === 'field_missing') {
             loadAllRetailersMissing();
         }
 
@@ -300,6 +411,7 @@ async function loadData() {
             showDetail('카테고리별 특성', reopenDetail);
         }
     } catch (error) {
+        if (requestId !== layer3StatsRequestId) return;
         console.error('Error:', error);
         if (catContainer) catContainer.innerHTML = '<div class="loading">데이터 로드 실패</div>';
     }
@@ -358,7 +470,8 @@ function renderData(data) {
         const totalChecked = checks.reduce((sum, c) => sum + (c.checked || 0), 0);
         const totalFailed = checks.reduce((sum, c) => sum + (c.failed || 0), 0);
         const hasReviewNeeded = checks.some(c => c.status === 'REVIEW_NEEDED');
-        const catStatus = hasReviewNeeded ? 'review_needed' : (totalFailed === 0 ? 'ok' : (totalFailed < 10 ? 'warning' : 'critical'));
+        const hasLoadError = checks.some(c => c.load_error || c.status === 'ERROR');
+        const catStatus = hasLoadError ? 'critical' : (hasReviewNeeded ? 'review_needed' : (totalFailed === 0 ? 'ok' : (totalFailed < 10 ? 'warning' : 'critical')));
 
         if (filterCategory) {
             // 섹션 페이지: 카테고리 헤더 없이 체크 항목만 표시
@@ -398,8 +511,11 @@ function renderData(data) {
                 || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
 
+            const rowClass = check.load_error ? 'check-item' : 'check-item clickable-row';
+            const rowAction = check.load_error ? '' : `onclick="showDetail('${escJs(categoryName)}', '${escJs(check.name)}', '${escJs(check.detail_code || '')}')"`;
+
             html += `
-                <div class="check-item clickable-row" onclick="showDetail('${escJs(categoryName)}', '${escJs(check.name)}', '${escJs(check.detail_code || '')}')">
+                <div class="${rowClass}" ${rowAction}>
                     <div class="check-info">
                         <div class="check-name">
                             ${esc(displayName)}

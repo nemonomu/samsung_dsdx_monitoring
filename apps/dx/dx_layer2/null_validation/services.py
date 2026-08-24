@@ -17,6 +17,8 @@ try:
     from apps.common.tse_retail import (
         TSE_SOURCE_CONFIG,
         TSE_TABLE_TO_PRODUCT_LINE,
+        TSE_UNASSIGNED_DISPLAY_NAME,
+        TSE_UNASSIGNED_RETAILER,
         get_tse_editable_columns,
         get_tse_required_columns,
         get_tse_product_line_for_table,
@@ -25,6 +27,8 @@ except (ImportError, AttributeError):
     load_tse_retail_columns = None
     TSE_SOURCE_CONFIG = None
     TSE_TABLE_TO_PRODUCT_LINE = {}
+    TSE_UNASSIGNED_DISPLAY_NAME = '리테일러 미지정'
+    TSE_UNASSIGNED_RETAILER = '__unassigned__'
     get_tse_editable_columns = None
     get_tse_required_columns = None
     get_tse_product_line_for_table = None
@@ -40,8 +44,8 @@ try:
         tse_retailer_supports_column,
     )
 except (ImportError, AttributeError):
-    def tse_retailer_include_unassigned(retailer):
-        return str(retailer or '').strip().casefold() == 'homepro'
+    def tse_retailer_include_unassigned(_retailer):
+        return False
 
     def tse_retailer_supports_column(_product_line, _retailer, _column):
         return True
@@ -375,17 +379,17 @@ def _get_tse_retailer_config(product_line, retailer, runtime=None, config=None):
     if config is None:
         config = runtime['load_columns']()
     retailer_key = str(retailer or '').strip().lower()
+    if not retailer_key or retailer_key in {
+        TSE_UNASSIGNED_RETAILER,
+        TSE_UNASSIGNED_DISPLAY_NAME.casefold(),
+    }:
+        return TSE_UNASSIGNED_DISPLAY_NAME, {
+            'retailer': TSE_UNASSIGNED_RETAILER,
+            'required_columns': ['account_name'],
+            'editable_columns': ['account_name'],
+            'unassigned': True,
+        }
     product_configs = config.get(product_line, {})
-    if not retailer_key:
-        unassigned_configs = [
-            (display_name, retailer_config)
-            for display_name, retailer_config in product_configs.items()
-            if tse_retailer_include_unassigned(
-                retailer_config.get('retailer') or display_name
-            )
-        ]
-        if len(unassigned_configs) == 1:
-            return unassigned_configs[0]
     for display_name, retailer_config in product_configs.items():
         if (
             str(display_name).strip().lower() == retailer_key
@@ -699,6 +703,56 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 if column not in table_fields:
                     table_fields.append(column)
 
+        # Missing account names cannot be assigned safely to Homepro,
+        # Lazada, or any future retailer.  Surface every such row in a
+        # dedicated NULL-review bucket instead of silently excluding it or
+        # attaching it to the first configured retailer.
+        unassigned_scope = _build_null_sql_condition(
+            'source.account_name', 'both'
+        )
+        cursor.execute(f"""
+            WITH latest_batch AS (
+                SELECT source.batch_id
+                FROM {canonical_table} source
+                WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                  AND {unassigned_scope}
+                  AND {country_scope}
+                ORDER BY source.id DESC
+                LIMIT 1
+            )
+            SELECT COUNT(*) AS total,
+                   (SELECT batch_id FROM latest_batch) AS latest_batch_id
+            FROM {canonical_table} source
+            WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+              AND {unassigned_scope}
+              AND {country_scope}
+              AND source.batch_id IS NOT DISTINCT FROM
+                  (SELECT batch_id FROM latest_batch)
+              AND EXISTS (SELECT 1 FROM latest_batch)
+        """, (
+            target_date_text, TSE_COUNTRY,
+            target_date_text, TSE_COUNTRY,
+        ))
+        unassigned_row = cursor.fetchone()
+        unassigned_total = (
+            (unassigned_row[0] or 0) if unassigned_row else 0
+        )
+        if unassigned_total:
+            retailer_rows.append({
+                'retailer': TSE_UNASSIGNED_DISPLAY_NAME,
+                'total': unassigned_total,
+                'total_null_count': unassigned_total,
+                'status': get_status(unassigned_total),
+                'fields_detail': {'account_name': unassigned_total},
+                'latest_batch_id': (
+                    unassigned_row[1] if unassigned_row else None
+                ),
+            })
+            table_total += unassigned_total
+            table_issues += unassigned_total
+            if 'account_name' not in table_fields:
+                table_fields.append('account_name')
+
         if retailer_rows:
             tables.append({
                 'table': source['section_code'],
@@ -772,6 +826,12 @@ def _get_tse_null_detail(
             'results': [], 'display_config': {}, 'query_config': {},
             'date': str(target_date),
         }
+
+    if retailer_config.get('unassigned'):
+        return _get_tse_unassigned_null_detail(
+            cursor, target_date, source, product_line, column,
+            retailer_config, runtime, days,
+        )
 
     canonical_table = source['table_name']
     retailer_value = retailer_config['retailer']
@@ -971,6 +1031,92 @@ def _get_tse_null_detail(
         'history_days': history_days,
         'latest_batch_only': not is_expanded,
         'retailer': display_name,
+    }
+
+
+def _get_tse_unassigned_null_detail(
+    cursor, target_date, source, product_line, column, retailer_config,
+    runtime, days=1,
+):
+    """Return TSE rows whose retailer identity itself is missing."""
+    if column != 'account_name':
+        return {
+            'results': [], 'display_config': {}, 'query_config': {},
+            'date': str(target_date),
+        }
+
+    history_days = min(max(int(days or 1), 1), 30)
+    start_date = target_date - timedelta(days=history_days - 1)
+    canonical_table = source['table_name']
+    account_scope = _build_null_sql_condition(
+        'source.account_name', 'both'
+    )
+    country_scope = _build_tse_country_scope()
+    cursor.execute(f"""
+        WITH latest_batches AS (
+            SELECT DISTINCT ON (
+                LEFT(TRIM(source.crawl_datetime), 10)
+            )
+                   LEFT(TRIM(source.crawl_datetime), 10) AS crawl_date,
+                   source.batch_id,
+                   source.id
+            FROM {canonical_table} source
+            WHERE LEFT(TRIM(source.crawl_datetime), 10) >= %s
+              AND LEFT(TRIM(source.crawl_datetime), 10) <= %s
+              AND {account_scope}
+              AND {country_scope}
+            ORDER BY crawl_date, source.id DESC
+        )
+        SELECT source.*
+        FROM {canonical_table} source
+        JOIN latest_batches latest
+          ON LEFT(TRIM(source.crawl_datetime), 10) = latest.crawl_date
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE {account_scope}
+          AND {country_scope}
+        ORDER BY LEFT(TRIM(source.crawl_datetime), 10), source.id
+    """, (
+        str(start_date), str(target_date), TSE_COUNTRY, TSE_COUNTRY,
+    ))
+    select_columns = [description[0] for description in cursor.description]
+    results = []
+    for row in cursor.fetchall():
+        record = {}
+        for column_name, value in zip(select_columns, row):
+            record[column_name] = (
+                value.strftime('%Y-%m-%d %H:%M:%S')
+                if isinstance(value, datetime) else value
+            )
+        record['null_fields'] = ['account_name']
+        results.append(record)
+
+    editable_columns = _safe_tse_editable_columns(
+        product_line, retailer_config, runtime
+    )
+    return {
+        'results': results,
+        'select_cols': select_columns,
+        'editable_cols': editable_columns,
+        'actual_table': canonical_table,
+        'display_config': {
+            column: {
+                'select_columns': _get_tse_null_display_columns(
+                    column, select_columns
+                ),
+            },
+        },
+        'query_config': {
+            column: _get_tse_null_query_columns(column, select_columns),
+        },
+        'query_retailer': '',
+        'query_include_unassigned': True,
+        'supports_day_history': True,
+        'normal_reviews': {},
+        'date_column': 'crawl_datetime',
+        'date': str(target_date),
+        'history_days': history_days,
+        'latest_batch_only': True,
+        'retailer': TSE_UNASSIGNED_DISPLAY_NAME,
     }
 
 

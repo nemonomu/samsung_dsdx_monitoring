@@ -22,8 +22,8 @@ except ImportError:  # Backward-compatible fallback for isolated legacy tests.
 try:
     from apps.common.tse_retail import tse_retailer_include_unassigned
 except (ImportError, AttributeError):
-    def tse_retailer_include_unassigned(retailer):
-        return str(retailer or '').strip().casefold() == 'homepro'
+    def tse_retailer_include_unassigned(_retailer):
+        return False
 
 
 # table 파라미터 화이트리스트
@@ -182,17 +182,14 @@ def _serialize_tse_duplicate_row(row):
 
 
 def build_tse_duplicate_groups(rows):
-    """Build exact duplicates and bidirectional item/SKU mapping conflicts."""
+    """Build exact duplicates and item-to-retailer-SKU mapping conflicts."""
     exact = {}
     by_item = {}
-    by_retailer_sku = {}
     for row in rows:
         item_key = _duplicate_key(row.get('item'))
         retailer_sku_key = _duplicate_key(row.get('retailer_sku_name'))
         if item_key:
             by_item.setdefault(item_key, []).append(row)
-        if retailer_sku_key:
-            by_retailer_sku.setdefault(retailer_sku_key, []).append(row)
         if item_key and retailer_sku_key:
             exact.setdefault((item_key, retailer_sku_key), []).append(row)
 
@@ -234,33 +231,6 @@ def build_tse_duplicate_groups(rows):
             'retailer_sku_name': ', '.join(display_values),
             'dup_count': len(duplicate_rows),
             'reason': '동일 item에 서로 다른 retailer_sku_name이 연결되어 있습니다.',
-            'records': [
-                _serialize_tse_duplicate_row(row) for row in duplicate_rows
-            ],
-        })
-
-    for duplicate_rows in by_retailer_sku.values():
-        items = {
-            _duplicate_key(row.get('item'))
-            for row in duplicate_rows
-            if _duplicate_key(row.get('item'))
-        }
-        if len(items) <= 1:
-            continue
-        first = duplicate_rows[0]
-        display_values = sorted({
-            _duplicate_text(row.get('item'))
-            for row in duplicate_rows
-            if _duplicate_text(row.get('item'))
-        })
-        groups.append({
-            'duplicate_type': 'SKU명 매핑 충돌',
-            'item': ', '.join(display_values),
-            'retailer_sku_name': _duplicate_text(
-                first.get('retailer_sku_name')
-            ),
-            'dup_count': len(duplicate_rows),
-            'reason': '동일 retailer_sku_name에 서로 다른 item이 연결되어 있습니다.',
             'records': [
                 _serialize_tse_duplicate_row(row) for row in duplicate_rows
             ],
@@ -357,7 +327,6 @@ def _append_tse_anomaly_stats(cursor, target_date, validation):
                     'duplicate_keys': [
                         'item + retailer_sku_name',
                         'item → retailer_sku_name',
-                        'retailer_sku_name → item',
                     ],
                     'status': get_status(duplicate_count),
                 })

@@ -17,7 +17,9 @@ def layer_stats(request):
 
     try:
         with dx_connection() as (conn, cursor):
-            results = services.get_layer_stats(cursor, target_date)
+            results = services.get_layer_stats(
+                cursor, target_date, request.GET.get('section', '')
+            )
     except Exception as e:
         results = {
             'timestamp': None,

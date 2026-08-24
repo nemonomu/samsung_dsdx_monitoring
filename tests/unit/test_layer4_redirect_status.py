@@ -41,6 +41,7 @@ class Layer4RedirectStatusTests(unittest.TestCase):
                 get_tse_source=lambda _product_line: {},
                 normalize_tse_product_line=lambda value: value,
                 resolve_tse_table=lambda value: value,
+                tse_retailer_include_unassigned=lambda _retailer: False,
             ),
             'config': package_stub('config'),
             'config.config': module_stub(
@@ -98,6 +99,7 @@ class Layer4RedirectStatusTests(unittest.TestCase):
                 get_tse_source=lambda _product_line: {},
                 normalize_tse_product_line=lambda value: value,
                 resolve_tse_table=lambda value: value,
+                tse_retailer_include_unassigned=lambda _retailer: False,
             ),
             'config': package_stub('config'),
             'config.config': module_stub(

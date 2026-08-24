@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 from tests.unit.support import (
     ScriptedCursor,
@@ -127,6 +128,36 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             'SAVEPOINT layer2_youtube_test',
             'RELEASE SAVEPOINT layer2_youtube_test',
         ], [sql for sql, _params in cursor.calls])
+
+    def test_section_stats_runs_only_requested_validation(self):
+        cursor = RecordingCursor()
+        null_result = ({'type': 'null', 'tables': []}, 7)
+        with patch.object(
+            self.service, '_run_with_youtube_fallback',
+            return_value=null_result,
+        ) as null_stats, patch.object(
+            self.service, 'get_format_stats'
+        ) as format_stats, patch.object(
+            self.service, 'get_anomaly_stats'
+        ) as anomaly_stats:
+            result = self.service.get_layer_stats(
+                cursor, date(2026, 8, 23), 'null_validation'
+            )
+
+        null_stats.assert_called_once()
+        format_stats.assert_not_called()
+        anomaly_stats.assert_not_called()
+        self.assertEqual(['null'], [
+            item['type'] for item in result['validation_types']
+        ])
+        self.assertEqual(7, result['summary']['null_issues'])
+        self.assertEqual(7, result['summary']['total_issues'])
+
+    def test_rejects_unknown_section(self):
+        with self.assertRaises(ValueError):
+            self.service.get_layer_stats(
+                RecordingCursor(), date(2026, 8, 23), 'unknown'
+            )
 
     def test_null_detail_excludes_item_master_non_products(self):
         cursor = ScriptedCursor([

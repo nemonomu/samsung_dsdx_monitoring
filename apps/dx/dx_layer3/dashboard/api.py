@@ -21,6 +21,34 @@ from .services import (
 )
 
 
+_TIMESERIES_QUERY_TIMEOUT = '12000ms'
+_TIMESERIES_SAVEPOINT = 'layer3_timeseries_rule'
+
+
+def _count_timeseries_anomalies(cursor, count_sql, params):
+    """느린 저장 쿼리가 전체 Layer 3 응답을 막지 않도록 규칙별 제한."""
+    cursor.execute(f'SAVEPOINT {_TIMESERIES_SAVEPOINT}')
+    try:
+        cursor.execute(
+            "SELECT set_config('statement_timeout', %s, true)",
+            (_TIMESERIES_QUERY_TIMEOUT,),
+        )
+        cursor.execute(count_sql, params)
+        anomaly_count = cursor.fetchone()[0] or 0
+    except Exception:
+        # statement_timeout은 현재 트랜잭션을 aborted 상태로 만들므로
+        # 저장점까지 되돌려야 다음 규칙과 다른 검사들이 계속 실행된다.
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {_TIMESERIES_SAVEPOINT}')
+        cursor.execute(f'RELEASE SAVEPOINT {_TIMESERIES_SAVEPOINT}')
+        raise
+
+    # 조회 쿼리는 읽기 전용이다. 저장점으로 되돌려 이 규칙에만 적용한
+    # statement_timeout 설정도 함께 원래 상태로 복원한다.
+    cursor.execute(f'ROLLBACK TO SAVEPOINT {_TIMESERIES_SAVEPOINT}')
+    cursor.execute(f'RELEASE SAVEPOINT {_TIMESERIES_SAVEPOINT}')
+    return anomaly_count
+
+
 def layer_stats(request):
     """Layer 3 통계 API - 이상치 탐지 및 크로스 필드 검증"""
     date_str = request.GET.get('date')
@@ -107,15 +135,20 @@ def layer_stats(request):
                         table_total = table_totals[table_name]
 
                         anomaly_count = 0
+                        rule_error = False
                         try:
                             stored_query = rule.get('query', '')
                             if stored_query:
                                 stored_query = apply_tv_retail_am_filter(stored_query, table_name, date_column)
                                 count_sql = f"SELECT COUNT(*) FROM ({stored_query}) _sub"
-                                curr_cursor.execute(count_sql, (target_date, target_date, prev_date))
-                                anomaly_count = curr_cursor.fetchone()[0] or 0
+                                anomaly_count = _count_timeseries_anomalies(
+                                    curr_cursor,
+                                    count_sql,
+                                    (target_date, target_date, prev_date),
+                                )
                         except Exception as e:
                             log_error(e)
+                            rule_error = True
 
                         total_checked += table_total
                         total_anomalies += anomaly_count
@@ -134,11 +167,11 @@ def layer_stats(request):
                             'name': rule['detail_name'],
                             'detail_code': rule['detail_code'],
                             'description': rule['error_message'],
-                            'checked': table_total,
-                            'passed': table_total - anomaly_count,
+                            'checked': 0 if rule_error else table_total,
+                            'passed': 0 if rule_error else table_total - anomaly_count,
                             'failed': anomaly_count,
                             'threshold': threshold_str,
-                            'status': get_status(anomaly_count, table_total, needs_review=(check_type == 'review' and anomaly_count > 0))
+                            'status': 'ERROR' if rule_error else get_status(anomaly_count, table_total, needs_review=(check_type == 'review' and anomaly_count > 0))
                         })
 
                     hhp_total = table_totals.get('hhp_retail_com', 0)
@@ -178,15 +211,20 @@ def layer_stats(request):
                     table_total = table_totals[table_name]
 
                     anomaly_count = 0
+                    rule_error = False
                     try:
                         stored_query = rule.get('query', '')
                         if stored_query:
                             stored_query = apply_tv_retail_am_filter(stored_query, table_name, date_column)
                             count_sql = f"SELECT COUNT(*) FROM ({stored_query}) _sub"
-                            cursor.execute(count_sql, (target_date, target_date, prev_date))
-                            anomaly_count = cursor.fetchone()[0] or 0
+                            anomaly_count = _count_timeseries_anomalies(
+                                cursor,
+                                count_sql,
+                                (target_date, target_date, prev_date),
+                            )
                     except Exception as e:
                         log_error(e)
+                        rule_error = True
 
                     total_checked += table_total
                     total_anomalies += anomaly_count
@@ -205,11 +243,11 @@ def layer_stats(request):
                         'name': rule['detail_name'],
                         'detail_code': rule['detail_code'],
                         'description': rule['error_message'],
-                        'checked': table_total,
-                        'passed': table_total - anomaly_count,
+                        'checked': 0 if rule_error else table_total,
+                        'passed': 0 if rule_error else table_total - anomaly_count,
                         'failed': anomaly_count,
                         'threshold': threshold_str,
-                        'status': get_status(anomaly_count, table_total, needs_review=(check_type == 'review' and anomaly_count > 0))
+                        'status': 'ERROR' if rule_error else get_status(anomaly_count, table_total, needs_review=(check_type == 'review' and anomaly_count > 0))
                     })
 
             tv_total = table_totals.get('tv_retail_com', 0)

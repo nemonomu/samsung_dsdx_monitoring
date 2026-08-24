@@ -41,23 +41,155 @@ function prepareLayer2DisplayData(data) {
     return data;
 }
 
-function fetchDXStats() {
-    const date = getSelectedDate();
+let layer2StatsRequestId = 0;
 
-    fetch(`/dx/layer2/api/stats/?date=${date}`)
-        .then(response => response.json())
-        .then(data => {
-            prepareLayer2DisplayData(data);
-            dxData = data;
-            renderDXSummary(data);
-            renderDXValidationTypes(data);
-            updateCurrentInfo(data.date);
-        })
-        .catch(error => {
-            console.error('DX Error:', error);
-            document.getElementById('dx-validation-container').innerHTML =
-                '<div class="loading"><p style="color: var(--color-critical);">DX 데이터 로딩 실패</p></div>';
+function createLayer2StatsState(date) {
+    return {
+        timestamp: null,
+        date: date,
+        layer: 2,
+        name: '형식/NULL 검수',
+        validation_types: [],
+        summary: {
+            total_issues: 0,
+            null_issues: 0,
+            format_issues: 0,
+            duplicate_issues: 0,
+            overall_status: 'OK'
+        }
+    };
+}
+
+function mergeLayer2Stats(target, source) {
+    const issueKeyByType = {
+        null: 'null_issues',
+        format: 'format_issues',
+        duplicate: 'duplicate_issues'
+    };
+
+    (source.validation_types || []).forEach(function(validationType) {
+        target.validation_types = target.validation_types.filter(function(item) {
+            return item.type !== validationType.type;
         });
+        target.validation_types.push(validationType);
+
+        const issueKey = issueKeyByType[validationType.type];
+        if (issueKey) {
+            target.summary[issueKey] = Number(validationType.total_issues || 0);
+        }
+    });
+
+    const displayOrder = { null: 0, format: 1, duplicate: 2 };
+    target.validation_types.sort(function(left, right) {
+        return (displayOrder[left.type] ?? 99) - (displayOrder[right.type] ?? 99);
+    });
+    target.summary.total_issues = target.summary.null_issues
+        + target.summary.format_issues
+        + target.summary.duplicate_issues;
+    target.summary.overall_status = target.summary.total_issues === 0 ? 'OK' : 'CRITICAL';
+    target.timestamp = source.timestamp || target.timestamp;
+    return target;
+}
+
+function markLayer2SectionError(target, section) {
+    const config = {
+        null_validation: {
+            type: 'null', icon: '🔍', type_name: 'NULL 검증',
+            type_name_en: 'Null Validation'
+        },
+        format_validation: {
+            type: 'format', icon: '📋', type_name: '형식 검증',
+            type_name_en: 'Format Validation'
+        },
+        anomaly_validation: {
+            type: 'duplicate', icon: '🔄', type_name: '중복 검증',
+            type_name_en: 'Duplicate Validation'
+        }
+    }[section];
+    if (!config) return;
+
+    target.validation_types = target.validation_types.filter(function(item) {
+        return item.type !== config.type;
+    });
+    target.validation_types.push(Object.assign({}, config, {
+        total_issues: 0,
+        status: 'ERROR',
+        tables: []
+    }));
+    const displayOrder = { null: 0, format: 1, duplicate: 2 };
+    target.validation_types.sort(function(left, right) {
+        return (displayOrder[left.type] ?? 99) - (displayOrder[right.type] ?? 99);
+    });
+}
+
+function renderLayer2Stats(data) {
+    prepareLayer2DisplayData(data);
+    dxData = data;
+    renderDXSummary(data);
+    renderDXValidationTypes(data);
+    updateCurrentInfo(data.date);
+}
+
+async function fetchLayer2StatsSection(date, section) {
+    const response = await fetch(
+        `/dx/layer2/api/stats/?date=${encodeURIComponent(date)}&section=${encodeURIComponent(section)}`
+    );
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+}
+
+async function fetchDXStats() {
+    const date = getSelectedDate();
+    const section = (window.LAYER2 && window.LAYER2.section) || 'dashboard';
+    const requestId = ++layer2StatsRequestId;
+    const container = document.getElementById('dx-validation-container');
+
+    if (container) {
+        container.innerHTML = '<div class="loading"><p>검증 데이터를 불러오는 중...</p></div>';
+    }
+
+    if (section !== 'dashboard') {
+        try {
+            const data = await fetchLayer2StatsSection(date, section);
+            if (requestId !== layer2StatsRequestId) return;
+            renderLayer2Stats(data);
+        } catch (error) {
+            if (requestId !== layer2StatsRequestId) return;
+            console.error('DX Error:', error);
+            if (container) container.innerHTML =
+                '<div class="loading"><p style="color: var(--color-critical);">DX 데이터 로딩 실패</p></div>';
+        }
+        return;
+    }
+
+    const state = createLayer2StatsState(date);
+    const sections = ['null_validation', 'format_validation', 'anomaly_validation'];
+    let successCount = 0;
+
+    await Promise.allSettled(sections.map(async function(statsSection) {
+        try {
+            const data = await fetchLayer2StatsSection(date, statsSection);
+            if (requestId !== layer2StatsRequestId) return;
+            successCount += 1;
+            mergeLayer2Stats(state, data);
+            renderLayer2Stats(state);
+        } catch (error) {
+            console.error(`DX ${statsSection} Error:`, error);
+            if (requestId !== layer2StatsRequestId) return;
+            markLayer2SectionError(state, statsSection);
+            renderLayer2Stats(state);
+        }
+    }));
+
+    if (requestId !== layer2StatsRequestId) return;
+    if (successCount === 0 && state.validation_types.length === 0 && container) {
+        container.innerHTML =
+            '<div class="loading"><p style="color: var(--color-critical);">DX 데이터 로딩 실패</p></div>';
+    }
 }
 
 function renderDXSummary(data) {
@@ -351,7 +483,7 @@ function renderDXTableDetail(vType, table) {
             } else if (isMarket && retailer.retailer === 'Event') {
                 detailText = 'batch_id + comp_brand + comp_sku 중복';
             } else if (isTseRetail) {
-                detailText = '완전 중복 및 Item↔Retailer SKU Name 매핑 충돌';
+                detailText = '완전 중복 및 Item→Retailer SKU Name 매핑 충돌';
             }
             html += `
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}"

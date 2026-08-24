@@ -67,6 +67,8 @@ def common_stubs():
             'apps.common.tse_retail',
             TSE_COUNTRY='TSE',
             TSE_SOURCE_CONFIG=TSE_SOURCES,
+            TSE_UNASSIGNED_DISPLAY_NAME='리테일러 미지정',
+            TSE_UNASSIGNED_RETAILER='__unassigned__',
             TSE_TABLE_TO_PRODUCT_LINE={
                 source['table_name']: key
                 for key, source in TSE_SOURCES.items()
@@ -91,6 +93,8 @@ def common_stubs():
             get_tse_product_line_for_table=lambda table: {
                 source['table_name']: key for key, source in TSE_SOURCES.items()
             }[table],
+            tse_retailer_include_unassigned=lambda _retailer: False,
+            tse_retailer_supports_column=lambda *_args: True,
         ),
         'apps.common.retail_validation': module_stub(
             'apps.common.retail_validation',
@@ -126,6 +130,9 @@ class TSELayer2NullTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchone': ('h20260810_095803', 300, 0, 0, 1)},
             {'fetchall': []},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
         ])
 
         tables, issue_count = self.service._get_tse_null_tables(
@@ -145,7 +152,7 @@ class TSELayer2NullTests(unittest.TestCase):
         self.assertIn('LEFT(TRIM(source.crawl_datetime), 10) = %s', summary_sql)
         self.assertIn('ORDER BY source.id DESC LIMIT 1', summary_sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM', summary_sql)
-        self.assertIn('OR source.account_name IS NULL', summary_sql)
+        self.assertNotIn('OR source.account_name IS NULL', summary_sql)
         self.assertIn('source.country = %s', summary_sql)
         self.assertIn('source.country IS NULL', summary_sql)
         self.assertNotIn('batch_id AS null_batch_id', summary_sql)
@@ -157,7 +164,7 @@ class TSELayer2NullTests(unittest.TestCase):
             params,
         )
 
-    def test_two_retailers_keep_homepro_unassigned_scope_but_not_lotuss(self):
+    def test_two_retailers_exclude_unassigned_rows_from_both_scopes(self):
         config = tse_columns_config()
         config['tse_tv']['Lotuss'] = {
             'retailer': 'lotuss',
@@ -167,6 +174,9 @@ class TSELayer2NullTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchone': ('homepro-batch', 300, 0, 0, 0)},
             {'fetchone': ('lotuss-batch', 86, 0)},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
         ])
 
         tables, issue_count = self.service._get_tse_null_tables(
@@ -180,8 +190,66 @@ class TSELayer2NullTests(unittest.TestCase):
         )
         homepro_sql = cursor.calls[0][0]
         lotuss_sql = cursor.calls[1][0]
-        self.assertIn('OR source.account_name IS NULL', homepro_sql)
+        self.assertNotIn('OR source.account_name IS NULL', homepro_sql)
         self.assertNotIn('OR source.account_name IS NULL', lotuss_sql)
+
+    def test_unassigned_account_rows_get_their_own_null_review_bucket(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('homepro-batch', 300, 0, 0, 0)},
+            {'fetchone': (2, 'unknown-batch')},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
+        ])
+
+        tables, issue_count = self.service._get_tse_null_tables(
+            cursor, date(2026, 8, 14), self.runtime,
+            tse_columns_config(),
+        )
+
+        self.assertEqual(2, issue_count)
+        self.assertEqual(
+            ['Homepro', '리테일러 미지정'],
+            [row['retailer'] for row in tables[0]['retailers']],
+        )
+        unassigned = tables[0]['retailers'][1]
+        self.assertEqual(2, unassigned['total'])
+        self.assertEqual({'account_name': 2}, unassigned['fields_detail'])
+        self.assertIn(
+            'source.account_name IS NULL', cursor.calls[1][0]
+        )
+        self.assertIn('WITH latest_batch AS', cursor.calls[1][0])
+        self.assertIn(
+            'source.batch_id IS NOT DISTINCT FROM', cursor.calls[1][0]
+        )
+
+    def test_unassigned_account_detail_is_editable_and_not_homepro_scoped(self):
+        description = [
+            ('id',), ('batch_id',), ('country',), ('account_name',),
+            ('item',), ('crawl_datetime',), ('product_url',),
+        ]
+        cursor = ScriptedCursor([{
+            'description': description,
+            'fetchall': [(
+                41, 'unknown-batch', 'TSE', None, 'TV-41',
+                '2026-08-14T09:58:03+09:00', 'https://example.test/41',
+            )],
+        }])
+
+        result = self.service._get_tse_null_detail(
+            cursor, date(2026, 8, 14), 'tse_tv_retail',
+            '리테일러 미지정', 'account_name', self.runtime,
+            tse_columns_config(),
+        )
+
+        self.assertEqual([41], [row['id'] for row in result['results']])
+        self.assertEqual(['account_name'], result['editable_cols'])
+        self.assertEqual(['account_name'], result['results'][0]['null_fields'])
+        self.assertEqual('', result['query_retailer'])
+        self.assertTrue(result['query_include_unassigned'])
+        detail_sql = cursor.calls[0][0]
+        self.assertIn('WITH latest_batches AS', detail_sql)
+        self.assertIn('source.account_name IS NULL', detail_sql)
+        self.assertNotIn("LOWER(source.account_name)", detail_sql)
 
     def test_tse_query_failure_rolls_back_only_tse_savepoint(self):
         class FailingCursor:
@@ -259,7 +327,7 @@ class TSELayer2NullTests(unittest.TestCase):
         detail_sql = cursor.calls[0][0]
         self.assertIn('CROSS JOIN latest_batch', detail_sql)
         self.assertIn('source.sku IS NULL', detail_sql)
-        self.assertIn('OR source.account_name IS NULL', detail_sql)
+        self.assertNotIn('OR source.account_name IS NULL', detail_sql)
         self.assertIn('source.country = %s', detail_sql)
         self.assertEqual(
             (
@@ -337,7 +405,7 @@ class TSELayer2NullTests(unittest.TestCase):
             result['display_config']['sku']['select_columns'],
         )
         self.assertEqual('homepro', result['query_retailer'])
-        self.assertTrue(result['query_include_unassigned'])
+        self.assertFalse(result['query_include_unassigned'])
         self.assertTrue(result['supports_day_history'])
         self.assertEqual(1, result['history_days'])
         self.assertTrue(result['latest_batch_only'])
@@ -396,6 +464,9 @@ class TSELayer2NullTests(unittest.TestCase):
             {'fetchall': [(
                 12, 'TV-1', 'Example TV', 'TSE', 'Homepro', None,
             )]},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
+            {'fetchone': (0, None)},
         ])
 
         tables, issue_count = self.service._get_tse_null_tables(
@@ -625,7 +696,7 @@ class TSELayer2NullTests(unittest.TestCase):
         self.assertEqual('format_check', cursor.calls[2][1][1])
         conn.commit.assert_called_once_with()
 
-    def test_single_retailer_config_can_review_missing_account_name(self):
+    def test_unassigned_bucket_can_review_missing_account_name(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, None, 'TV-1')},
             {'fetchone': None},
@@ -640,7 +711,7 @@ class TSELayer2NullTests(unittest.TestCase):
         )
 
         self.assertTrue(result['success'])
-        self.assertEqual('homepro', cursor.calls[2][1][-2])
+        self.assertEqual('__unassigned__', cursor.calls[2][1][-2])
 
 if __name__ == '__main__':
     unittest.main()
