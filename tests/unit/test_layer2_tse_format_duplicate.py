@@ -514,7 +514,7 @@ class TSEDuplicateValidationTests(unittest.TestCase):
             'product_url': f'https://example/{row_id}',
         }
 
-    def test_exact_and_both_mapping_conflicts_are_separate_groups(self):
+    def test_exact_and_item_mapping_conflicts_are_separate_groups(self):
         groups = self.service.build_tse_duplicate_groups([
             self.row(1, 'A', 'MODEL-1'),
             self.row(2, 'A', 'MODEL-1'),
@@ -522,9 +522,17 @@ class TSEDuplicateValidationTests(unittest.TestCase):
             self.row(4, 'B', 'MODEL-2'),
         ])
         self.assertEqual({
-            '완전 중복', 'Item 매핑 충돌', 'SKU명 매핑 충돌',
+            '완전 중복', 'Item 매핑 충돌',
         }, {group['duplicate_type'] for group in groups})
         self.assertTrue(all(group['records'] for group in groups))
+
+    def test_retailer_sku_mapped_to_multiple_items_is_not_a_conflict(self):
+        groups = self.service.build_tse_duplicate_groups([
+            self.row(1, 'A', 'MODEL-1'),
+            self.row(2, 'B', 'MODEL-1'),
+        ])
+
+        self.assertEqual([], groups)
 
     def test_blank_item_or_retailer_sku_is_left_to_null_validation(self):
         groups = self.service.build_tse_duplicate_groups([
