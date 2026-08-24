@@ -197,6 +197,68 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertIn('    final_sku_price,', query)
         self.assertNotIn('original_sku_price|final_sku_price', query)
 
+    def test_star_zero_pair_display_includes_review_count(self):
+        query = tse_services.build_tse_display_query(
+            date(2026, 8, 10), 'tse_tv',
+            _rule(1, 'review_zero_pair'),
+        )
+
+        self.assertIn('    star_rating,', query)
+        self.assertIn('    count_of_star_ratings,', query)
+        self.assertIn('    count_of_reviews,', query)
+
+    def test_retailer_cloned_rules_are_merged_by_validation_type(self):
+        homepro_rule = _rule(1, 'review_zero_pair')
+        homepro_rule.update({
+            'retailer': 'Homepro',
+            'select_fields': (
+                'star_rating|count_of_star_ratings|crawl_datetime'
+            ),
+        })
+        lazada_rule = _rule(2, 'review_zero_pair')
+        lazada_rule['retailer'] = 'Lazada'
+        cursor = ScriptedCursor([{
+            'fetchall': [homepro_rule, lazada_rule],
+        }])
+
+        rules = tse_services.load_active_tse_rules(cursor, 'tse_tv')
+
+        self.assertEqual(1, len(rules))
+        self.assertEqual([1, 2], rules[0]['_source_rule_ids'])
+        self.assertEqual(['Homepro', 'Lazada'], rules[0]['_retailers'])
+        self.assertIn(
+            'count_of_reviews', rules[0]['select_fields'].split('|')
+        )
+
+    def test_merged_retailer_rules_do_not_duplicate_findings(self):
+        homepro_rule = _rule(1, 'review_count_match')
+        homepro_rule['retailer'] = 'Homepro'
+        lazada_rule = _rule(2, 'review_count_match')
+        lazada_rule['retailer'] = 'Lazada'
+        cursor = ScriptedCursor([
+            {'fetchall': [homepro_rule, lazada_rule]},
+            {'fetchall': [
+                _valid_row(
+                    id=10, account_name='Homepro', count_of_reviews='9',
+                ),
+                _valid_row(
+                    id=11, account_name='Lazada', item='L-1',
+                    count_of_reviews='9',
+                ),
+            ]},
+            {'fetchall': []},
+        ])
+
+        result = tse_services.get_tse_cross_field_summary(
+            cursor, date(2026, 8, 10), 'tse_tv',
+        )
+
+        self.assertEqual(2, result['total_anomalies'])
+        self.assertEqual(1, len(result['rule_summary']))
+        self.assertEqual(2, result['rule_summary'][0]['error_count'])
+        self.assertIn("LOWER(TRIM('Homepro'))", result['rule_summary'][0]['query'])
+        self.assertIn("LOWER(TRIM('Lazada'))", result['rule_summary'][0]['query'])
+
     def test_latest_batch_query_uses_text_date_and_greatest_id(self):
         cursor = ScriptedCursor([{
             'fetchall': [_valid_row()],

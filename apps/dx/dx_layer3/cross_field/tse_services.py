@@ -33,12 +33,19 @@ TSE_RULE_SPECS = OrderedDict((
         'detail_name': '리뷰 수와 별점 수 일치',
         'field1': 'count_of_reviews',
         'field2': 'count_of_star_ratings',
+        'display_fields': (
+            'count_of_reviews', 'count_of_star_ratings', 'crawl_datetime',
+        ),
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
     }),
     ('review_zero_pair', {
         'detail_name': '별점 0과 별점 수 0 일치',
         'field1': 'star_rating',
         'field2': 'count_of_star_ratings',
+        'display_fields': (
+            'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+            'crawl_datetime',
+        ),
         'error_message': 'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
     }),
     ('final_original_price', {
@@ -295,7 +302,7 @@ def load_active_tse_rules(cursor, product_line):
         'sort_order',
     )
     rows = cursor.fetchall()
-    rules = []
+    rules_by_key = OrderedDict()
     for raw in rows:
         row = dict(raw) if isinstance(raw, dict) else dict(zip(columns, raw))
         if 'rule_id' not in row and 'id' in row:
@@ -304,6 +311,22 @@ def load_active_tse_rules(cursor, product_line):
         if not rule_key:
             continue
         spec = TSE_RULE_SPECS[rule_key]
+        configured_fields = [
+            field.strip()
+            for field in str(row.get('select_fields') or '').split('|')
+            if field.strip()
+        ]
+        required_fields = list(spec.get('display_fields') or filter(None, (
+            spec['field1'], spec['field2'], 'crawl_datetime',
+        )))
+        display_fields = []
+        for field_group in configured_fields + required_fields:
+            for field in str(field_group or '').split('|'):
+                field = field.strip()
+                if field and field not in display_fields:
+                    display_fields.append(field)
+
+        configured_retailer = str(row.get('retailer') or 'ALL').strip()
         row.update({
             'rule_key': rule_key,
             'detail_name': row.get('detail_name') or spec['detail_name'],
@@ -311,12 +334,35 @@ def load_active_tse_rules(cursor, product_line):
             'field2': row.get('field2') or spec['field2'],
             'validation_type': rule_key,
             'error_message': row.get('error_message') or spec['error_message'],
-            'select_fields': row.get('select_fields') or '|'.join(filter(None, (
-                spec['field1'], spec['field2'], 'crawl_datetime',
-            ))),
+            'select_fields': '|'.join(display_fields),
+            '_source_rule_ids': [row['rule_id']],
+            '_all_retailers': configured_retailer.upper() == 'ALL',
+            '_retailers': (
+                [] if configured_retailer.upper() == 'ALL'
+                else [configured_retailer]
+            ),
         })
-        rules.append(row)
-    return rules
+        existing = rules_by_key.get(rule_key)
+        if existing is None:
+            rules_by_key[rule_key] = row
+            continue
+
+        if row['rule_id'] not in existing['_source_rule_ids']:
+            existing['_source_rule_ids'].append(row['rule_id'])
+        existing['_all_retailers'] = (
+            existing['_all_retailers'] or row['_all_retailers']
+        )
+        for retailer in row['_retailers']:
+            if retailer.casefold() not in {
+                    value.casefold() for value in existing['_retailers']}:
+                existing['_retailers'].append(retailer)
+        merged_fields = existing['select_fields'].split('|')
+        for field in display_fields:
+            if field not in merged_fields:
+                merged_fields.append(field)
+        existing['select_fields'] = '|'.join(filter(None, merged_fields))
+
+    return list(rules_by_key.values())
 
 
 def load_latest_tse_rows(cursor, target_date, product_line, from_date=None):
@@ -384,10 +430,9 @@ def build_tse_display_query(
     select_columns = [
         'id', 'item', 'sku', 'retailer_sku_name', 'final_sku_price',
     ]
-    field_groups = (
-        spec.get('field1'), spec.get('field2'),
-        'crawl_datetime', 'product_url',
-    )
+    field_groups = tuple(spec.get('display_fields') or (
+        spec.get('field1'), spec.get('field2'), 'crawl_datetime',
+    )) + ('product_url',)
     for field_group in field_groups:
         for column in str(field_group or '').split('|'):
             column = column.strip()
@@ -523,6 +568,14 @@ def _load_normal_corrections(cursor, target_date, table_name, rule_ids=None):
 
 
 def _rule_applies_to_retailer(rule, retailer):
+    if rule.get('_all_retailers'):
+        return True
+    configured_retailers = rule.get('_retailers')
+    if configured_retailers is not None:
+        retailer_key = _retailer_key(retailer)
+        return retailer_key in {
+            _retailer_key(value) for value in configured_retailers
+        }
     configured = str(rule.get('retailer') or 'ALL').strip()
     return configured.upper() == 'ALL' or configured.lower() == str(retailer).strip().lower()
 
@@ -555,7 +608,11 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
             row for row in rows
             if _retailer_key(row.get('account_name')) != TSE_LOTUSS_RETAILER
         ]
-    rule_ids = [rule['rule_id'] for rule in rules]
+    rule_ids = [
+        rule_id
+        for rule in rules
+        for rule_id in rule.get('_source_rule_ids', [rule['rule_id']])
+    ]
     corrections = _load_normal_corrections(
         cursor, target_date, source['table_name'], rule_ids,
     ) if rules else []
@@ -588,7 +645,14 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
                 continue
             if rule['rule_key'] not in evaluations[row_id]:
                 continue
-            if (row_id, str(rule['rule_id'])) in normal_pairs:
+            source_rule_ids = {
+                str(rule_id)
+                for rule_id in rule.get(
+                    '_source_rule_ids', [rule['rule_id']]
+                )
+            }
+            if any((row_id, rule_id) in normal_pairs
+                   for rule_id in source_rule_ids):
                 continue
             detail = dict(row)
             detail['account_name'] = retailer
@@ -682,15 +746,25 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
             for row in error_rows if str(row.get('account_name') or '').strip()
         })
         if not scoped_retailers:
-            configured_retailer = str(rule.get('retailer') or 'ALL').strip()
-            if configured_retailer and configured_retailer.upper() != 'ALL':
-                if tse_crossfield_rule_supported(
-                    result['product_line'], configured_retailer,
-                    rule['rule_key'],
-                ):
-                    scoped_retailers = [configured_retailer]
-            else:
+            if rule.get('_all_retailers'):
                 scoped_retailers = supported_retailers
+            elif rule.get('_retailers') is not None:
+                scoped_retailers = [
+                    retailer for retailer in rule['_retailers']
+                    if tse_crossfield_rule_supported(
+                        result['product_line'], retailer, rule['rule_key'],
+                    )
+                ]
+            else:
+                configured_retailer = str(
+                    rule.get('retailer') or 'ALL'
+                ).strip()
+                if configured_retailer.upper() == 'ALL':
+                    scoped_retailers = supported_retailers
+                elif tse_crossfield_rule_supported(
+                        result['product_line'], configured_retailer,
+                        rule['rule_key']):
+                    scoped_retailers = [configured_retailer]
         if not scoped_pairs and not scoped_retailers:
             continue
         rule_summary.append({
@@ -761,9 +835,15 @@ def get_tse_cross_field_rule_detail(
             + retailer_config.get('editable_columns', [])
         ) & static_editable)
 
+    selected_rule_ids = {
+        str(source_rule_id)
+        for source_rule_id in selected.get(
+            '_source_rule_ids', [selected['rule_id']]
+        )
+    }
     corrections = [
         correction for correction in result['normal_corrections']
-        if str(correction['rule_id']) == str(rule_id)
+        if str(correction['rule_id']) in selected_rule_ids
     ]
     normal_reviews = {}
     normal_record_ids = set()
