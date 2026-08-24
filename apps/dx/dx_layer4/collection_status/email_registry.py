@@ -85,26 +85,12 @@ _SIEL_RETAILERS = (
     _retailer('Amazon'),
     _retailer('Flipkart'),
 )
-_TSE_LOTUSS_UNSUPPORTED_COMMON = (
-    'count_of_reviews', 'star_rating', 'count_of_star_ratings',
-)
-
-
 def _tse_retailers(product):
-    unsupported_columns = _TSE_LOTUSS_UNSUPPORTED_COMMON
-    conditional_columns = ()
-    if product in {'REF', 'LDY'}:
-        unsupported_columns += ('original_sku_price', 'savings')
-    elif product == 'TV':
-        conditional_columns = ('original_sku_price', 'savings')
-
     return (
-        _retailer('Homepro', include_unassigned=True),
+        _retailer('Homepro', include_unassigned=False),
         _retailer(
-            'Lotuss', include_unassigned=False,
-            unsupported_columns=unsupported_columns,
-            conditional_columns=conditional_columns,
-            optional_if_unconfigured=True,
+            'Lazada', include_unassigned=False,
+            conditional_columns=('original_sku_price', 'savings'),
         ),
     )
 
@@ -167,7 +153,7 @@ EMAIL_REPORT_SOURCES = (
             f'tse_{product.lower()}', 'TSE', product,
             f'dx_tse.dx_tse_{product.lower()}_retail_com',
             'crawl_datetime', 'text', _tse_retailers(product),
-            has_page_type=False, include_unassigned=True,
+            has_page_type=False, include_unassigned=False,
             collection_scope='all',
             email_include_skipped_columns=(
                 _TSE_EMAIL_SKIPPED_ALLOWLIST[product]

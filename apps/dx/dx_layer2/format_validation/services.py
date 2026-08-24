@@ -39,8 +39,8 @@ except (ImportError, AttributeError):
     def get_tse_format_fields(_product_line, _retailer):
         return TSE_FORMAT_FIELDS
 
-    def tse_retailer_include_unassigned(retailer):
-        return str(retailer or '').strip().casefold() == 'homepro'
+    def tse_retailer_include_unassigned(_retailer):
+        return False
 
     def tse_retailer_supports_column(_product_line, _retailer, _column):
         return True
@@ -161,6 +161,66 @@ TSE_LOTUSS_FORMAT_RULES = {
     },
 }
 
+TSE_LAZADA_FORMAT_RULES = {
+    'product_url': {
+        'field': 'product_url',
+        'description': 'Lazada Thailand product URL',
+        'pattern': 'https://www.lazada.co.th/products/...',
+    },
+    'final_sku_price': {
+        'field': 'final_sku_price',
+        'description': 'Thai baht price with optional 1-2 decimals',
+        'pattern': '\u0e3f1,299 / \u0e3f1,299.9 / \u0e3f1,299.00',
+    },
+    'original_sku_price': {
+        'field': 'original_sku_price',
+        'description': 'Optional Thai baht original price',
+        'pattern': '\u0e3f1,299 / \u0e3f1,299.9 / \u0e3f1,299.00',
+    },
+    'savings': {
+        'field': 'savings',
+        'description': 'Optional Lazada discount percentage',
+        'pattern': '-54%',
+    },
+    'count_of_reviews': dict(next(
+        rule for rule in TSE_FORMAT_RULES
+        if rule['field'] == 'count_of_reviews'
+    )),
+    'count_of_star_ratings': dict(next(
+        rule for rule in TSE_FORMAT_RULES
+        if rule['field'] == 'count_of_star_ratings'
+    )),
+    'star_rating': dict(next(
+        rule for rule in TSE_FORMAT_RULES
+        if rule['field'] == 'star_rating'
+    )),
+    'screen_size': {
+        'field': 'screen_size',
+        'description': 'Numeric screen size in inches',
+        'pattern': '32 inch',
+    },
+    'ref_capacity': {
+        'field': 'ref_capacity',
+        'description': 'Refrigerator capacity in cu ft or liters',
+        'pattern': '7.3 cu ft / 113 L',
+    },
+    'ref_refrigerator_type': {
+        'field': 'ref_refrigerator_type',
+        'description': 'Known Lazada refrigerator type when present',
+        'pattern': 'Freezer / Multi Door / Side-by-Side / French Door',
+    },
+    'ldy_capacity': {
+        'field': 'ldy_capacity',
+        'description': 'Laundry capacity in kilograms or liters',
+        'pattern': '10 kg / 8.5 L',
+    },
+    'ldy_loading_type': {
+        'field': 'ldy_loading_type',
+        'description': 'Known Lazada loading type when present',
+        'pattern': 'Front Load / Top Load',
+    },
+}
+
 _TSE_MONEY_PATTERN = re.compile(
     r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{2})?$'
 )
@@ -182,6 +242,13 @@ _TSE_LOTUSS_PRODUCT_URL_PATTERN = re.compile(
     r'^https://www\.lotuss\.com/(?:th|en)/product/'
     r'[^\s/?#]+/?(?:[?#][^\s]*)?$'
 )
+_TSE_LAZADA_MONEY_PATTERN = re.compile(
+    r'^\u0e3f(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{1,2})?$'
+)
+_TSE_LAZADA_SAVINGS_PATTERN = re.compile(r'^-(?:100|[1-9]?\d)%$')
+_TSE_LAZADA_PRODUCT_URL_PATTERN = re.compile(
+    r'^https://www\.lazada\.co\.th/products/[^\s?#]+(?:[?#][^\s]*)?$'
+)
 _TSE_SCREEN_SIZE_PATTERN = re.compile(
     r'^\d+(?:\.\d+)?\s+inch$', re.IGNORECASE
 )
@@ -190,6 +257,9 @@ _TSE_REF_CAPACITY_PATTERN = re.compile(
 )
 _TSE_LDY_CAPACITY_PATTERN = re.compile(
     r'^\d+(?:\.\d+)?\s*kg$', re.IGNORECASE
+)
+_TSE_LAZADA_LDY_CAPACITY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*(?:kg|l|liter)$', re.IGNORECASE
 )
 _TSE_REF_TYPE_VALUES = frozenset({
     'freezer-on-top (top mount)',
@@ -200,6 +270,10 @@ _TSE_REF_TYPE_VALUES = frozenset({
 })
 _TSE_LDY_LOADING_TYPE_VALUES = frozenset({
     'front load', 'top load', 'twin tub',
+})
+_TSE_LAZADA_REF_TYPE_VALUES = frozenset({
+    'freezer', 'multi door', 'side-by-side', 'french door',
+    'freezer-on-bottom (bottom mount)',
 })
 
 
@@ -320,6 +394,109 @@ def _evaluate_lotuss_format_row(row, product_line):
     return errors
 
 
+def _evaluate_lazada_format_row(row, product_line):
+    """Return Lazada-specific format errors derived from the CSV feed."""
+    errors = {}
+
+    product_url = row.get('product_url')
+    if (
+        _has_tse_format_value(product_url)
+        and not _TSE_LAZADA_PRODUCT_URL_PATTERN.fullmatch(
+            str(product_url).strip()
+        )
+    ):
+        errors['product_url'] = 'Invalid Lazada Thailand product URL.'
+
+    final_price = row.get('final_sku_price')
+    if (
+        _has_tse_format_value(final_price)
+        and not _TSE_LAZADA_MONEY_PATTERN.fullmatch(
+            str(final_price).strip()
+        )
+    ):
+        errors['final_sku_price'] = 'Invalid Lazada Thai baht price.'
+
+    original_price = row.get('original_sku_price')
+    savings = row.get('savings')
+    original_present = _has_tse_optional_value(original_price)
+    savings_present = _has_tse_optional_value(savings)
+    if (
+        original_present
+        and not _TSE_LAZADA_MONEY_PATTERN.fullmatch(
+            str(original_price).strip()
+        )
+    ):
+        errors['original_sku_price'] = 'Invalid Lazada original price.'
+    if (
+        savings_present
+        and not _TSE_LAZADA_SAVINGS_PATTERN.fullmatch(str(savings).strip())
+    ):
+        errors['savings'] = 'Invalid Lazada discount percentage.'
+    if savings_present and not original_present:
+        errors['original_sku_price'] = (
+            'original_sku_price is required when savings is present.'
+        )
+
+    for field in ('count_of_reviews', 'count_of_star_ratings'):
+        value = row.get(field)
+        if (
+            _has_tse_format_value(value)
+            and not _TSE_COUNT_PATTERN.fullmatch(str(value).strip())
+        ):
+            errors[field] = 'Review counts must be non-negative integers.'
+
+    rating = row.get('star_rating')
+    if (
+        _has_tse_format_value(rating)
+        and not _TSE_RATING_PATTERN.fullmatch(str(rating).strip())
+    ):
+        errors['star_rating'] = 'star_rating must be between 0 and 5.'
+
+    if product_line == 'tse_tv':
+        screen_size = row.get('screen_size')
+        if (
+            _has_tse_format_value(screen_size)
+            and not _TSE_SCREEN_SIZE_PATTERN.fullmatch(
+                str(screen_size).strip()
+            )
+        ):
+            errors['screen_size'] = 'Invalid Lazada screen size.'
+    elif product_line == 'tse_ref':
+        capacity = row.get('ref_capacity')
+        if (
+            _has_tse_format_value(capacity)
+            and not _TSE_REF_CAPACITY_PATTERN.fullmatch(str(capacity).strip())
+        ):
+            errors['ref_capacity'] = 'Invalid Lazada refrigerator capacity.'
+        refrigerator_type = row.get('ref_refrigerator_type')
+        if (
+            _has_tse_format_value(refrigerator_type)
+            and str(refrigerator_type).strip().casefold()
+            not in _TSE_LAZADA_REF_TYPE_VALUES
+        ):
+            errors['ref_refrigerator_type'] = (
+                'Invalid Lazada refrigerator type.'
+            )
+    elif product_line == 'tse_ldy':
+        capacity = row.get('ldy_capacity')
+        if (
+            _has_tse_format_value(capacity)
+            and not _TSE_LAZADA_LDY_CAPACITY_PATTERN.fullmatch(
+                str(capacity).strip()
+            )
+        ):
+            errors['ldy_capacity'] = 'Invalid Lazada laundry capacity.'
+        loading_type = row.get('ldy_loading_type')
+        if (
+            _has_tse_format_value(loading_type)
+            and str(loading_type).strip().casefold()
+            not in _TSE_LDY_LOADING_TYPE_VALUES
+        ):
+            errors['ldy_loading_type'] = 'Invalid Lazada loading type.'
+
+    return errors
+
+
 def evaluate_tse_format_row(row, product_line=None, retailer=None):
     """Return field-keyed TSE format errors without NULL-rule overlap."""
     retailer_key = str(
@@ -330,6 +507,8 @@ def evaluate_tse_format_row(row, product_line=None, retailer=None):
     )
     if retailer_key == 'lotuss':
         return _evaluate_lotuss_format_row(row, resolved_product_line)
+    if retailer_key == 'lazada':
+        return _evaluate_lazada_format_row(row, resolved_product_line)
 
     errors = {}
     final_price = row.get('final_sku_price')
@@ -1249,7 +1428,14 @@ def _get_description_for_type(rule_type, rule_value, allowed):
 
 
 def _get_tse_static_format_rules(product_line, retailer):
-    if str(retailer or '').strip().casefold() != 'lotuss':
+    retailer_key = str(retailer or '').strip().casefold()
+    if retailer_key == 'lazada':
+        return [
+            dict(TSE_LAZADA_FORMAT_RULES[field])
+            for field in get_tse_format_fields(product_line, retailer)
+            if field in TSE_LAZADA_FORMAT_RULES
+        ]
+    if retailer_key != 'lotuss':
         return [dict(rule) for rule in TSE_FORMAT_RULES]
     return [
         dict(TSE_LOTUSS_FORMAT_RULES[field])

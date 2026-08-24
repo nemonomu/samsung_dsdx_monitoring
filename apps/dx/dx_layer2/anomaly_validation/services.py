@@ -22,8 +22,8 @@ except ImportError:  # Backward-compatible fallback for isolated legacy tests.
 try:
     from apps.common.tse_retail import tse_retailer_include_unassigned
 except (ImportError, AttributeError):
-    def tse_retailer_include_unassigned(retailer):
-        return str(retailer or '').strip().casefold() == 'homepro'
+    def tse_retailer_include_unassigned(_retailer):
+        return False
 
 
 # table 파라미터 화이트리스트

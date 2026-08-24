@@ -17,6 +17,7 @@ from apps.common.tse_retail import (
     get_tse_source,
     normalize_tse_product_line,
     resolve_tse_table,
+    tse_retailer_include_unassigned,
 )
 from config.config import EMAIL_CONFIG
 
@@ -79,8 +80,10 @@ def _get_tse_collection_status(target_date, product_line):
 
     retailers = []
     with dx_connection() as (conn, cursor):
-        include_unassigned = len(retailer_configs) == 1
         for retailer_config in retailer_configs:
+            include_unassigned = tse_retailer_include_unassigned(
+                retailer_config['retailer_key']
+            )
             columns = retailer_config['columns']
             null_parts = [
                 f"SUM(CASE WHEN t.{column} IS NULL OR "
@@ -307,7 +310,9 @@ def _get_tse_null_detail(target_date, product_line, retailer, column):
     )
     if not matched or column not in matched['columns']:
         raise ValueError('허용되지 않은 컬럼입니다.')
-    include_unassigned = len(retailer_configs) == 1
+    include_unassigned = tse_retailer_include_unassigned(
+        matched['retailer_key']
+    )
     account_scope = "LOWER(t.account_name) = LOWER(%s)"
     if include_unassigned:
         account_scope = f"""(

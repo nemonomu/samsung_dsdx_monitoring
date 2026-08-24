@@ -40,6 +40,7 @@ config/create_admin.py
 *.p12
 *.pfx
 *.sql
+!sql/seed_tse_lazada_monitoring.sql
 
 # Nginx (서버에서 직접 설정)
 nginx/

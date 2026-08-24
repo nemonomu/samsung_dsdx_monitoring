@@ -116,35 +116,24 @@ class EmailRegistryTests(unittest.TestCase):
                 retailer['name']: retailer
                 for retailer in configured_source['retailers']
             }
-            self.assertEqual(set(retailers), {'Homepro', 'Lotuss'})
-            self.assertTrue(retailers['Homepro']['include_unassigned'])
+            self.assertEqual(set(retailers), {'Homepro', 'Lazada'})
+            self.assertFalse(retailers['Homepro']['include_unassigned'])
             self.assertFalse(
                 retailers['Homepro']['optional_if_unconfigured']
             )
-            self.assertFalse(retailers['Lotuss']['include_unassigned'])
-            self.assertTrue(
-                retailers['Lotuss']['optional_if_unconfigured']
+            self.assertFalse(retailers['Lazada']['include_unassigned'])
+            self.assertFalse(
+                retailers['Lazada']['optional_if_unconfigured']
             )
-            self.assertEqual(
-                set(retailers['Lotuss']['unsupported_columns'])
-                & {
-                    'count_of_reviews', 'star_rating',
-                    'count_of_star_ratings',
-                },
-                {
-                    'count_of_reviews', 'star_rating',
-                    'count_of_star_ratings',
-                },
-            )
+            self.assertEqual(retailers['Lazada']['unsupported_columns'], ())
         self.assertEqual(
             tse_sources['tse_tv']['retailers'][1]['conditional_columns'],
             ('original_sku_price', 'savings'),
         )
         for key in ('tse_ref', 'tse_ldy'):
             self.assertEqual(
-                set(tse_sources[key]['retailers'][1]['unsupported_columns'])
-                & {'original_sku_price', 'savings'},
-                {'original_sku_price', 'savings'},
+                tse_sources[key]['retailers'][1]['conditional_columns'],
+                ('original_sku_price', 'savings'),
             )
 
 
@@ -353,7 +342,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [
                 ('sku', 'homepro', False),
-                ('sku', 'lotuss', False),
+                ('sku', 'lazada', False),
             ]},
             {'fetchone': ('homepro_20260814',)},
             {'fetchone': (300, 300, 0, 300, 0)},
@@ -371,7 +360,7 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(configured['total_count'], 345)
         self.assertEqual(
             [retailer['retailer'] for retailer in configured['retailers']],
-            ['Homepro', 'Lotuss'],
+            ['Homepro', 'Lazada'],
         )
         self.assertEqual(
             [retailer['total_count'] for retailer in configured['retailers']],
@@ -379,14 +368,14 @@ class EmailReportDataTests(unittest.TestCase):
         )
         homepro_latest_sql = cursor.calls[1][0]
         homepro_count_sql = cursor.calls[2][0]
-        lotuss_latest_sql = cursor.calls[3][0]
-        lotuss_count_sql = cursor.calls[4][0]
+        lazada_latest_sql = cursor.calls[3][0]
+        lazada_count_sql = cursor.calls[4][0]
         self.assertNotIn('source.account_name IS NULL', homepro_latest_sql)
-        self.assertIn('source.account_name IS NULL', homepro_count_sql)
-        self.assertNotIn('source.account_name IS NULL', lotuss_latest_sql)
-        self.assertNotIn('source.account_name IS NULL', lotuss_count_sql)
+        self.assertNotIn('source.account_name IS NULL', homepro_count_sql)
+        self.assertNotIn('source.account_name IS NULL', lazada_latest_sql)
+        self.assertNotIn('source.account_name IS NULL', lazada_count_sql)
 
-    def test_inactive_lotuss_config_is_omitted_but_tse_source_completes(self):
+    def test_missing_lazada_config_fails_closed(self):
         registry = load_registry()
         tse_source = next(
             configured_source
@@ -404,16 +393,11 @@ class EmailReportDataTests(unittest.TestCase):
             date(2026, 8, 18), sources=(tse_source,)
         )
 
-        self.assertTrue(result['success'])
-        self.assertTrue(result['complete'])
-        self.assertEqual(result['errors'], [])
-        configured = result['sources'][0]
-        self.assertEqual(configured['total_count'], 300)
-        self.assertEqual(
-            [retailer['retailer'] for retailer in configured['retailers']],
-            ['Homepro'],
-        )
-        self.assertEqual(len(cursor.calls), 3)
+        self.assertFalse(result['success'])
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['sources'], [])
+        self.assertEqual(result['errors'][0]['source'], 'tse_ref')
+        self.assertEqual(len(cursor.calls), 1)
 
     def test_missing_homepro_config_still_marks_tse_source_incomplete(self):
         registry = load_registry()
@@ -423,7 +407,7 @@ class EmailReportDataTests(unittest.TestCase):
             if configured_source['key'] == 'tse_ref'
         )
         cursor = ScriptedCursor([
-            {'fetchall': [('sku', 'lotuss', False)]},
+            {'fetchall': [('sku', 'lazada', False)]},
         ])
         service = load_service(cursor)
 
@@ -437,7 +421,7 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(result['errors'][0]['source'], 'tse_ref')
         self.assertEqual(len(cursor.calls), 1)
 
-    def test_active_but_unusable_lotuss_config_still_fails_closed(self):
+    def test_active_but_unusable_lazada_config_still_fails_closed(self):
         registry = load_registry()
         tse_source = next(
             configured_source
@@ -446,7 +430,7 @@ class EmailReportDataTests(unittest.TestCase):
         )
         cursor = ScriptedCursor([{'fetchall': [
             ('sku', 'homepro', False),
-            ('count_of_reviews', 'lotuss', False),
+            ('product_url', 'lazada', True),
         ]}])
         service = load_service(cursor)
 
@@ -460,7 +444,7 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(result['errors'][0]['source'], 'tse_ref')
         self.assertEqual(len(cursor.calls), 1)
 
-    def test_lotuss_unsupported_columns_are_omitted_but_partial_fields_remain(self):
+    def test_lazada_supported_columns_and_email_skips_are_included(self):
         registry = load_registry()
         tse_source = next(
             configured_source
@@ -473,42 +457,47 @@ class EmailReportDataTests(unittest.TestCase):
             ('original_sku_price', 'homepro', True),
             ('savings', 'homepro', True),
             ('ref_refrigerator_type', 'homepro', True),
-            ('sku', 'lotuss', False),
-            ('count_of_reviews', 'lotuss', False),
-            ('star_rating', 'lotuss', False),
-            ('count_of_star_ratings', 'lotuss', False),
-            ('original_sku_price', 'lotuss', True),
-            ('savings', 'lotuss', True),
-            ('ref_refrigerator_type', 'lotuss', True),
+            ('sku', 'lazada', False),
+            ('count_of_reviews', 'lazada', False),
+            ('star_rating', 'lazada', False),
+            ('count_of_star_ratings', 'lazada', False),
+            ('original_sku_price', 'lazada', True),
+            ('savings', 'lazada', True),
+            ('ref_refrigerator_type', 'lazada', True),
         ]}])
         service = load_service(cursor)
 
         configured = service._configured_retailers(cursor, tse_source)
         homepro_columns = configured[0]['columns']
-        lotuss_columns = configured[1]['columns']
+        lazada_columns = configured[1]['columns']
 
         self.assertIn('count_of_reviews', homepro_columns)
         self.assertIn('original_sku_price', homepro_columns)
         self.assertIn('savings', homepro_columns)
         self.assertIn('ref_refrigerator_type', homepro_columns)
         self.assertEqual(
-            lotuss_columns, ('item', 'sku', 'ref_refrigerator_type'),
+            lazada_columns,
+            (
+                'item', 'sku', 'count_of_reviews', 'star_rating',
+                'count_of_star_ratings', 'original_sku_price', 'savings',
+                'ref_refrigerator_type',
+            ),
         )
 
-    def test_lotuss_tv_discount_columns_use_conditional_denominator(self):
+    def test_lazada_discount_columns_use_conditional_denominator(self):
         registry = load_registry()
         tse_source = next(
             configured_source
             for configured_source in registry.EMAIL_REPORT_SOURCES
             if configured_source['key'] == 'tse_tv'
         )
-        lotuss = tse_source['retailers'][1]
+        lazada = tse_source['retailers'][1]
         service = load_service(ScriptedCursor([]))
 
         for column in ('original_sku_price', 'savings'):
             with self.subTest(column=column):
                 denominator, missing, remark = service._column_metrics(
-                    tse_source, lotuss, column,
+                    tse_source, lazada, column,
                 )
                 self.assertIn('source.original_sku_price', denominator)
                 self.assertIn('source.savings', denominator)

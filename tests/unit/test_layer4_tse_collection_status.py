@@ -77,7 +77,7 @@ class Layer4TseCollectionStatusTests(unittest.TestCase):
         self.assertIn('ORDER BY id DESC LIMIT 1', sql)
         self.assertNotIn('bad;column', sql)
         self.assertIn('LEFT(TRIM(t.crawl_datetime), 10) = %s', sql)
-        self.assertIn('OR t.account_name IS NULL', sql)
+        self.assertNotIn('OR t.account_name IS NULL', sql)
         self.assertEqual(
             params,
             ['homepro', '2026-08-10', 'homepro', '2026-08-10'],
@@ -109,7 +109,7 @@ class Layer4TseCollectionStatusTests(unittest.TestCase):
         sql, params = cursor.calls[0]
         self.assertIn('ORDER BY id DESC LIMIT 1', sql)
         self.assertIn('LEFT(TRIM(t.crawl_datetime), 10) = %s', sql)
-        self.assertIn('OR t.account_name IS NULL', sql)
+        self.assertNotIn('OR t.account_name IS NULL', sql)
         self.assertEqual(
             params,
             ['homepro', '2026-08-10', 'homepro', '2026-08-10'],

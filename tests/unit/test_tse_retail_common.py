@@ -69,10 +69,38 @@ class TseRetailCommonTests(unittest.TestCase):
         self.assertEqual(20, TSE_LOTUSS_CRITICAL_DEVIATION)
         self.assertEqual('Lotuss', display_tse_retailer('lotuss'))
         self.assertEqual('Lotuss', display_tse_retailer('LOTUSS'))
+        self.assertEqual('Lazada', display_tse_retailer('lazada'))
+        self.assertEqual('Lazada', display_tse_retailer('LAZADA'))
 
     def test_retailer_policy_is_not_based_on_config_count(self):
-        self.assertTrue(tse_retailer_include_unassigned('Homepro'))
+        self.assertFalse(tse_retailer_include_unassigned('Homepro'))
         self.assertFalse(tse_retailer_include_unassigned('Lotuss'))
+        self.assertFalse(tse_retailer_include_unassigned('Lazada'))
+
+    def test_lazada_format_and_crossfield_policy_matches_csv_contract(self):
+        self.assertNotIn(
+            'item', get_tse_format_fields('tse_tv', 'Lazada')
+        )
+        self.assertIn(
+            'screen_size', get_tse_format_fields('tse_tv', 'Lazada')
+        )
+        self.assertIn(
+            'ref_refrigerator_type',
+            get_tse_format_fields('tse_ref', 'Lazada'),
+        )
+        self.assertIn(
+            'ldy_loading_type',
+            get_tse_format_fields('tse_ldy', 'Lazada'),
+        )
+        self.assertTrue(tse_crossfield_rule_supported(
+            'tse_tv', 'Lazada', 'review_count_match'
+        ))
+        self.assertTrue(tse_crossfield_rule_supported(
+            'tse_tv', 'Lazada', 'review_zero_pair'
+        ))
+        self.assertTrue(tse_crossfield_rule_supported(
+            'tse_tv', 'Lazada', 'savings_rate_match'
+        ))
 
     def test_lotuss_column_and_format_capabilities_are_product_specific(self):
         self.assertFalse(tse_retailer_supports_column(

@@ -18,6 +18,7 @@ from apps.common.retail_columns import (
 )
 from apps.common.tse_retail import (
     TSE_COUNTRY,
+    TSE_LAZADA_RETAILER,
     TSE_LOTUSS_RETAILER,
     display_tse_retailer,
     get_tse_editable_columns,
@@ -181,6 +182,7 @@ def evaluate_tse_row(row):
     downstream savings comparisons for that row.
     """
     errors = set()
+    retailer_key = str(row.get('account_name') or '').strip().casefold()
 
     review_count = parse_tse_number(row.get('count_of_reviews'))
     star_count = parse_tse_number(row.get('count_of_star_ratings'))
@@ -226,11 +228,19 @@ def evaluate_tse_row(row):
     if savings_amount is not None and abs(savings_amount) != difference:
         errors.add('savings_amount_match')
     if savings_rate is not None:
-        calculated_rate = (
-            (difference / original_price) * Decimal('100')
-        ).to_integral_value(rounding=ROUND_FLOOR)
-        if abs(savings_rate) != calculated_rate:
-            errors.add('savings_rate_match')
+        raw_rate = (difference / original_price) * Decimal('100')
+        if retailer_key == TSE_LAZADA_RETAILER:
+            # Lazada calculates the displayed percentage before its displayed
+            # prices are rounded.  The CSV can therefore differ by less than
+            # one percentage point from a calculation using displayed prices.
+            if abs(abs(savings_rate) - raw_rate) > Decimal('1'):
+                errors.add('savings_rate_match')
+        else:
+            calculated_rate = raw_rate.to_integral_value(
+                rounding=ROUND_FLOOR
+            )
+            if abs(savings_rate) != calculated_rate:
+                errors.add('savings_rate_match')
 
     return errors
 

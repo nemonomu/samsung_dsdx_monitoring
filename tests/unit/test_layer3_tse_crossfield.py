@@ -125,6 +125,15 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
         errors = tse_services.evaluate_tse_row(_valid_row(savings='unknown'))
         self.assertEqual(errors, {'savings_format'})
 
+    def test_lazada_percentage_allows_display_price_rounding_tolerance(self):
+        errors = tse_services.evaluate_tse_row(_valid_row(
+            account_name='Lazada',
+            final_sku_price='\u0e3f16,090',
+            original_sku_price='\u0e3f28,990',
+            savings='-45%',
+        ))
+        self.assertNotIn('savings_rate_match', errors)
+
 
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
     def setUp(self):
