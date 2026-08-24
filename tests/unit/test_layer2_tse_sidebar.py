@@ -42,7 +42,7 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             groups = context.build_sidebar_groups(
                 'null_validation', focus='tse_ref_retail'
             )
-        null_group, format_group, anomaly_group = groups
+        null_group, format_group, anomaly_group = groups[:3]
         tse_parent = next(
             item for item in null_group['items']
             if item['name'] == 'TSE Retail'
@@ -74,12 +74,11 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             [item['name'] for item in format_group['items']],
         )
         self.assertEqual(
-            ['SEA Retail', 'TSE Retail', 'YouTube', 'NULL 검수 로그'],
+            ['SEA Retail', 'TSE Retail', 'YouTube'],
             [item['name'] for item in anomaly_group['items']],
         )
-        self.assertEqual(
-            '/dx/layer2/review-log/', anomaly_group['items'][-1]['href']
-        )
+        self.assertEqual('NULL 검수 로그', groups[3]['label'])
+        self.assertEqual('/dx/layer2/review-log/', groups[3]['href'])
 
         sea_parent = null_group['items'][0]
         self.assertEqual('SEA Retail', sea_parent['name'])
@@ -180,13 +179,13 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
         context, stubs = self._load_context(['tv_retail', 'youtube'])
 
         with patch.dict('sys.modules', stubs):
-            anomaly_group = context.build_sidebar_groups(
-                'null_review_log'
-            )[2]
+            groups = context.build_sidebar_groups('null_review_log')
 
-        self.assertTrue(anomaly_group['active'])
-        self.assertTrue(anomaly_group['expanded'])
-        self.assertTrue(anomaly_group['items'][-1]['active'])
+        anomaly_group = groups[2]
+        review_log_item = groups[3]
+        self.assertFalse(anomaly_group['active'])
+        self.assertFalse(anomaly_group['expanded'])
+        self.assertTrue(review_log_item['active'])
 
 
 if __name__ == '__main__':

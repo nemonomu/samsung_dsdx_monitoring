@@ -11,6 +11,13 @@
             <span class="sidebar-text">대시보드</span>
         </a>
         {% for group in sidebar_groups %}
+        {% if group.href %}
+        <a href="{{ group.href }}{% if target_date %}?date={{ target_date|urlencode }}{% endif %}"
+           class="sidebar-item {% if group.active %}active{% endif %}">
+            <span class="sidebar-icon">{{ group.icon }}</span>
+            <span class="sidebar-text">{{ group.label }}</span>
+        </a>
+        {% else %}
         <div class="sidebar-group {% if group.expanded %}expanded{% endif %}">
             <div class="sidebar-item-row {% if group.active %}active{% endif %}" onclick="toggleSidebarGroup(this)">
                 <span class="sidebar-icon">{{ group.icon }}</span>
@@ -50,6 +57,7 @@
                 {% endfor %}
             </div>
         </div>
+        {% endif %}
         {% endfor %}
     </nav>
 </div>
