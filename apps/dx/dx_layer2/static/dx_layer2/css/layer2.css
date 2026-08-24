@@ -697,6 +697,16 @@ td.cell-selected {
     outline-offset: -2px;
 }
 
+td.cell-review-selected {
+    background: #dbeafe !important;
+    outline: 2px solid #2563eb;
+    outline-offset: -2px;
+}
+
+td.cell-review-selected:hover {
+    background: #bfdbfe !important;
+}
+
 td.cell-pending {
     background: #fef3c7 !important;
     border-bottom: 2px solid #f59e0b !important;
@@ -807,6 +817,7 @@ td.cell-normal:hover {
 }
 
 .btn-null-normal:hover { opacity: 0.85; }
+.btn-null-normal:disabled { opacity: 0.55; cursor: wait; }
 
 .btn-null-revert {
     padding: 5px 14px;

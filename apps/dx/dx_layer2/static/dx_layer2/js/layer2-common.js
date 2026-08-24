@@ -147,7 +147,9 @@ var detailViewState = {
     type: null,
     tableParam: null,
     sortColumns: [],
-    originalData: null
+    originalData: null,
+    reviewAnchorCell: null,
+    reviewSelectedCells: []
 };
 
 function getColumnConfig(type, tableParam) {
@@ -566,6 +568,8 @@ function _buildDetailTable() {
     if (isInlineMode() && detailViewState.editableCols && detailViewState.editableCols.size > 0) {
         detailViewState.pendingEdits = {};
         detailViewState.selectedCell = null;
+        detailViewState.reviewAnchorCell = null;
+        detailViewState.reviewSelectedCells = [];
 
         var tableEl = detailViewState.table.getTable();
 
@@ -577,16 +581,37 @@ function _buildDetailTable() {
             if (prev) prev.classList.remove('cell-selected');
             _hideNullReviewBar();
             if (td) {
-                td.classList.add('cell-selected');
-                detailViewState.selectedCell = td;
                 // null-value이면서 아직 수정하지 않은 셀만 정상 처리 바 표시
                 if (td.classList.contains('null-value') && !td.classList.contains('cell-pending')) {
-                    _showNullReviewBar(td, 'normal');
+                    if (e.shiftKey && detailViewState.reviewAnchorCell) {
+                        e.preventDefault();
+                        var rangeCells = _getNullReviewRangeCells(
+                            tableEl, detailViewState.reviewAnchorCell, td
+                        );
+                        if (rangeCells.length > 0) {
+                            _setNullReviewSelection(rangeCells, false);
+                        } else {
+                            _setNullReviewSelection([td], true);
+                        }
+                    } else {
+                        _setNullReviewSelection([td], true);
+                    }
+                    detailViewState.selectedCell = (
+                        detailViewState.reviewSelectedCells.length === 1
+                            ? td : null
+                    );
+                    _showNullReviewBar(detailViewState.reviewSelectedCells);
+                } else {
+                    _clearNullReviewSelection();
+                    td.classList.add('cell-selected');
+                    detailViewState.selectedCell = td;
                 }
             } else if (nullTd) {
+                _clearNullReviewSelection();
                 detailViewState.selectedCell = null;
                 // cell-normal은 무시 (정상처리 완료된 셀)
             } else {
+                _clearNullReviewSelection();
                 detailViewState.selectedCell = null;
             }
         });
@@ -596,6 +621,7 @@ function _buildDetailTable() {
             if (!e.target.closest('#detail-table-area table') && !e.target.closest('#null-review-bar')) {
                 var sel = tableEl.querySelector('.cell-selected');
                 if (sel) sel.classList.remove('cell-selected');
+                _clearNullReviewSelection();
                 detailViewState.selectedCell = null;
                 _hideNullReviewBar();
             }
@@ -823,24 +849,70 @@ function _updateDetailData(rowId, colName, newVal) {
 }
 
 // ==================== NULL 정상 처리 ====================
-function _showNullReviewBar(td, mode) {
+function _clearNullReviewSelection() {
+    (detailViewState.reviewSelectedCells || []).forEach(function(cell) {
+        if (cell && cell.classList) cell.classList.remove('cell-review-selected');
+    });
+    detailViewState.reviewSelectedCells = [];
+    detailViewState.reviewAnchorCell = null;
+}
+
+function _setNullReviewSelection(cells, updateAnchor) {
+    (detailViewState.reviewSelectedCells || []).forEach(function(cell) {
+        if (cell && cell.classList) cell.classList.remove('cell-review-selected');
+    });
+    detailViewState.reviewSelectedCells = cells.slice();
+    detailViewState.reviewSelectedCells.forEach(function(cell) {
+        cell.classList.add('cell-review-selected');
+    });
+    if (updateAnchor && cells.length > 0) {
+        detailViewState.reviewAnchorCell = cells[0];
+    }
+}
+
+function _getNullReviewRangeCells(tableEl, anchorCell, targetCell) {
+    if (!anchorCell || !targetCell || !anchorCell.isConnected) return [];
+    if (anchorCell.dataset.col !== targetCell.dataset.col) return [];
+    var candidates = Array.from(
+        tableEl.querySelectorAll('tbody td.null-value[data-row-id][data-col]')
+    ).filter(function(cell) {
+        return cell.dataset.col === targetCell.dataset.col
+            && !cell.classList.contains('cell-pending');
+    });
+    var start = candidates.indexOf(anchorCell);
+    var end = candidates.indexOf(targetCell);
+    if (start < 0 || end < 0) return [];
+    var from = Math.min(start, end);
+    var to = Math.max(start, end);
+    return candidates.slice(from, to + 1);
+}
+
+function _showNullReviewBar(cells) {
     _hideNullReviewBar();
+    cells = Array.isArray(cells) ? cells : [cells];
+    cells = cells.filter(Boolean);
+    if (cells.length === 0) return;
     var bar = document.createElement('div');
     bar.id = 'null-review-bar';
     bar.className = 'null-review-bar';
-    var colName = td.dataset.col || '';
-    var rowId = td.dataset.rowId || '';
+    var colName = cells[0].dataset.col || '';
+    var rowId = cells[0].dataset.rowId || '';
     var errLabel = detailViewState.type === 'format' ? '형식 오류' : 'NULL 오류';
-    var infoText = colName + ' (ID: ' + rowId + ') — ' + errLabel;
+    var infoText = cells.length > 1
+        ? colName + ' ' + cells.length + '건 선택 — ' + errLabel
+        : colName + ' (ID: ' + rowId + ') — ' + errLabel + ' · Shift+클릭으로 범위 선택';
     var info = document.createElement('span');
     info.className = 'null-review-info';
     info.textContent = infoText;
     var btn = document.createElement('button');
     btn.className = 'btn-null-normal';
-    btn.textContent = '확인';
+    btn.textContent = cells.length > 1 ? cells.length + '건 확인' : '확인';
     btn.addEventListener('click', function() {
         _showReviewDialog(function(reason, memo) {
-            _submitNullReview(td, 'normal', memo, reason);
+            _submitNullReviews(cells, 'normal', memo, reason);
+        }, {
+            title: cells.length > 1 ? cells.length + '건 일괄 확인' : '확인',
+            defaultReason: cells.length > 1 ? '해당값정상 확인' : ''
         });
     });
     bar.appendChild(info);
@@ -855,11 +927,12 @@ function _hideNullReviewBar() {
 }
 
 // 정상 처리 다이얼로그 (이유 선택 필수 + 메모 선택)
-function _showReviewDialog(callback) {
+function _showReviewDialog(callback, options) {
+    options = options || {};
     var overlay = document.createElement('div');
     overlay.className = 'memo-dialog-overlay';
     overlay.innerHTML = '<div class="memo-dialog">'
-        + '<div class="memo-dialog-title">확인</div>'
+        + '<div class="memo-dialog-title">' + esc(options.title || '확인') + '</div>'
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">이유 <span style="color:#dc2626;">*</span></label>'
         + '<select class="memo-dialog-select" id="review-reason-select"><option value="">불러오는 중...</option></select></div>'
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모</label>'
@@ -891,6 +964,11 @@ function _showReviewDialog(callback) {
                     opt.textContent = r.text;
                     sel.appendChild(opt);
                 });
+                if (options.defaultReason && reasons.some(function(r) {
+                    return r.text === options.defaultReason;
+                })) {
+                    sel.value = options.defaultReason;
+                }
             }
         })
         .catch(function() {
@@ -952,53 +1030,98 @@ function _showMemoDialog(callback, title, placeholder) {
 }
 
 function _submitNullReview(td, status, memo, reason) {
-    var rowId = td.dataset.rowId || (td.dataset.normalKey && td.dataset.normalKey.split('_')[0]);
-    var colName = td.dataset.col || (td.dataset.normalKey && td.dataset.normalKey.split('_').slice(1).join('_'));
-    if (!rowId || !colName) return;
+    return _submitNullReviews([td], status, memo, reason);
+}
 
-    fetch('/dx/layer2/api/null-review/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({
-            table_name: detailViewState.actualTable,
-            record_id: parseInt(rowId),
-            column_name: colName,
-            status: status,
-            memo: memo || '',
-            reason: reason || '',
-            crawl_date: detailViewState.crawlDate || '',
-            correction_type: detailViewState.type === 'format' ? 'format' : 'null'
-        })
-    }).then(function(r) { return r.json(); })
-    .then(function(res) {
-        if (res.success) {
-            _hideNullReviewBar();
-            if (status === 'normal') {
-                // 정상 처리 → normalReviews에 추가 + 셀 스타일 변경
-                var nrKey = rowId + '_' + colName;
-                if (!detailViewState.normalReviews) detailViewState.normalReviews = {};
-                detailViewState.normalReviews[nrKey] = { memo: memo, reason: reason || '', created_id: '', created_at: '' };
-                td.className = 'cell-normal';
-                td.dataset.normalKey = nrKey;
-                td.removeAttribute('data-editable');
-                var badge = td.querySelector('.normal-badge');
-                if (!badge) {
-                    var span = document.createElement('span');
-                    span.className = 'normal-badge';
-                    span.textContent = '정상';
-                    td.appendChild(span);
+function _markNullReviewSuccess(td, rowId, colName, memo, reason) {
+    var nrKey = rowId + '_' + colName;
+    if (!detailViewState.normalReviews) detailViewState.normalReviews = {};
+    detailViewState.normalReviews[nrKey] = {
+        memo: memo,
+        reason: reason || '',
+        created_id: '',
+        created_at: ''
+    };
+    td.className = 'cell-normal';
+    td.dataset.normalKey = nrKey;
+    td.removeAttribute('data-editable');
+    var badge = td.querySelector('.normal-badge');
+    if (!badge) {
+        var span = document.createElement('span');
+        span.className = 'normal-badge';
+        span.textContent = '정상';
+        td.appendChild(span);
+    }
+    var tip = '정상 처리됨';
+    if (reason) tip += ' | 이유: ' + reason;
+    if (memo) tip += ' | 메모: ' + memo;
+    td.title = tip;
+}
+
+function _submitNullReviews(cells, status, memo, reason) {
+    cells = (cells || []).filter(function(td) {
+        return td && td.dataset && td.dataset.rowId && td.dataset.col;
+    });
+    if (cells.length === 0) return Promise.resolve([]);
+
+    var button = document.querySelector('#null-review-bar .btn-null-normal');
+    if (button) {
+        button.disabled = true;
+        button.textContent = '처리 중...';
+    }
+
+    var requests = cells.map(function(td) {
+        var rowId = td.dataset.rowId || (td.dataset.normalKey && td.dataset.normalKey.split('_')[0]);
+        var colName = td.dataset.col || (td.dataset.normalKey && td.dataset.normalKey.split('_').slice(1).join('_'));
+        return fetch('/dx/layer2/api/null-review/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({
+                table_name: detailViewState.actualTable,
+                record_id: parseInt(rowId),
+                column_name: colName,
+                status: status,
+                memo: memo || '',
+                reason: reason || '',
+                crawl_date: detailViewState.crawlDate || '',
+                correction_type: detailViewState.type === 'format' ? 'format' : 'null'
+            })
+        }).then(function(r) { return r.json(); })
+        .then(function(res) {
+            return { td: td, rowId: rowId, colName: colName, response: res };
+        }).catch(function() {
+            return {
+                td: td, rowId: rowId, colName: colName,
+                response: { error: '네트워크 오류' }
+            };
+        });
+    });
+
+    return Promise.all(requests).then(function(results) {
+        var successCount = 0;
+        var failCount = 0;
+        results.forEach(function(result) {
+            if (result.response.success) {
+                successCount++;
+                if (status === 'normal') {
+                    _markNullReviewSuccess(
+                        result.td, result.rowId, result.colName, memo, reason
+                    );
                 }
-                var tip = '정상 처리됨';
-                if (reason) tip += ' | 이유: ' + reason;
-                if (memo) tip += ' | 메모: ' + memo;
-                td.title = tip;
-                showToast('확인 처리 완료', 'success');
+            } else {
+                failCount++;
             }
-        } else {
-            showToast(res.error || '처리 실패', 'error');
+        });
+        _hideNullReviewBar();
+        _clearNullReviewSelection();
+        detailViewState.selectedCell = null;
+        if (successCount > 0) {
+            showToast(successCount + '건 확인 처리 완료', 'success');
         }
-    }).catch(function() {
-        showToast('네트워크 오류', 'error');
+        if (failCount > 0) {
+            showToast(failCount + '건 처리 실패', 'error');
+        }
+        return results;
     });
 }
 
