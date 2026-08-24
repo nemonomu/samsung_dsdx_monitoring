@@ -5,6 +5,58 @@ Layer 4 보고서 Services — 보고서 데이터 조회
 from apps.common.db import dx_connection
 
 
+def _merge_tse_auto_null_reviews(
+        auto_reviews, type_summary, reason_summary, table_summary, details):
+    """Merge virtual daily carry-forward records into the report payload."""
+    if not auto_reviews:
+        return
+
+    null_summary = type_summary.setdefault('null_check', {})
+    null_summary['normal'] = null_summary.get('normal', 0) + len(auto_reviews)
+
+    auto_reason = '해당값정상 확인 (자동 적용)'
+    reason_row = next((
+        row for row in reason_summary
+        if row['reason'] == auto_reason
+        and row['correction_type'] == 'null_check'
+    ), None)
+    if reason_row is None:
+        reason_row = {
+            'reason': auto_reason,
+            'correction_type': 'null_check',
+            'count': 0,
+        }
+        reason_summary.append(reason_row)
+    reason_row['count'] += len(auto_reviews)
+
+    for review in auto_reviews:
+        table_name = review['table_name']
+        table_null = table_summary.setdefault(
+            table_name, {}
+        ).setdefault('null_check', {})
+        table_null['normal'] = table_null.get('normal', 0) + 1
+        details.append({
+            'correction_type': 'null_check',
+            'table_name': table_name,
+            'column_name': review['column_name'],
+            'record_id': review['record_id'],
+            'old_value': None,
+            'new_value': None,
+            'status': 'normal',
+            'memo': review.get('memo', ''),
+            'reason': auto_reason,
+            'created_id': review.get('created_id', ''),
+            'retailer': review.get('retailer', ''),
+            'item': review.get('item', ''),
+            'rule_id': None,
+            'rule_name': '',
+            'detail_code': '',
+            'auto_applied': True,
+            'original_crawl_date': review.get('original_crawl_date', ''),
+            'original_created_at': review.get('original_created_at', ''),
+        })
+
+
 def get_report_data(target_date):
     """보고서 데이터 조회"""
     with dx_connection() as (conn, cursor):
@@ -124,6 +176,20 @@ def get_report_data(target_date):
                 'rule_name': row[13] or '',
                 'detail_code': row[14] or '',
             })
+
+        from apps.dx.dx_layer2.null_validation.services import (
+            get_tse_auto_applied_null_reviews,
+        )
+        auto_null_reviews = get_tse_auto_applied_null_reviews(
+            cursor, target_date
+        )
+        _merge_tse_auto_null_reviews(
+            auto_null_reviews,
+            type_summary,
+            reason_summary,
+            table_summary,
+            details,
+        )
 
         cursor.execute("""
             SELECT h.table_name, h.item_id,

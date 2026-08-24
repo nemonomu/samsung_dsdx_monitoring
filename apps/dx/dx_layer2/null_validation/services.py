@@ -464,7 +464,7 @@ def _build_tse_country_scope(alias='source'):
     return f'({country_column} = %s OR {null_condition})'
 
 
-TSE_NORMAL_REVIEW_RECHECK_DAYS = 7
+TSE_NORMAL_REVIEW_RECHECK_DAYS = 14
 TSE_NORMAL_VALUE_REASON = '해당값정상 확인'
 TSE_NORMAL_VALUE_REASON_ALIASES = (
     TSE_NORMAL_VALUE_REASON,
@@ -534,16 +534,18 @@ def _load_tse_recent_normal_reviews(
             'created_at': row[4],
             'reason': row[5],
             'crawl_date': review_date,
+            'item': row[7],
+            'retailer_sku_name': row[8],
             'identity': _tse_review_identity(row[7], row[8]),
         })
     return reviews
 
 
-def _is_tse_review_suppressed(record, column, row_date, reviews):
-    """Hide the same reviewed identity until its seven-day recheck date."""
+def _find_tse_suppressing_review(record, column, row_date, reviews):
+    """Return the review that suppresses this identity, if one is active."""
     effective_date = _tse_review_date(row_date)
     if effective_date is None:
-        return False
+        return None
     identity = _tse_review_identity(
         record.get('item'), record.get('retailer_sku_name')
     )
@@ -555,12 +557,164 @@ def _is_tse_review_suppressed(record, column, row_date, reviews):
         if elapsed_days < 0 or elapsed_days >= TSE_NORMAL_REVIEW_RECHECK_DAYS:
             continue
         if elapsed_days == 0 and record_id == str(review['record_id']):
-            return True
+            return review
         if review.get('reason') not in TSE_NORMAL_VALUE_REASON_ALIASES:
             continue
         if identity is not None and identity == review['identity']:
-            return True
-    return False
+            return review
+    return None
+
+
+def _is_tse_review_suppressed(record, column, row_date, reviews):
+    """Hide the same reviewed identity until its fourteen-day recheck."""
+    return _find_tse_suppressing_review(
+        record, column, row_date, reviews
+    ) is not None
+
+
+def get_tse_auto_applied_null_reviews(cursor, target_date):
+    """Return prior normal reviews automatically applied to today's NULLs."""
+    runtime = _get_tse_runtime()
+    if not runtime:
+        return []
+    tse_config = runtime['load_columns']()
+    target_date_text = str(target_date)
+    auto_logs = []
+    seen = set()
+
+    for product_line, source in runtime['sources'].items():
+        canonical_table = source['table_name']
+        country_scope = _build_tse_country_scope()
+        for display_name, retailer_config in tse_config.get(
+                product_line, {}).items():
+            required_columns = _safe_tse_required_columns(
+                product_line, retailer_config, runtime
+            )
+            if not required_columns:
+                continue
+
+            retailer_value = retailer_config['retailer']
+            include_unassigned = tse_retailer_include_unassigned(
+                retailer_value
+            )
+            account_scope = "LOWER(source.account_name) = LOWER(%s)"
+            if include_unassigned:
+                account_scope = f"""(
+                    {account_scope}
+                    OR source.account_name IS NULL
+                    OR TRIM(CAST(source.account_name AS TEXT)) = ''
+                )"""
+
+            select_columns = []
+            for column_name in (
+                    'id', 'item', 'retailer_sku_name', 'crawl_datetime',
+                    *required_columns):
+                if column_name not in select_columns:
+                    select_columns.append(column_name)
+            select_sql = ', '.join(
+                f'source.{column_name}' for column_name in select_columns
+            )
+            cursor.execute(f"""
+                WITH latest_batch AS (
+                    SELECT source.batch_id
+                    FROM {canonical_table} source
+                    WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                      AND LOWER(source.account_name) = LOWER(%s)
+                      AND {country_scope}
+                    ORDER BY source.id DESC
+                    LIMIT 1
+                )
+                SELECT {select_sql}
+                FROM {canonical_table} source
+                WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                  AND {account_scope}
+                  AND {country_scope}
+                  AND source.batch_id IS NOT DISTINCT FROM
+                      (SELECT batch_id FROM latest_batch)
+                  AND EXISTS (SELECT 1 FROM latest_batch)
+                ORDER BY source.id
+            """, (
+                target_date_text, retailer_value, TSE_COUNTRY,
+                target_date_text, retailer_value, TSE_COUNTRY,
+            ))
+            current_rows = [
+                dict(zip(select_columns, row)) for row in cursor.fetchall()
+            ]
+            if not current_rows:
+                continue
+
+            reviews = _load_tse_recent_normal_reviews(
+                cursor,
+                canonical_table,
+                retailer_value,
+                required_columns,
+                target_date - timedelta(
+                    days=TSE_NORMAL_REVIEW_RECHECK_DAYS - 1
+                ),
+                target_date - timedelta(days=1),
+            )
+            if not reviews:
+                continue
+
+            for record in current_rows:
+                identity = _tse_review_identity(
+                    record.get('item'), record.get('retailer_sku_name')
+                )
+                if identity is None:
+                    continue
+                for column_name in required_columns:
+                    if not _is_field_null(record.get(column_name), 'both'):
+                        continue
+                    review = _find_tse_suppressing_review(
+                        record, column_name, target_date, reviews
+                    )
+                    if not review or review['crawl_date'] == target_date:
+                        continue
+                    dedupe_key = (
+                        canonical_table, str(retailer_value).casefold(),
+                        identity, column_name,
+                    )
+                    if dedupe_key in seen:
+                        continue
+                    seen.add(dedupe_key)
+                    created_at = review.get('created_at')
+                    auto_logs.append({
+                        'id': (
+                            f"auto:{canonical_table}:{record.get('id')}:"
+                            f"{column_name}:{target_date_text}"
+                        ),
+                        'application_type': '자동 적용',
+                        'product_line': source.get(
+                            'display_name', product_line
+                        ),
+                        'table_name': canonical_table,
+                        'record_id': record.get('id'),
+                        'retailer': display_name or retailer_value,
+                        'item': record.get('item') or '',
+                        'retailer_sku_name': (
+                            record.get('retailer_sku_name') or ''
+                        ),
+                        'column_name': column_name,
+                        'reason': TSE_NORMAL_VALUE_REASON,
+                        'memo': review.get('memo') or '',
+                        'crawl_date': target_date_text,
+                        'applied_date': target_date_text,
+                        'created_id': review.get('created_id') or '',
+                        'created_at': '',
+                        'original_crawl_date': str(review['crawl_date']),
+                        'original_created_at': (
+                            created_at.strftime('%Y-%m-%d %H:%M:%S')
+                            if isinstance(created_at, datetime)
+                            else str(created_at or '')
+                        ),
+                        'handling': (
+                            '이전 해당값 정상 확인 자동 적용 · '
+                            f'{TSE_NORMAL_REVIEW_RECHECK_DAYS}일 후 재검수'
+                        ),
+                        'auto_applied': True,
+                    })
+
+    return auto_logs
 
 
 def get_tse_null_review_logs(cursor, target_date):
@@ -639,6 +793,7 @@ def get_tse_null_review_logs(cursor, target_date):
         created_at = row[10]
         logs.append({
             'id': row[0],
+            'application_type': '수동 확인',
             'product_line': source.get('display_name', row[1]),
             'table_name': row[1],
             'record_id': row[2],
@@ -649,8 +804,15 @@ def get_tse_null_review_logs(cursor, target_date):
             'reason': row[6],
             'memo': row[7] or '',
             'crawl_date': str(row[8]) if row[8] else '',
+            'applied_date': str(row[8]) if row[8] else '',
             'created_id': row[9] or '',
             'created_at': (
+                created_at.strftime('%Y-%m-%d %H:%M:%S')
+                if isinstance(created_at, datetime)
+                else str(created_at or '')
+            ),
+            'original_crawl_date': str(row[8]) if row[8] else '',
+            'original_created_at': (
                 created_at.strftime('%Y-%m-%d %H:%M:%S')
                 if isinstance(created_at, datetime)
                 else str(created_at or '')
@@ -658,7 +820,10 @@ def get_tse_null_review_logs(cursor, target_date):
             'handling': (
                 f'해당값 정상 처리 · {TSE_NORMAL_REVIEW_RECHECK_DAYS}일 후 재검수'
             ),
+            'auto_applied': False,
         })
+
+    logs.extend(get_tse_auto_applied_null_reviews(cursor, target_date))
 
     return {
         'logs': logs,
@@ -746,7 +911,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
             }
 
             # Carry a normal review forward for the same item and
-            # retailer_sku_name.  The identity is exposed again on day seven.
+            # retailer_sku_name. The identity is exposed again on day 14.
             if latest_batch_id is not None and any(fields_detail.values()):
                 recent_reviews = _load_tse_recent_normal_reviews(
                     cursor,

@@ -1,6 +1,6 @@
 import unittest
 from datetime import date, datetime
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from tests.unit.support import (
     ScriptedCursor,
@@ -427,7 +427,7 @@ class TSELayer2NullTests(unittest.TestCase):
             'product_url',
         ], display_columns)
 
-    def test_normal_review_identity_is_hidden_for_six_days_then_rechecked(self):
+    def test_normal_review_identity_is_hidden_for_thirteen_days_then_rechecked(self):
         record = {
             'id': 12,
             'item': 'TV-1',
@@ -445,10 +445,10 @@ class TSELayer2NullTests(unittest.TestCase):
             record, 'sku', date(2026, 8, 12), reviews
         ))
         self.assertTrue(self.service._is_tse_review_suppressed(
-            record, 'sku', date(2026, 8, 17), reviews
+            record, 'sku', date(2026, 8, 24), reviews
         ))
         self.assertFalse(self.service._is_tse_review_suppressed(
-            record, 'sku', date(2026, 8, 18), reviews
+            record, 'sku', date(2026, 8, 25), reviews
         ))
         changed_name = dict(record, retailer_sku_name='Different TV')
         self.assertFalse(self.service._is_tse_review_suppressed(
@@ -491,7 +491,7 @@ class TSELayer2NullTests(unittest.TestCase):
         )
         review_sql, review_params = cursor.calls[1]
         self.assertIn('reviewed_source.retailer_sku_name', review_sql)
-        self.assertEqual('2026-08-05', review_params[1])
+        self.assertEqual('2026-07-29', review_params[1])
         self.assertEqual('2026-08-11', review_params[2])
 
     def test_detail_expands_seed_items_to_latest_batch_per_day(self):
@@ -577,19 +577,54 @@ class TSELayer2NullTests(unittest.TestCase):
             {'fetchall': [(12, 'TV-1', 'Example TV')]},
         ])
 
-        result = self.service.get_tse_null_review_logs(
-            cursor, date(2026, 8, 24)
-        )
+        with patch.object(
+            self.service,
+            'get_tse_auto_applied_null_reviews',
+            return_value=[],
+        ):
+            result = self.service.get_tse_null_review_logs(
+                cursor, date(2026, 8, 24)
+            )
 
         self.assertEqual(1, result['total'])
         self.assertEqual('Example TV', result['logs'][0]['retailer_sku_name'])
         self.assertEqual('2026-08-24 14:35:10', result['logs'][0]['created_at'])
         self.assertEqual('tester', result['logs'][0]['created_id'])
-        self.assertEqual('해당값 정상 처리 · 7일 후 재검수', result['logs'][0]['handling'])
+        self.assertEqual('해당값 정상 처리 · 14일 후 재검수', result['logs'][0]['handling'])
         log_sql, log_params = cursor.calls[0]
         self.assertIn("correction.correction_type = 'null_check'", log_sql)
         self.assertIn('correction.reason IN', log_sql)
         self.assertEqual('2026-08-24', log_params[0])
+
+    def test_prior_normal_review_is_emitted_as_today_auto_applied_log(self):
+        created_at = datetime(2026, 8, 23, 15, 21, 18)
+        cursor = ScriptedCursor([
+            {'fetchall': [(
+                20, 'TV-1', 'Example TV',
+                '2026-08-24T09:00:03+09:00', 'TSE', 'Homepro', None,
+            )]},
+            {'fetchall': [(
+                11, 'sku', 'checked', 'tester', created_at,
+                self.service.TSE_NORMAL_VALUE_REASON,
+                date(2026, 8, 23), 'TV-1', 'Example TV',
+            )]},
+        ])
+
+        logs = self.service.get_tse_auto_applied_null_reviews(
+            cursor, date(2026, 8, 24)
+        )
+
+        self.assertEqual(1, len(logs))
+        self.assertTrue(logs[0]['auto_applied'])
+        self.assertEqual('2026-08-24', logs[0]['applied_date'])
+        self.assertEqual('2026-08-23', logs[0]['original_crawl_date'])
+        self.assertEqual('2026-08-23 15:21:18', logs[0]['original_created_at'])
+        self.assertEqual('sku', logs[0]['column_name'])
+        self.assertEqual('이전 해당값 정상 확인 자동 적용 · 14일 후 재검수', logs[0]['handling'])
+        review_sql, review_params = cursor.calls[1]
+        self.assertIn("correction.correction_type = 'null_check'", review_sql)
+        self.assertEqual('2026-08-11', review_params[1])
+        self.assertEqual('2026-08-23', review_params[2])
 
     def test_item_null_expands_with_null_predicate_instead_of_id_fallback(self):
         description = [

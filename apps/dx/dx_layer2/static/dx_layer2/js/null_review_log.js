@@ -27,14 +27,16 @@ function _renderNullReviewLogs(data) {
     }
 
     var html = '<div class="review-log-scroll"><table class="review-log-table"><thead><tr>'
-        + '<th>검수일</th><th>처리 시각</th><th>처리자</th><th>제품군</th>'
+        + '<th>적용일</th><th>구분</th><th>원 확인 시각</th><th>확인자</th><th>제품군</th>'
         + '<th>리테일러</th><th>item</th><th>retailer_sku_name</th><th>NULL 컬럼</th>'
         + '<th>처리 사유</th><th>메모</th><th>후속 처리</th>'
         + '</tr></thead><tbody>';
     logs.forEach(function(log) {
         html += '<tr>'
-            + '<td>' + _reviewLogValue(log.crawl_date) + '</td>'
-            + '<td>' + _reviewLogValue(log.created_at) + '</td>'
+            + '<td>' + _reviewLogValue(log.applied_date || log.crawl_date) + '</td>'
+            + '<td class="' + (log.auto_applied ? 'review-log-auto' : '') + '">'
+            + _reviewLogValue(log.application_type || '수동 확인') + '</td>'
+            + '<td>' + _reviewLogValue(log.original_created_at || log.created_at) + '</td>'
             + '<td>' + _reviewLogValue(log.created_id) + '</td>'
             + '<td>' + _reviewLogValue(log.product_line) + '</td>'
             + '<td>' + _reviewLogValue(log.retailer) + '</td>'
