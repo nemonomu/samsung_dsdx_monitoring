@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import Mock
 
 from tests.unit.support import (
@@ -436,6 +436,7 @@ class TSELayer2NullTests(unittest.TestCase):
         reviews = [{
             'record_id': 11,
             'column_name': 'sku',
+            'reason': self.service.TSE_NORMAL_VALUE_REASON,
             'crawl_date': date(2026, 8, 11),
             'identity': ('tv-1', 'example tv'),
         }]
@@ -454,11 +455,21 @@ class TSELayer2NullTests(unittest.TestCase):
             changed_name, 'sku', date(2026, 8, 12), reviews
         ))
 
+        other_reason = [dict(reviews[0], reason='상품페이지 내 항목 부재')]
+        self.assertFalse(self.service._is_tse_review_suppressed(
+            record, 'sku', date(2026, 8, 12), other_reason
+        ))
+        same_record = dict(record, id=11)
+        self.assertTrue(self.service._is_tse_review_suppressed(
+            same_record, 'sku', date(2026, 8, 11), other_reason
+        ))
+
     def test_summary_excludes_recently_reviewed_item_and_retailer_sku(self):
         cursor = ScriptedCursor([
             {'fetchone': ('h20260811_095803', 1, 0, 0, 1)},
             {'fetchall': [(
-                11, 'sku', 'checked', 'tester', None, 'source_issue',
+                11, 'sku', 'checked', 'tester', None,
+                self.service.TSE_NORMAL_VALUE_REASON,
                 date(2026, 8, 10), 'TV-1', 'Example TV',
             )]},
             {'fetchall': [(
@@ -507,7 +518,8 @@ class TSELayer2NullTests(unittest.TestCase):
             {
                 'fetchall': [
                     (
-                        12, 'sku', 'checked', 'tester', None, 'source_issue',
+                        12, 'sku', 'checked', 'tester', None,
+                        self.service.TSE_NORMAL_VALUE_REASON,
                         date(2026, 8, 10), 'TV-2', None,
                     ),
                 ],
@@ -553,6 +565,31 @@ class TSELayer2NullTests(unittest.TestCase):
             history_params,
         )
         self.assertNotIn('TV-2', history_params)
+
+    def test_normal_value_review_log_includes_identity_and_processing_time(self):
+        created_at = datetime(2026, 8, 24, 14, 35, 10)
+        cursor = ScriptedCursor([
+            {'fetchall': [(
+                91, 'dx_tse.dx_tse_tv_retail_com', 12, 'Homepro',
+                'TV-1', 'sku', self.service.TSE_NORMAL_VALUE_REASON,
+                '사이트 값 확인', date(2026, 8, 24), 'tester', created_at,
+            )]},
+            {'fetchall': [(12, 'TV-1', 'Example TV')]},
+        ])
+
+        result = self.service.get_tse_null_review_logs(
+            cursor, date(2026, 8, 24)
+        )
+
+        self.assertEqual(1, result['total'])
+        self.assertEqual('Example TV', result['logs'][0]['retailer_sku_name'])
+        self.assertEqual('2026-08-24 14:35:10', result['logs'][0]['created_at'])
+        self.assertEqual('tester', result['logs'][0]['created_id'])
+        self.assertEqual('해당값 정상 처리 · 7일 후 재검수', result['logs'][0]['handling'])
+        log_sql, log_params = cursor.calls[0]
+        self.assertIn("correction.correction_type = 'null_check'", log_sql)
+        self.assertIn('correction.reason IN', log_sql)
+        self.assertEqual('2026-08-24', log_params[0])
 
     def test_item_null_expands_with_null_predicate_instead_of_id_fallback(self):
         description = [

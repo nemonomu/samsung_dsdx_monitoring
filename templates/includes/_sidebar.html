@@ -42,7 +42,8 @@
                 </div>
                 {% else %}
                 <a class="sidebar-subitem {% if item.active %}active{% endif %}"
-                   onclick="onSubitemClick('{{ group.key }}', '{{ item.name|escapejs }}', '{{ item.detail_code|default:""|escapejs }}')">
+                   {% if item.href %}href="{{ item.href }}{% if target_date %}?date={{ target_date|urlencode }}{% endif %}"
+                   {% else %}onclick="onSubitemClick('{{ group.key }}', '{{ item.name|escapejs }}', '{{ item.detail_code|default:""|escapejs }}')"{% endif %}>
                     {{ item.name }}
                 </a>
                 {% endif %}

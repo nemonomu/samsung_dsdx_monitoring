@@ -1,0 +1,58 @@
+{% extends 'base_layer2.html' %}
+{% load static %}
+
+{% block page_title %}NULL 검수 로그{% endblock %}
+
+{% block layer2_css %}
+<style>
+    .review-log-card {
+        background: #fff;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .review-log-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .review-log-summary h3 { margin: 0 0 5px; font-size: 16px; }
+    .review-log-summary p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+    .review-log-count { color: var(--layer-color); font-size: 22px; font-weight: 700; white-space: nowrap; }
+    .review-log-scroll { overflow-x: auto; }
+    .review-log-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
+    .review-log-table th, .review-log-table td {
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--border-color);
+        text-align: left;
+        font-size: 13px;
+        vertical-align: top;
+    }
+    .review-log-table th { background: var(--bg-primary); color: var(--text-secondary); white-space: nowrap; }
+    .review-log-table tbody tr:last-child td { border-bottom: 0; }
+    .review-log-reason { color: #047857; font-weight: 700; white-space: nowrap; }
+    .review-log-muted { color: var(--text-secondary); }
+    .review-log-empty { padding: 48px 20px; text-align: center; color: var(--text-secondary); }
+</style>
+{% endblock %}
+
+{% block layer2_content %}
+<div class="review-log-card">
+    <div class="review-log-summary">
+        <div>
+            <h3>해당값 정상 처리 이력</h3>
+            <p>같은 item + retailer_sku_name 조합은 처리일부터 7일 동안 NULL 재검수에서 제외됩니다.</p>
+        </div>
+        <div class="review-log-count" id="review-log-count">-</div>
+    </div>
+    <div id="review-log-body" class="review-log-empty">데이터 로딩 중...</div>
+</div>
+{% endblock %}
+
+{% block layer2_js %}
+<script src="{% static 'dx_layer2/js/layer2-common.js' %}?v=20260824-4"></script>
+<script src="{% static 'dx_layer2/js/null_review_log.js' %}?v=20260824-1"></script>
+{% endblock %}

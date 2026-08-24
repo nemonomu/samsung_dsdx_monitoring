@@ -977,7 +977,7 @@ function _submitNullReview(td, status, memo, reason) {
                 // 정상 처리 → normalReviews에 추가 + 셀 스타일 변경
                 var nrKey = rowId + '_' + colName;
                 if (!detailViewState.normalReviews) detailViewState.normalReviews = {};
-                detailViewState.normalReviews[nrKey] = { memo: memo, reason: '', created_id: '', created_at: '' };
+                detailViewState.normalReviews[nrKey] = { memo: memo, reason: reason || '', created_id: '', created_at: '' };
                 td.className = 'cell-normal';
                 td.dataset.normalKey = nrKey;
                 td.removeAttribute('data-editable');
@@ -989,6 +989,7 @@ function _submitNullReview(td, status, memo, reason) {
                     td.appendChild(span);
                 }
                 var tip = '정상 처리됨';
+                if (reason) tip += ' | 이유: ' + reason;
                 if (memo) tip += ' | 메모: ' + memo;
                 td.title = tip;
                 showToast('확인 처리 완료', 'success');

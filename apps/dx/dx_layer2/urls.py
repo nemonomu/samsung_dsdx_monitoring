@@ -13,11 +13,13 @@ urlpatterns = [
     path('null/', null_views.null_validation, name='null_validation'),
     path('format/', format_views.format_validation, name='format_validation'),
     path('anomaly/', anomaly_views.anomaly_validation, name='anomaly_validation'),
+    path('review-log/', null_views.null_review_log, name='null_review_log'),
     # APIs — 기존 경로 유지
     path('api/stats/', dashboard_api.layer_stats, name='api_stats'),
     path('api/detail/', dashboard_api.retailer_detail, name='api_detail'),
     path('api/null-detail/', null_api.null_detail, name='api_null_detail'),
     path('api/null-review/', null_api.null_review, name='api_null_review'),
+    path('api/null-review-logs/', null_api.null_review_logs, name='api_null_review_logs'),
     path('api/format-detail/', format_api.format_detail, name='api_format_detail'),
     path('api/format-rules/', format_api.format_rules, name='api_format_rules'),
     path('api/anomaly-detail/', anomaly_api.anomaly_detail, name='api_anomaly_detail'),

@@ -15,6 +15,7 @@ SECTION_TITLES = {
     'null_validation': 'NULL 검증',
     'format_validation': '형식 검증',
     'anomaly_validation': '중복 검증',
+    'null_review_log': 'NULL 검수 로그',
 }
 
 
@@ -118,6 +119,11 @@ def build_sidebar_groups(section, focus=''):
         'format_validation': make_items('format_validation'),
         'anomaly_validation': make_items('anomaly_validation'),
     }
+    section_items['anomaly_validation'].append({
+        'name': 'NULL 검수 로그',
+        'active': section == 'null_review_log',
+        'href': '/dx/layer2/review-log/',
+    })
     active_categories = set(get_all_categories())
     for section_name, items in section_items.items():
         tse_children = []
@@ -155,7 +161,9 @@ def build_sidebar_groups(section, focus=''):
         {'key': 'format_validation', 'icon': '📋', 'label': '형식 검증',
          'expanded': section == 'format_validation', 'active': section == 'format_validation', 'items': section_items['format_validation']},
         {'key': 'anomaly_validation', 'icon': '🔄', 'label': '중복 검증',
-         'expanded': section == 'anomaly_validation', 'active': section == 'anomaly_validation', 'items': section_items['anomaly_validation']},
+         'expanded': section in ('anomaly_validation', 'null_review_log'),
+         'active': section in ('anomaly_validation', 'null_review_log'),
+         'items': section_items['anomaly_validation']},
     ]
 
 

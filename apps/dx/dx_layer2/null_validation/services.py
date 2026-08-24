@@ -465,6 +465,11 @@ def _build_tse_country_scope(alias='source'):
 
 
 TSE_NORMAL_REVIEW_RECHECK_DAYS = 7
+TSE_NORMAL_VALUE_REASON = '해당값정상 확인'
+TSE_NORMAL_VALUE_REASON_ALIASES = (
+    TSE_NORMAL_VALUE_REASON,
+    '해당 값 정상 확인',
+)
 
 
 def _tse_review_date(value):
@@ -480,9 +485,9 @@ def _tse_review_date(value):
 def _tse_review_identity(item, retailer_sku_name):
     """Build the stable identity used to carry a normal review forward."""
     item_text = str(item or '').strip()
-    if not item_text:
-        return None
     retailer_sku_text = str(retailer_sku_name or '').strip()
+    if not item_text and not retailer_sku_text:
+        return None
     return item_text.casefold(), retailer_sku_text.casefold()
 
 
@@ -551,9 +556,116 @@ def _is_tse_review_suppressed(record, column, row_date, reviews):
             continue
         if elapsed_days == 0 and record_id == str(review['record_id']):
             return True
+        if review.get('reason') not in TSE_NORMAL_VALUE_REASON_ALIASES:
+            continue
         if identity is not None and identity == review['identity']:
             return True
     return False
+
+
+def get_tse_null_review_logs(cursor, target_date):
+    """Return TSE NULL reviews accepted as normal on the selected date."""
+    runtime = _get_tse_runtime()
+    if not runtime:
+        return {
+            'logs': [], 'total': 0, 'date': str(target_date),
+            'recheck_days': TSE_NORMAL_REVIEW_RECHECK_DAYS,
+        }
+
+    table_sources = {
+        source['table_name']: source
+        for source in runtime['sources'].values()
+    }
+    if not table_sources:
+        return {
+            'logs': [], 'total': 0, 'date': str(target_date),
+            'recheck_days': TSE_NORMAL_REVIEW_RECHECK_DAYS,
+        }
+
+    table_placeholders = ', '.join(['%s'] * len(table_sources))
+    reason_placeholders = ', '.join(
+        ['%s'] * len(TSE_NORMAL_VALUE_REASON_ALIASES)
+    )
+    cursor.execute(f"""
+        SELECT correction.id,
+               correction.table_name,
+               correction.record_id,
+               correction.retailer,
+               correction.item,
+               correction.column_name,
+               correction.reason,
+               correction.memo,
+               correction.crawl_date,
+               correction.created_id,
+               correction.created_at
+        FROM monitoring_corrections correction
+        WHERE correction.layer = 2
+          AND correction.correction_type = 'null_check'
+          AND correction.status = 'normal'
+          AND correction.crawl_date = %s
+          AND correction.reason IN ({reason_placeholders})
+          AND correction.table_name IN ({table_placeholders})
+        ORDER BY correction.created_at DESC, correction.id DESC
+    """, (
+        str(target_date), *TSE_NORMAL_VALUE_REASON_ALIASES,
+        *table_sources.keys(),
+    ))
+    correction_rows = cursor.fetchall()
+
+    identities = {}
+    record_ids_by_table = {}
+    for row in correction_rows:
+        record_ids_by_table.setdefault(row[1], set()).add(row[2])
+
+    for table_name, record_ids in record_ids_by_table.items():
+        if not record_ids:
+            continue
+        id_placeholders = ', '.join(['%s'] * len(record_ids))
+        cursor.execute(f"""
+            SELECT id, item, retailer_sku_name
+            FROM {table_name}
+            WHERE id IN ({id_placeholders})
+        """, tuple(record_ids))
+        for record_id, item, retailer_sku_name in cursor.fetchall():
+            identities[(table_name, record_id)] = {
+                'item': item,
+                'retailer_sku_name': retailer_sku_name,
+            }
+
+    logs = []
+    for row in correction_rows:
+        source = table_sources[row[1]]
+        identity = identities.get((row[1], row[2]), {})
+        created_at = row[10]
+        logs.append({
+            'id': row[0],
+            'product_line': source.get('display_name', row[1]),
+            'table_name': row[1],
+            'record_id': row[2],
+            'retailer': row[3] or '',
+            'item': identity.get('item') or row[4] or '',
+            'retailer_sku_name': identity.get('retailer_sku_name') or '',
+            'column_name': row[5],
+            'reason': row[6],
+            'memo': row[7] or '',
+            'crawl_date': str(row[8]) if row[8] else '',
+            'created_id': row[9] or '',
+            'created_at': (
+                created_at.strftime('%Y-%m-%d %H:%M:%S')
+                if isinstance(created_at, datetime)
+                else str(created_at or '')
+            ),
+            'handling': (
+                f'해당값 정상 처리 · {TSE_NORMAL_REVIEW_RECHECK_DAYS}일 후 재검수'
+            ),
+        })
+
+    return {
+        'logs': logs,
+        'total': len(logs),
+        'date': str(target_date),
+        'recheck_days': TSE_NORMAL_REVIEW_RECHECK_DAYS,
+    }
 
 
 def _get_tse_null_tables(cursor, target_date, runtime, tse_config):

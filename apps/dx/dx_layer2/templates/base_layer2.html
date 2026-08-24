@@ -74,7 +74,7 @@
         var controls = [];
 
         if (section !== 'dashboard') {
-            var sectionTitles = { null_validation: 'NULL 검증', format_validation: '형식 검증', anomaly_validation: '중복 검증' };
+            var sectionTitles = { null_validation: 'NULL 검증', format_validation: '형식 검증', anomaly_validation: '중복 검증', null_review_log: 'NULL 검수 로그' };
             controls.push({
                 type: 'custom',
                 html: '<div style="display:flex;align-items:center;gap:12px;"><span style="font-size:17px;font-weight:700;color:var(--layer-color);white-space:nowrap;line-height:1;">' + (sectionTitles[section] || '') + '</span><span style="width:2px;height:24px;background:#999;"></span></div>'

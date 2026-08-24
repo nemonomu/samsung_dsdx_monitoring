@@ -82,3 +82,18 @@ def null_review(request):
             return JsonResponse(result)
     except Exception as e:
         return safe_error(e)
+
+
+def null_review_logs(request):
+    """해당값 정상으로 처리한 TSE NULL 검수 로그 API (GET)."""
+    target_date = parse_date(request.GET.get('date'))
+    if target_date is None:
+        return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
+
+    try:
+        with dx_connection() as (conn, cursor):
+            return JsonResponse(
+                services.get_tse_null_review_logs(cursor, target_date)
+            )
+    except Exception as e:
+        return safe_error(e)
