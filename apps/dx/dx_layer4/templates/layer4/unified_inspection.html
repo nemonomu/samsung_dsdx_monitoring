@@ -1,0 +1,173 @@
+{% extends 'layer4/base_layer4.html' %}
+{% load static %}
+
+{% block page_title %}통합 검수{% endblock %}
+
+{% block layer4_css %}
+<style>
+    .ui-step-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 18px 20px;
+        margin-bottom: 20px;
+        border: 1px solid #c4b5fd;
+        border-radius: 12px;
+        background: #f5f3ff;
+    }
+    .ui-step-banner strong {
+        display: block;
+        margin-bottom: 5px;
+        color: #5b21b6;
+        font-size: 15px;
+    }
+    .ui-step-banner p {
+        margin: 0;
+        color: #5b6472;
+        font-size: 13px;
+    }
+    .ui-readonly-badge {
+        flex: 0 0 auto;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #ede9fe;
+        color: #6d28d9;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .ui-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    .ui-summary-card {
+        padding: 16px 18px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: white;
+    }
+    .ui-summary-card .label {
+        margin-bottom: 6px;
+        color: var(--text-secondary);
+        font-size: 12px;
+    }
+    .ui-summary-card .value {
+        color: var(--text-primary);
+        font-size: 18px;
+        font-weight: 700;
+    }
+    .ui-table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+    }
+    .ui-mapping-table {
+        width: 100%;
+        min-width: 760px;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .ui-mapping-table th,
+    .ui-mapping-table td {
+        padding: 13px 14px;
+        border-bottom: 1px solid #edf0f4;
+        text-align: left;
+        vertical-align: middle;
+    }
+    .ui-mapping-table th {
+        background: var(--bg-primary);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .ui-mapping-table tbody tr:last-child td { border-bottom: 0; }
+    .ui-country { font-size: 14px; font-weight: 800; }
+    .ui-source-date { color: #5b21b6; font-weight: 800; }
+    .ui-rule {
+        display: inline-flex;
+        min-width: 44px;
+        justify-content: center;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: #ede9fe;
+        color: #6d28d9;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .ui-rule.same-day { background: #ecfdf5; color: #047857; }
+    .ui-source-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ui-source-key {
+        padding: 4px 7px;
+        border-radius: 5px;
+        background: #f3f4f6;
+        color: #374151;
+        font-family: Consolas, monospace;
+        font-size: 11px;
+    }
+    .ui-message { padding: 36px 20px !important; text-align: center !important; color: var(--text-secondary); }
+    .ui-message.error { color: #b91c1c; }
+    .ui-help {
+        margin: 12px 0 0;
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.6;
+    }
+    @media (max-width: 760px) {
+        .ui-step-banner { align-items: flex-start; }
+        .ui-summary { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block layer4_content %}
+<div class="ui-step-banner">
+    <div>
+        <strong>현재 Step: 검수일 → 데이터일 매핑 확인</strong>
+        <p>날짜 계산만 확인하는 읽기 전용 화면입니다. DB와 기존 수집·검수 화면의 날짜 동작은 변경하지 않습니다.</p>
+    </div>
+    <span class="ui-readonly-badge">읽기 전용</span>
+</div>
+
+<div class="ui-summary" aria-label="날짜 매핑 요약">
+    <div class="ui-summary-card">
+        <div class="label">선택한 검수일</div>
+        <div class="value" id="ui-inspection-date">-</div>
+    </div>
+    <div class="ui-summary-card">
+        <div class="label">국가</div>
+        <div class="value" id="ui-country-count">5개국</div>
+    </div>
+    <div class="ui-summary-card">
+        <div class="label">대상 실행 경로</div>
+        <div class="value" id="ui-source-count">15개</div>
+    </div>
+</div>
+
+<section class="l4-section" aria-labelledby="ui-mapping-title">
+    <h3 class="l4-section-title" id="ui-mapping-title">국가별 검수일 매핑</h3>
+    <div class="ui-table-wrap">
+        <table class="ui-mapping-table">
+            <thead>
+                <tr>
+                    <th scope="col">국가</th>
+                    <th scope="col">검수일</th>
+                    <th scope="col">실제 데이터일</th>
+                    <th scope="col">규칙</th>
+                    <th scope="col">제품별 실행 경로</th>
+                </tr>
+            </thead>
+            <tbody id="ui-mapping-body">
+                <tr><td colspan="5" class="ui-message">날짜 매핑을 불러오는 중입니다.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="ui-help">SEA·SEDA는 달력 기준 전날(D-1), SEG·SIEL·TSE는 선택한 검수일과 같은 날(D)을 사용합니다. 데이터가 없어도 다른 날짜로 자동 대체하지 않습니다.</p>
+</section>
+{% endblock %}
+
+{% block layer4_js %}
+<script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
+<script src="{% static 'dx_layer4/js/unified_inspection.js' %}?v=1"></script>
+{% endblock %}

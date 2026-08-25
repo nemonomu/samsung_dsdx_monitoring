@@ -52,20 +52,22 @@
     var filterBar;
 
     function initFilterBar() {
-        var saved = localStorage.getItem('monitoringSelectedDate');
+        var section = (window.LAYER4 && window.LAYER4.section) || 'dashboard';
+        var storageKey = section === 'unified_inspection'
+            ? 'unifiedInspectionDate'
+            : 'monitoringSelectedDate';
+        var saved = localStorage.getItem(storageKey);
         var yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         var defaultDate = saved || formatLocalDate(yesterday);
         var today = formatLocalDate(new Date());
 
         var urlDate = new URLSearchParams(window.location.search).get('date');
-        if (urlDate) { defaultDate = urlDate; localStorage.setItem('monitoringSelectedDate', urlDate); }
+        if (urlDate) { defaultDate = urlDate; localStorage.setItem(storageKey, urlDate); }
 
         function onDateChange() {
-            localStorage.setItem('monitoringSelectedDate', filterBar.getDate());
+            localStorage.setItem(storageKey, filterBar.getDate());
         }
-
-        var section = (window.LAYER4 && window.LAYER4.section) || 'dashboard';
 
         if (section === 'tools') {
             filterBar = { getDate: function() { return ''; } };
@@ -75,7 +77,7 @@
         var controls = [];
 
         if (section !== 'dashboard') {
-            var sectionTitles = { corrections: '검수기록', report: '보고서', collection_status: '수집 현황' };
+            var sectionTitles = { corrections: '검수기록', report: '보고서', collection_status: '수집 현황', unified_inspection: '통합 검수' };
             controls.push({
                 type: 'custom',
                 html: '<div style="display:flex;align-items:center;gap:12px;"><span style="font-size:17px;font-weight:700;color:var(--layer-color);white-space:nowrap;line-height:1;">' + (sectionTitles[section] || '') + '</span><span style="width:2px;height:24px;background:#999;"></span></div>'
@@ -83,7 +85,7 @@
         }
 
         controls.push(
-            { type: 'date', key: 'targetDate', label: '조회 날짜', value: defaultDate, max: today, showWeekday: true },
+            { type: 'date', key: 'targetDate', label: section === 'unified_inspection' ? '검수일' : '조회 날짜', value: defaultDate, max: today, showWeekday: true },
             { type: 'button', label: '조회', style: 'primary', onClick: function() {
                 if (filterBar.getDate() > today) { showToast('오늘 이후 날짜로는 조회할 수 없습니다.', 'warning'); filterBar.setDate(today); return; }
                 onDateChange(); handleSearch();

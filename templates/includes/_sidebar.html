@@ -12,7 +12,7 @@
         </a>
         {% for group in sidebar_groups %}
         {% if group.href %}
-        <a href="{{ group.href }}{% if target_date %}?date={{ target_date|urlencode }}{% endif %}"
+        <a href="{{ group.href }}{% if target_date and not group.ignore_target_date %}?date={{ target_date|urlencode }}{% endif %}"
            class="sidebar-item {% if group.active %}active{% endif %}">
             <span class="sidebar-icon">{{ group.icon }}</span>
             <span class="sidebar-text">{{ group.label }}</span>

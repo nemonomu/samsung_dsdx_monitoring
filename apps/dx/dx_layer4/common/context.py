@@ -15,12 +15,21 @@ SECTION_TITLES = {
     'corrections': '검수기록',
     'report': '보고서',
     'collection_status': '수집 현황',
+    'unified_inspection': '통합 검수',
     'tools': '도구',
 }
 
 
 def _build_sidebar_groups(section, focus=''):
     return [
+        {
+            'key': 'unified_inspection',
+            'icon': '🗓️',
+            'label': '통합 검수',
+            'href': '/dx/layer4/unified-inspection/',
+            'ignore_target_date': True,
+            'active': section == 'unified_inspection',
+        },
         {
             'key': 'check_log',
             'icon': '✅',

@@ -6,6 +6,7 @@ from .report import views as report_views, api as report_api
 from .tools import views as tools_views
 from .collection_status import views as cs_views, api as cs_api
 from .collection_issues import api as ci_api
+from .unified_inspection import views as ui_views, api as ui_api
 
 app_name = 'layer4'
 
@@ -19,6 +20,10 @@ urlpatterns = [
     path('tools/', tools_views.tools, name='tools'),
     path('collection-status/', cs_views.collection_status, name='collection_status'),
     path('collection-status/detail/', cs_views.collection_status_detail, name='collection_status_detail'),
+    path('unified-inspection/', ui_views.unified_inspection, name='unified_inspection'),
+
+    # API — 통합 검수 (현재 Step: 날짜 매핑만, DB 조회 없음)
+    path('api/unified-inspection/date-mapping/', ui_api.date_mapping, name='api_unified_inspection_date_mapping'),
 
     # API — 수집 현황
     path('api/collection-status/', cs_api.collection_status_data, name='api_collection_status'),

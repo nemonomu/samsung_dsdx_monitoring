@@ -50,7 +50,9 @@
 
     // 사이드바 클릭 핸들러
     window.onSubitemClick = function(groupKey, itemName) {
-        var date = typeof getSelectedDate === 'function' ? getSelectedDate() : '';
+        var date = section === 'unified_inspection'
+            ? ''
+            : (typeof getSelectedDate === 'function' ? getSelectedDate() : '');
         var params = [];
         if (date) params.push('date=' + date);
         if (itemName) params.push('focus=' + encodeURIComponent(itemName));
