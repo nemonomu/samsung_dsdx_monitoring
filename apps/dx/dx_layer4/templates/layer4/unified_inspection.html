@@ -114,9 +114,58 @@
         font-size: 12px;
         line-height: 1.6;
     }
+    .ui-tse-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+    .ui-tse-header .ui-help { margin: 4px 0 0; }
+    .ui-tse-meta {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .ui-tse-meta-item {
+        padding: 12px 14px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-primary);
+    }
+    .ui-tse-meta-item .label {
+        margin-bottom: 5px;
+        color: var(--text-secondary);
+        font-size: 11px;
+    }
+    .ui-tse-meta-item .value {
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 800;
+    }
+    .ui-status {
+        display: inline-flex;
+        justify-content: center;
+        min-width: 58px;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: #f3f4f6;
+        color: #4b5563;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .ui-status.ok { background: #ecfdf5; color: #047857; }
+    .ui-status.collecting { background: #eff6ff; color: #1d4ed8; }
+    .ui-status.warning { background: #fffbeb; color: #b45309; }
+    .ui-status.critical { background: #fef2f2; color: #b91c1c; }
+    .ui-count { font-weight: 800; }
+    .ui-count .expected { color: var(--text-secondary); font-weight: 500; }
     @media (max-width: 760px) {
         .ui-step-banner { align-items: flex-start; }
         .ui-summary { grid-template-columns: 1fr; }
+        .ui-tse-header { align-items: flex-start; }
+        .ui-tse-meta { grid-template-columns: 1fr 1fr; }
     }
 </style>
 {% endblock %}
@@ -124,8 +173,8 @@
 {% block layer4_content %}
 <div class="ui-step-banner">
     <div>
-        <strong>현재 Step: 검수일 → 데이터일 매핑 확인</strong>
-        <p>날짜 계산만 확인하는 읽기 전용 화면입니다. DB와 기존 수집·검수 화면의 날짜 동작은 변경하지 않습니다.</p>
+        <strong>현재 Step: TSE 검수일 → 기존 수집 결과 연결</strong>
+        <p>TSE만 기존 Layer1 조회를 읽기 전용으로 재사용합니다. 다른 국가는 날짜 매핑만 표시합니다.</p>
     </div>
     <span class="ui-readonly-badge">읽기 전용</span>
 </div>
@@ -165,9 +214,55 @@
     </div>
     <p class="ui-help">SEA·SEDA는 달력 기준 전날(D-1), SEG·SIEL·TSE는 선택한 검수일과 같은 날(D)을 사용합니다. 데이터가 없어도 다른 날짜로 자동 대체하지 않습니다.</p>
 </section>
+
+<section class="l4-section" aria-labelledby="ui-tse-title">
+    <div class="ui-tse-header">
+        <div>
+            <h3 class="l4-section-title" id="ui-tse-title">TSE 실제 조회 확인</h3>
+            <p class="ui-help">기존 Layer1 TSE TV·REF·LDY 결과를 그대로 표시하며 상태나 건수를 다시 계산하지 않습니다.</p>
+        </div>
+        <span class="ui-readonly-badge">기존 기능 재사용</span>
+    </div>
+    <div class="ui-tse-meta" aria-label="TSE 날짜 계약">
+        <div class="ui-tse-meta-item">
+            <div class="label">국가·날짜 규칙</div>
+            <div class="value" id="ui-tse-contract">TSE · D · offset_days=0</div>
+        </div>
+        <div class="ui-tse-meta-item">
+            <div class="label">검수일</div>
+            <div class="value" id="ui-tse-inspection-date">-</div>
+        </div>
+        <div class="ui-tse-meta-item">
+            <div class="label">Layer1 실제 조회일</div>
+            <div class="value" id="ui-tse-source-date">-</div>
+        </div>
+        <div class="ui-tse-meta-item">
+            <div class="label">TSE 전체 상태</div>
+            <div class="value" id="ui-tse-status">-</div>
+        </div>
+    </div>
+    <div class="ui-table-wrap">
+        <table class="ui-mapping-table">
+            <thead>
+                <tr>
+                    <th scope="col">제품</th>
+                    <th scope="col">실행 경로</th>
+                    <th scope="col">검수일</th>
+                    <th scope="col">실제 데이터일</th>
+                    <th scope="col">수집/기대 건수</th>
+                    <th scope="col">상태</th>
+                </tr>
+            </thead>
+            <tbody id="ui-tse-body">
+                <tr><td colspan="6" class="ui-message">TSE 조회를 준비하는 중입니다.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <p class="ui-help">Layer1에는 위 실제 데이터일만 한 번 전달합니다. 0건이어도 이전 날짜나 최근 날짜를 대신 조회하지 않습니다.</p>
+</section>
 {% endblock %}
 
 {% block layer4_js %}
 <script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
-<script src="{% static 'dx_layer4/js/unified_inspection.js' %}?v=1"></script>
+<script src="{% static 'dx_layer4/js/unified_inspection.js' %}?v=2"></script>
 {% endblock %}

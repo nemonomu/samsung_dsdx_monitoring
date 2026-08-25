@@ -144,10 +144,18 @@ class UnifiedInspectionPageWiringTests(unittest.TestCase):
         self.assertIn('실제 데이터일', template)
         self.assertIn('데이터가 없어도 다른 날짜로 자동 대체하지 않습니다.', template)
         self.assertIn('ui-mapping-body', template)
+        self.assertIn('TSE 실제 조회 확인', template)
+        self.assertIn('ui-tse-body', template)
+        self.assertIn('offset_days=0', template)
+        self.assertIn('기존 Layer1 조회를 읽기 전용으로 재사용합니다.', template)
         self.assertIn(
             '/dx/layer4/api/unified-inspection/date-mapping/?date=',
             script,
         )
+        self.assertIn('/dx/layer1/api/stats/?date=', script)
+        self.assertIn('&check_type=tse_retail', script)
+        self.assertIn('mapping.source_date', script)
+        self.assertIn('data.target_date', script)
         self.assertIn("? 'unifiedInspectionDate'", base_template)
         self.assertIn("section === 'unified_inspection'", common_script)
         self.assertIn('not group.ignore_target_date', sidebar)
