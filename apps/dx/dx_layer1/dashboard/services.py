@@ -2,7 +2,7 @@
 Layer 1 Dashboard Services: 통계 오케스트레이션 비즈니스 로직
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from apps.common.db import dx_connection
 from apps.common.response import log_error
 from apps.common.dx_schedules import load_collection_schedules, is_target_date as check_target_date
@@ -51,6 +51,7 @@ _SERVICE_MAP = {
 
 _YOUTUBE_SAVEPOINT = 'layer1_youtube_monitoring'
 _TSE_RETAIL_SAVEPOINT = 'layer1_tse_retail_monitoring'
+_TSE_KST = timezone(timedelta(hours=9))
 _DISPLAY_CHECK_PRIORITY = {
     'retail': 0,
     'tse_retail': 1,
@@ -73,6 +74,11 @@ def _sort_checks_for_display(checks):
             ),
         )
     ]
+
+
+def _get_tse_kst_now():
+    """Return an explicit KST clock for TSE collection-phase decisions."""
+    return datetime.now(_TSE_KST)
 
 
 def _rollback_youtube_savepoint(cursor):
@@ -152,6 +158,7 @@ def _get_active_services(target_date=None):
 def get_dashboard_stats(target_date, check_type_filter=None):
     """Layer 1 통계 - 8개 서비스 오케스트레이션"""
     now = datetime.now()
+    tse_now = _get_tse_kst_now()
     today = now.date()
 
     results = {
@@ -200,7 +207,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                         continue
                 elif check_type == 'tse_retail':
                     svc_result = _get_tse_retail_stats_isolated(
-                        cursor, svc, target_date, now
+                        cursor, svc, target_date, tse_now
                     )
                     if svc_result is None:
                         results['failed_items'].append({

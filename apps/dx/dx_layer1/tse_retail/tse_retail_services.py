@@ -1,6 +1,6 @@
 """Layer 1 statistics for TSE TV, REF and LDY daily collection."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
 from apps.common.retail_columns import get_tse_retailer_columns
 from apps.common.tse_retail import (
@@ -29,6 +29,11 @@ _STATUS_PRIORITY = {
     'WARNING': 3,
     'CRITICAL': 4,
 }
+_TSE_KST = timezone(timedelta(hours=9))
+
+
+def _get_kst_now():
+    return datetime.now(_TSE_KST)
 
 
 def _as_date(value):
@@ -227,7 +232,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
 
 def get_layer1_stats(cursor, target_date, now=None):
     """Return the independent TSE collection card for the Layer 1 dashboard."""
-    current = now or datetime.now()
+    current = now or _get_kst_now()
     phase = _collection_phase(target_date, current)
     categories = [
         _build_category(cursor, product_line, source, target_date, phase)
@@ -279,7 +284,7 @@ def get_layer1_stats(cursor, target_date, now=None):
         'check_type': 'tse_retail',
         'status': _worst_status([category['status'] for category in categories]),
         'phase': phase,
-        'collection_window': 'RDP 09:00~09:30',
+        'collection_window': 'KST 09:00~11:00',
         'expected': expected_total,
         'actual': actual_total,
         'total': actual_total,

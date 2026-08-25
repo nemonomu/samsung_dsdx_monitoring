@@ -52,11 +52,12 @@ class TseRetailCommonTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_tse_editable_column('tse_tv', column)
 
-    def test_collection_phase_uses_rdp_time_boundaries(self):
+    def test_collection_phase_uses_kst_1100_completion_boundary(self):
         self.assertEqual(get_tse_collection_phase(time(8, 59, 59)), 'pending')
         self.assertEqual(get_tse_collection_phase(time(9, 0)), 'collecting')
-        self.assertEqual(get_tse_collection_phase(time(9, 30)), 'collecting')
-        self.assertEqual(get_tse_collection_phase(time(9, 30, 1)), 'complete')
+        self.assertEqual(get_tse_collection_phase(time(10, 59, 59)), 'collecting')
+        self.assertEqual(get_tse_collection_phase(time(11, 0)), 'collecting')
+        self.assertEqual(get_tse_collection_phase(time(11, 0, 1)), 'complete')
 
     def test_count_status_boundaries(self):
         self.assertEqual(get_tse_count_status(300), 'ok')

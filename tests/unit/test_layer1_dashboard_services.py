@@ -1,6 +1,6 @@
 import unittest
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 from tests.unit.support import load_module, module_stub, package_stub
 
@@ -17,8 +17,10 @@ class StatsService:
     def __init__(self, result=None, error=None):
         self.result = result
         self.error = error
+        self.calls = []
 
     def get_layer1_stats(self, *_args, **_kwargs):
+        self.calls.append((_args, _kwargs))
         if self.error:
             raise self.error
         return self.result
@@ -179,6 +181,41 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'ROLLBACK TO SAVEPOINT layer1_tse_retail_monitoring',
             'RELEASE SAVEPOINT layer1_tse_retail_monitoring',
         ], [sql for sql, _params in cursor.calls])
+
+    def test_tse_service_receives_explicit_kst_clock(self):
+        cursor = RecordingCursor()
+        tse_service = StatsService({
+            'check': {
+                'name': 'TSE Retail',
+                'check_type': 'tse_retail',
+                'status': 'COLLECTING',
+            },
+            'failed_items': [],
+        })
+        expected_now = datetime(
+            2026, 8, 25, 10, 59,
+            tzinfo=timezone(timedelta(hours=9)),
+        )
+
+        @contextmanager
+        def connection():
+            yield object(), cursor
+
+        self.service.dx_connection = connection
+        self.service._get_active_services = lambda _target: (
+            [('tse_retail', tse_service)],
+            {'tse_retail'},
+            {'tse_retail'},
+        )
+        original_clock = self.service._get_tse_kst_now
+        self.service._get_tse_kst_now = lambda: expected_now
+        try:
+            self.service.get_dashboard_stats(date(2026, 8, 25))
+        finally:
+            self.service._get_tse_kst_now = original_clock
+
+        self.assertIs(expected_now, tse_service.calls[0][0][2])
+        self.assertEqual(timedelta(hours=9), expected_now.utcoffset())
 
     def test_stopped_market_services_are_not_activated(self):
         self.service.load_collection_schedules = lambda: [

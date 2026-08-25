@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 
 from tests.unit.support import load_module, module_stub, package_stub
 
@@ -23,7 +23,7 @@ SOURCE_CONFIG = {
 def collection_phase(current_time):
     if current_time < time(9, 0):
         return 'pending'
-    if current_time <= time(9, 30):
+    if current_time <= time(11, 0):
         return 'collecting'
     return 'complete'
 
@@ -131,12 +131,12 @@ class TseLayer1ServiceTests(unittest.TestCase):
         })
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 9, 31)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 1)
         )
         check = result['check']
 
         self.assertEqual('tse_retail', check['check_type'])
-        self.assertEqual('RDP 09:00~09:30', check['collection_window'])
+        self.assertEqual('KST 09:00~11:00', check['collection_window'])
         self.assertEqual('OK', check['status'])
         self.assertEqual([], result['failed_items'])
         self.assertEqual(['TV', 'REF', 'LDY'], [c['category'] for c in check['categories']])
@@ -187,7 +187,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         )
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 18), datetime(2026, 8, 18, 9, 31)
+            object(), date(2026, 8, 18), datetime(2026, 8, 18, 11, 1)
         )
         tv = result['check']['categories'][0]
 
@@ -202,7 +202,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
             [retailer['retailer'] for retailer in tv['retailers']],
         )
 
-    def test_time_phases_use_rdp_0900_to_0930(self):
+    def test_time_phases_use_kst_0900_to_1100(self):
         self._set_counts({
             product_line: [{
                 'retailer': 'Homepro',
@@ -216,10 +216,10 @@ class TseLayer1ServiceTests(unittest.TestCase):
             object(), date(2026, 8, 10), datetime(2026, 8, 10, 8, 59)
         )['check']
         collecting = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 9, 15)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 10, 59)
         )['check']
         complete = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 9, 31)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 0, 1)
         )['check']
 
         self.assertEqual(('pending', 'PENDING'), (pending['phase'], pending['status']))
@@ -228,6 +228,42 @@ class TseLayer1ServiceTests(unittest.TestCase):
             (collecting['phase'], collecting['status']),
         )
         self.assertEqual(('complete', 'OK'), (complete['phase'], complete['status']))
+
+    def test_zero_rows_change_from_collecting_to_critical_after_1100_kst(self):
+        self._set_counts({product_line: [] for product_line in SOURCE_CONFIG})
+
+        collecting = self.service.get_layer1_stats(
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 0)
+        )
+        complete = self.service.get_layer1_stats(
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 0, 1)
+        )
+
+        self.assertEqual('collecting', collecting['check']['phase'])
+        self.assertEqual('COLLECTING', collecting['check']['status'])
+        self.assertEqual([], collecting['failed_items'])
+        self.assertEqual('complete', complete['check']['phase'])
+        self.assertEqual('CRITICAL', complete['check']['status'])
+        self.assertEqual(3, len(complete['failed_items']))
+
+    def test_default_clock_is_explicit_kst(self):
+        self._set_counts({product_line: [] for product_line in SOURCE_CONFIG})
+        expected_now = datetime(
+            2026, 8, 10, 11, 0,
+            tzinfo=timezone(timedelta(hours=9)),
+        )
+        original_clock = self.service._get_kst_now
+        self.service._get_kst_now = lambda: expected_now
+        try:
+            result = self.service.get_layer1_stats(
+                object(), date(2026, 8, 10)
+            )
+        finally:
+            self.service._get_kst_now = original_clock
+
+        self.assertEqual(timedelta(hours=9), expected_now.utcoffset())
+        self.assertEqual('collecting', result['check']['phase'])
+        self.assertEqual('COLLECTING', result['check']['status'])
 
     def test_count_status_boundaries(self):
         self.assertEqual('OK', self.service._status_for_count(300, 'complete'))
@@ -275,7 +311,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         })
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
+            object(), date(2026, 8, 14), datetime(2026, 8, 14, 11, 1)
         )
         tv = result['check']['categories'][0]
         lotuss = tv['retailers'][1]
@@ -321,7 +357,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self._set_history({('tse_tv', 'lotuss'): [65]})
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
+            object(), date(2026, 8, 14), datetime(2026, 8, 14, 11, 1)
         )
         lotuss = result['check']['categories'][0]['retailers'][0]
 
@@ -361,7 +397,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self._set_history({('tse_tv', 'lotuss'): []})
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
+            object(), date(2026, 8, 14), datetime(2026, 8, 14, 11, 1)
         )
         tv = result['check']['categories'][0]
         lotuss = tv['retailers'][0]
@@ -409,7 +445,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self._set_history({('tse_tv', 'lotuss'): []})
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 14), datetime(2026, 8, 14, 9, 31)
+            object(), date(2026, 8, 14), datetime(2026, 8, 14, 11, 1)
         )
 
         self.assertEqual('CRITICAL', result['check']['categories'][0]['status'])

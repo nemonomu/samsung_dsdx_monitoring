@@ -19,7 +19,7 @@ TSE_UNASSIGNED_DISPLAY_NAME = '리테일러 미지정'
 TSE_LOTUSS_HISTORY_DAYS = 7
 TSE_LOTUSS_CRITICAL_DEVIATION = 20
 TSE_COLLECTION_START = time(9, 0)
-TSE_COLLECTION_END = time(9, 30)
+TSE_COLLECTION_END = time(11, 0)
 
 TSE_COMMON_REQUIRED_COLUMNS = (
     'country',
@@ -307,7 +307,7 @@ def tse_crossfield_rule_supported(product_line, retailer, rule_key):
 
 
 def get_tse_collection_phase(current_time):
-    """Return the RDP-time collection phase for the supplied ``time`` value."""
+    """Return the KST collection phase for the supplied ``time`` value."""
     if current_time < TSE_COLLECTION_START:
         return 'pending'
     if current_time <= TSE_COLLECTION_END:

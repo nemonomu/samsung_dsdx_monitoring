@@ -124,7 +124,7 @@ function renderTseRetailCheck(check, checkIdx) {
                 '<div class="time-slot-header" style="cursor:default;">' +
                     '<div class="time-slot-info">' +
                         '<span class="time-slot-name">수집 시간</span>' +
-                        '<span class="time-slot-time"><span class="utc">' + esc(check.collection_window || 'RDP 09:00~09:30') + '</span></span>' +
+                        '<span class="time-slot-time"><span class="utc">' + esc(check.collection_window || 'KST 09:00~11:00') + '</span></span>' +
                     '</div>' +
                 '</div>' +
             '</div>' +

@@ -346,7 +346,7 @@ function flattenCheckToDetails(sectionType, check) {
                 (cat.retailers || []).forEach(function(ret) {
                     details.push({
                         category: cat.category || cat.name,
-                        time_slot: check.collection_window || 'RDP 09:00~09:30',
+                        time_slot: check.collection_window || 'KST 09:00~11:00',
                         retailer: ret.retailer,
                         item_name: ret.batch_id || '',
                         expected_count: ret.expected || 0,
