@@ -530,8 +530,12 @@ def evaluate_tse_format_row(row, product_line=None, retailer=None):
         str(original_price).strip()
     ):
         errors['original_sku_price'] = '฿13,820 형식이 아닙니다.'
-    if savings_present and not _TSE_SAVINGS_PATTERN.fullmatch(
-        str(savings).strip()
+    if (
+        retailer_key != 'powerbuy'
+        and savings_present
+        and not _TSE_SAVINGS_PATTERN.fullmatch(
+            str(savings).strip()
+        )
     ):
         errors['savings'] = '฿3,000 (-3%) 형식이 아닙니다.'
 
@@ -1434,6 +1438,11 @@ def _get_tse_static_format_rules(product_line, retailer):
             dict(TSE_LAZADA_FORMAT_RULES[field])
             for field in get_tse_format_fields(product_line, retailer)
             if field in TSE_LAZADA_FORMAT_RULES
+        ]
+    if retailer_key == 'powerbuy':
+        return [
+            dict(rule) for rule in TSE_FORMAT_RULES
+            if rule['field'] != 'savings'
         ]
     if retailer_key != 'lotuss':
         return [dict(rule) for rule in TSE_FORMAT_RULES]

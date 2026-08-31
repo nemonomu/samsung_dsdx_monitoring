@@ -106,6 +106,15 @@ class TseRetailCommonTests(unittest.TestCase):
             'tse_tv', 'Lazada', 'savings_rate_match'
         ))
 
+    def test_powerbuy_layer2_omits_strict_savings_display_format(self):
+        fields = get_tse_format_fields('tse_tv', 'PowerBuy')
+
+        self.assertNotIn('savings', fields)
+        self.assertIn('original_sku_price', fields)
+        self.assertTrue(tse_crossfield_rule_supported(
+            'tse_tv', 'PowerBuy', 'savings_amount_match'
+        ))
+
     def test_lotuss_column_and_format_capabilities_are_product_specific(self):
         self.assertFalse(tse_retailer_supports_column(
             'tse_tv', 'Lotuss', 'count_of_reviews'

@@ -220,6 +220,31 @@ class TSEFormatValidationTests(unittest.TestCase):
             'star_rating',
         }, set(errors))
 
+    def test_powerbuy_does_not_require_savings_percentage_format(self):
+        amount_only = self.valid_row(
+            account_name='PowerBuy', savings='฿3,000',
+        )
+
+        self.assertEqual({}, self.service.evaluate_tse_format_row(
+            amount_only, 'tse_tv', 'PowerBuy',
+        ))
+        self.assertIn(
+            'savings',
+            self.service.evaluate_tse_format_row(
+                amount_only, 'tse_tv', 'Homepro',
+            ),
+        )
+
+        powerbuy_rules = self.service._get_tse_static_format_rules(
+            'tse_tv', 'PowerBuy'
+        )
+        self.assertNotIn('savings', {
+            rule['field'] for rule in powerbuy_rules
+        })
+        self.assertIn('original_sku_price / savings', {
+            rule['field'] for rule in powerbuy_rules
+        })
+
     def test_lotuss_tv_uses_percentage_savings_and_ignores_reviews(self):
         row = {
             'account_name': 'Lotuss',

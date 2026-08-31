@@ -134,6 +134,15 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
         ))
         self.assertNotIn('savings_rate_match', errors)
 
+    def test_powerbuy_amount_only_savings_remains_valid_crossfield_data(self):
+        errors = tse_services.evaluate_tse_row(_valid_row(
+            account_name='PowerBuy', savings='฿3,500',
+        ))
+
+        self.assertNotIn('savings_format', errors)
+        self.assertNotIn('savings_amount_match', errors)
+        self.assertNotIn('savings_rate_match', errors)
+
 
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
     def setUp(self):

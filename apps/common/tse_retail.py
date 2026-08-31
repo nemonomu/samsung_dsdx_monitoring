@@ -53,6 +53,12 @@ TSE_DEFAULT_FORMAT_FIELDS = (
     *TSE_REVIEW_COLUMNS,
 )
 
+TSE_POWERBUY_FORMAT_FIELDS = {
+    'tse_tv': (
+        'final_sku_price', 'original_sku_price', *TSE_REVIEW_COLUMNS,
+    ),
+}
+
 TSE_LOTUSS_FORMAT_FIELDS = {
     'tse_tv': (
         'item', 'product_url', 'final_sku_price', 'original_sku_price',
@@ -151,6 +157,10 @@ TSE_RETAILER_POLICIES = {
     TSE_POWERBUY_RETAILER: {
         'display_name': 'PowerBuy',
         'include_unassigned': False,
+        # PowerBuy savings may contain a baht amount without a percentage.
+        # Keep savings relationship checks in Layer 3, but do not impose the
+        # Homepro-only ``฿3,000 (-3%)`` display format in Layer 2.
+        'format_fields': TSE_POWERBUY_FORMAT_FIELDS,
     },
 }
 
