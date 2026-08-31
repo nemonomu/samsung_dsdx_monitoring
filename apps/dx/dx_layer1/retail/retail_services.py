@@ -376,7 +376,6 @@ def get_layer1_stats(cursor, target_date, now=None):
     else:
         overall_status = 'OK'
 
-    ok_count = sum(category['status'] == 'OK' for category in categories)
     total_count = sum(category['total'] for category in categories)
     total_expected = sum(category['expected'] for category in categories)
 
@@ -407,7 +406,7 @@ def get_layer1_stats(cursor, target_date, now=None):
 
     check = {
         'name': SECTION_TITLES['retail'],
-        'description': f'{ok_count}/3 카테고리 정상',
+        'description': 'SEA TV/REF/LDY 일일 수집 현황',
         'actual': total_count,
         'expected': total_expected,
         'expected_min': total_expected,

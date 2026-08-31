@@ -158,7 +158,9 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(
             ['sea_tv', 'sea_ref', 'sea_ldy'], check['source_keys']
         )
-        self.assertEqual('3/3 카테고리 정상', check['description'])
+        self.assertEqual(
+            'SEA TV/REF/LDY 일일 수집 현황', check['description']
+        )
         self.assertEqual('OK', check['status'])
         self.assertEqual(['TV', 'REF', 'LDY'], [
             category['name'] for category in check['categories']
@@ -211,7 +213,9 @@ class SeaLayer1ServiceTests(unittest.TestCase):
 
         check = result['check']
         self.assertEqual('CRITICAL', check['status'])
-        self.assertEqual('0/3 카테고리 정상', check['description'])
+        self.assertEqual(
+            'SEA TV/REF/LDY 일일 수집 현황', check['description']
+        )
         self.assertEqual(7, len(result['failed_items']))
         self.assertEqual(
             ['Amazon', 'Bestbuy', 'Walmart'],
