@@ -78,14 +78,16 @@ const html = context.renderTseCategory({
 assert(html.includes('<th>MAIN</th>'));
 assert(html.includes('<th>BSR</th>'));
 assert(html.includes('<th>총 건수</th>'));
-assert(html.includes('batch_id: hidden-batch-id'));
-assert(html.includes('batch_id: another-hidden-batch-id'));
+assert(html.includes('/ hidden-batch-id</span>'));
+assert(html.includes('/ another-hidden-batch-id</span>'));
+assert(/Homepro\s+<span class="retail-batch-id"[^>]*>\/ hidden-batch-id<\/span>/.test(html));
+assert(!html.includes('batch_id:'));
 assert(!html.includes('Anchor batch_id:'));
 assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=7"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',

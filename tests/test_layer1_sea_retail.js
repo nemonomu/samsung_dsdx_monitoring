@@ -169,8 +169,8 @@ function categoryFromSummary(key) {
     assert.ok(refHtml.includes('검수일 2026-08-20'));
     assert.ok(refHtml.includes('데이터일 2026-08-19'));
     assert.ok(refHtml.includes('D-1 (offset_days=-1)'));
-    assert.ok(refHtml.includes('batch_id: REF-BESTBUY-ANCHOR'));
-    assert.ok(refHtml.includes('batch_id: REF-LOWES-ANCHOR'));
+    assert.ok(refHtml.includes('/ REF-BESTBUY-ANCHOR</span>'));
+    assert.ok(refHtml.includes('/ REF-LOWES-ANCHOR</span>'));
     assert.ok(refHtml.includes('category=REF'));
     assert.ok(refHtml.includes('date=2026-08-20'));
     assert.ok(refHtml.includes('<th>MAIN</th>'));
@@ -189,21 +189,20 @@ function categoryFromSummary(key) {
 
     const ldyHtml = context.renderRetailCategory(categoryFromSummary('ldy'), 0, 2);
     assert.ok(ldyHtml.includes('category=LDY'));
-    assert.ok(ldyHtml.includes('batch_id: LDY-LOWES-ANCHOR'));
-    assert.ok(ldyHtml.includes('정상: MAIN 150↑ · BSR 90↑'));
+    assert.ok(ldyHtml.includes('/ LDY-LOWES-ANCHOR</span>'));
     assert.ok(!ldyHtml.includes('rt-extra'));
-    assert.ok(!refHtml.includes('정상: MAIN 150↑ · BSR 90↑'));
 
     const tvHtml = context.renderRetailCategory(categoryFromSummary('tv'), 0, 0);
-    assert.ok(!tvHtml.includes('정상: MAIN 150↑ · BSR 90↑'));
     assert.ok(tvHtml.includes('<th>Promotion</th>'));
     assert.ok(tvHtml.includes('class="rt-extra"'));
     assert.ok(tvHtml.includes('Amazon'));
     assert.ok(tvHtml.includes('Bestbuy'));
     assert.ok(tvHtml.includes('Walmart'));
-    assert.ok(tvHtml.includes('batch_id: TV-AMAZON-1'));
-    assert.ok(tvHtml.includes('batch_id: TV-BESTBUY-1, TV-BESTBUY-2'));
-    assert.ok(tvHtml.includes('batch_id: TV-WALMART-1'));
+    assert.ok(tvHtml.includes('/ TV-AMAZON-1</span>'));
+    assert.ok(tvHtml.includes('/ TV-BESTBUY-1, TV-BESTBUY-2</span>'));
+    assert.ok(tvHtml.includes('/ TV-WALMART-1</span>'));
+    assert.ok(/>Amazon<\/a>\s+<span class="retail-batch-id"[^>]*>\/ TV-AMAZON-1<\/span>/.test(tvHtml));
+    assert.ok(!tvHtml.includes('batch_id:'));
     assert.ok(!tvHtml.includes('Anchor batch_id:'));
 
     const fallbackHtml = context.renderRetailCheck({
@@ -223,48 +222,9 @@ function categoryFromSummary(key) {
     assert.ok(fallbackHtml.includes('Amazon'));
     assert.ok(fallbackHtml.includes('Walmart'));
     assert.ok(fallbackHtml.includes('Lowes'));
-    assert.ok(fallbackHtml.includes('기본 기준(특례 제외) · 정상: 200↑'));
-    assert.ok(fallbackHtml.includes('기본 기준(특례 제외) · 심각: 200 미만'));
-    assert.ok(fallbackHtml.includes('LDY Lowes · 정상: MAIN 150↑ · BSR 90↑'));
-
-    const criteriaHtml = context.renderRetailCheck({
-        name: 'SEA Retail',
-        description: 'criteria metadata',
-        actual: 112,
-        status: 'OK',
-        categories: ['tv', 'ref', 'ldy'].map(categoryFromSummary),
-    }, 0);
-    assert.ok(criteriaHtml.includes('기본 기준(특례 제외) · 정상: 200↑'));
-    assert.ok(criteriaHtml.includes('기본 기준(특례 제외) · 심각: 200 미만'));
-    assert.ok(criteriaHtml.includes('LDY Lowes · 정상: MAIN 150↑ · BSR 90↑'));
-    assert.ok(!criteriaHtml.includes('<span class="criteria-item ok">정상: 200↑</span>'));
-
-    const unsafeCriteriaHtml = context.renderRetailCheck({
-        name: 'SEA Retail',
-        description: 'criteria escaping',
-        actual: 1,
-        status: 'OK',
-        categories: [{
-            name: '<img src=x onerror=alert(1)>',
-            total: 1,
-            status: 'OK',
-            time_slots: [{
-                name: '일일',
-                total: 1,
-                status: 'OK',
-                retailers: [{
-                    retailer: '<script>alert(1)</script>',
-                    count: 1,
-                    status: 'OK',
-                    criteria: { main_min: 150, bsr_min: 90 },
-                    items: [],
-                }],
-            }],
-        }],
-    }, 1);
-    assert.ok(!unsafeCriteriaHtml.includes('<script>alert(1)</script>'));
-    assert.ok(!unsafeCriteriaHtml.includes('<img src=x onerror=alert(1)>'));
-    assert.ok(unsafeCriteriaHtml.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.ok(!fallbackHtml.includes('criteria-item'));
+    assert.ok(!fallbackHtml.includes('LDY Lowes · 정상:'));
+    assert.ok(fallbackHtml.includes('수집 항목 정보'));
 
     assert.ok(dashboardSource.includes('await loadSeaRetailSummaries(selectedDate);'));
     assert.ok(!dashboardSource.includes("summary/?type=tv"));
@@ -272,11 +232,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=11"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=11"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=12"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=12"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=5"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=7"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
 
     console.log('Layer1 SEA retail frontend tests passed');
 })().catch(function(error) {

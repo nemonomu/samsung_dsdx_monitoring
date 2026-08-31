@@ -74,106 +74,6 @@ function retailCount(value) {
     return Number.isFinite(count) ? count : 0;
 }
 
-function normalizeRetailCriteria(criteria) {
-    if (!criteria || typeof criteria !== 'object') return null;
-
-    var totalMin = criteria.total_min === null || criteria.total_min === ''
-        ? NaN
-        : Number(criteria.total_min);
-    if (Number.isFinite(totalMin) && totalMin >= 0) {
-        return { total_min: totalMin };
-    }
-
-    var mainMin = criteria.main_min === null || criteria.main_min === ''
-        ? NaN
-        : Number(criteria.main_min);
-    var bsrMin = criteria.bsr_min === null || criteria.bsr_min === ''
-        ? NaN
-        : Number(criteria.bsr_min);
-    if (
-        Number.isFinite(mainMin) && mainMin >= 0 &&
-        Number.isFinite(bsrMin) && bsrMin >= 0
-    ) {
-        return { main_min: mainMin, bsr_min: bsrMin };
-    }
-    return null;
-}
-
-function renderRetailRowCriteria(criteria) {
-    var normalized = normalizeRetailCriteria(criteria);
-    if (!normalized || normalized.main_min === undefined) return '';
-    return '<div class="retail-row-criteria" style="font-size:11px;color:#475569;margin-top:3px;white-space:nowrap;">' +
-        '정상: MAIN ' + esc(normalized.main_min) + '↑ · BSR ' +
-        esc(normalized.bsr_min) + '↑' +
-    '</div>';
-}
-
-function collectRetailCriteria(categories) {
-    var totalMins = [];
-    var componentRules = [];
-    var seen = {};
-
-    function addRule(categoryName, retailerName, criteria) {
-        var normalized = normalizeRetailCriteria(criteria);
-        if (!normalized) return;
-        if (normalized.total_min !== undefined) {
-            if (totalMins.indexOf(normalized.total_min) < 0) {
-                totalMins.push(normalized.total_min);
-            }
-            return;
-        }
-        var key = [
-            String(categoryName || '').toLowerCase(),
-            String(retailerName || '').toLowerCase(),
-            normalized.main_min,
-            normalized.bsr_min
-        ].join('|');
-        if (seen[key]) return;
-        seen[key] = true;
-        componentRules.push({
-            category: categoryName || '',
-            retailer: retailerName || '',
-            main_min: normalized.main_min,
-            bsr_min: normalized.bsr_min
-        });
-    }
-
-    (categories || []).forEach(function(category) {
-        var categoryName = category && category.name || '';
-        ((category && category.time_slots) || []).forEach(function(slot) {
-            ((slot && slot.retailers) || []).forEach(function(retailer) {
-                addRule(categoryName, retailer.retailer, retailer.criteria);
-            });
-        });
-    });
-
-    return { total_mins: totalMins, component_rules: componentRules };
-}
-
-function renderRetailCheckCriteria(categories) {
-    var criteria = collectRetailCriteria(categories);
-    var specialRules = criteria.component_rules;
-    if (specialRules.length === 0) {
-        return '<span class="criteria-item ok">정상: 200↑</span>' +
-            '<span class="criteria-item critical">심각: 200 미만</span>';
-    }
-
-    var baseMin = criteria.total_mins.length === 1
-        ? criteria.total_mins[0]
-        : 200;
-    var html = '<span class="criteria-item ok">기본 기준(특례 제외) · 정상: ' +
-        esc(baseMin) + '↑</span>' +
-        '<span class="criteria-item critical">기본 기준(특례 제외) · 심각: ' +
-        esc(baseMin) + ' 미만</span>';
-    specialRules.forEach(function(rule) {
-        html += '<span class="criteria-item ok retail-special-criteria">' +
-            esc(rule.category) + ' ' + esc(rule.retailer) +
-            ' · 정상: MAIN ' + esc(rule.main_min) + '↑ · BSR ' +
-            esc(rule.bsr_min) + '↑</span>';
-    });
-    return html;
-}
-
 function hasRetailExtraRank(summaryData, categoryData, categoryName) {
     if (summaryData && typeof summaryData.has_extra_rank === 'boolean') {
         return summaryData.has_extra_rank;
@@ -249,19 +149,18 @@ function getRetailItemCount(retailer, names) {
     return 0;
 }
 
-function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId, criteria) {
+function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId) {
     if (showExtra === undefined) showExtra = true;
     var batchId = row.batch_id || retailerBatchId || '';
     var batchHtml = batchId
-        ? '<div class="retail-anchor-batch" style="font-size:11px;color:#64748b;margin-top:3px;">batch_id: ' + esc(batchId) + '</div>'
+        ? ' <span class="retail-batch-id" style="font-size:11px;color:#64748b;">/ ' + esc(batchId) + '</span>'
         : '';
-    var criteriaHtml = renderRetailRowCriteria(criteria);
     var detailUrl = '/dx/layer1/retail/?category=' + encodeURIComponent(categoryName) +
         '&retailer=' + encodeURIComponent(retailerName) +
         '&period=' + encodeURIComponent(period) +
         '&date=' + encodeURIComponent(getSelectedDate());
     return '<tr>' +
-        '<td class="rt-name"><a href="' + detailUrl + '">' + esc(retailerName) + '</a>' + batchHtml + criteriaHtml + '</td>' +
+        '<td class="rt-name"><a href="' + detailUrl + '">' + esc(retailerName) + '</a>' + batchHtml + '</td>' +
         '<td>' + retailCount(row.main).toLocaleString() + '</td>' +
         '<td>' + retailCount(row.bsr).toLocaleString() + '</td>' +
         (showExtra ? '<td class="rt-extra">' + retailCount(row.extra).toLocaleString() + '</td>' : '') +
@@ -283,13 +182,11 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
 
     // 리테일러별 status 매핑 (slot.retailers에서 가져옴)
     var statusMap = {};
-    var slotRetailerMap = {};
     var slotRetailerSet = {};
     if (slot.retailers) {
         slot.retailers.forEach(function(r) {
             var retailerKey = String(r.retailer || '').toLowerCase();
             statusMap[retailerKey] = r.status;
-            slotRetailerMap[retailerKey] = r;
             slotRetailerSet[retailerKey] = true;
         });
     }
@@ -319,12 +216,10 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             if (showExtra) totals.extra += retailCount(row.extra);
             totals.total += retailCount(row.total);
             var retailerKey = String(ret.retailer).toLowerCase();
-            var slotRetailer = slotRetailerMap[retailerKey] || {};
             var rStatus = statusMap[retailerKey] || 'PENDING';
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row, rStatus,
-                showExtra, ret.batch_id,
-                slotRetailer.criteria || ret.criteria
+                showExtra, ret.batch_id
             );
             renderedRows += 1;
         });
@@ -346,8 +241,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             totals.total += retailCount(row.total);
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row,
-                ret.status || 'PENDING', showExtra, ret.batch_id,
-                ret.criteria
+                ret.status || 'PENDING', showExtra, ret.batch_id
             );
             renderedRows += 1;
         });
@@ -441,10 +335,6 @@ function buildSeaRetailFallbackCategories() {
                 retailer: retailerName,
                 count: retailCount(summaryRetailer && summaryRetailer.total),
                 batch_id: summaryRetailer && summaryRetailer.batch_id || '',
-                criteria: product.key === 'ldy' &&
-                    retailerName.toLowerCase() === 'lowes'
-                    ? { main_min: 150, bsr_min: 90 }
-                    : { total_min: 200 },
                 status: 'PENDING',
                 items: []
             };
@@ -500,7 +390,6 @@ function renderRetailCheck(check, checkIdx) {
     '</div>';
 
     var displayCategories = hasCategories ? check.categories : buildSeaRetailFallbackCategories();
-    var criteriaHtml = renderRetailCheckCriteria(displayCategories);
     let categoriesHtml = '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
         timeHeader +
         '<div class="sentiment-categories">' +
@@ -520,7 +409,6 @@ function renderRetailCheck(check, checkIdx) {
                 '<div class="check-description">' + check.description + '</div>' +
             '</div>' +
             '<div class="check-criteria">' +
-                criteriaHtml +
                 '<button class="btn-columns-info" onclick="event.stopPropagation(); openColumnsModal()">수집 항목 정보</button>' +
             '</div>' +
             '<div class="check-stats">' +

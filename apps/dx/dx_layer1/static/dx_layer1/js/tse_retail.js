@@ -14,7 +14,7 @@ function renderTseRetailerRow(retailer) {
     var retailerLabel = esc(retailer.retailer || '-');
     var batchId = retailer.batch_id || '';
     var batchHtml = batchId
-        ? '<div class="retail-anchor-batch" style="font-size:11px;color:#64748b;margin-top:3px;">batch_id: ' + esc(batchId) + '</div>'
+        ? ' <span class="retail-batch-id" style="font-size:11px;color:#64748b;">/ ' + esc(batchId) + '</span>'
         : '';
     var bsrDisplay = retailer.bsr_applicable === false
         ? '-'
