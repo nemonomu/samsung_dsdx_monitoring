@@ -16,8 +16,12 @@ const dashboardTemplatePath = path.join(
 const dashboardPath = path.join(
     root, 'apps', 'dx', 'dx_layer1', 'static', 'dx_layer1', 'js', 'dashboard.js'
 );
+const youtubePath = path.join(
+    root, 'apps', 'dx', 'dx_layer1', 'static', 'dx_layer1', 'js', 'youtube.js'
+);
 const source = fs.readFileSync(retailPath, 'utf8');
 const dashboardSource = fs.readFileSync(dashboardPath, 'utf8');
+const youtubeSource = fs.readFileSync(youtubePath, 'utf8');
 const retailTemplate = fs.readFileSync(retailTemplatePath, 'utf8');
 const dashboardTemplate = fs.readFileSync(dashboardTemplatePath, 'utf8');
 
@@ -237,6 +241,10 @@ function categoryFromSummary(key) {
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=6"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
+    assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
+    assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
+    assert.ok(youtubeSource.includes("(offset_days="));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/youtube.js' %}?v=20260831-1"));
 
     console.log('Layer1 SEA retail frontend tests passed');
 })().catch(function(error) {

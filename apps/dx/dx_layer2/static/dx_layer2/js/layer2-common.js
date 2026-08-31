@@ -179,6 +179,20 @@ function getAllColumns(config) {
     return cols;
 }
 
+function ensureProductUrlColumn(columns, selectCols) {
+    var result = (columns || []).slice();
+    if (!Array.isArray(selectCols) || selectCols.indexOf('product_url') < 0) {
+        return result;
+    }
+    var alreadyVisible = result.some(function(column) {
+        return column && column.key === 'product_url';
+    });
+    if (!alreadyVisible) {
+        result.push({ key: 'product_url', label: 'URL', width: 80 });
+    }
+    return result;
+}
+
 function flattenRecords(type, records, tableParam) {
     var flat = [];
     var groupNum = 0;
@@ -342,7 +356,9 @@ function renderDetailWithTable(options) {
     var dateColumn = options.dateColumn || '';
     var enableModalColumnSelector = options.enableModalColumnSelector === true;
     var isRowspan = !Array.isArray(config);
-    var defaultCols = getAllColumns(config);
+    // Retail inspection details must expose the source link whenever the
+    // backend selected product_url, even if an older DB display rule omitted it.
+    var defaultCols = ensureProductUrlColumn(getAllColumns(config), selectCols);
 
     detailViewState.type = type;
     detailViewState.tableParam = tableParam;

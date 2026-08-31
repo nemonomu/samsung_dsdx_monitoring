@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from datetime import datetime, timedelta
+from datetime import datetime
 from apps.common.response import log_error
 from . import youtube_services as svc
 
@@ -16,7 +16,7 @@ def youtube_raw_data(request):
     data_type = request.GET.get('data_type', 'logs')
 
     if not date_str:
-        target_date = (datetime.now() - timedelta(days=1)).date()
+        target_date = datetime.now().date()
     else:
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
 

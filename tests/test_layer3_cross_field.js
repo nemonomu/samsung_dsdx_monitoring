@@ -140,6 +140,8 @@ assert(source.includes("itemTitle.textContent = listLabel + ' 목록 ('"));
 assert(source.includes("document.getElementById('${queryId}'), true"));
 assert(source.includes("if (!isCrossFieldInline())"));
 assert(/fixedKeys = \[\s*'_no', 'id', 'item', 'retailer_sku_name'/.test(source));
+assert(source.includes("if (urlKey) defaultVisibleSet.add('product_url')"));
+assert(source.includes("r['product_url'] = renderProductUrl(row[urlKey])"));
 assert(source.includes('Shift+클릭으로 범위 선택'));
 assert(source.includes("showToast(successCount + '건 확인 처리 완료'"));
 

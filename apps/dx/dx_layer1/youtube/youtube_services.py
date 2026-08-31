@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import date
 from apps.common.db import dx_connection
 from apps.common.response import log_error
 from apps.common.dx_schedules import get_schedule_kst_info, get_kst_time_info
+from apps.common.inspection_dates import resolve_youtube_monitoring_date
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 from . import youtube_repositories as repo
 
@@ -10,23 +11,25 @@ def get_layer1_stats(cursor, target_date, now):
     result = {'check': None, 'failed_items': []}
 
     try:
-        youtube_info = get_schedule_kst_info('youtube', target_date, now)
+        date_contract = resolve_youtube_monitoring_date(target_date)
+        source_date = date.fromisoformat(date_contract['source_date'])
+        youtube_info = get_schedule_kst_info('youtube', source_date, now)
 
         if not youtube_info:
-            kst_start = get_kst_time_info(4, target_date)
+            kst_start = get_kst_time_info(4, source_date)
             youtube_info = {
                 'us_start_hour': 4,
                 'collection_duration_min': 240,
                 'kst_start': kst_start,
-                'kst_end': {'full_display': f"{target_date} 22:00"},
+                'kst_end': {'full_display': f"{source_date} 22:00"},
                 'time_status': None,
                 'is_pending': False,
                 'is_collecting': False,
                 'collection_done': True
             }
 
-        target_date_str = target_date.strftime('%Y-%m-%d')
-        youtube_today = repo.get_youtube_today(cursor, target_date_str)
+        source_date_str = date_contract['source_date']
+        youtube_today = repo.get_youtube_today(cursor, source_date_str)
         youtube_expected_map = repo.get_youtube_expected(cursor)
 
         today_by_category = {
@@ -140,7 +143,11 @@ def get_layer1_stats(cursor, target_date, now):
             'rate': round(youtube_overall_rate, 1),
             'status': youtube_overall_status,
             'check_type': 'youtube',
-            'us_time': f'{target_date} {youtube_info["us_start_hour"]:02d}:00',
+            'inspection_date': date_contract['inspection_date'],
+            'source_date': date_contract['source_date'],
+            'offset_days': date_contract['offset_days'],
+            'source_key': date_contract['source_key'],
+            'us_time': f'{source_date} {youtube_info["us_start_hour"]:02d}:00',
             'kr_time': youtube_info['kst_start']['full_display'],
             'kr_time_end': youtube_info['kst_end']['full_display'],
             'is_dst': youtube_info['kst_start']['is_dst'],
@@ -154,9 +161,14 @@ def get_layer1_stats(cursor, target_date, now):
 
 
 def get_youtube_raw_data(category, data_type, target_date):
+    date_contract = resolve_youtube_monitoring_date(target_date)
     results = {
         'category': category,
-        'date': str(target_date),
+        'date': date_contract['inspection_date'],
+        'inspection_date': date_contract['inspection_date'],
+        'source_date': date_contract['source_date'],
+        'offset_days': date_contract['offset_days'],
+        'source_key': date_contract['source_key'],
         'data_type': data_type,
         'columns': [],
         'data': [],
@@ -164,19 +176,19 @@ def get_youtube_raw_data(category, data_type, target_date):
     }
 
     try:
-        target_date_str = target_date.strftime('%Y-%m-%d')
+        source_date_str = date_contract['source_date']
         with dx_connection() as (conn, cursor):
             if data_type == 'logs':
                 columns, rows, total_count = repo.get_youtube_logs(
-                    cursor, target_date_str, category
+                    cursor, source_date_str, category
                 )
             elif data_type == 'videos':
                 columns, rows, total_count = repo.get_youtube_videos(
-                    cursor, target_date_str, category
+                    cursor, source_date_str, category
                 )
             elif data_type == 'comments':
                 columns, rows, total_count = repo.get_youtube_comments(
-                    cursor, target_date_str, category
+                    cursor, source_date_str, category
                 )
             else:
                 columns, rows, total_count = [], [], 0

@@ -58,7 +58,9 @@ def db_rows():
     for product, columns in NULL_COLUMNS.items():
         for retailer in ('Bestbuy', 'Lowes'):
             for column in columns:
-                display_columns = ['item', 'sku', 'retailer_sku_name']
+                display_columns = [
+                    'item', 'sku', 'retailer_sku_name', 'product_url',
+                ]
                 if column not in display_columns:
                     display_columns.append(column)
                 rows.append({
@@ -155,7 +157,10 @@ class SEALayer2NullValidationTests(unittest.TestCase):
             config['sea_ref_retail']['checks']['bestbuy']['table_name'],
         )
         self.assertEqual(
-            ['item', 'sku', 'retailer_sku_name', 'ref_capacity'],
+            [
+                'item', 'sku', 'retailer_sku_name', 'product_url',
+                'ref_capacity',
+            ],
             config['sea_ref_retail']['checks']['bestbuy']['columns'][
                 'ref_capacity'
             ]['display_columns'],
@@ -388,7 +393,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual('l_260830_191936', result['batch_id'])
         self.assertFalse(result['supports_day_history'])
         self.assertEqual(
-            ['item', 'sku', 'retailer_sku_name'],
+            ['item', 'sku', 'retailer_sku_name', 'product_url'],
             result['display_config']['sku']['select_columns'],
         )
         self.assertNotIn(

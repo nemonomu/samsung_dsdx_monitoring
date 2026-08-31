@@ -6,9 +6,11 @@ BEGIN;
 
 UPDATE public.monitoring_null_column null_column
 SET display_columns = CASE
-    WHEN null_column.check_column IN ('item', 'sku', 'retailer_sku_name')
-        THEN 'item|sku|retailer_sku_name'
-    ELSE 'item|sku|retailer_sku_name|' || null_column.check_column
+    WHEN null_column.check_column IN (
+        'item', 'sku', 'retailer_sku_name', 'product_url'
+    )
+        THEN 'item|sku|retailer_sku_name|product_url'
+    ELSE 'item|sku|retailer_sku_name|product_url|' || null_column.check_column
 END
 FROM public.monitoring_null_group null_group
 JOIN public.monitoring_null_category category

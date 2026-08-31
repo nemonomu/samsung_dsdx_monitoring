@@ -164,6 +164,28 @@ const commonSandbox = {
 };
 vm.createContext(commonSandbox);
 vm.runInContext(layer2CommonSource, commonSandbox);
+const productUrlColumns = commonSandbox.ensureProductUrlColumn(
+    [{ key: 'item', label: 'item' }],
+    ['id', 'item', 'product_url']
+);
+assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(productUrlColumns)),
+    [
+        { key: 'item', label: 'item' },
+        { key: 'product_url', label: 'URL', width: 80 }
+    ]
+);
+assert.strictEqual(
+    commonSandbox.ensureProductUrlColumn(
+        productUrlColumns, ['id', 'item', 'product_url']
+    ).filter(column => column.key === 'product_url').length,
+    1
+);
+const duplicateRetailKeys = vm.runInContext(
+    "getAllColumns(DETAIL_COLUMNS.dup_default).map(column => column.key)",
+    commonSandbox
+);
+assert.ok(Array.from(duplicateRetailKeys).includes('product_url'));
 vm.runInContext(`
     detailViewState.type = 'null';
     detailViewState.editableCols = new Set();
@@ -208,5 +230,6 @@ assert.ok(layer2CommonSource.includes(
     "td.null-value[data-row-id][data-col]"
 ));
 assert.ok(layer2CommonSource.includes('Shift+클릭으로 범위 선택'));
+assert.ok(layer2CommonSource.includes('ensureProductUrlColumn'));
 
 console.log('Layer2 SEA NULL frontend tests passed.');

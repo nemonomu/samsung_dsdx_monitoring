@@ -103,3 +103,23 @@ def resolve_monitoring_dates(inspection_date):
         resolve_monitoring_date(inspection_date, country, source_key)
         for source_key, country, _product in SOURCE_DEFINITIONS
     ]
+
+
+def resolve_youtube_monitoring_date(inspection_date):
+    """Return the SEA D-1 date contract used by YouTube monitoring."""
+
+    parsed_date = _parse_inspection_date(inspection_date)
+    offset_days = COUNTRY_OFFSETS['SEA']
+    try:
+        source_date = parsed_date + timedelta(days=offset_days)
+    except OverflowError as exc:
+        raise MonitoringDateError(
+            '계산할 수 없는 검수일 범위입니다.'
+        ) from exc
+    return {
+        'inspection_date': parsed_date.isoformat(),
+        'source_date': source_date.isoformat(),
+        'offset_days': offset_days,
+        'country': 'SEA',
+        'source_key': 'sea_youtube',
+    }

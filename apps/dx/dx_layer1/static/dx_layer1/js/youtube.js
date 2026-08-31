@@ -100,8 +100,19 @@ function renderYouTubeCheck(check, checkIdx) {
     // US(NY) 시간과 KST 날짜+시간 형식: US(NY) 04:00 KST 2026-01-05 18:00
     const usTime = check.us_time ? check.us_time.split(' ')[1] : '04:00';
     const krTime = check.kr_time || '';
+    const offsetDays = Number(check.offset_days);
+    const offsetLabel = Number.isFinite(offsetDays)
+        ? (offsetDays === 0 ? 'D' : (offsetDays > 0 ? 'D+' + offsetDays : 'D' + offsetDays))
+        : '-';
+    const dateContract = check.inspection_date || check.source_date
+        ? '<div class="retail-date-contract" style="font-size:12px;color:#64748b;margin-bottom:10px;">' +
+            '검수일 ' + esc(check.inspection_date || '-') +
+            ' · 데이터일 ' + esc(check.source_date || '-') +
+            ' · ' + esc(offsetLabel) + ' (offset_days=' + esc(String(check.offset_days)) + ')' +
+          '</div>'
+        : '';
 
-    const timeHeader = '<div class="time-slot-item" style="margin-bottom: 16px;">' +
+    const timeHeader = dateContract + '<div class="time-slot-item" style="margin-bottom: 16px;">' +
         '<div class="time-slot-header" style="cursor: default;">' +
             '<div class="time-slot-info">' +
                 '<span class="time-slot-name">수집 시간</span>' +

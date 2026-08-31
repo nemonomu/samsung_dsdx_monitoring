@@ -83,6 +83,15 @@ class InspectionDateResolverTests(unittest.TestCase):
         self.assertEqual('2026-08-20', result['inspection_date'])
         self.assertEqual('2026-08-20', result['source_date'])
 
+    def test_youtube_uses_the_sea_d_minus_one_contract(self):
+        result = self.resolver.resolve_youtube_monitoring_date('2026-08-31')
+
+        self.assertEqual('2026-08-31', result['inspection_date'])
+        self.assertEqual('2026-08-30', result['source_date'])
+        self.assertEqual(-1, result['offset_days'])
+        self.assertEqual('SEA', result['country'])
+        self.assertEqual('sea_youtube', result['source_key'])
+
     def test_unknown_or_mismatched_country_and_source_fail_closed(self):
         invalid_cases = (
             ('US', 'sea_tv'),
