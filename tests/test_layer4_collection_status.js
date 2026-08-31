@@ -627,7 +627,7 @@ async function run() {
     assert(source.includes("fetch('/dx/layer4/api/collection-status/send-email/'"));
     assert(source.includes('date: renderedDate'));
     assert(!source.includes('당일 데이터는 이메일 발송할 수 없습니다.'));
-    assert(source.includes('미래 검수일은 이메일 발송할 수 없습니다.'));
+    assert(source.includes('내일 이후 검수일은 이메일 발송할 수 없습니다.'));
 
     // The selected inspection date is today (FixedDate). It must be sendable.
     email.listeners['email-send-btn:click']();
