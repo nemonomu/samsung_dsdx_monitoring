@@ -140,6 +140,52 @@ assert(source.includes("itemTitle.textContent = listLabel + ' 목록 ('"));
 assert(source.includes("document.getElementById('${queryId}'), true"));
 assert(source.includes("if (!isCrossFieldInline())"));
 assert(/fixedKeys = \[\s*'_no', 'id', 'item', 'retailer_sku_name'/.test(source));
+assert(source.includes('Shift+클릭으로 범위 선택'));
+assert(source.includes("showToast(successCount + '건 확인 처리 완료'"));
+
+function makeReviewCell(rowId, col) {
+    const classes = new Set();
+    return {
+        dataset: { rowId: String(rowId), col },
+        isConnected: true,
+        classList: {
+            add(value) { classes.add(value); },
+            remove(value) { classes.delete(value); },
+            contains(value) { return classes.has(value); },
+        },
+        classes,
+    };
+}
+
+function testCrossfieldShiftRangeUsesOneColumnAndSkipsCompletedCells() {
+    const first = makeReviewCell(1, 'star_rating');
+    const second = makeReviewCell(2, 'star_rating');
+    const completed = makeReviewCell(3, 'star_rating');
+    completed.classList.add('cell-normal');
+    const fourth = makeReviewCell(4, 'star_rating');
+    const otherColumn = makeReviewCell(5, 'count_of_reviews');
+    const cells = [first, second, completed, fourth, otherColumn];
+    const table = { querySelectorAll() { return cells; } };
+
+    assert.deepStrictEqual(
+        Array.from(sandbox._cfGetReviewRangeCells(table, first, fourth)),
+        [first, second, fourth]
+    );
+    assert.deepStrictEqual(
+        Array.from(sandbox._cfGetReviewRangeCells(
+            table, first, otherColumn
+        )),
+        []
+    );
+
+    sandbox._cfSetReviewSelection([first, second], true);
+    assert.strictEqual(sandbox.window._cfReviewAnchorCell, first);
+    assert.strictEqual(sandbox.window._cfReviewSelectedCells.length, 2);
+    assert(first.classList.contains('cell-review-selected'));
+    assert(second.classList.contains('cell-review-selected'));
+}
+
+testCrossfieldShiftRangeUsesOneColumnAndSkipsCompletedCells();
 
 async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     let requestedUrl = '';

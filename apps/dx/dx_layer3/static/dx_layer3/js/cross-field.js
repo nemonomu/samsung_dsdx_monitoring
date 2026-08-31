@@ -331,6 +331,8 @@ function showRetailerDetail(retailer) {
 function _cfRebuildTable() {
     var st = window._cfDetailState;
     if (!st) return;
+    _cfHideReviewBar();
+    _cfClearReviewSelection();
     var colMap = {};
     st.allColumns.forEach(c => { colMap[c.key] = c; });
     var visibleCols = st.visibleKeys.map(k => colMap[k]).filter(Boolean);
@@ -523,7 +525,7 @@ function _cfRenderPage(page) {
     }
 
     // 편집 이벤트 재바인딩
-    if (st.editableCols && st.editableCols.size > 0) {
+    if (isCrossFieldInline()) {
         setTimeout(function() { _cfBindEditEvents(); }, 50);
     }
 }
@@ -732,6 +734,7 @@ function _cfBindEditEvents() {
     // 중복 바인딩 방지
     if (tableEl._cfEditBound) return;
     tableEl._cfEditBound = true;
+    _cfClearReviewSelection();
 
     // 클릭: 셀 선택 또는 정상처리/취소 바
     tableEl.addEventListener('click', function(e) {
@@ -744,24 +747,52 @@ function _cfBindEditEvents() {
         _cfHideReviewBar();
         if (td) {
             if (td.classList.contains('cell-pending')) {
+                _cfClearReviewSelection();
                 window._cfSelectedCell = td;
                 // 변경 예정 셀은 확인 바 안 띄움
             } else {
-                td.classList.add('cell-selected');
-                window._cfSelectedCell = td;
-                _cfShowReviewBar(td, 'normal');
+                if (e.shiftKey && window._cfReviewAnchorCell) {
+                    e.preventDefault();
+                    var editableRange = _cfGetReviewRangeCells(
+                        tableEl, window._cfReviewAnchorCell, td
+                    );
+                    _cfSetReviewSelection(
+                        editableRange.length > 0 ? editableRange : [td],
+                        editableRange.length === 0
+                    );
+                } else {
+                    _cfSetReviewSelection([td], true);
+                }
+                window._cfSelectedCell = (
+                    window._cfReviewSelectedCells.length === 1 ? td : null
+                );
+                _cfShowReviewBar(window._cfReviewSelectedCells, 'normal');
             }
         } else if (normalTd) {
+            _cfClearReviewSelection();
             window._cfSelectedCell = null;
             // cell-normal은 무시 (정상처리 완료된 셀)
         } else if (correctedTd) {
+            _cfClearReviewSelection();
             window._cfSelectedCell = null;
             // cell-corrected는 무시 (수정 완료된 셀)
         } else if (reviewTd) {
-            reviewTd.classList.add('cell-selected');
+            if (e.shiftKey && window._cfReviewAnchorCell) {
+                e.preventDefault();
+                var reviewRange = _cfGetReviewRangeCells(
+                    tableEl, window._cfReviewAnchorCell, reviewTd
+                );
+                _cfSetReviewSelection(
+                    reviewRange.length > 0 ? reviewRange : [reviewTd],
+                    reviewRange.length === 0
+                );
+            } else {
+                _cfSetReviewSelection([reviewTd], true);
+            }
             window._cfSelectedCell = null;
-            _cfShowReviewBar(reviewTd, 'normal');
+            _cfShowReviewBar(window._cfReviewSelectedCells, 'normal');
         } else {
+            _cfClearReviewSelection();
             window._cfSelectedCell = null;
         }
     });
@@ -771,6 +802,7 @@ function _cfBindEditEvents() {
         if (!e.target.closest('#cf-detail-table-area') && !e.target.closest('#cf-review-bar')) {
             var sel = tableEl.querySelector('.cell-selected');
             if (sel) sel.classList.remove('cell-selected');
+            _cfClearReviewSelection();
             window._cfSelectedCell = null;
             _cfHideReviewBar();
         }
@@ -1022,23 +1054,72 @@ function _cfShowMemoDialog(callback) {
 }
 
 // ==================== 정상 처리 ====================
-function _cfShowReviewBar(td, mode) {
+function _cfClearReviewSelection() {
+    (window._cfReviewSelectedCells || []).forEach(function(cell) {
+        if (cell && cell.classList) {
+            cell.classList.remove('cell-review-selected');
+        }
+    });
+    window._cfReviewSelectedCells = [];
+    window._cfReviewAnchorCell = null;
+}
+
+function _cfSetReviewSelection(cells, updateAnchor) {
+    (window._cfReviewSelectedCells || []).forEach(function(cell) {
+        if (cell && cell.classList) {
+            cell.classList.remove('cell-review-selected');
+        }
+    });
+    window._cfReviewSelectedCells = (cells || []).filter(Boolean).slice();
+    window._cfReviewSelectedCells.forEach(function(cell) {
+        cell.classList.remove('cell-selected');
+        cell.classList.add('cell-review-selected');
+    });
+    if (updateAnchor && window._cfReviewSelectedCells.length > 0) {
+        window._cfReviewAnchorCell = window._cfReviewSelectedCells[0];
+    }
+}
+
+function _cfGetReviewRangeCells(tableEl, anchorCell, targetCell) {
+    if (!anchorCell || !targetCell || !anchorCell.isConnected) return [];
+    if (anchorCell.dataset.col !== targetCell.dataset.col) return [];
+    var candidates = Array.from(
+        tableEl.querySelectorAll('tbody td[data-row-id][data-col]')
+    ).filter(function(cell) {
+        return cell.dataset.col === targetCell.dataset.col
+            && !cell.classList.contains('cell-normal')
+            && !cell.classList.contains('cell-corrected')
+            && !cell.classList.contains('cell-pending');
+    });
+    var start = candidates.indexOf(anchorCell);
+    var end = candidates.indexOf(targetCell);
+    if (start < 0 || end < 0) return [];
+    return candidates.slice(Math.min(start, end), Math.max(start, end) + 1);
+}
+
+function _cfShowReviewBar(cells, mode) {
     _cfHideReviewBar();
+    cells = Array.isArray(cells) ? cells : [cells];
+    cells = cells.filter(Boolean);
+    if (cells.length === 0) return;
     var bar = document.createElement('div');
     bar.id = 'cf-review-bar';
     bar.className = 'null-review-bar';
-    var colName = td.dataset.col || '';
-    var rowId = td.dataset.rowId || '';
-    var infoText = colName + ' (ID: ' + rowId + ') — 이상치';
+    var colName = cells[0].dataset.col || '';
+    var rowId = cells[0].dataset.rowId || '';
+    var infoText = cells.length > 1
+        ? colName + ' ' + cells.length + '건 선택 — 이상치'
+        : colName + ' (ID: ' + rowId
+            + ') — 이상치 · Shift+클릭으로 범위 선택';
     var info = document.createElement('span');
     info.className = 'null-review-info';
     info.textContent = infoText;
     var btn = document.createElement('button');
     btn.className = 'btn-null-normal';
-    btn.textContent = '확인';
+    btn.textContent = cells.length > 1 ? cells.length + '건 확인' : '확인';
     btn.addEventListener('click', function() {
         _cfShowReviewDialog(function(reason, memo) {
-            _cfSubmitReview(td, 'normal', memo, reason);
+            _cfSubmitReviews(cells, 'normal', memo, reason);
         });
     });
     bar.appendChild(info);
@@ -1067,42 +1148,88 @@ function _cfShowReviewDialog(callback) {
 }
 
 function _cfSubmitReview(td, status, memo, reason) {
-    var rowId = td.dataset.rowId || (td.dataset.normalKey && td.dataset.normalKey.split('_')[0]);
-    var colName = td.dataset.col || (td.dataset.normalKey && td.dataset.normalKey.split('_').slice(1).join('_'));
-    if (!rowId || !colName) return;
+    return _cfSubmitReviews([td], status, memo, reason);
+}
+
+function _cfSubmitReviews(cells, status, memo, reason) {
+    cells = (cells || []).filter(function(td) {
+        return td && td.dataset && td.dataset.rowId && td.dataset.col;
+    });
+    if (cells.length === 0) return Promise.resolve([]);
 
     var retailerVal = window._cfCurrentRetailer || '';
     var ruleId = (window._cfDetailState && window._cfDetailState._ruleId) || window.crossfieldRuleId || null;
+    var button = document.querySelector('#cf-review-bar .btn-null-normal');
+    if (button) {
+        button.disabled = true;
+        button.textContent = '처리 중...';
+    }
 
-    fetch('/dx/layer3/api/review/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({
-            table_name: window.crossfieldTableName,
-            record_id: parseInt(rowId),
-            column_name: colName,
-            status: status,
-            memo: memo || '',
-            reason: reason || '',
-            crawl_date: window.crossfieldDate || '',
-            retailer: retailerVal,
-            rule_id: ruleId
-        })
-    }).then(function(r) { return r.json(); })
-    .then(function(res) {
-        if (res.success) {
-            _cfHideReviewBar();
-            var nrKey = rowId + '_' + colName;
-            if (!window.crossfieldNormalReviews) window.crossfieldNormalReviews = {};
-            window.crossfieldNormalReviews[nrKey] = { memo: memo, reason: reason, created_id: '', created_at: '' };
-            showToast('확인 처리 완료', 'success');
+    var requests = cells.map(function(td) {
+        var rowId = td.dataset.rowId;
+        var colName = td.dataset.col;
+        return fetch('/dx/layer3/api/review/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({
+                table_name: window.crossfieldTableName,
+                record_id: parseInt(rowId),
+                column_name: colName,
+                status: status,
+                memo: memo || '',
+                reason: reason || '',
+                crawl_date: window.crossfieldDate || '',
+                retailer: retailerVal,
+                rule_id: ruleId
+            })
+        }).then(function(r) { return r.json(); })
+        .then(function(res) {
+            return {
+                rowId: rowId, colName: colName, response: res
+            };
+        }).catch(function() {
+            return {
+                rowId: rowId, colName: colName,
+                response: { error: '네트워크 오류' }
+            };
+        });
+    });
+
+    return Promise.all(requests).then(function(results) {
+        var successCount = 0;
+        var failCount = 0;
+        if (!window.crossfieldNormalReviews) {
+            window.crossfieldNormalReviews = {};
+        }
+        results.forEach(function(result) {
+            if (result.response.success) {
+                successCount++;
+                var nrKey = result.rowId + '_' + result.colName;
+                window.crossfieldNormalReviews[nrKey] = {
+                    memo: memo,
+                    reason: reason,
+                    created_id: '',
+                    created_at: ''
+                };
+            } else {
+                failCount++;
+            }
+        });
+        _cfHideReviewBar();
+        _cfClearReviewSelection();
+        window._cfSelectedCell = null;
+        if (successCount > 0) {
+            showToast(successCount + '건 확인 처리 완료', 'success');
             // 테이블 재렌더링 (정상 처리 행 제외 + 건수 갱신)
             _cfSortAndRender();
-        } else {
-            showToast(res.error || '처리 실패', 'error');
         }
-    }).catch(function() {
-        showToast('네트워크 오류', 'error');
+        if (failCount > 0) {
+            showToast(failCount + '건 처리 실패', 'error');
+        }
+        return results;
     });
 }
 

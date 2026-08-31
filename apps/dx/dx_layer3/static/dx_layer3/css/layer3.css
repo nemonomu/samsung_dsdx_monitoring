@@ -1206,6 +1206,16 @@ td.cell-corrected {
     vertical-align: middle;
 }
 
+td.cell-review-selected {
+    background: #dbeafe !important;
+    outline: 2px solid #2563eb;
+    outline-offset: -2px;
+}
+
+td.cell-review-selected:hover {
+    background: #bfdbfe !important;
+}
+
 .null-review-bar {
     display: flex;
     justify-content: space-between;
