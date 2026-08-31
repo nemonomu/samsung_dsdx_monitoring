@@ -690,7 +690,7 @@
         html += '<b>1. 일일 수집 현황</b><br><br>';
         html += '<b>&nbsp;기준일: ' + dateDisplay + '</b><br><br>';
         html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
-        html += '<th>No</th><th>카테고리</th><th>데이터일</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
+        html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
         html += '</tr>';
         dailyRows.forEach(function(r, rowIndex) {
             var isGroupStart = rowIndex > 0
@@ -701,8 +701,6 @@
             html += '<tr>';
             html += '<td align="center"' + groupDivider + '>' + r.no + '</td>';
             html += '<td align="center"' + groupDivider + '>' + L4.escapeHtml(r.category) + '</td>';
-            html += '<td align="center"' + groupDivider + '>'
-                + L4.escapeHtml(formatEmailDataDate(r.source_date, r.offset_days)) + '</td>';
             if (r.table_rowspan > 0) {
                 html += '<td rowspan="' + r.table_rowspan + '" align="center" valign="middle"' + groupDivider + '>'
                     + L4.escapeHtml(r.name) + '</td>';
@@ -712,7 +710,7 @@
             html += '<td align="center"' + groupDivider + '>' + L4.formatNumber(r.actual) + '</td>';
             html += '</tr>';
         });
-        html += '<tr><th colspan="5">합 계</th>';
+        html += '<tr><th colspan="4">합 계</th>';
         html += '<th>' + L4.formatNumber(totalActual) + '</th></tr>';
         html += '</table>';
 

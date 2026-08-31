@@ -296,7 +296,7 @@ async function run() {
     assert(!emailHtml.includes('예상건수'));
     assert(!emailHtml.includes('예상 건수'));
     assert(!emailHtml.includes('필터링 기준'));
-    assert(emailHtml.includes('<tr><th colspan="5">합 계</th><th>4780</th></tr>'));
+    assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4780</th></tr>'));
     assert(emailHtml.includes(
         'SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D)'
     ));
@@ -353,7 +353,7 @@ async function run() {
     );
     assert.strictEqual(
         (emailDailyTable.match(/border-top:2px solid #1f4e78;/g) || []).length,
-        18
+        15
     );
     const dividerRows = Array.from(
         emailDailyTable.matchAll(/<tr><td align="center" style="border-top:2px solid #1f4e78;">(\d+)<\/td>/g),
@@ -361,15 +361,15 @@ async function run() {
     );
     assert.deepStrictEqual(dividerRows, [5, 6, 7]);
     assert(!emailDailyTable.includes(
-        '<tr><th colspan="5" style="border-top:2px solid #1f4e78;">합 계</th>'
+        '<tr><th colspan="4" style="border-top:2px solid #1f4e78;">합 계</th>'
     ));
     assert.strictEqual(
         (emailDailyTable.match(/2026\.07\.28 \(D-1\)/g) || []).length,
-        4
+        0
     );
     assert.strictEqual(
         (emailDailyTable.match(/2026\.07\.29 \(D\)/g) || []).length,
-        3
+        0
     );
     assert(emailHtml.includes(
         'SEA - REF · 데이터일 2026.07.28 (D-1)'
