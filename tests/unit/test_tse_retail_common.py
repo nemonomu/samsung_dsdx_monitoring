@@ -72,11 +72,14 @@ class TseRetailCommonTests(unittest.TestCase):
         self.assertEqual('Lotuss', display_tse_retailer('LOTUSS'))
         self.assertEqual('Lazada', display_tse_retailer('lazada'))
         self.assertEqual('Lazada', display_tse_retailer('LAZADA'))
+        self.assertEqual('PowerBuy', display_tse_retailer('powerbuy'))
+        self.assertEqual('PowerBuy', display_tse_retailer('POWERBUY'))
 
     def test_retailer_policy_is_not_based_on_config_count(self):
         self.assertFalse(tse_retailer_include_unassigned('Homepro'))
         self.assertFalse(tse_retailer_include_unassigned('Lotuss'))
         self.assertFalse(tse_retailer_include_unassigned('Lazada'))
+        self.assertFalse(tse_retailer_include_unassigned('PowerBuy'))
 
     def test_lazada_format_and_crossfield_policy_matches_csv_contract(self):
         self.assertNotIn(

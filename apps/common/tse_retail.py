@@ -14,6 +14,7 @@ TSE_EXPECTED_COUNT = 300
 TSE_ALLOWED_SHORTFALL = 100
 TSE_LOTUSS_RETAILER = 'lotuss'
 TSE_LAZADA_RETAILER = 'lazada'
+TSE_POWERBUY_RETAILER = 'powerbuy'
 TSE_UNASSIGNED_RETAILER = '__unassigned__'
 TSE_UNASSIGNED_DISPLAY_NAME = '리테일러 미지정'
 TSE_LOTUSS_HISTORY_DAYS = 7
@@ -146,6 +147,10 @@ TSE_RETAILER_POLICIES = {
         'include_unassigned': False,
         'format_fields': TSE_LAZADA_FORMAT_FIELDS,
         'crossfield_rule_keys': TSE_LAZADA_CROSSFIELD_RULE_KEYS,
+    },
+    TSE_POWERBUY_RETAILER: {
+        'display_name': 'PowerBuy',
+        'include_unassigned': False,
     },
 }
 

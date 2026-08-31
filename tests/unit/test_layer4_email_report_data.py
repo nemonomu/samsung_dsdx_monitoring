@@ -111,12 +111,17 @@ class EmailRegistryTests(unittest.TestCase):
             tse_sources['tse_ldy']['email_include_skipped_columns'],
             ('original_sku_price', 'savings', 'ldy_loading_type'),
         )
-        for configured_source in tse_sources.values():
+        expected_retailers = {
+            'tse_tv': {'Homepro', 'Lazada', 'PowerBuy'},
+            'tse_ref': {'Homepro', 'Lazada'},
+            'tse_ldy': {'Homepro', 'Lazada'},
+        }
+        for key, configured_source in tse_sources.items():
             retailers = {
                 retailer['name']: retailer
                 for retailer in configured_source['retailers']
             }
-            self.assertEqual(set(retailers), {'Homepro', 'Lazada'})
+            self.assertEqual(set(retailers), expected_retailers[key])
             self.assertFalse(retailers['Homepro']['include_unassigned'])
             self.assertFalse(
                 retailers['Homepro']['optional_if_unconfigured']
@@ -126,6 +131,15 @@ class EmailRegistryTests(unittest.TestCase):
                 retailers['Lazada']['optional_if_unconfigured']
             )
             self.assertEqual(retailers['Lazada']['unsupported_columns'], ())
+            if key == 'tse_tv':
+                self.assertFalse(retailers['PowerBuy']['include_unassigned'])
+                self.assertFalse(
+                    retailers['PowerBuy']['optional_if_unconfigured']
+                )
+                self.assertEqual(
+                    retailers['PowerBuy']['conditional_columns'],
+                    ('original_sku_price', 'savings'),
+                )
         self.assertEqual(
             tse_sources['tse_tv']['retailers'][1]['conditional_columns'],
             ('original_sku_price', 'savings'),
@@ -507,6 +521,42 @@ class EmailReportDataTests(unittest.TestCase):
                 self.assertIn(' OR ', missing)
                 self.assertIn(f'source.{column}', missing)
                 self.assertEqual(remark, '')
+
+    def test_powerbuy_tv_email_includes_discount_columns(self):
+        registry = load_registry()
+        tse_source = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'tse_tv'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku', 'homepro', False),
+            ('sku', 'lazada', False),
+            ('sku', 'powerbuy', False),
+            ('original_sku_price', 'powerbuy', True),
+            ('savings', 'powerbuy', True),
+        ]}])
+        service = load_service(cursor)
+
+        configured = service._configured_retailers(cursor, tse_source)
+        powerbuy = next(
+            retailer
+            for retailer in configured
+            if retailer['name'] == 'PowerBuy'
+        )
+
+        self.assertEqual(
+            powerbuy['columns'],
+            ('item', 'sku', 'original_sku_price', 'savings'),
+        )
+        for column in ('original_sku_price', 'savings'):
+            denominator, missing, remark = service._column_metrics(
+                tse_source, powerbuy, column,
+            )
+            self.assertIn('source.original_sku_price', denominator)
+            self.assertIn('source.savings', denominator)
+            self.assertIn(f'source.{column}', missing)
+            self.assertEqual(remark, '')
 
     def test_tse_email_includes_only_approved_skipped_columns(self):
         registry = load_registry()
