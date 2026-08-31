@@ -22,10 +22,31 @@ async function flushPromises() {
     await new Promise(resolve => setImmediate(resolve));
 }
 
+function fakeElement(tagName) {
+    return {
+        tagName,
+        textContent: '',
+        children: [],
+        style: { cssText: '' },
+        appendChild(child) {
+            this.children.push(child);
+            return child;
+        }
+    };
+}
+
+function elementText(element) {
+    return [element.textContent]
+        .concat((element.children || []).map(elementText))
+        .join(' ');
+}
+
 async function testIntegratedBackupPromptAndPost() {
     const button = { disabled: false, textContent: '백업 실행' };
+    const confirmMessage = fakeElement('div');
     const requests = [];
     const confirms = [];
+    const confirmOptions = [];
     const toasts = [];
     const getResult = {
         success: true,
@@ -60,12 +81,15 @@ async function testIntegratedBackupPromptAndPost() {
         console,
         L1: { initLayer1Page: () => {} },
         document: {
-            getElementById: id => id === 'btn-backup' ? button : null
+            getElementById: id => id === 'btn-backup'
+                ? button : id === 'confirmMsg' ? confirmMessage : null,
+            createElement: fakeElement
         },
         getSelectedDate: () => '2026-08-11',
         getCsrfToken: () => 'test-csrf',
-        showConfirm: message => {
+        showConfirm: (message, type, options) => {
             confirms.push(message);
+            confirmOptions.push({ type, options });
             return Promise.resolve(true);
         },
         showToast: (message, type) => toasts.push({ message, type }),
@@ -84,15 +108,26 @@ async function testIntegratedBackupPromptAndPost() {
     assert.strictEqual(requests.length, 2);
     assert.strictEqual(requests[0].url, '/dx/layer1/retail/api/backup/?date=2026-08-11');
     assert.strictEqual(requests[1].options.method, 'POST');
-    assert.ok(confirms[0].includes('검수일(inspection_date): 2026-08-11'));
-    assert.ok(confirms[0].includes('SEA source_date - TV: 2026-08-10'));
-    assert.ok(confirms[0].includes('TSE source_date - TV: 2026-08-11'));
-    assert.ok(confirms[0].includes('SEA TV: 1건'));
-    assert.ok(confirms[0].includes('SEA REF: 5건'));
-    assert.ok(confirms[0].includes('SEA LDY: 6건'));
-    assert.ok(confirms[0].includes('TSE TV: 2건'));
-    assert.ok(confirms[0].includes('TSE REF: 3건'));
-    assert.ok(confirms[0].includes('TSE LDY: 4건'));
+    assert.ok(confirms[0].includes('백업 대상 확인'));
+    assert.ok(confirms[0].includes('검수일  2026-08-11'));
+    assert.ok(confirms[0].includes('SEA · D-1 데이터 · 2026-08-10'));
+    assert.ok(confirms[0].includes('TV 1건  ·  REF 5건  ·  LDY 6건'));
+    assert.ok(confirms[0].includes('TSE · D 데이터 · 2026-08-11'));
+    assert.ok(confirms[0].includes('TV 2건  ·  REF 3건  ·  LDY 4건'));
+    assert.ok(confirms[0].includes('총 21건'));
+    const renderedText = elementText(confirmMessage);
+    assert.ok(renderedText.includes('백업 대상 확인'));
+    assert.ok(renderedText.includes('검수일'));
+    assert.ok(renderedText.includes('2026-08-11'));
+    assert.ok(renderedText.includes('SEA'));
+    assert.ok(renderedText.includes('D-1'));
+    assert.ok(renderedText.includes('TSE'));
+    assert.ok(renderedText.includes('총 백업 대상'));
+    assert.ok(renderedText.includes('21건'));
+    assert.strictEqual(confirmOptions.length, 1);
+    assert.strictEqual(confirmOptions[0].type, 'info');
+    assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');
+    assert.strictEqual(confirmOptions[0].options.cancelText, '취소');
     assert.deepStrictEqual(toasts, [{ message: '백업 완료', type: 'success' }]);
     assert.strictEqual(button.disabled, false);
     assert.strictEqual(button.textContent, '백업 실행');

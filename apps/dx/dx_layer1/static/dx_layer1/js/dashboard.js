@@ -221,28 +221,155 @@ function renderDemandMissingTable() {
 
 
 // 백업 실행
-function formatBackupCounts(data) {
+function formatBackupCount(value) {
+    return Number(value || 0).toLocaleString() + '건';
+}
+
+function formatBackupSourceDate(sourceDates, keys) {
+    var dates = keys.map(function(key) {
+        return sourceDates[key] || '-';
+    });
+    if (dates.every(function(date) { return date === dates[0]; })) {
+        return dates[0];
+    }
+    return 'TV ' + dates[0] + ' · REF ' + dates[1] + ' · LDY ' + dates[2];
+}
+
+function formatBackupPrompt(data) {
+    var sourceDates = data.source_dates || {};
+    var totalCount = data.total_count;
+    if (totalCount === undefined || totalCount === null) {
+        totalCount = Number(data.tv_count || 0) +
+            Number(data.sea_ref_count || 0) +
+            Number(data.sea_ldy_count || 0) +
+            Number(data.tse_tv_count || 0) +
+            Number(data.tse_ref_count || 0) +
+            Number(data.tse_ldy_count || 0);
+    }
+
     return [
-        'SEA TV: ' + Number(data.tv_count || 0).toLocaleString() + '건',
-        'SEA REF: ' + Number(data.sea_ref_count || 0).toLocaleString() + '건',
-        'SEA LDY: ' + Number(data.sea_ldy_count || 0).toLocaleString() + '건',
-        'TSE TV: ' + Number(data.tse_tv_count || 0).toLocaleString() + '건',
-        'TSE REF: ' + Number(data.tse_ref_count || 0).toLocaleString() + '건',
-        'TSE LDY: ' + Number(data.tse_ldy_count || 0).toLocaleString() + '건'
+        '백업 대상 확인',
+        '',
+        '검수일  ' + (data.inspection_date || '-'),
+        '',
+        'SEA · D-1 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy']
+        ),
+        'TV ' + formatBackupCount(data.tv_count) +
+            '  ·  REF ' + formatBackupCount(data.sea_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.sea_ldy_count),
+        '',
+        'TSE · D 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['tse_tv', 'tse_ref', 'tse_ldy']
+        ),
+        'TV ' + formatBackupCount(data.tse_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.tse_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.tse_ldy_count),
+        '',
+        '총 ' + formatBackupCount(totalCount),
+        '',
+        '백업을 진행하시겠습니까?'
     ].join('\n');
 }
 
-function formatBackupDates(data) {
+function renderBackupConfirmContent(data) {
+    var container = document.getElementById('confirmMsg');
+    if (!container) return;
+
     var sourceDates = data.source_dates || {};
-    return [
-        '검수일(inspection_date): ' + (data.inspection_date || ''),
-        'SEA source_date - TV: ' + (sourceDates.sea_tv || '') +
-            ', REF: ' + (sourceDates.sea_ref || '') +
-            ', LDY: ' + (sourceDates.sea_ldy || ''),
-        'TSE source_date - TV: ' + (sourceDates.tse_tv || '') +
-            ', REF: ' + (sourceDates.tse_ref || '') +
-            ', LDY: ' + (sourceDates.tse_ldy || '')
-    ].join('\n');
+    var totalCount = data.total_count;
+    if (totalCount === undefined || totalCount === null) {
+        totalCount = Number(data.tv_count || 0) +
+            Number(data.sea_ref_count || 0) +
+            Number(data.sea_ldy_count || 0) +
+            Number(data.tse_tv_count || 0) +
+            Number(data.tse_ref_count || 0) +
+            Number(data.tse_ldy_count || 0);
+    }
+
+    function element(tagName, text, styles) {
+        var node = document.createElement(tagName);
+        if (text !== undefined && text !== null) node.textContent = text;
+        if (styles) node.style.cssText = styles;
+        return node;
+    }
+
+    function countryCard(country, offsetLabel, sourceDate, counts) {
+        var card = element('div', null,
+            'border:1px solid #e2e8f0;border-radius:10px;padding:13px 14px;background:#fff;');
+        var header = element('div', null,
+            'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;');
+        var title = element('strong', country,
+            'font-size:15px;color:#0f172a;');
+        var meta = element('div', null,
+            'display:flex;align-items:center;gap:7px;font-size:12px;color:#64748b;');
+        meta.appendChild(element('span', '데이터일 ' + sourceDate));
+        meta.appendChild(element('span', offsetLabel,
+            'padding:2px 7px;border-radius:999px;background:#e0f2fe;color:#0369a1;font-weight:700;'));
+        header.appendChild(title);
+        header.appendChild(meta);
+        card.appendChild(header);
+
+        var countGrid = element('div', null,
+            'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;');
+        counts.forEach(function(item) {
+            var countBox = element('div', null,
+                'padding:8px 6px;border-radius:8px;background:#f8fafc;text-align:center;');
+            countBox.appendChild(element('div', item.label,
+                'font-size:11px;color:#64748b;margin-bottom:2px;'));
+            countBox.appendChild(element('strong', formatBackupCount(item.value),
+                'font-size:14px;color:#0f172a;'));
+            countGrid.appendChild(countBox);
+        });
+        card.appendChild(countGrid);
+        return card;
+    }
+
+    container.textContent = '';
+    container.style.cssText =
+        'font-size:14px;font-weight:400;color:#1a1a1a;line-height:1.45;margin-bottom:20px;text-align:left;';
+    container.appendChild(element('div', '백업 대상 확인',
+        'font-size:17px;font-weight:700;color:#0f172a;text-align:center;margin-bottom:13px;'));
+
+    var inspection = element('div', null,
+        'display:flex;align-items:center;justify-content:space-between;padding:10px 13px;' +
+        'border-radius:9px;background:#f1f5f9;margin-bottom:10px;');
+    inspection.appendChild(element('span', '검수일',
+        'font-size:12px;color:#64748b;'));
+    inspection.appendChild(element('strong', data.inspection_date || '-',
+        'font-size:14px;color:#0f172a;'));
+    container.appendChild(inspection);
+
+    var cards = element('div', null, 'display:grid;gap:9px;');
+    cards.appendChild(countryCard(
+        'SEA', 'D-1',
+        formatBackupSourceDate(sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy']),
+        [
+            { label: 'TV', value: data.tv_count },
+            { label: 'REF', value: data.sea_ref_count },
+            { label: 'LDY', value: data.sea_ldy_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'TSE', 'D',
+        formatBackupSourceDate(sourceDates, ['tse_tv', 'tse_ref', 'tse_ldy']),
+        [
+            { label: 'TV', value: data.tse_tv_count },
+            { label: 'REF', value: data.tse_ref_count },
+            { label: 'LDY', value: data.tse_ldy_count }
+        ]
+    ));
+    container.appendChild(cards);
+
+    var total = element('div', null,
+        'display:flex;align-items:center;justify-content:center;gap:7px;margin:13px 0 8px;');
+    total.appendChild(element('span', '총 백업 대상',
+        'font-size:12px;color:#64748b;'));
+    total.appendChild(element('strong', formatBackupCount(totalCount),
+        'font-size:18px;color:#2563eb;'));
+    container.appendChild(total);
+    container.appendChild(element('div', '백업을 진행하시겠습니까?',
+        'font-size:13px;color:#475569;text-align:center;'));
 }
 
 function runBackup() {
@@ -267,9 +394,13 @@ function runBackup() {
             }
 
             // 2. 건수 표시 및 확인 팝업
-            var msg = formatBackupDates(res) + '\n백업 대상\n' +
-                formatBackupCounts(res) + '\n백업을 진행하시겠습니까?';
-            showConfirm(msg).then(function(confirmed) {
+            var msg = formatBackupPrompt(res);
+            var confirmPromise = showConfirm(msg, 'info', {
+                okText: '백업 실행',
+                cancelText: '취소'
+            });
+            renderBackupConfirmContent(res);
+            confirmPromise.then(function(confirmed) {
                 if (!confirmed) return;
 
                 // 3. 백업 실행 (POST)
