@@ -2,6 +2,90 @@
 // Retail Render Functions
 // ============================================================
 
+var SEA_RETAIL_PRODUCTS = [
+    { key: 'tv', category: 'TV', retailers: ['Amazon', 'Bestbuy', 'Walmart'] },
+    { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes'] },
+    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes'] }
+];
+var seaRetailSummaryCache = {};
+var seaRetailSummaryDate = '';
+var seaRetailSummaryLoadId = 0;
+
+function getSeaRetailProduct(categoryName) {
+    var key = String(categoryName || '').toLowerCase();
+    for (var i = 0; i < SEA_RETAIL_PRODUCTS.length; i++) {
+        if (SEA_RETAIL_PRODUCTS[i].key === key) return SEA_RETAIL_PRODUCTS[i];
+    }
+    return null;
+}
+
+function getRetailSummaryData(categoryName) {
+    var key = String(categoryName || '').toLowerCase();
+    if (seaRetailSummaryCache && seaRetailSummaryCache[key]) {
+        return seaRetailSummaryCache[key];
+    }
+    if (typeof currentRetailSummary !== 'undefined' && currentRetailSummary) {
+        return currentRetailSummary[key] || null;
+    }
+    return null;
+}
+
+function getRetailContractValue(summaryData, categoryData, field, legacyField) {
+    if (summaryData && summaryData[field] !== undefined && summaryData[field] !== null && summaryData[field] !== '') {
+        return summaryData[field];
+    }
+    if (categoryData && categoryData[field] !== undefined && categoryData[field] !== null && categoryData[field] !== '') {
+        return categoryData[field];
+    }
+    if (legacyField && summaryData && summaryData[legacyField]) {
+        return summaryData[legacyField];
+    }
+    return '';
+}
+
+function formatRetailOffset(offsetDays) {
+    if (offsetDays === '' || offsetDays === null || offsetDays === undefined) return '';
+    var offset = Number(offsetDays);
+    if (!Number.isFinite(offset)) return '';
+    if (offset === 0) return 'D';
+    return offset > 0 ? 'D+' + offset : 'D' + offset;
+}
+
+function renderRetailDateContract(categoryData) {
+    var summaryData = getRetailSummaryData(categoryData && categoryData.name);
+    var inspectionDate = getRetailContractValue(summaryData, categoryData, 'inspection_date', 'date');
+    var sourceDate = getRetailContractValue(summaryData, categoryData, 'source_date');
+    var offsetDays = getRetailContractValue(summaryData, categoryData, 'offset_days');
+    if (!inspectionDate && !sourceDate && offsetDays === '') return '';
+
+    var offsetLabel = formatRetailOffset(offsetDays);
+    var offsetText = offsetLabel
+        ? offsetLabel + ' (offset_days=' + Number(offsetDays) + ')'
+        : 'offset_days=-';
+    return '<span class="retail-date-contract" style="font-size:12px;font-weight:400;color:#64748b;margin-left:10px;">' +
+        '검수일 ' + esc(inspectionDate || '-') +
+        ' · 데이터일 ' + esc(sourceDate || '-') +
+        ' · ' + esc(offsetText) +
+    '</span>';
+}
+
+function retailCount(value) {
+    var count = Number(value || 0);
+    return Number.isFinite(count) ? count : 0;
+}
+
+function hasRetailExtraRank(summaryData, categoryData, categoryName) {
+    if (summaryData && typeof summaryData.has_extra_rank === 'boolean') {
+        return summaryData.has_extra_rank;
+    }
+    if (categoryData && typeof categoryData.has_extra_rank === 'boolean') {
+        return categoryData.has_extra_rank;
+    }
+    if (summaryData && summaryData.extra_rank_name) return true;
+    var product = getSeaRetailProduct(categoryData && categoryData.name || categoryName);
+    return product ? product.key === 'tv' : true;
+}
+
 function renderRetailCategory(cat, checkIdx, catIdx) {
     const catStatusClass = getStatusClass(cat.status);
     const hasTimeSlots = cat.time_slots && cat.time_slots.length > 0;
@@ -11,7 +95,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
     if (hasTimeSlots) {
         const slotClass = cat.time_slots.length > 1 ? 'sentiment-two-column' : 'sentiment-two-column retail-single-column';
         timeSlotsHtml = '<div class="' + slotClass + '" id="retail-cat-' + checkIdx + '-' + catIdx + '">' +
-            cat.time_slots.map((slot, slotIdx) => renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, cat.name)).join('') +
+            cat.time_slots.map((slot, slotIdx) => renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, cat.name, cat)).join('') +
         '</div>';
     }
 
@@ -19,10 +103,11 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
         '<div class="sentiment-category-header" onclick="toggleRetailCategory(this, ' + checkIdx + ', ' + catIdx + ')">' +
             '<div class="sentiment-category-info">' +
                 '<span class="toggle-icon-small">▶</span>' +
-                '<span class="sentiment-category-name">' + cat.name + '</span>' +
+                '<span class="sentiment-category-name">' + esc(cat.name) + '</span>' +
+                renderRetailDateContract(cat) +
             '</div>' +
             '<div class="sentiment-category-stats">' +
-                '<span class="sentiment-category-count">' + cat.total.toLocaleString() + '</span>' +
+                '<span class="sentiment-category-count">' + retailCount(cat.total).toLocaleString() + '</span>' +
                 getStatusBadge(cat.status) +
             '</div>' +
         '</div>' +
@@ -33,14 +118,18 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
 // 일일 슬롯별 NULL 컬럼 목록 조회 (categoryName: 'TV', slotName: '일일')
 // 반환: [{retailer, columns}] 또는 빈 배열
 function getSlotNullColumns(categoryName, slotName) {
-    if (!currentNullData) return [];
     var key = categoryName.toLowerCase();
-    var data = currentNullData[key];
+    var summaryData = getRetailSummaryData(categoryName);
+    var data = summaryData && summaryData.null_columns;
+    if (!data && typeof currentNullData !== 'undefined' && currentNullData) {
+        data = currentNullData[key];
+    }
     if (!data) return [];
     var result = [];
     for (var i = 0; i < data.length; i++) {
-        for (var j = 0; j < data[i].time_slots.length; j++) {
-            var ts = data[i].time_slots[j];
+        var timeSlots = data[i].time_slots || [];
+        for (var j = 0; j < timeSlots.length; j++) {
+            var ts = timeSlots[j];
             if (ts.time_slot === slotName && ts.null_columns && ts.null_columns.length > 0) {
                 result.push({ retailer: data[i].retailer, columns: ts.null_columns.join(', ') });
             }
@@ -60,25 +149,35 @@ function getRetailItemCount(retailer, names) {
     return 0;
 }
 
-function renderRetailRankRow(categoryName, period, retailerName, row, status) {
+function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId) {
+    if (showExtra === undefined) showExtra = true;
+    var batchId = row.batch_id || retailerBatchId || '';
+    var batchHtml = batchId
+        ? '<div class="retail-anchor-batch" style="font-size:11px;color:#64748b;margin-top:3px;">Anchor batch_id: ' + esc(batchId) + '</div>'
+        : '';
+    var detailUrl = '/dx/layer1/retail/?category=' + encodeURIComponent(categoryName) +
+        '&retailer=' + encodeURIComponent(retailerName) +
+        '&period=' + encodeURIComponent(period) +
+        '&date=' + encodeURIComponent(getSelectedDate());
     return '<tr>' +
-        '<td class="rt-name"><a href="/dx/layer1/retail/?category=' + encodeURIComponent(categoryName) + '&retailer=' + encodeURIComponent(retailerName) + '&period=' + encodeURIComponent(period) + '&date=' + getSelectedDate() + '">' + esc(retailerName) + '</a></td>' +
-        '<td>' + row.main.toLocaleString() + '</td>' +
-        '<td>' + row.bsr.toLocaleString() + '</td>' +
-        '<td class="rt-extra">' + row.extra.toLocaleString() + '</td>' +
-        '<td class="rt-total">' + row.total.toLocaleString() + '</td>' +
+        '<td class="rt-name"><a href="' + detailUrl + '">' + esc(retailerName) + '</a>' + batchHtml + '</td>' +
+        '<td>' + retailCount(row.main).toLocaleString() + '</td>' +
+        '<td>' + retailCount(row.bsr).toLocaleString() + '</td>' +
+        (showExtra ? '<td class="rt-extra">' + retailCount(row.extra).toLocaleString() + '</td>' : '') +
+        '<td class="rt-total">' + retailCount(row.total).toLocaleString() + '</td>' +
         '<td class="rt-status ct-nc">' + getStatusBadge(status) + '</td>' +
     '</tr>';
 }
 
 // Retail 일일 슬롯 테이블 렌더링
-function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
+function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, categoryData) {
     var period = slot.name;
-    var key = categoryName.toLowerCase();
 
     // retail-summary API에서 rank별 건수 가져오기
-    var summaryData = currentRetailSummary && currentRetailSummary[key];
-    var extraName = (summaryData && summaryData.extra_rank_name) || 'Extra';
+    var summaryData = getRetailSummaryData(categoryName);
+    var showExtra = hasRetailExtraRank(summaryData, categoryData, categoryName);
+    var extraName = (summaryData && summaryData.extra_rank_name) ||
+        (categoryData && categoryData.extra_rank_name) || 'Extra';
     var slotIdx2 = slotIdx;
 
     // 리테일러별 status 매핑 (slot.retailers에서 가져옴)
@@ -86,8 +185,9 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
     var slotRetailerSet = {};
     if (slot.retailers) {
         slot.retailers.forEach(function(r) {
-            statusMap[r.retailer] = r.status;
-            slotRetailerSet[r.retailer.toLowerCase()] = true;
+            var retailerKey = String(r.retailer || '').toLowerCase();
+            statusMap[retailerKey] = r.status;
+            slotRetailerSet[retailerKey] = true;
         });
     }
 
@@ -98,16 +198,28 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
 
     if (summaryData && summaryData.summary) {
         summaryData.summary.forEach(function(ret) {
+            if (!ret || !ret.retailer) return;
             // 해당 슬롯에 속하는 리테일러만 표시
             if (Object.keys(slotRetailerSet).length > 0 && !slotRetailerSet[ret.retailer.toLowerCase()]) return;
-            var row = ret.rows && ret.rows[slotIdx2];
+            var row = null;
+            var summaryRows = ret.rows || [];
+            for (var rowIdx = 0; rowIdx < summaryRows.length; rowIdx++) {
+                if (summaryRows[rowIdx].time_slot === period) {
+                    row = summaryRows[rowIdx];
+                    break;
+                }
+            }
+            if (!row) row = summaryRows[slotIdx2];
             if (!row) return;
-            totals.main += row.main;
-            totals.bsr += row.bsr;
-            totals.extra += row.extra;
-            totals.total += row.total;
-            var rStatus = statusMap[ret.retailer] || 'PENDING';
-            rowsHtml += renderRetailRankRow(categoryName, period, ret.retailer, row, rStatus);
+            totals.main += retailCount(row.main);
+            totals.bsr += retailCount(row.bsr);
+            if (showExtra) totals.extra += retailCount(row.extra);
+            totals.total += retailCount(row.total);
+            var rStatus = statusMap[String(ret.retailer).toLowerCase()] || 'PENDING';
+            rowsHtml += renderRetailRankRow(
+                categoryName, period, ret.retailer, row, rStatus,
+                showExtra, ret.batch_id
+            );
             renderedRows += 1;
         });
     }
@@ -119,13 +231,17 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
                 main: getRetailItemCount(ret, ['Main Rank']),
                 bsr: getRetailItemCount(ret, ['BSR Rank']),
                 extra: getRetailItemCount(ret, ['Promotion Position', 'Trend Rank']),
-                total: ret.count || 0
+                total: ret.count || 0,
+                batch_id: ret.batch_id || ''
             };
-            totals.main += row.main;
-            totals.bsr += row.bsr;
-            totals.extra += row.extra;
-            totals.total += row.total;
-            rowsHtml += renderRetailRankRow(categoryName, period, ret.retailer, row, ret.status || 'PENDING');
+            totals.main += retailCount(row.main);
+            totals.bsr += retailCount(row.bsr);
+            if (showExtra) totals.extra += retailCount(row.extra);
+            totals.total += retailCount(row.total);
+            rowsHtml += renderRetailRankRow(
+                categoryName, period, ret.retailer, row,
+                ret.status || 'PENDING', showExtra, ret.batch_id
+            );
             renderedRows += 1;
         });
     }
@@ -135,7 +251,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
         '<td>합계</td>' +
         '<td>' + totals.main.toLocaleString() + '</td>' +
         '<td>' + totals.bsr.toLocaleString() + '</td>' +
-        '<td>' + totals.extra.toLocaleString() + '</td>' +
+        (showExtra ? '<td>' + totals.extra.toLocaleString() + '</td>' : '') +
         '<td>' + totals.total.toLocaleString() + '</td>' +
         '<td></td>' +
     '</tr>';
@@ -161,27 +277,24 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
 
     return '<div class="sentiment-column">' +
         '<div class="sentiment-column-header">' +
-            '<span class="sentiment-column-title">' + period + '</span>' +
+                '<span class="sentiment-column-title">' + period + '</span>' +
             '<div class="sentiment-column-stats">' +
-                '<span class="sentiment-column-count">' + slot.total.toLocaleString() + '건</span>' +
+                '<span class="sentiment-column-count">' + retailCount(slot.total).toLocaleString() + '건</span>' +
                 getStatusBadge(slot.status) +
             '</div>' +
         '</div>' +
         '<div class="retail-rank-wrap">' +
             '<table class="ct ct-grid">' +
                 '<colgroup>' +
-                    '<col style="width:22%">' +
-                    '<col style="width:14%">' +
-                    '<col style="width:14%">' +
-                    '<col style="width:14%">' +
-                    '<col style="width:14%">' +
-                    '<col style="width:14%">' +
+                    (showExtra
+                        ? '<col style="width:22%"><col style="width:14%"><col style="width:14%"><col style="width:14%"><col style="width:14%"><col style="width:14%">'
+                        : '<col style="width:28%"><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:18%">') +
                 '</colgroup>' +
                 '<thead><tr>' +
                     '<th style="text-align:left">리테일러</th>' +
                     '<th>MAIN</th>' +
                     '<th>BSR</th>' +
-                    '<th>' + esc(extraName) + '</th>' +
+                    (showExtra ? '<th>' + esc(extraName) + '</th>' : '') +
                     '<th>총 건수</th>' +
                     '<th></th>' +
                 '</tr></thead>' +
@@ -190,6 +303,64 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName) {
             nullHtml +
         '</div>' +
     '</div>';
+}
+
+function getRetailSummaryTotal(summaryData) {
+    if (summaryData && summaryData.totals && summaryData.totals.grand_total !== undefined) {
+        return retailCount(summaryData.totals.grand_total);
+    }
+    var total = 0;
+    var rows = summaryData && summaryData.summary || [];
+    rows.forEach(function(retailer) {
+        total += retailCount(retailer && retailer.total);
+    });
+    return total;
+}
+
+function buildSeaRetailFallbackCategories() {
+    return SEA_RETAIL_PRODUCTS.map(function(product) {
+        var summaryData = getRetailSummaryData(product.key);
+        var total = getRetailSummaryTotal(summaryData);
+        var summaryRetailers = summaryData && summaryData.summary || [];
+        var retailers = product.retailers.map(function(retailerName) {
+            var summaryRetailer = null;
+            for (var i = 0; i < summaryRetailers.length; i++) {
+                if (String(summaryRetailers[i].retailer || '').toLowerCase() === retailerName.toLowerCase()) {
+                    summaryRetailer = summaryRetailers[i];
+                    break;
+                }
+            }
+            return {
+                retailer: retailerName,
+                count: retailCount(summaryRetailer && summaryRetailer.total),
+                batch_id: summaryRetailer && summaryRetailer.batch_id || '',
+                status: 'PENDING',
+                items: []
+            };
+        });
+        return {
+            name: product.category,
+            product_line: product.key,
+            total: total,
+            expected: 0,
+            status: 'PENDING',
+            inspection_date: getRetailContractValue(summaryData, null, 'inspection_date', 'date'),
+            source_date: getRetailContractValue(summaryData, null, 'source_date'),
+            offset_days: getRetailContractValue(summaryData, null, 'offset_days'),
+            has_extra_rank: summaryData
+                ? summaryData.has_extra_rank
+                : product.key === 'tv',
+            extra_rank_name: summaryData && summaryData.extra_rank_name ||
+                (product.key === 'tv' ? 'Promotion' : ''),
+            time_slots: [{
+                name: '일일',
+                total: total,
+                expected: 0,
+                status: 'PENDING',
+                retailers: retailers
+            }]
+        };
+    });
 }
 
 function renderRetailCheck(check, checkIdx) {
@@ -217,63 +388,15 @@ function renderRetailCheck(check, checkIdx) {
         '</div>' +
     '</div>';
 
-    let categoriesHtml = '';
-    if (hasCategories) {
-        categoriesHtml = '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
-            timeHeader +
-            '<div class="sentiment-categories">' +
-                check.categories.map((cat, catIdx) => renderRetailCategory(cat, checkIdx, catIdx)).join('') +
-            '</div>' +
-        '</div>';
-    } else {
-        var defaultCats = ['TV'];
-        var defaultRets = ['Amazon', 'Bestbuy', 'Walmart'];
-        categoriesHtml = '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
-            timeHeader +
-            '<div class="sentiment-categories">' +
-                defaultCats.map(function(catName) {
-                    return '<div class="sentiment-category-item">' +
-                        '<div class="sentiment-category-header">' +
-                            '<div class="sentiment-category-info">' +
-                                '<span class="toggle-icon-small">▶</span>' +
-                                '<span class="sentiment-category-name">' + catName + '</span>' +
-                            '</div>' +
-                            '<div class="sentiment-category-stats">' +
-                                '<span class="sentiment-category-count">0</span>' +
-                                '<span class="status-badge pending"><span class="status-dot"></span>대기중</span>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="sentiment-two-column">' +
-                            ['일일'].map(function(period) {
-                                return '<div class="sentiment-column pending">' +
-                                    '<div class="sentiment-column-header">' +
-                                        '<span class="sentiment-column-title">' + period + ' (0건)</span>' +
-                                        '<div class="sentiment-column-stats">' +
-                                            '<span class="sentiment-column-count">0/0</span>' +
-                                            '<span class="sentiment-column-rate pending">0%</span>' +
-                                            '<span class="status-badge pending"><span class="status-dot"></span>대기중</span>' +
-                                        '</div>' +
-                                    '</div>' +
-                                    '<div class="sentiment-retailer-list">' +
-                                        defaultRets.map(function(ret) {
-                                            return '<div class="sentiment-retailer-item pending">' +
-                                                '<span class="sentiment-retailer-name">' + ret + '</span>' +
-                                                '<div class="sentiment-retailer-stats">' +
-                                                    '<span class="sentiment-retailer-count">0/0건</span>' +
-                                                    '<span class="sentiment-retailer-rate pending">0%</span>' +
-                                                    '<span class="status-badge pending"><span class="status-dot"></span>대기중</span>' +
-                                                '</div>' +
-                                            '</div>';
-                                        }).join('') +
-                                    '</div>' +
-                                '</div>';
-                            }).join('') +
-                        '</div>' +
-                    '</div>';
-                }).join('') +
-            '</div>' +
-        '</div>';
-    }
+    var displayCategories = hasCategories ? check.categories : buildSeaRetailFallbackCategories();
+    let categoriesHtml = '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
+        timeHeader +
+        '<div class="sentiment-categories">' +
+            displayCategories.map(function(cat, catIdx) {
+                return renderRetailCategory(cat, checkIdx, catIdx);
+            }).join('') +
+        '</div>' +
+    '</div>';
 
     return '<div class="check-item">' +
         '<div class="check-main" onclick="toggleTimeSlots(this, ' + checkIdx + ')">' +
@@ -421,6 +544,52 @@ function renderColumnsTable() {
 // Data Loading
 // ============================================================
 
+function syncSeaRetailSummaryGlobals(summaryCache) {
+    var summaries = {};
+    var nullColumns = {};
+    SEA_RETAIL_PRODUCTS.forEach(function(product) {
+        var summaryData = summaryCache[product.key];
+        if (!summaryData) return;
+        summaries[product.key] = summaryData;
+        nullColumns[product.key] = summaryData.null_columns || [];
+    });
+    currentRetailSummary = summaries;
+    currentNullData = nullColumns;
+}
+
+async function loadSeaRetailSummaries(inspectionDate) {
+    var selectedInspectionDate = inspectionDate || getSelectedDate();
+    var loadId = ++seaRetailSummaryLoadId;
+    seaRetailSummaryDate = selectedInspectionDate;
+    seaRetailSummaryCache = {};
+
+    var results = await Promise.all(SEA_RETAIL_PRODUCTS.map(async function(product) {
+        var url = '/dx/layer1/retail/api/summary/?type=' + encodeURIComponent(product.key) +
+            '&date=' + encodeURIComponent(selectedInspectionDate);
+        try {
+            var response = await fetch(url);
+            if (response.ok === false) throw new Error('HTTP ' + response.status);
+            var data = await response.json();
+            if (data && data.error) throw new Error(data.error);
+            return { key: product.key, data: data };
+        } catch (error) {
+            console.error('SEA Retail ' + product.category + ' summary load failed:', error);
+            return { key: product.key, data: null };
+        }
+    }));
+
+    // 날짜 변경 중 먼저 시작한 응답이 최신 화면을 덮어쓰지 않도록 한다.
+    if (loadId !== seaRetailSummaryLoadId) return seaRetailSummaryCache;
+
+    var nextCache = {};
+    results.forEach(function(result) {
+        if (result.data) nextCache[result.key] = result.data;
+    });
+    seaRetailSummaryCache = nextCache;
+    syncSeaRetailSummaryGlobals(nextCache);
+    return nextCache;
+}
+
 async function loadSectionData() {
     if (rawView.checkUrlAndShow()) return;
 
@@ -436,15 +605,8 @@ async function loadSectionData() {
         var data = await response.json();
         currentStatsData = data;
 
-        // Retail Summary 데이터 로딩 (TV)
-        try {
-            var tvSum = await fetch('/dx/layer1/retail/api/summary/?type=tv&date=' + selectedDate).then(r => r.json());
-            currentRetailSummary = { tv: tvSum };
-            currentNullData = { tv: tvSum.null_columns || [] };
-        } catch (e) {
-            currentRetailSummary = null;
-            currentNullData = null;
-        }
+        // 선택한 검수일을 그대로 전달해 TV/REF/LDY를 각각 조회한다.
+        await loadSeaRetailSummaries(selectedDate);
 
         var check = data.checks ? data.checks.find(function(c) { return c.check_type === 'retail'; }) : null;
         var checkIdx = check ? data.checks.indexOf(check) : 0;

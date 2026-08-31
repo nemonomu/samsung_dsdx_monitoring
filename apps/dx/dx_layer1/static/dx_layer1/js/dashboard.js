@@ -32,11 +32,9 @@ async function loadStats() {
 
         currentStatsData = data;
 
-        // Retail Summary 데이터 로딩 (TV: rank별 건수 + NULL 컬럼)
+        // 선택한 검수일 기준 SEA TV/REF/LDY summary를 한 번씩 로딩
         try {
-            var tvSum = await fetch('/dx/layer1/retail/api/summary/?type=tv&date=' + selectedDate).then(r => r.json());
-            currentRetailSummary = { tv: tvSum };
-            currentNullData = { tv: tvSum.null_columns || [] };
+            await loadSeaRetailSummaries(selectedDate);
         } catch (e) {
             currentRetailSummary = null;
             currentNullData = null;
@@ -226,9 +224,24 @@ function renderDemandMissingTable() {
 function formatBackupCounts(data) {
     return [
         'SEA TV: ' + Number(data.tv_count || 0).toLocaleString() + '건',
+        'SEA REF: ' + Number(data.sea_ref_count || 0).toLocaleString() + '건',
+        'SEA LDY: ' + Number(data.sea_ldy_count || 0).toLocaleString() + '건',
         'TSE TV: ' + Number(data.tse_tv_count || 0).toLocaleString() + '건',
         'TSE REF: ' + Number(data.tse_ref_count || 0).toLocaleString() + '건',
         'TSE LDY: ' + Number(data.tse_ldy_count || 0).toLocaleString() + '건'
+    ].join('\n');
+}
+
+function formatBackupDates(data) {
+    var sourceDates = data.source_dates || {};
+    return [
+        '검수일(inspection_date): ' + (data.inspection_date || ''),
+        'SEA source_date - TV: ' + (sourceDates.sea_tv || '') +
+            ', REF: ' + (sourceDates.sea_ref || '') +
+            ', LDY: ' + (sourceDates.sea_ldy || ''),
+        'TSE source_date - TV: ' + (sourceDates.tse_tv || '') +
+            ', REF: ' + (sourceDates.tse_ref || '') +
+            ', LDY: ' + (sourceDates.tse_ldy || '')
     ].join('\n');
 }
 
@@ -254,7 +267,7 @@ function runBackup() {
             }
 
             // 2. 건수 표시 및 확인 팝업
-            var msg = targetDate + ' 수집 데이터 백업\n' +
+            var msg = formatBackupDates(res) + '\n백업 대상\n' +
                 formatBackupCounts(res) + '\n백업을 진행하시겠습니까?';
             showConfirm(msg).then(function(confirmed) {
                 if (!confirmed) return;

@@ -80,10 +80,20 @@ def backup_status(request):
     from apps.common.backup import get_backup_status
 
     target_date = request.GET.get('date', '').strip()
-    if not target_date:
-        return JsonResponse({'success': True, 'pending_count': 0, 'has_backup': True})
+    result = get_backup_status(target_date)
+    status = 400 if result.get('error_code') == 'invalid_inspection_date' else 200
+    return JsonResponse(result, status=status)
 
-    return JsonResponse(get_backup_status(target_date))
+
+def _backup_error_response(result, default_error):
+    payload = {
+        'success': False,
+        'error': result.get('error', default_error),
+    }
+    if result.get('error_code'):
+        payload['error_code'] = result['error_code']
+    status = 400 if result.get('error_code') == 'invalid_inspection_date' else 200
+    return JsonResponse(payload, status=status)
 
 
 def backup_retail_data(request):
@@ -95,7 +105,7 @@ def backup_retail_data(request):
     from apps.common.backup import backup_all_retail, get_backup_count
 
     target_date = request.GET.get('date') or request.POST.get('date') or ''
-    target_date = target_date.strip() or None
+    target_date = target_date.strip()
 
     if request.method == 'GET':
         # 건수만 조회
@@ -104,14 +114,19 @@ def backup_retail_data(request):
             return JsonResponse({
                 'success': True,
                 'tv_count': result['tv_count'],
+                'sea_ref_count': result['sea_ref_count'],
+                'sea_ldy_count': result['sea_ldy_count'],
                 'tse_tv_count': result['tse_tv_count'],
                 'tse_ref_count': result['tse_ref_count'],
                 'tse_ldy_count': result['tse_ldy_count'],
                 'hhp_count': 0,
                 'total_count': result['total_count'],
+                'inspection_date': result['inspection_date'],
+                'source_dates': result['source_dates'],
+                'date_mappings': result['date_mappings'],
             })
         else:
-            return JsonResponse({'success': False, 'error': result.get('error', 'Unknown error')})
+            return _backup_error_response(result, '백업 조회 중 오류가 발생했습니다.')
 
     elif request.method == 'POST':
         # 백업 실행
@@ -121,12 +136,16 @@ def backup_retail_data(request):
         if result['success']:
             counts = {
                 'tv_count': result['tv']['count'],
+                'sea_ref_count': result['sea_ref']['count'],
+                'sea_ldy_count': result['sea_ldy']['count'],
                 'tse_tv_count': result['tse_tv']['count'],
                 'tse_ref_count': result['tse_ref']['count'],
                 'tse_ldy_count': result['tse_ldy']['count'],
             }
             message = (
                 f"백업 완료 - SEA TV: {counts['tv_count']}건, "
+                f"SEA REF: {counts['sea_ref_count']}건, "
+                f"SEA LDY: {counts['sea_ldy_count']}건, "
                 f"TSE TV: {counts['tse_tv_count']}건, "
                 f"TSE REF: {counts['tse_ref_count']}건, "
                 f"TSE LDY: {counts['tse_ldy_count']}건"
@@ -137,9 +156,12 @@ def backup_retail_data(request):
                 **counts,
                 'hhp_count': 0,
                 'total_count': sum(counts.values()),
+                'inspection_date': result['inspection_date'],
+                'source_dates': result['source_dates'],
+                'date_mappings': result['date_mappings'],
             })
         else:
-            return JsonResponse({
-                'success': False,
-                'error': result.get('error', '통합 백업 중 오류가 발생했습니다.'),
-            })
+            return _backup_error_response(
+                result,
+                '통합 백업 중 오류가 발생했습니다.',
+            )
