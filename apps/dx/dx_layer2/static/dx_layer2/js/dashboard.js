@@ -1,14 +1,18 @@
 // ==================== DX ====================
 const LAYER2_TABLE_DISPLAY_NAMES = {
-    tv_retail: 'SEA Retail'
+    tv_retail: 'SEA Retail',
+    sea_ref_retail: 'SEA REF',
+    sea_ldy_retail: 'SEA LDY'
 };
 
 const LAYER2_TABLE_DISPLAY_ORDER = {
     tv_retail: 0,
-    tse_tv_retail: 1,
-    tse_ref_retail: 2,
-    tse_ldy_retail: 3,
-    youtube: 4
+    sea_ref_retail: 1,
+    sea_ldy_retail: 2,
+    tse_tv_retail: 3,
+    tse_ref_retail: 4,
+    tse_ldy_retail: 5,
+    youtube: 6
 };
 
 function prepareLayer2DisplayData(data) {
@@ -392,6 +396,14 @@ function renderDXTableDetail(vType, table) {
 
     // NULL 검증 - 리테일러별 상세
     if (vType.type === 'null' && table.retailers) {
+        if (table.inspection_date && table.source_date) {
+            const offsetLabel = Number(table.offset_days) === -1
+                ? 'D-1 (offset_days=-1)'
+                : `offset_days=${Number(table.offset_days || 0)}`;
+            html += `<div style="margin:0 0 12px;color:var(--text-secondary);font-size:12px;">
+                검수일 ${table.inspection_date} · 데이터일 ${table.source_date} · ${offsetLabel}
+            </div>`;
+        }
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
         html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
@@ -414,6 +426,7 @@ function renderDXTableDetail(vType, table) {
                         <div class="retailer-detail">
                             총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드
                         </div>
+                        ${retailer.batch_id ? `<div class="retailer-detail">batch_id: ${retailer.batch_id}</div>` : ''}
                         <div class="retailer-fields">
                             ${renderNullFieldsDetail(retailer.fields_detail)}
                         </div>

@@ -13,6 +13,13 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 
 try:
+    from apps.common.inspection_dates import resolve_monitoring_date
+    from apps.common.sea_retail import SEA_RETAIL_SOURCES
+except (ImportError, AttributeError):
+    resolve_monitoring_date = None
+    SEA_RETAIL_SOURCES = {}
+
+try:
     from apps.common.retail_columns import load_tse_retail_columns
     from apps.common.tse_retail import (
         TSE_SOURCE_CONFIG,
@@ -64,6 +71,90 @@ YOUTUBE_NULL_TABLES = {
     'youtube_videos',
     'youtube_comments',
 }
+
+SEA_NULL_CATEGORY_BY_PRODUCT = {
+    'ref': 'sea_ref_retail',
+    'ldy': 'sea_ldy_retail',
+}
+SEA_NULL_PRODUCT_BY_CATEGORY = {
+    category: product
+    for product, category in SEA_NULL_CATEGORY_BY_PRODUCT.items()
+}
+SEA_NULL_COLUMNS = {
+    'ref': (
+        'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
+        'ref_capacity', 'ref_refrigerator_type', 'retailer_sku_name',
+        'sku', 'star_rating',
+    ),
+    'ldy': (
+        'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
+        'retailer_sku_name', 'sku', 'star_rating',
+    ),
+}
+
+
+def _table_basename(table_name):
+    return str(table_name or '').strip().lower().split('.')[-1]
+
+
+def _get_sea_null_source_for_table(table_name):
+    """Return the fixed SEA REF/LDY source matching one physical table."""
+    basename = _table_basename(table_name)
+    for product in SEA_NULL_CATEGORY_BY_PRODUCT:
+        source = SEA_RETAIL_SOURCES.get(product)
+        if source and _table_basename(source.get('table_name')) == basename:
+            return source
+    return None
+
+
+def _get_sea_null_source_for_category(category):
+    product = SEA_NULL_PRODUCT_BY_CATEGORY.get(str(category or '').lower())
+    return SEA_RETAIL_SOURCES.get(product) if product else None
+
+
+def _get_sea_null_retailer(source, *values):
+    text = ' '.join(str(value or '').lower() for value in values)
+    for retailer in source.get('retailers', ()):
+        if retailer.lower() in text:
+            return retailer
+    return None
+
+
+def _resolve_sea_null_date(target_date, source):
+    if not resolve_monitoring_date:
+        return None
+    return resolve_monitoring_date(
+        target_date, 'SEA', source['source_key']
+    )
+
+
+def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
+    """Use only the newest MAIN row on the exact SEA source date."""
+    table_name = source['table_name']
+    date_column = source['date_column']
+    cursor.execute(f"""
+        SELECT anchor.batch_id
+        FROM {table_name} anchor
+        WHERE LEFT(TRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+          AND LOWER(TRIM(anchor.account_name)) = LOWER(TRIM(%s))
+          AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+        ORDER BY anchor.id DESC
+        LIMIT 1
+    """, (source_date, retailer))
+    row = cursor.fetchone()
+    return row[0] if row and row[0] else None
+
+
+def _build_sea_null_scope(source, source_date, retailer, batch_id):
+    return (
+        f"""
+            LEFT(TRIM(CAST({source['date_column']} AS TEXT)), 10) = %s
+            AND LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
+            AND batch_id = %s
+            AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')
+        """,
+        [source_date, retailer, batch_id],
+    )
 
 
 def _youtube_column(check_type, display_columns):
@@ -203,6 +294,24 @@ def load_null_check_config():
         for row in rows:
             category = row.get('category', '')
             table_name = row.get('table_name', '')
+            sea_source = _get_sea_null_source_for_table(table_name)
+            sea_retailer = None
+            if sea_source:
+                product = sea_source['product_key']
+                check_column = row['check_column']
+                sea_retailer = _get_sea_null_retailer(
+                    sea_source,
+                    row.get('group_display_name'),
+                    row.get('check_name'),
+                )
+                if (
+                    sea_retailer is None
+                    or check_column not in SEA_NULL_COLUMNS[product]
+                ):
+                    continue
+                category = SEA_NULL_CATEGORY_BY_PRODUCT[product]
+                table_name = sea_source['table_name']
+
             if (
                 category in EXCLUDED_RETAIL_CATEGORIES
                 or table_name in EXCLUDED_RETAIL_TABLES
@@ -211,24 +320,41 @@ def load_null_check_config():
                 or table_name in YOUTUBE_NULL_TABLES
             ):
                 continue
-            check_name = row['check_name']
+            check_name = (
+                sea_retailer.lower() if sea_retailer else row['check_name']
+            )
             check_column = row['check_column']
             display_columns = row.get('display_columns', '') or ''
             query_columns = row.get('query_columns', '') or ''
 
             if category not in result:
                 result[category] = {
-                    'display_name': row.get('cat_display_name', ''),
-                    'display_order': row.get('display_order', 0),
-                    'has_retailer': row.get('has_retailer', False),
+                    'display_name': (
+                        f"SEA {sea_source['category']}"
+                        if sea_source else row.get('cat_display_name', '')
+                    ),
+                    'display_order': (
+                        1 if sea_source and sea_source['product_key'] == 'ref'
+                        else 2 if sea_source else row.get('display_order', 0)
+                    ),
+                    'has_retailer': (
+                        True if sea_source
+                        else row.get('has_retailer', False)
+                    ),
                     'checks': {}
                 }
 
             if check_name not in result[category]['checks']:
                 result[category]['checks'][check_name] = {
-                    'display_name': row.get('group_display_name', ''),
-                    'table_name': row['table_name'],
-                    'date_column': row.get('date_column', ''),
+                    'display_name': (
+                        sea_retailer
+                        if sea_source else row.get('group_display_name', '')
+                    ),
+                    'table_name': table_name,
+                    'date_column': (
+                        sea_source['date_column']
+                        if sea_source else row.get('date_column', '')
+                    ),
                     'columns': {}
                 }
 
@@ -1583,6 +1709,11 @@ def get_null_stats(cursor, target_date, include_youtube=True):
         cat_total_records = 0
         cat_total_issues = 0
         all_cat_fields = []
+        sea_source = _get_sea_null_source_for_category(category)
+        sea_date = (
+            _resolve_sea_null_date(target_date, sea_source)
+            if sea_source else None
+        )
 
         for check_name, check_info in cat_info['checks'].items():
             query_parts = get_null_check_query_parts(category, check_name)
@@ -1590,17 +1721,27 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                 continue
 
             retailer_name = check_info['display_name']
+            anchor_batch_id = None
 
-            date_where, params = _build_null_date_where(
-                query_parts, target_date
-            )
-            date_where, params = _apply_static_scope(
-                date_where, params, query_parts
-            )
+            if sea_source and sea_date:
+                anchor_batch_id = _get_sea_null_anchor_batch(
+                    cursor, sea_source, sea_date['source_date'], retailer_name
+                )
+                date_where, params = _build_sea_null_scope(
+                    sea_source, sea_date['source_date'], retailer_name,
+                    anchor_batch_id,
+                )
+            else:
+                date_where, params = _build_null_date_where(
+                    query_parts, target_date
+                )
+                date_where, params = _apply_static_scope(
+                    date_where, params, query_parts
+                )
 
-            if has_retailer:
-                date_where += " AND account_name = %s"
-                params.append(retailer_name)
+                if has_retailer:
+                    date_where += " AND account_name = %s"
+                    params.append(retailer_name)
 
             if query_parts['table_name'] == 'tv_retail_com':
                 date_where += f" AND {get_tv_validation_condition()}"
@@ -1637,6 +1778,14 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                     correction_where += " AND retailer = %s"
                     correction_params.append(retailer_name)
 
+                if sea_source and sea_date:
+                    correction_where += (
+                        f" AND record_id IN ("
+                        f"SELECT id FROM {query_parts['table_name']} "
+                        f"WHERE {date_where})"
+                    )
+                    correction_params.extend(params)
+
                 cursor.execute(f"""
                     SELECT column_name, COUNT(*) FROM monitoring_corrections
                     WHERE {correction_where}
@@ -1649,17 +1798,26 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                         fields_detail[correction_col] = max(0, fields_detail[correction_col] - correction_count)
                         total_null_count = max(0, total_null_count - correction_count)
 
-                cat_retailers.append({
+                retailer_stats = {
                     'retailer': retailer_name,
                     'total': total,
                     'total_null_count': total_null_count,
                     'status': get_status(total_null_count),
                     'fields_detail': fields_detail
-                })
+                }
+                if sea_date:
+                    retailer_stats.update({
+                        'inspection_date': sea_date['inspection_date'],
+                        'source_date': sea_date['source_date'],
+                        'offset_days': sea_date['offset_days'],
+                        'source_key': sea_date['source_key'],
+                        'batch_id': anchor_batch_id,
+                    })
+                cat_retailers.append(retailer_stats)
                 cat_total_records += total
                 cat_total_issues += total_null_count
 
-        null_validation['tables'].append({
+        table_stats = {
             'table': category,
             'table_name': display_name,
             'total_records': cat_total_records,
@@ -1667,7 +1825,15 @@ def get_null_stats(cursor, target_date, include_youtube=True):
             'status': get_status(cat_total_issues),
             'retailers': cat_retailers,
             'fields': all_cat_fields
-        })
+        }
+        if sea_date:
+            table_stats.update({
+                'inspection_date': sea_date['inspection_date'],
+                'source_date': sea_date['source_date'],
+                'offset_days': sea_date['offset_days'],
+                'source_key': sea_date['source_key'],
+            })
+        null_validation['tables'].append(table_stats)
         total_null_issues += cat_total_issues
 
     total_null_issues += _append_tse_null_stats(
@@ -1721,6 +1887,12 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     col_config = category_config['columns'][column]
     actual_table = category_config['table_name']
     date_col = category_config.get('date_column', 'created_at')
+    sea_source = _get_sea_null_source_for_table(actual_table)
+    sea_date = (
+        _resolve_sea_null_date(target_date, sea_source)
+        if sea_source else None
+    )
+    anchor_batch_id = None
     query_parts = {
         'table_name': actual_table,
         'date_column': date_col,
@@ -1733,7 +1905,21 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     where_cond = _build_null_sql_condition(column, check_type)
 
     # 쿼리 생성 — 전체 컬럼 조회 (프론트 컬럼 선택 지원)
-    if has_retailer:
+    if sea_source and sea_date and retailer:
+        anchor_batch_id = _get_sea_null_anchor_batch(
+            cursor, sea_source, sea_date['source_date'], retailer
+        )
+        detail_where, params = _build_sea_null_scope(
+            sea_source, sea_date['source_date'], retailer, anchor_batch_id
+        )
+        query = f"""
+            SELECT *
+            FROM {actual_table}
+            WHERE {detail_where}
+              AND {where_cond}
+            ORDER BY id
+        """
+    elif has_retailer:
         query = f"""
             SELECT *
             FROM {actual_table}
@@ -1791,7 +1977,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     # retail + days > 1: 오류 item 추출 후 N일치 확장 조회
     is_expanded = False
     id_idx = col_index['id']
-    if has_retailer and days > 1 and rows:
+    if has_retailer and not sea_source and days > 1 and rows:
         item_idx = select_cols.index('item') if 'item' in select_cols else None
         if item_idx is not None:
             # 정상처리 건 제외 후 에러 item 추출
@@ -1853,12 +2039,15 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     all_retail_cols = []
     editable_cols = []
     if has_retailer and retailer:
-        product_line = 'tv' if category == 'tv_retail' else 'hhp'
-        retail_cols_data = load_retail_columns()
-        all_retail_cols = retail_cols_data.get(product_line, {}).get(retailer, [])
-        editable_cols = get_editable_columns(product_line, retailer)
+        if sea_source:
+            all_retail_cols = list(select_cols)
+        else:
+            product_line = 'tv' if category == 'tv_retail' else 'hhp'
+            retail_cols_data = load_retail_columns()
+            all_retail_cols = retail_cols_data.get(product_line, {}).get(retailer, [])
+            editable_cols = get_editable_columns(product_line, retailer)
 
-    return {
+    response = {
         'results': results,
         'select_cols': all_retail_cols,
         'editable_cols': editable_cols,
@@ -1869,11 +2058,23 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         'date_column': date_col,
         'date': str(target_date)
     }
+    if sea_date:
+        response.update({
+            'inspection_date': sea_date['inspection_date'],
+            'source_date': sea_date['source_date'],
+            'offset_days': sea_date['offset_days'],
+            'source_key': sea_date['source_key'],
+            'batch_id': anchor_batch_id,
+            'supports_day_history': False,
+            'history_days': 1,
+        })
+    return response
 
 
 # null_review 테이블 화이트리스트
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
+    'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_country_collection_runs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } | set(TSE_TABLE_TO_PRODUCT_LINE)) - DISABLED_SOURCE_TABLES
@@ -1897,6 +2098,13 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
 
     if table_name not in VALID_TABLES_UPDATE:
         return {'error': '허용되지 않는 테이블', 'status_code': 400}
+
+    sea_source = _get_sea_null_source_for_table(table_name)
+    if (
+        sea_source
+        and column_name not in SEA_NULL_COLUMNS[sea_source['product_key']]
+    ):
+        return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     runtime = _get_tse_runtime()
     tse_product_line = None
@@ -1933,6 +2141,33 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
               AND {country_scope}
               AND LEFT(TRIM(source.crawl_datetime), 10) = %s
         """, (record_id, TSE_COUNTRY, str(crawl_date)))
+    elif sea_source:
+        sea_date = _resolve_sea_null_date(crawl_date, sea_source)
+        if not sea_date:
+            return {'error': 'SEA 날짜 설정 조회 실패', 'status_code': 500}
+        date_column = sea_source['date_column']
+        cursor.execute(f"""
+            SELECT {select_columns}
+            FROM {table_name} source
+            WHERE source.id = %s
+              AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+              AND UPPER(TRIM(COALESCE(source.page_type, '')))
+                  IN ('MAIN', 'BSR')
+              AND source.batch_id = (
+                  SELECT anchor.batch_id
+                  FROM {table_name} anchor
+                  WHERE LEFT(
+                            TRIM(CAST(anchor.{date_column} AS TEXT)), 10
+                        ) = %s
+                    AND LOWER(TRIM(anchor.account_name)) =
+                        LOWER(TRIM(source.account_name))
+                    AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+                  ORDER BY anchor.id DESC
+                  LIMIT 1
+              )
+        """, (
+            record_id, sea_date['source_date'], sea_date['source_date'],
+        ))
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",

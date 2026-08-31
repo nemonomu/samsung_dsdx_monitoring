@@ -333,9 +333,12 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const dateColumn = data.date_column || 'crawl_datetime';
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
-    const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail';
+    const isLegacyRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail';
+    const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isRetail = isLegacyRetail || isSeaRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
-    const supportsDayHistory = isRetail
+    const supportsDayHistory = isLegacyRetail
+        || (isSeaRetail && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
     const currentDays = isTseRetail
         ? Math.min(
@@ -420,20 +423,30 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 </div>`;
             }
         } else {
-            const tblName = tableParam === 'tv_retail' ? 'tv_retail_com' : 'hhp_retail_com';
+            const tblName = data.actual_table || (
+                tableParam === 'tv_retail'
+                    ? 'tv_retail_com' : 'hhp_retail_com'
+            );
             const retailerName = modalState.retailer || '';
             const queryCols = queryColumns.length > 0 ? queryColumns.join(', ') : '*';
 
             if (items.length > 0) {
                 const inClause = items.map(item => `'${item}'`).join(', ');
-                const query3Days = `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
+                const sourceDate = data.source_date || date;
+                const batchId = String(data.batch_id || '').replace(/'/g, "''");
+                const query3Days = isSeaRetail
+                    ? `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) = '${sourceDate}'\n  AND batch_id = '${batchId}'\n  AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')\nORDER BY item, ${dateColumn} ASC;`
+                    : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
+                const queryLabel = isSeaRetail
+                    ? `검수 범위 조회 쿼리 (데이터일 ${sourceDate})`
+                    : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">
                     <div class="item-list-box">
                         <div class="item-copy-header"><span class="item-copy-title">Item 목록 (${items.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
                         <div class="item-copy-content">${items.join(', ')}</div>
                     </div>
                     <div class="query-box">
-                        <div class="item-copy-header"><span class="item-copy-title">3일치 조회 쿼리 (${date} 기준)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+                        <div class="item-copy-header"><span class="item-copy-title">${queryLabel}</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
                         <pre class="query-content">${query3Days}</pre>
                     </div>
                 </div>`;
@@ -468,7 +481,10 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         const fieldTitle = currentDays > 1
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
-        const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}`;
+        const seaScope = isSeaRetail && data.source_date
+            ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date} · batch_id: ${data.batch_id || '-'}`
+            : '';
+        const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}${seaScope}`;
         const wrapper = `<div class="inline-detail-view">
             <div class="inline-detail-header"><div>
                 <div class="inline-detail-title">${fieldTitle}</div>

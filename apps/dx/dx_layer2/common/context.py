@@ -37,15 +37,32 @@ TSE_RETAIL_SIDEBAR_CHILDREN = (
     },
 )
 
-SEA_RETAIL_SIDEBAR_CHILD = {
-    'name': 'SEA Retail',
-    'label': 'TV',
-    'detail_code': 'tv_retail',
+SEA_RETAIL_SIDEBAR_CHILDREN = (
+    {
+        'name': 'SEA Retail',
+        'label': 'TV',
+        'detail_code': 'tv_retail',
+    },
+    {
+        'name': 'SEA REF',
+        'label': 'REF',
+        'detail_code': 'sea_ref_retail',
+    },
+    {
+        'name': 'SEA LDY',
+        'label': 'LDY',
+        'detail_code': 'sea_ldy_retail',
+    },
+)
+SEA_RETAIL_CATEGORIES = {
+    child['detail_code'] for child in SEA_RETAIL_SIDEBAR_CHILDREN
 }
 
 
 DISPLAY_NAME_OVERRIDES = {
     'tv_retail': 'SEA Retail',
+    'sea_ref_retail': 'SEA REF',
+    'sea_ldy_retail': 'SEA LDY',
 }
 
 
@@ -57,6 +74,8 @@ def _legacy_display_order(category):
     """Keep SEA first and YouTube immediately behind the TSE group."""
     return {
         'tv_retail': 0,
+        'sea_ref_retail': 1,
+        'sea_ldy_retail': 2,
         'youtube': 2,
     }.get(category, 3)
 
@@ -89,6 +108,7 @@ def build_sidebar_groups(section, focus=''):
 
     def make_items(sec):
         items = []
+        sea_added = False
         for category, info in sorted(
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
@@ -99,13 +119,34 @@ def build_sidebar_groups(section, focus=''):
                     display_name, info['display_name'], category,
                 )
             )
-            if category == 'tv_retail':
-                sea_child = dict(SEA_RETAIL_SIDEBAR_CHILD)
-                sea_child['active'] = item_active
+            if category in SEA_RETAIL_CATEGORIES:
+                if sea_added:
+                    continue
+                sea_added = True
+                sea_children = []
+                for child in SEA_RETAIL_SIDEBAR_CHILDREN:
+                    detail_code = child['detail_code']
+                    child_info = config.get(detail_code)
+                    if child_info is None:
+                        continue
+                    child_item = dict(child)
+                    child_display_name = _get_display_name(
+                        detail_code, child_info
+                    )
+                    child_item['active'] = (
+                        section == sec
+                        and focus in (
+                            child_item['name'], child_display_name,
+                            child_info['display_name'], detail_code,
+                        )
+                    )
+                    sea_children.append(child_item)
                 items.append({
                     'name': 'SEA Retail',
-                    'active': item_active,
-                    'children': [sea_child],
+                    'active': any(
+                        child['active'] for child in sea_children
+                    ),
+                    'children': sea_children,
                 })
                 continue
             items.append({

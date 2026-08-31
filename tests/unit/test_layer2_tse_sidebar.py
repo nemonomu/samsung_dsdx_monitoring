@@ -11,7 +11,8 @@ LEGACY_CONFIG = {
 
 
 class Layer2TseSidebarContextTests(unittest.TestCase):
-    def _load_context(self, categories):
+    def _load_context(self, categories, config=None):
+        sidebar_config = config or LEGACY_CONFIG
         stubs = {
             'apps': package_stub('apps'),
             'apps.dx': package_stub('apps.dx'),
@@ -21,7 +22,7 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             ),
             'apps.dx.dx_layer2.null_validation.services': module_stub(
                 'apps.dx.dx_layer2.null_validation.services',
-                load_null_check_config=lambda: LEGACY_CONFIG,
+                load_null_check_config=lambda: sidebar_config,
                 get_all_categories=lambda: categories,
             ),
         }
@@ -31,6 +32,38 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             stubs=stubs,
         )
         return context, stubs
+
+    def test_sea_parent_lists_tv_ref_and_ldy_children(self):
+        config = {
+            **LEGACY_CONFIG,
+            'sea_ref_retail': {'display_name': 'SEA REF'},
+            'sea_ldy_retail': {'display_name': 'SEA LDY'},
+        }
+        context, stubs = self._load_context(list(config), config=config)
+
+        with patch.dict('sys.modules', stubs):
+            null_group = context.build_sidebar_groups(
+                'null_validation', focus='sea_ldy_retail'
+            )[0]
+
+        sea_parent = null_group['items'][0]
+        self.assertEqual('SEA Retail', sea_parent['name'])
+        self.assertTrue(sea_parent['active'])
+        self.assertEqual(
+            [
+                ('TV', 'tv_retail', False),
+                ('REF', 'sea_ref_retail', False),
+                ('LDY', 'sea_ldy_retail', True),
+            ],
+            [
+                (child['label'], child['detail_code'], child['active'])
+                for child in sea_parent['children']
+            ],
+        )
+        self.assertEqual(
+            1,
+            sum(item['name'] == 'SEA Retail' for item in null_group['items']),
+        )
 
     def test_null_sidebar_has_non_click_parent_and_canonical_children(self):
         context, stubs = self._load_context([
