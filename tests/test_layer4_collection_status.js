@@ -32,6 +32,9 @@ const layer1Data = {
         check_type: 'youtube',
         name: 'Consumer (YouTube)',
         is_target_date: true,
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-28',
+        offset_days: -1,
         categories: [{
             name: 'HHP',
             expected_country_count: 10,
@@ -48,12 +51,16 @@ const emailReportData = {
     success: true,
     complete: true,
     date: '2026-07-29',
+    inspection_date: '2026-07-29',
     sources: [{
         key: 'sea_tv',
         country: 'SEA',
         product: 'TV',
         label: 'SEA TV 수집 데이터',
         table_name: 'public.tv_retail_com',
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-28',
+        offset_days: -1,
         total_count: 879,
         column_order: ['item'],
         retailers: [{
@@ -73,6 +80,9 @@ const emailReportData = {
         product: 'REF',
         label: 'SEA REF 수집 데이터',
         table_name: 'public.ref_retail_com',
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-28',
+        offset_days: -1,
         total_count: 690,
         column_order: ['sku', 'bsr_rank', 'offer', 'ref_capacity', 'item'],
         retailers: [{
@@ -109,6 +119,9 @@ const emailReportData = {
         product: 'TV',
         label: 'SEDA TV 수집 데이터',
         table_name: 'dx_seda.dx_seda_tv_retail_com',
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-28',
+        offset_days: -1,
         total_count: 546,
         column_order: ['screen_size'],
         retailers: [{
@@ -121,6 +134,9 @@ const emailReportData = {
         product: 'TV',
         label: 'SEG TV 수집 데이터',
         table_name: 'dx_seg.dx_seg_tv_retail_com',
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-29',
+        offset_days: 0,
         total_count: 935,
         column_order: ['screen_size'],
         retailers: []
@@ -130,6 +146,9 @@ const emailReportData = {
         product: 'TV',
         label: 'SIEL TV 수집 데이터',
         table_name: 'dx_siel.dx_siel_tv_retail_com',
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-29',
+        offset_days: 0,
         total_count: 602,
         column_order: ['screen_size'],
         retailers: []
@@ -139,6 +158,9 @@ const emailReportData = {
         product: 'LDY',
         label: 'TSE LDY 수집 데이터',
         table_name: 'dx_tse.dx_tse_ldy_retail_com',
+        inspection_date: '2026-07-29',
+        source_date: '2026-07-29',
+        offset_days: 0,
         total_count: 287,
         column_order: ['ldy_capacity'],
         retailers: [{
@@ -274,7 +296,10 @@ async function run() {
     assert(!emailHtml.includes('예상건수'));
     assert(!emailHtml.includes('예상 건수'));
     assert(!emailHtml.includes('필터링 기준'));
-    assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4780</th></tr>'));
+    assert(emailHtml.includes('<tr><th colspan="5">합 계</th><th>4780</th></tr>'));
+    assert(emailHtml.includes(
+        'SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D)'
+    ));
     assert(!emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
     const emailDailyTable = emailHtml.match(
         /<table class="e"[^>]*>[\s\S]*?<\/table>/
@@ -328,7 +353,7 @@ async function run() {
     );
     assert.strictEqual(
         (emailDailyTable.match(/border-top:2px solid #1f4e78;/g) || []).length,
-        15
+        18
     );
     const dividerRows = Array.from(
         emailDailyTable.matchAll(/<tr><td align="center" style="border-top:2px solid #1f4e78;">(\d+)<\/td>/g),
@@ -336,7 +361,21 @@ async function run() {
     );
     assert.deepStrictEqual(dividerRows, [5, 6, 7]);
     assert(!emailDailyTable.includes(
-        '<tr><th colspan="4" style="border-top:2px solid #1f4e78;">합 계</th>'
+        '<tr><th colspan="5" style="border-top:2px solid #1f4e78;">합 계</th>'
+    ));
+    assert.strictEqual(
+        (emailDailyTable.match(/2026\.07\.28 \(D-1\)/g) || []).length,
+        4
+    );
+    assert.strictEqual(
+        (emailDailyTable.match(/2026\.07\.29 \(D\)/g) || []).length,
+        3
+    );
+    assert(emailHtml.includes(
+        'SEA - REF · 데이터일 2026.07.28 (D-1)'
+    ));
+    assert(emailHtml.includes(
+        'TSE - LDY · 데이터일 2026.07.29 (D)'
     ));
     assert(!emailDailyTable.includes('국가 공통'));
     assert(!emailDailyTable.includes('한 번만 표시'));
@@ -362,7 +401,7 @@ async function run() {
     assert(emailHtml.includes('SEDA - TV'));
     assert(emailHtml.includes('TSE - LDY'));
     const homeproOnlyTseTable = emailHtml.match(
-        /<div class="et">TSE - LDY<\/div>(<table[\s\S]*?<\/table>)/
+        /<div class="et">TSE - LDY[^<]*<\/div>(<table[\s\S]*?<\/table>)/
     )[1];
     assert(homeproOnlyTseTable.includes('>Homepro</th>'));
     assert(!homeproOnlyTseTable.includes('>Lotuss</th>'));
@@ -371,7 +410,7 @@ async function run() {
     assert(emailHtml.includes('>2</td>'));
     assert(emailHtml.indexOf('>sku</td>') < emailHtml.indexOf('>offer</td>'));
     const seaRefTable = emailHtml.match(
-        /<div class="et">SEA - REF<\/div>(<table[\s\S]*?<\/table>)/
+        /<div class="et">SEA - REF[^<]*<\/div>(<table[\s\S]*?<\/table>)/
     )[1];
     assert(seaRefTable.indexOf('>item</td>') < seaRefTable.indexOf('>sku</td>'));
     assert(seaRefTable.indexOf('>sku</td>') < seaRefTable.indexOf('>offer</td>'));
@@ -431,7 +470,7 @@ async function run() {
     await flushPromises();
     const lotussHtml = lotussEmail.elements['cs-email-container'].innerHTML;
     const lotussTable = lotussHtml.match(
-        /<div class="et">TSE - LDY<\/div>(<table[\s\S]*?<\/table>)/
+        /<div class="et">TSE - LDY[^<]*<\/div>(<table[\s\S]*?<\/table>)/
     )[1];
     assert(lotussTable.indexOf('>Homepro</th>') < lotussTable.indexOf('>Lotuss</th>'));
     ['count_of_reviews', 'star_rating', 'count_of_star_ratings',

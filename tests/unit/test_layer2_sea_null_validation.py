@@ -95,7 +95,9 @@ def common_stubs():
         'apps.common.retail_columns': module_stub(
             'apps.common.retail_columns',
             load_retail_columns=lambda: {},
-            get_editable_columns=lambda *_args: [],
+            get_editable_columns=lambda product_line, _retailer: (
+                ['sku'] if product_line in {'sea_ref', 'sea_ldy'} else []
+            ),
         ),
         'apps.common.retail_validation': module_stub(
             'apps.common.retail_validation',
@@ -392,6 +394,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual('2026-08-31', result['inspection_date'])
         self.assertEqual('l_260830_191936', result['batch_id'])
         self.assertFalse(result['supports_day_history'])
+        self.assertEqual(['sku'], result['editable_cols'])
         self.assertEqual(
             ['item', 'sku', 'retailer_sku_name', 'product_url'],
             result['display_config']['sku']['select_columns'],

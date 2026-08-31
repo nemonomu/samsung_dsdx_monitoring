@@ -9,6 +9,13 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 
 try:
+    from apps.common.inspection_dates import resolve_monitoring_date
+    from apps.common.sea_retail import SEA_RETAIL_SOURCES
+except (ImportError, AttributeError):
+    resolve_monitoring_date = None
+    SEA_RETAIL_SOURCES = {}
+
+try:
     from apps.common.tse_retail import (
         TSE_TABLE_TO_PRODUCT_LINE,
         get_tse_editable_columns,
@@ -24,9 +31,22 @@ except (ImportError, AttributeError):
 
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
+    'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } | set(TSE_TABLE_TO_PRODUCT_LINE)) - DISABLED_SOURCE_TABLES
+
+
+def _get_sea_edit_context(table_name):
+    """Return fixed SEA REF/LDY edit metadata for a canonical table."""
+
+    if not resolve_monitoring_date:
+        return None
+    for product_key in ('ref', 'ldy'):
+        source = SEA_RETAIL_SOURCES.get(product_key)
+        if source and source['table_name'] == table_name:
+            return source
+    return None
 
 
 def _get_tse_edit_context(table_name):
@@ -66,11 +86,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # product_line 결정
     tse_context = _get_tse_edit_context(table_name)
+    sea_context = _get_sea_edit_context(table_name)
     if tse_context:
         table_name = tse_context['table_name']
         product_line = tse_context['product_line']
         if column_name not in tse_context['max_editable']:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+    elif sea_context:
+        product_line = sea_context['product_line']
     else:
         product_line = 'tv' if table_name == 'tv_retail_com' else 'hhp'
 
@@ -90,6 +113,34 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
               )
               AND LEFT(TRIM(crawl_datetime), 10) = %s
         """, (row_id, str(crawl_date)))
+    elif sea_context:
+        date_contract = resolve_monitoring_date(
+            crawl_date, 'SEA', sea_context['source_key']
+        )
+        date_column = sea_context['date_column']
+        cursor.execute(f"""
+            SELECT {select_columns}
+            FROM {table_name} source
+            WHERE source.id = %s
+              AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+              AND UPPER(TRIM(COALESCE(source.page_type, '')))
+                  IN ('MAIN', 'BSR')
+              AND source.batch_id = (
+                  SELECT anchor.batch_id
+                  FROM {table_name} anchor
+                  WHERE LEFT(
+                            TRIM(CAST(anchor.{date_column} AS TEXT)), 10
+                        ) = %s
+                    AND LOWER(TRIM(anchor.account_name)) =
+                        LOWER(TRIM(source.account_name))
+                    AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+                  ORDER BY anchor.id DESC
+                  LIMIT 1
+              )
+        """, (
+            row_id, date_contract['source_date'],
+            date_contract['source_date'],
+        ))
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",

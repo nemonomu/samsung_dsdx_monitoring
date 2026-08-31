@@ -3,6 +3,7 @@
 import re
 
 from apps.common.db import dx_connection
+from apps.common.inspection_dates import resolve_monitoring_date
 
 from .email_registry import EMAIL_REPORT_SOURCES
 
@@ -358,11 +359,19 @@ def _query_retailer(cursor, source, retailer, target_date):
     return result
 
 
+def _resolve_email_source_date(source, inspection_date):
+    return resolve_monitoring_date(
+        inspection_date, source['country'], source['key']
+    )
+
+
 def _query_source(source, target_date):
+    date_contract = _resolve_email_source_date(source, target_date)
+    source_date = date_contract['source_date']
     with dx_connection() as (_conn, cursor):
         configured_retailers = _configured_retailers(cursor, source)
         retailers = [
-            _query_retailer(cursor, source, retailer, target_date)
+            _query_retailer(cursor, source, retailer, source_date)
             for retailer in configured_retailers
         ]
 
@@ -378,6 +387,9 @@ def _query_source(source, target_date):
         'product': source['product'],
         'label': source['label'],
         'table_name': source['table_name'],
+        'inspection_date': date_contract['inspection_date'],
+        'source_date': date_contract['source_date'],
+        'offset_days': date_contract['offset_days'],
         'total_count': sum(row['total_count'] for row in retailers),
         'collected_count': sum(row['collected_count'] for row in retailers),
         'column_order': column_order,
@@ -405,6 +417,7 @@ def get_email_report_data(target_date, sources=None):
         'success': not errors,
         'complete': not errors,
         'date': str(target_date),
+        'inspection_date': str(target_date),
         'sources': rows,
         'errors': errors,
     }

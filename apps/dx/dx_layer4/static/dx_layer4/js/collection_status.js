@@ -376,7 +376,17 @@
                 });
 
                 if (options.emailYoutubeVideoOnly) {
-                    rows.push({ no: no++, category: 'Consumer', name: 'YouTube 영상 데이터 (HHP)', table_name: TABLE_NAME_MAP.youtube_videos, expected: '-', actual: youtubeTotals.videos });
+                    rows.push({
+                        no: no++,
+                        category: 'Consumer',
+                        name: 'YouTube 영상 데이터 (HHP)',
+                        table_name: TABLE_NAME_MAP.youtube_videos,
+                        expected: '-',
+                        actual: youtubeTotals.videos,
+                        inspection_date: check.inspection_date || '',
+                        source_date: check.source_date || '',
+                        offset_days: check.offset_days
+                    });
                 } else {
                     rows.push({ no: no++, category: CATEGORY_MAP[checkType] || '', name: NAME_MAP[checkType] || check.name, table_name: TABLE_NAME_MAP[checkType] || '', expected: '-', actual: youtubeTotals.videos });
                 }
@@ -422,6 +432,9 @@
                 name: productLine ? productLine + ' 수집 데이터' : (source.label || '수집 데이터'),
                 table_name: EMAIL_TABLE_NAME_MAP[productLine] || source.table_name || '',
                 table_group: 'product:' + (productLine || source.key || entry.index),
+                inspection_date: source.inspection_date || emailData.inspection_date || emailData.date || '',
+                source_date: source.source_date || '',
+                offset_days: source.offset_days,
                 actual: typeof source.total_count === 'number' ? source.total_count : 0
             });
         });
@@ -516,6 +529,17 @@
     var TD_NUM = 'padding:5px 10px;border:1px solid #ccc;font-size:12px;font-family:Malgun Gothic,sans-serif;text-align:center;';
     var TABLE = 'border-collapse:collapse;width:100%;margin-bottom:8px;';
     var TITLE = 'font-size:14px;font-weight:700;margin:24px 0 10px;font-family:Malgun Gothic,sans-serif;';
+
+    function formatEmailDataDate(sourceDate, offsetDays) {
+        var value = String(sourceDate || '').replace(/-/g, '.');
+        if (!value) return '-';
+        var offset = Number(offsetDays);
+        if (!Number.isFinite(offset)) return value;
+        var rule = offset === 0
+            ? 'D'
+            : (offset > 0 ? 'D+' + offset : 'D' + offset);
+        return value + ' (' + rule + ')';
+    }
 
     function buildNullTable(retailers, label, withLinks, columnOrder) {
         if (!retailers || retailers.length === 0) return '';
@@ -659,13 +683,14 @@
         // 전체를 하나의 table로 래핑 (Gmail 접힘 방지)
         html += '<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="border:0;font:13px Malgun Gothic,sans-serif;line-height:1.7">';
 
-        html += dateDisplay + ' 기준 데이터 수집 모니터링 현황 공유드립니다.<br><br>';
+        html += '검수일 ' + dateDisplay + ' 기준 데이터 수집 모니터링 현황 공유드립니다.<br>';
+        html += '<span style="font-size:12px;color:#666;">SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D)</span><br><br>';
 
         // 1. 일일 수집 현황
         html += '<b>1. 일일 수집 현황</b><br><br>';
         html += '<b>&nbsp;기준일: ' + dateDisplay + '</b><br><br>';
         html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
-        html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
+        html += '<th>No</th><th>카테고리</th><th>데이터일</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
         html += '</tr>';
         dailyRows.forEach(function(r, rowIndex) {
             var isGroupStart = rowIndex > 0
@@ -676,6 +701,8 @@
             html += '<tr>';
             html += '<td align="center"' + groupDivider + '>' + r.no + '</td>';
             html += '<td align="center"' + groupDivider + '>' + L4.escapeHtml(r.category) + '</td>';
+            html += '<td align="center"' + groupDivider + '>'
+                + L4.escapeHtml(formatEmailDataDate(r.source_date, r.offset_days)) + '</td>';
             if (r.table_rowspan > 0) {
                 html += '<td rowspan="' + r.table_rowspan + '" align="center" valign="middle"' + groupDivider + '>'
                     + L4.escapeHtml(r.name) + '</td>';
@@ -685,7 +712,7 @@
             html += '<td align="center"' + groupDivider + '>' + L4.formatNumber(r.actual) + '</td>';
             html += '</tr>';
         });
-        html += '<tr><th colspan="4">합 계</th>';
+        html += '<tr><th colspan="5">합 계</th>';
         html += '<th>' + L4.formatNumber(totalActual) + '</th></tr>';
         html += '</table>';
 
@@ -698,6 +725,9 @@
             var label = [source.country, String(source.product || '').toUpperCase()].filter(function(value) {
                 return Boolean(value);
             }).join(' - ');
+            label += ' · 데이터일 ' + formatEmailDataDate(
+                source.source_date, source.offset_days
+            );
             html += buildEmailNullTable(
                 missingSource.retailers,
                 L4.escapeHtml(label),

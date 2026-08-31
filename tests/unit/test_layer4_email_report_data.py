@@ -174,6 +174,9 @@ class EmailReportDataTests(unittest.TestCase):
             row['column_order'], ['item', 'sku', 'final_sku_price'],
         )
         self.assertEqual(row['total_count'], 287)
+        self.assertEqual(row['inspection_date'], '2026-08-11')
+        self.assertEqual(row['source_date'], '2026-08-11')
+        self.assertEqual(row['offset_days'], 0)
         self.assertEqual(row['retailers'][0]['batch_id'], 'a_20260811_000011')
         self.assertEqual(row['retailers'][0]['columns'][2]['null_count'], 5)
         self.assertNotIn('expected_count', json.dumps(result))
@@ -205,6 +208,58 @@ class EmailReportDataTests(unittest.TestCase):
             latest_params, ['amazon', '2026-08-11', '2026-08-11'],
         )
         self.assertEqual(count_params[-1], 'a_20260811_000011')
+
+    def test_source_dates_follow_country_policy_without_fallback(self):
+        service = load_service(ScriptedCursor([]))
+        registry = load_registry()
+        expected = {
+            'sea_tv': ('2026-08-10', -1),
+            'seda_tv': ('2026-08-10', -1),
+            'seg_tv': ('2026-08-11', 0),
+            'siel_tv': ('2026-08-11', 0),
+            'tse_tv': ('2026-08-11', 0),
+        }
+
+        for key, (source_date, offset_days) in expected.items():
+            with self.subTest(source=key):
+                configured_source = next(
+                    item for item in registry.EMAIL_REPORT_SOURCES
+                    if item['key'] == key
+                )
+                result = service._resolve_email_source_date(
+                    configured_source, date(2026, 8, 11)
+                )
+                self.assertEqual(source_date, result['source_date'])
+                self.assertEqual(offset_days, result['offset_days'])
+
+    def test_sea_query_uses_resolved_d_minus_one_date(self):
+        configured_source = source(key='sea_ref', date_mode='text')
+        configured_source.update({
+            'country': 'SEA',
+            'product': 'REF',
+            'product_line': 'sea_ref',
+            'table_name': 'public.ref_retail_com',
+            'date_column': 'crawl_strdatetime',
+            'business_timezone': None,
+        })
+        cursor = ScriptedCursor([
+            {'fetchall': [('sku', 'Amazon', False)]},
+            {'fetchone': ('batch-ref',)},
+            {'fetchone': (1, 1, 0, 1, 0)},
+        ])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 11), sources=(configured_source,)
+        )
+
+        self.assertTrue(result['complete'])
+        self.assertEqual('2026-08-11', result['inspection_date'])
+        self.assertEqual('2026-08-10', result['sources'][0]['source_date'])
+        self.assertEqual(-1, result['sources'][0]['offset_days'])
+        self.assertEqual(
+            ['amazon', '2026-08-10'], cursor.calls[1][1]
+        )
 
     def test_bsr_denominator_is_actual_bsr_rows(self):
         cursor = ScriptedCursor([
@@ -295,7 +350,7 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertIn('COALESCE(source.redirect, FALSE) IS NOT TRUE', aggregate_sql)
         self.assertIn("= 'bsr'", aggregate_sql)
         self.assertNotIn("IN ('main', 'bsr')", aggregate_sql)
-        self.assertEqual(aggregate_params[-1], '20260811')
+        self.assertEqual(aggregate_params[-1], '20260810')
         redirect_sql = cursor.calls[2][0]
         self.assertIn('FROM public.tv_retail_com source', redirect_sql)
         self.assertIn('source.redirect IS TRUE', redirect_sql)
@@ -688,13 +743,13 @@ class EmailReportDataTests(unittest.TestCase):
                 service = load_service(cursor)
 
                 result = service.get_email_report_data(
-                    date(2026, 8, 11), sources=(source(key='broken'),)
+                    date(2026, 8, 11), sources=(source(),)
                 )
 
                 self.assertFalse(result['success'])
                 self.assertFalse(result['complete'])
                 self.assertEqual(result['sources'], [])
-                self.assertEqual(result['errors'][0]['source'], 'broken')
+                self.assertEqual(result['errors'][0]['source'], 'siel_tv')
                 self.assertEqual(len(cursor.calls), 1)
 
 

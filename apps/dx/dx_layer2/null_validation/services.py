@@ -2091,6 +2091,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     if has_retailer and retailer:
         if latest_anchor_scope:
             all_retail_cols = list(select_cols)
+            editable_cols = get_editable_columns(
+                sea_source.get('product_line', sea_source['source_key']),
+                retailer,
+            )
         else:
             product_line = 'tv' if category == 'tv_retail' else 'hhp'
             retail_cols_data = load_retail_columns()
