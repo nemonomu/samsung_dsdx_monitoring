@@ -200,6 +200,20 @@ WHERE NOT EXISTS (
       AND target.check_column = seed.check_column
 );
 
+-- Keep the inline detail table compact. The query column list remains intact
+-- for copied diagnostic SQL, while display_columns controls visible columns.
+UPDATE public.monitoring_null_column null_column
+SET display_columns = CASE
+    WHEN null_column.check_column IN ('item', 'sku', 'retailer_sku_name')
+        THEN 'item|sku|retailer_sku_name'
+    ELSE 'item|sku|retailer_sku_name|' || null_column.check_column
+END
+FROM public.monitoring_null_group null_group
+JOIN public.monitoring_null_category category
+  ON category.id = null_group.category_id
+WHERE null_column.group_id = null_group.id
+  AND category.category_name IN ('sea_ref_retail', 'sea_ldy_retail');
+
 COMMIT;
 
 -- Expected result: REF 8 rows per retailer, LDY 6 rows per retailer, 28 total.

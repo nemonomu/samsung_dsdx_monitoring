@@ -208,6 +208,12 @@ function flattenRecords(type, records, tableParam) {
 function _editableAttr(row, key) {
     if (!isInlineMode()) return '';
     if (!detailViewState.editableCols || !detailViewState.editableCols.has(key)) return '';
+    var reviewAttr = _reviewAttr(row, key);
+    return reviewAttr ? reviewAttr + ' data-editable="true"' : '';
+}
+
+function _reviewAttr(row, key) {
+    if (!isInlineMode()) return '';
     var rowId = row.id || (row._parent && row._parent.id);
     if (!rowId) return '';
     // 다일치 조회 시 조회 날짜 데이터만 수정 가능
@@ -216,7 +222,7 @@ function _editableAttr(row, key) {
         var recDate = (row[dateCol] || '').substring(0, 10);
         if (recDate !== detailViewState.crawlDate) return '';
     }
-    return ' data-editable="true" data-row-id="' + rowId + '" data-col="' + esc(key) + '"';
+    return ' data-row-id="' + rowId + '" data-col="' + esc(key) + '"';
 }
 
 function getCellHtml(row, col, tableParam) {
@@ -282,8 +288,8 @@ function getCellHtml(row, col, tableParam) {
             if (nr.created_at) nrTip += ' (' + nr.created_at + ')';
             return '<td class="cell-normal" data-normal-key="' + esc(nrKey) + '" data-row-id="' + rowId2 + '" data-col="' + esc(key) + '" title="' + esc(nrTip) + '">' + esc(String(val || 'NULL')) + ' <span class="normal-badge">정상</span></td>';
         }
-        var editAttr2 = _editableAttr(row, key);
-        return '<td class="null-value"' + editAttr2 + ' title="' + esc(String(val || 'NULL')) + '">' + esc(String(val || 'NULL')) + '</td>';
+        var reviewAttr2 = _editableAttr(row, key) || _reviewAttr(row, key);
+        return '<td class="null-value"' + reviewAttr2 + ' title="' + esc(String(val || 'NULL')) + '">' + esc(String(val || 'NULL')) + '</td>';
     }
 
     // 형식 오류 필드 하이라이트 (error_fields에 포함된 경우)
@@ -301,8 +307,8 @@ function getCellHtml(row, col, tableParam) {
         }
         var errDetail = row.error_details && row.error_details[key];
         var errTip = errDetail ? (errDetail.rule + ': ' + errDetail.reason) : '';
-        var editAttr3 = _editableAttr(row, key);
-        return '<td class="null-value"' + editAttr3 + ' title="' + esc(errTip) + '">' + esc(String(val || '-')) + '</td>';
+        var reviewAttr3 = _editableAttr(row, key) || _reviewAttr(row, key);
+        return '<td class="null-value"' + reviewAttr3 + ' title="' + esc(errTip) + '">' + esc(String(val || '-')) + '</td>';
     }
 
     var editAttr = _editableAttr(row, key);
@@ -419,7 +425,7 @@ function renderDetailWithTable(options) {
             onReset: function() { clearDetailFilter(); },
             columnSelector: {
                 columns: allColumns,
-                fixed: ['id'],
+                fixed: defaultVisibleKeys.indexOf('id') >= 0 ? ['id'] : [],
                 defaultVisible: defaultVisibleKeys,
                 onUpdate: function() { _rebuildDetailTable(); }
             }
@@ -562,10 +568,17 @@ function _buildDetailTable() {
         }));
     }
 
-    // 인라인 편집 (섹션 페이지, editable 셀만)
-    // - 클릭: 셀 선택 (Ctrl+V 붙여넣기 가능)
+    // 인라인 NULL 확인 / 편집
+    // - NULL 셀 클릭: 정상 확인, Shift+클릭: 같은 컬럼 범위 선택
+    // - editable 셀 클릭: 셀 선택 (Ctrl+V 붙여넣기 가능)
     // - 더블클릭: 직접 입력 모드
-    if (isInlineMode() && detailViewState.editableCols && detailViewState.editableCols.size > 0) {
+    if (
+        isInlineMode()
+        && (
+            detailViewState.type === 'null'
+            || (detailViewState.editableCols && detailViewState.editableCols.size > 0)
+        )
+    ) {
         detailViewState.pendingEdits = {};
         detailViewState.selectedCell = null;
         detailViewState.reviewAnchorCell = null;
@@ -573,43 +586,42 @@ function _buildDetailTable() {
 
         var tableEl = detailViewState.table.getTable();
 
-        // 클릭: 셀 선택 (editable 셀) 또는 null/normal 셀 액션 바
+        // 클릭: NULL 셀 정상 확인 또는 editable 셀 선택
         tableEl.addEventListener('click', function(e) {
             var td = e.target.closest('td[data-editable]');
-            var nullTd = !td ? e.target.closest('td.null-value, td.cell-normal') : null;
+            var reviewTd = e.target.closest(
+                'td.null-value[data-row-id][data-col]'
+            );
+            var normalTd = e.target.closest('td.cell-normal');
             var prev = tableEl.querySelector('.cell-selected');
             if (prev) prev.classList.remove('cell-selected');
             _hideNullReviewBar();
-            if (td) {
-                // null-value이면서 아직 수정하지 않은 셀만 정상 처리 바 표시
-                if (td.classList.contains('null-value') && !td.classList.contains('cell-pending')) {
-                    if (e.shiftKey && detailViewState.reviewAnchorCell) {
-                        e.preventDefault();
-                        var rangeCells = _getNullReviewRangeCells(
-                            tableEl, detailViewState.reviewAnchorCell, td
-                        );
-                        if (rangeCells.length > 0) {
-                            _setNullReviewSelection(rangeCells, false);
-                        } else {
-                            _setNullReviewSelection([td], true);
-                        }
-                    } else {
-                        _setNullReviewSelection([td], true);
-                    }
-                    detailViewState.selectedCell = (
-                        detailViewState.reviewSelectedCells.length === 1
-                            ? td : null
+            if (reviewTd && !reviewTd.classList.contains('cell-pending')) {
+                if (e.shiftKey && detailViewState.reviewAnchorCell) {
+                    e.preventDefault();
+                    var rangeCells = _getNullReviewRangeCells(
+                        tableEl, detailViewState.reviewAnchorCell, reviewTd
                     );
-                    _showNullReviewBar(detailViewState.reviewSelectedCells);
+                    if (rangeCells.length > 0) {
+                        _setNullReviewSelection(rangeCells, false);
+                    } else {
+                        _setNullReviewSelection([reviewTd], true);
+                    }
                 } else {
-                    _clearNullReviewSelection();
-                    td.classList.add('cell-selected');
-                    detailViewState.selectedCell = td;
+                    _setNullReviewSelection([reviewTd], true);
                 }
-            } else if (nullTd) {
+                detailViewState.selectedCell = (
+                    detailViewState.reviewSelectedCells.length === 1
+                        && reviewTd.dataset.editable ? reviewTd : null
+                );
+                _showNullReviewBar(detailViewState.reviewSelectedCells);
+            } else if (td) {
+                _clearNullReviewSelection();
+                td.classList.add('cell-selected');
+                detailViewState.selectedCell = td;
+            } else if (normalTd) {
                 _clearNullReviewSelection();
                 detailViewState.selectedCell = null;
-                // cell-normal은 무시 (정상처리 완료된 셀)
             } else {
                 _clearNullReviewSelection();
                 detailViewState.selectedCell = null;

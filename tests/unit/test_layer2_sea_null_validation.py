@@ -58,6 +58,9 @@ def db_rows():
     for product, columns in NULL_COLUMNS.items():
         for retailer in ('Bestbuy', 'Lowes'):
             for column in columns:
+                display_columns = ['item', 'sku', 'retailer_sku_name']
+                if column not in display_columns:
+                    display_columns.append(column)
                 rows.append({
                     'category': 'sea_retail',
                     'cat_display_name': 'SEA Retail',
@@ -69,7 +72,7 @@ def db_rows():
                     'date_column': 'crawl_strdatetime',
                     'check_column': column,
                     'check_type': 'both',
-                    'display_columns': f'id|item|{column}|batch_id',
+                    'display_columns': '|'.join(display_columns),
                     'query_columns': f'id|item|{column}|batch_id',
                     'query_days': 0,
                 })
@@ -150,6 +153,18 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual(
             'public.ref_retail_com',
             config['sea_ref_retail']['checks']['bestbuy']['table_name'],
+        )
+        self.assertEqual(
+            ['item', 'sku', 'retailer_sku_name', 'ref_capacity'],
+            config['sea_ref_retail']['checks']['bestbuy']['columns'][
+                'ref_capacity'
+            ]['display_columns'],
+        )
+        self.assertNotIn(
+            'batch_id',
+            config['sea_ldy_retail']['checks']['lowes']['columns'][
+                'star_rating'
+            ]['display_columns'],
         )
 
     def test_sea_tv_summary_uses_crawl_datetime_d_minus_one_without_anchor(self):
@@ -372,6 +387,13 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual('2026-08-31', result['inspection_date'])
         self.assertEqual('l_260830_191936', result['batch_id'])
         self.assertFalse(result['supports_day_history'])
+        self.assertEqual(
+            ['item', 'sku', 'retailer_sku_name'],
+            result['display_config']['sku']['select_columns'],
+        )
+        self.assertNotIn(
+            'batch_id', result['display_config']['sku']['select_columns']
+        )
 
         detail_sql, detail_params = cursor.calls[1]
         self.assertIn('FROM public.ldy_retail_com', detail_sql)

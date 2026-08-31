@@ -8,6 +8,9 @@ const dashboardSource = fs.readFileSync(
 const nullSource = fs.readFileSync(
     'apps/dx/dx_layer2/static/dx_layer2/js/null_validation.js', 'utf8'
 );
+const layer2CommonSource = fs.readFileSync(
+    'apps/dx/dx_layer2/static/dx_layer2/js/layer2-common.js', 'utf8'
+);
 
 const sandbox = {
     console,
@@ -97,5 +100,75 @@ assert.ok(nullSource.includes("IN ('MAIN', 'BSR')"));
 assert.ok(nullSource.includes('data.source_date || date'));
 assert.ok(nullSource.includes('data.actual_table'));
 assert.ok(!nullSource.includes('· batch_id: ${data.batch_id'));
+
+function makeReviewCell(rowId, columnName) {
+    const classes = new Set();
+    return {
+        dataset: { rowId: String(rowId), col: columnName },
+        isConnected: true,
+        classList: {
+            add(value) { classes.add(value); },
+            remove(value) { classes.delete(value); },
+            contains(value) { return classes.has(value); }
+        }
+    };
+}
+
+const commonSandbox = {
+    console,
+    window: { LAYER2: { section: 'null_validation' } },
+    document: {
+        addEventListener() {},
+        getElementById() { return null; }
+    },
+    modalState: { days: 1, nullFieldsData: {} },
+    esc(value) { return String(value); }
+};
+vm.createContext(commonSandbox);
+vm.runInContext(layer2CommonSource, commonSandbox);
+vm.runInContext(`
+    detailViewState.type = 'null';
+    detailViewState.editableCols = new Set();
+    detailViewState.crawlDate = '2026-08-31';
+`, commonSandbox);
+
+const reviewCellHtml = commonSandbox.getCellHtml(
+    { id: 42, ref_capacity: null, null_fields: ['ref_capacity'] },
+    { key: 'ref_capacity' },
+    'sea_ref_retail'
+);
+assert.ok(reviewCellHtml.includes('class="null-value"'));
+assert.ok(reviewCellHtml.includes('data-row-id="42"'));
+assert.ok(reviewCellHtml.includes('data-col="ref_capacity"'));
+assert.ok(!reviewCellHtml.includes('data-editable="true"'));
+
+const first = makeReviewCell(1, 'ref_capacity');
+const second = makeReviewCell(2, 'ref_capacity');
+const pending = makeReviewCell(3, 'ref_capacity');
+pending.classList.add('cell-pending');
+const fourth = makeReviewCell(4, 'ref_capacity');
+const otherColumn = makeReviewCell(5, 'sku');
+const rangeTable = {
+    querySelectorAll() {
+        return [first, second, pending, fourth, otherColumn];
+    }
+};
+assert.deepStrictEqual(
+    Array.from(commonSandbox._getNullReviewRangeCells(
+        rangeTable, first, fourth
+    )),
+    [first, second, fourth]
+);
+assert.deepStrictEqual(
+    Array.from(commonSandbox._getNullReviewRangeCells(
+        rangeTable, first, otherColumn
+    )),
+    []
+);
+assert.ok(layer2CommonSource.includes("detailViewState.type === 'null'"));
+assert.ok(layer2CommonSource.includes(
+    "td.null-value[data-row-id][data-col]"
+));
+assert.ok(layer2CommonSource.includes('Shift+클릭으로 범위 선택'));
 
 console.log('Layer2 SEA NULL frontend tests passed.');
