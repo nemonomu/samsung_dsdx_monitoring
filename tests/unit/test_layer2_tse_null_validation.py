@@ -427,6 +427,94 @@ class TSELayer2NullTests(unittest.TestCase):
             'product_url',
         ], display_columns)
 
+    def test_review_null_detail_groups_all_three_review_fields(self):
+        review_columns = [
+            'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+        ]
+        for selected_column in review_columns:
+            with self.subTest(selected_column=selected_column):
+                self.assertEqual(
+                    review_columns,
+                    self.service._get_tse_null_related_columns(
+                        selected_column, review_columns
+                    ),
+                )
+
+        description = [
+            ('id',), ('batch_id',), ('country',), ('account_name',),
+            ('item',), ('crawl_datetime',), ('sku',),
+            ('star_rating',), ('count_of_star_ratings',),
+            ('count_of_reviews',), ('final_sku_price',),
+            ('original_sku_price',), ('savings',), ('product_url',),
+            ('retailer_sku_name',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [
+                    (
+                        11, 'batch-1', 'TSE', 'Homepro', 'TV-1',
+                        '2026-08-10T09:58:03+09:00', 'SKU-1',
+                        None, '10', '10', '฿10,000', '฿12,000',
+                        '฿2,000 (-16%)', 'https://example.test/tv-1',
+                        'Example TV 1',
+                    ),
+                    (
+                        12, 'batch-1', 'TSE', 'Homepro', 'TV-2',
+                        '2026-08-10T09:58:03+09:00', 'SKU-2',
+                        '4.5', None, None, '฿20,000', '฿22,000',
+                        '฿2,000 (-9%)', 'https://example.test/tv-2',
+                        'Example TV 2',
+                    ),
+                ],
+            },
+            {'fetchall': []},
+        ])
+        config = tse_columns_config()
+        config['tse_tv']['Homepro']['required_columns'].extend(review_columns)
+        runtime = dict(self.runtime)
+        max_required = self.runtime['max_required']
+        runtime['max_required'] = lambda product_line: (
+            (*max_required(product_line), 'star_rating',
+             'count_of_star_ratings', 'count_of_reviews')
+            if product_line == 'tse_tv'
+            else max_required(product_line)
+        )
+
+        result = self.service._get_tse_null_detail(
+            cursor, date(2026, 8, 10), 'tse_tv_retail', 'Homepro',
+            'star_rating', runtime, config,
+        )
+
+        self.assertEqual([11, 12], [row['id'] for row in result['results']])
+        self.assertEqual(
+            ['star_rating'], result['results'][0]['null_fields']
+        )
+        self.assertEqual(
+            ['count_of_star_ratings', 'count_of_reviews'],
+            result['results'][1]['null_fields'],
+        )
+        detail_sql = cursor.calls[0][0]
+        for review_column in (
+            'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+        ):
+            self.assertIn(f'source.{review_column} IS NULL', detail_sql)
+            self.assertIn(
+                review_column,
+                result['display_config']['star_rating']['select_columns'],
+            )
+            self.assertIn(
+                review_column, result['query_config']['star_rating']
+            )
+        self.assertIn(' OR ', detail_sql)
+        review_params = cursor.calls[1][1]
+        self.assertEqual(
+            [
+                'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+            ],
+            list(review_params[4:7]),
+        )
+
     def test_normal_review_identity_is_hidden_for_thirteen_days_then_rechecked(self):
         record = {
             'id': 12,

@@ -422,6 +422,22 @@ def _safe_tse_editable_columns(product_line, retailer_config, runtime):
     ]
 
 
+TSE_REVIEW_NULL_COLUMNS = (
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+)
+
+
+def _get_tse_null_related_columns(column, required_columns):
+    """Return fields that share one TSE NULL-detail review group."""
+    if column not in TSE_REVIEW_NULL_COLUMNS:
+        return [column]
+    required = set(required_columns)
+    return [
+        related for related in TSE_REVIEW_NULL_COLUMNS
+        if related in required
+    ]
+
+
 def _get_tse_null_display_columns(column, select_columns):
     """Return the compact default TSE detail columns in display order."""
     price_columns = (
@@ -430,6 +446,8 @@ def _get_tse_null_display_columns(column, select_columns):
     candidates = ['id', 'crawl_datetime', 'item', 'retailer_sku_name']
     if column in price_columns:
         candidates.extend(price_columns)
+    elif column in TSE_REVIEW_NULL_COLUMNS:
+        candidates.extend(TSE_REVIEW_NULL_COLUMNS)
     else:
         candidates.append(column)
     candidates.append('product_url')
@@ -444,8 +462,12 @@ def _get_tse_null_display_columns(column, select_columns):
 
 def _get_tse_null_query_columns(column, select_columns):
     """Return a compact, correction-friendly column list for display SQL."""
+    related_columns = (
+        TSE_REVIEW_NULL_COLUMNS
+        if column in TSE_REVIEW_NULL_COLUMNS else (column,)
+    )
     candidates = [
-        'id', 'item', 'sku', 'retailer_sku_name', column,
+        'id', 'item', 'sku', 'retailer_sku_name', *related_columns,
         'final_sku_price', 'original_sku_price', 'savings',
         'crawl_datetime', 'product_url',
     ]
@@ -1114,7 +1136,14 @@ def _get_tse_null_detail(
     retailer_value = retailer_config['retailer']
     target_date_text = str(target_date)
     history_days = min(max(int(days or 1), 1), 30)
-    where_condition = _build_null_sql_condition(f'source.{column}', 'both')
+    related_columns = _get_tse_null_related_columns(
+        column, required_columns
+    )
+    where_condition = ' OR '.join(
+        _build_null_sql_condition(f'source.{related}', 'both')
+        for related in related_columns
+    )
+    where_condition = f'({where_condition})'
     country_scope = _build_tse_country_scope()
     include_unassigned = tse_retailer_include_unassigned(retailer_value)
     account_scope = "LOWER(source.account_name) = LOWER(%s)"
@@ -1156,7 +1185,7 @@ def _get_tse_null_detail(
         cursor,
         canonical_table,
         retailer_value,
-        [column],
+        related_columns,
         target_date - timedelta(
             days=history_days + TSE_NORMAL_REVIEW_RECHECK_DAYS - 2
         ),
@@ -1183,16 +1212,27 @@ def _get_tse_null_detail(
             for column_name, index in column_index.items()
         }
 
+    def active_null_fields(row):
+        row_record = row_as_mapping(row)
+        crawl_date = row_record.get('crawl_datetime') or target_date
+        return [
+            related for related in related_columns
+            if _is_field_null(row_record.get(related), 'both')
+            and not _is_tse_review_suppressed(
+                row_record,
+                related,
+                crawl_date,
+                recent_reviews,
+            )
+        ]
+
     def row_is_suppressed(row):
         row_record = row_as_mapping(row)
-        if not _is_field_null(row_record.get(column), 'both'):
-            return False
-        return _is_tse_review_suppressed(
-            row_record,
-            column,
-            row_record.get('crawl_datetime') or target_date,
-            recent_reviews,
+        has_group_null = any(
+            _is_field_null(row_record.get(related), 'both')
+            for related in related_columns
         )
+        return has_group_null and not active_null_fields(row)
 
     is_expanded = False
     item_index = column_index.get('item')
@@ -1275,10 +1315,7 @@ def _get_tse_null_detail(
                 value.strftime('%Y-%m-%d %H:%M:%S')
                 if isinstance(value, datetime) else value
             )
-        column_value = row[column_index[column]]
-        record['null_fields'] = (
-            [column] if _is_field_null(column_value, 'both') else []
-        )
+        record['null_fields'] = active_null_fields(row)
         results.append(record)
 
     editable_columns = _safe_tse_editable_columns(
