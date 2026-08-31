@@ -101,6 +101,44 @@ assert.ok(nullSource.includes('data.source_date || date'));
 assert.ok(nullSource.includes('data.actual_table'));
 assert.ok(!nullSource.includes('· batch_id: ${data.batch_id'));
 
+let youtubeDetailHtml = '';
+const youtubeSandbox = {
+    console,
+    getDetailBody() { return { innerHTML: '' }; },
+    getSelectedDate() { return '2026-08-31'; },
+    isInlineMode() { return true; },
+    buildDetailContainerHtml() { return '<div id="youtube-detail"></div>'; },
+    renderDetailWithTable() {},
+    ViewStack: {
+        push(html) { youtubeDetailHtml = html; },
+        getContainer() { return null; }
+    }
+};
+vm.createContext(youtubeSandbox);
+vm.runInContext(nullSource, youtubeSandbox);
+vm.runInContext(`
+    modalState.tableParam = 'youtube';
+    modalState.tableName = 'YouTube';
+    modalState.retailer = 'Country Runs';
+    modalState.days = 1;
+`, youtubeSandbox);
+youtubeSandbox.renderNullFieldDetailView('batch_id', {
+    results: [{ id: 7, batch_id: null, null_fields: ['batch_id'] }],
+    display_config: {
+        batch_id: { select_columns: ['id', 'batch_id'] }
+    },
+    query_config: { batch_id: ['id', 'batch_id'] },
+    actual_table: 'youtube_country_collection_runs',
+    inspection_date: '2026-08-31',
+    source_date: '2026-08-30',
+    offset_days: -1,
+    source_key: 'sea_youtube',
+    date: '2026-08-31',
+    date_column: 'collection_date'
+}, true);
+assert.ok(youtubeDetailHtml.includes('검수일 2026-08-31'));
+assert.ok(youtubeDetailHtml.includes('데이터일 2026-08-30'));
+
 function makeReviewCell(rowId, columnName) {
     const classes = new Set();
     return {

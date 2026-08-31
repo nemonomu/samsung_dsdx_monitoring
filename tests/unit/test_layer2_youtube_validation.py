@@ -3,7 +3,7 @@ import inspect
 import textwrap
 import unittest
 from datetime import date, datetime
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from tests.unit.support import (
     ScriptedCursor,
@@ -165,6 +165,107 @@ class YouTubeNullValidationTests(unittest.TestCase):
         self.assertEqual([], validation['tables'])
         self.assertEqual(0, total)
         self.assertEqual([], cursor.calls)
+
+    def test_null_stats_use_inspection_d_minus_one_youtube_runs_only(self):
+        youtube_config = {
+            'youtube': {
+                'display_name': 'YouTube',
+                'display_order': 3,
+                'has_retailer': False,
+                'checks': {
+                    'youtube_country_runs': {
+                        'display_name': 'Country Runs',
+                        'table_name': 'youtube_country_collection_runs',
+                        'date_column': 'collection_date',
+                        'youtube_scope': 'runs',
+                        'columns': {
+                            'batch_id': {
+                                'check_type': 'both',
+                                'display_columns': ['id', 'batch_id'],
+                                'query_columns': ['id', 'batch_id'],
+                                'query_days': 0,
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        cursor = ScriptedCursor([
+            {'fetchone': (5, 1)},
+            {'fetchall': []},
+        ])
+
+        with patch.object(
+            self.service, 'load_null_check_config',
+            return_value=youtube_config,
+        ):
+            validation, total = self.service.get_null_stats(
+                cursor, date(2026, 7, 29), include_youtube=True
+            )
+
+        self.assertEqual(1, total)
+        table = validation['tables'][0]
+        self.assertEqual('2026-07-29', table['inspection_date'])
+        self.assertEqual('2026-07-28', table['source_date'])
+        self.assertEqual(-1, table['offset_days'])
+        self.assertEqual('sea_youtube', table['source_key'])
+
+        summary_sql, summary_params = cursor.calls[0]
+        self.assertIn(
+            'COALESCE(collection_date, DATE(started_at)) = %s',
+            summary_sql,
+        )
+        self.assertEqual(['2026-07-28'], summary_params)
+        correction_sql, correction_params = cursor.calls[1]
+        self.assertIn(
+            'record_id IN (SELECT id FROM '
+            'youtube_country_collection_runs',
+            correction_sql,
+        )
+        self.assertEqual(
+            [
+                'youtube_country_collection_runs', '2026-07-29',
+                '2026-07-28',
+            ],
+            correction_params,
+        )
+
+    def test_null_detail_uses_youtube_d_minus_one_and_reports_both_dates(self):
+        description = [
+            ('id',), ('batch_id',), ('collection_date',), ('started_at',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [(7, None, date(2026, 7, 28), None)],
+            },
+            {'fetchall': []},
+        ])
+
+        result = self.service.get_null_detail(
+            cursor, date(2026, 7, 29), 'youtube',
+            'Country Runs', 1, 'batch_id',
+        )
+
+        self.assertEqual([7], [row['id'] for row in result['results']])
+        self.assertEqual('2026-07-29', result['inspection_date'])
+        self.assertEqual('2026-07-28', result['source_date'])
+        self.assertEqual(-1, result['offset_days'])
+        self.assertEqual('sea_youtube', result['source_key'])
+        self.assertFalse(result['supports_day_history'])
+
+        detail_sql, detail_params = cursor.calls[0]
+        self.assertIn(
+            'COALESCE(collection_date, DATE(started_at)) = %s',
+            detail_sql,
+        )
+        self.assertEqual([date(2026, 7, 28)], detail_params)
+        correction_sql, correction_params = cursor.calls[1]
+        self.assertIn('FROM monitoring_corrections', correction_sql)
+        self.assertEqual(
+            ('youtube_country_collection_runs', '2026-07-29', 'batch_id'),
+            correction_params,
+        )
 
     def test_run_scope_can_count_null_collection_date_by_started_at(self):
         where_sql, params = self.service._build_null_date_where({

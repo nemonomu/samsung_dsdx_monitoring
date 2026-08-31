@@ -336,6 +336,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const date = data.date || getSelectedDate();
     const isLegacyRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail';
     const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isSeaDMinusOneSource = isSeaRetail || tableParam === 'youtube';
     const isRetail = isLegacyRetail || isSeaRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
@@ -347,6 +348,9 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         )
         : (modalState.days || 1);
     if (isTseRetail) modalState.days = currentDays;
+    const sourceScope = isSeaDMinusOneSource && data.source_date
+        ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date}`
+        : '';
 
     const fieldConfig = displayConfig[fieldName] || {};
     const selectColumns = fieldConfig.select_columns || [];
@@ -393,7 +397,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             var wrapper = `<div class="inline-detail-view">
                 <div class="inline-detail-header"><div>
                     <div class="inline-detail-title">${fieldName} NULL 오류 (0건)</div>
-                    <div class="inline-detail-subtitle" id="detail-subtitle">${modalState.tableName} | ${modalState.retailer}</div>
+                    <div class="inline-detail-subtitle" id="detail-subtitle">${modalState.tableName} | ${modalState.retailer}${sourceScope}</div>
                 </div><div class="inline-detail-date">${date}(${_we})</div></div>
                 <div id="detail-body">${emptyHtml}</div>
             </div>`;
@@ -482,10 +486,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         const fieldTitle = currentDays > 1
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
-        const seaScope = isSeaRetail && data.source_date
-            ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date}`
-            : '';
-        const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}${seaScope}`;
+        const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}${sourceScope}`;
         const wrapper = `<div class="inline-detail-view">
             <div class="inline-detail-header"><div>
                 <div class="inline-detail-title">${fieldTitle}</div>

@@ -130,6 +130,22 @@ def _resolve_sea_null_date(target_date, source):
     )
 
 
+def _resolve_youtube_null_date(target_date):
+    """Treat YouTube as a SEA D-1 source without extending the 15 retail keys."""
+    inspection_date = (
+        target_date.date() if isinstance(target_date, datetime)
+        else target_date
+    )
+    source_date = inspection_date - timedelta(days=1)
+    return {
+        'inspection_date': inspection_date.isoformat(),
+        'source_date': source_date.isoformat(),
+        'offset_days': -1,
+        'country': 'SEA',
+        'source_key': 'sea_youtube',
+    }
+
+
 def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
     """Use only the newest MAIN row on the exact SEA source date."""
     table_name = source['table_name']
@@ -1716,6 +1732,11 @@ def get_null_stats(cursor, target_date, include_youtube=True):
             _resolve_sea_null_date(target_date, sea_source)
             if sea_source else None
         )
+        monitoring_date = (
+            _resolve_youtube_null_date(target_date)
+            if str(category).lower() == 'youtube'
+            else sea_date
+        )
 
         for check_name, check_info in cat_info['checks'].items():
             query_parts = get_null_check_query_parts(category, check_name)
@@ -1739,7 +1760,10 @@ def get_null_stats(cursor, target_date, include_youtube=True):
             else:
                 date_where, params = _build_null_date_where(
                     query_parts,
-                    sea_date['source_date'] if sea_date else target_date,
+                    (
+                        monitoring_date['source_date']
+                        if monitoring_date else target_date
+                    ),
                 )
                 date_where, params = _apply_static_scope(
                     date_where, params, query_parts
@@ -1784,7 +1808,7 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                     correction_where += " AND retailer = %s"
                     correction_params.append(retailer_name)
 
-                if sea_source and sea_date:
+                if monitoring_date:
                     correction_where += (
                         f" AND record_id IN ("
                         f"SELECT id FROM {query_parts['table_name']} "
@@ -1811,12 +1835,12 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                     'status': get_status(total_null_count),
                     'fields_detail': fields_detail
                 }
-                if sea_date:
+                if monitoring_date:
                     retailer_stats.update({
-                        'inspection_date': sea_date['inspection_date'],
-                        'source_date': sea_date['source_date'],
-                        'offset_days': sea_date['offset_days'],
-                        'source_key': sea_date['source_key'],
+                        'inspection_date': monitoring_date['inspection_date'],
+                        'source_date': monitoring_date['source_date'],
+                        'offset_days': monitoring_date['offset_days'],
+                        'source_key': monitoring_date['source_key'],
                         'batch_id': anchor_batch_id,
                     })
                 cat_retailers.append(retailer_stats)
@@ -1832,12 +1856,12 @@ def get_null_stats(cursor, target_date, include_youtube=True):
             'retailers': cat_retailers,
             'fields': all_cat_fields
         }
-        if sea_date:
+        if monitoring_date:
             table_stats.update({
-                'inspection_date': sea_date['inspection_date'],
-                'source_date': sea_date['source_date'],
-                'offset_days': sea_date['offset_days'],
-                'source_key': sea_date['source_key'],
+                'inspection_date': monitoring_date['inspection_date'],
+                'source_date': monitoring_date['source_date'],
+                'offset_days': monitoring_date['offset_days'],
+                'source_key': monitoring_date['source_key'],
             })
         null_validation['tables'].append(table_stats)
         total_null_issues += cat_total_issues
@@ -1900,10 +1924,16 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         _resolve_sea_null_date(target_date, sea_source)
         if sea_source else None
     )
+    monitoring_date = (
+        _resolve_youtube_null_date(target_date)
+        if category == 'youtube' else sea_date
+    )
     detail_target_date = target_date
-    if sea_date and not sea_source.get('latest_main_batch'):
+    if monitoring_date and not (
+        sea_source and sea_source.get('latest_main_batch')
+    ):
         detail_target_date = datetime.strptime(
-            sea_date['source_date'], '%Y-%m-%d'
+            monitoring_date['source_date'], '%Y-%m-%d'
         ).date()
     next_date = detail_target_date + timedelta(days=1)
     anchor_batch_id = None
@@ -1953,7 +1983,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         query += f" ORDER BY {date_col}"
     else:
         detail_where, params = _build_null_date_where(
-            query_parts, target_date
+            query_parts, detail_target_date
         )
         detail_where, params = _apply_static_scope(
             detail_where, params, query_parts
@@ -2078,15 +2108,18 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         'date_column': date_col,
         'date': str(target_date)
     }
-    if sea_date:
+    if monitoring_date:
+        supports_day_history = bool(
+            has_retailer and not latest_anchor_scope
+        )
         response.update({
-            'inspection_date': sea_date['inspection_date'],
-            'source_date': sea_date['source_date'],
-            'offset_days': sea_date['offset_days'],
-            'source_key': sea_date['source_key'],
+            'inspection_date': monitoring_date['inspection_date'],
+            'source_date': monitoring_date['source_date'],
+            'offset_days': monitoring_date['offset_days'],
+            'source_key': monitoring_date['source_key'],
             'batch_id': anchor_batch_id,
-            'supports_day_history': not latest_anchor_scope,
-            'history_days': days if not latest_anchor_scope else 1,
+            'supports_day_history': supports_day_history,
+            'history_days': days if supports_day_history else 1,
         })
     return response
 
