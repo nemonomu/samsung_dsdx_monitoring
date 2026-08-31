@@ -778,8 +778,8 @@
                 var renderedDate = emailRenderedDate;
                 var today = new Date();
                 var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-                if (selectedDate === todayStr) {
-                    showToast('당일 데이터는 이메일 발송할 수 없습니다.', 'warning');
+                if (selectedDate > todayStr) {
+                    showToast('미래 검수일은 이메일 발송할 수 없습니다.', 'warning');
                     return;
                 }
 
