@@ -138,8 +138,8 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         ]
         for table in ('public.ref_retail_com', 'public.ldy_retail_com'):
             repo.appliance_rows[table] = [
-                ('Bestbuy', 300, 300, 0, 0, f'{table}-bestbuy'),
-                ('Lowes', 300, 300, 0, 0, f'{table}-lowes'),
+                ('Bestbuy', 300, 300, 100, 0, f'{table}-bestbuy'),
+                ('Lowes', 300, 300, 100, 0, f'{table}-lowes'),
             ]
         return repo
 
@@ -231,6 +231,115 @@ class SeaLayer1ServiceTests(unittest.TestCase):
                 ]
             ],
         )
+        ldy_lowes = check['categories'][2]['time_slots'][0][
+            'retailers'
+        ][1]
+        self.assertEqual('CRITICAL', ldy_lowes['status'])
+        self.assertEqual(0, ldy_lowes['count'])
+        self.assertEqual(
+            {'main_min': 150, 'bsr_min': 90}, ldy_lowes['criteria']
+        )
+
+    def test_ldy_lowes_component_threshold_normal(self):
+        repo = self._all_ok_repo()
+        repo.appliance_rows['public.ldy_retail_com'] = [
+            ('Bestbuy', 300, 300, 100, 0, 'ldy-bestbuy'),
+            ('Lowes', 197, 194, 100, 0, 'ldy-lowes'),
+        ]
+        service = load_service(repo)
+
+        result = service.get_layer1_stats(
+            object(), date(2026, 8, 20), datetime(2026, 8, 21, 12, 0)
+        )
+        ldy = result['check']['categories'][2]
+        lowes = ldy['time_slots'][0]['retailers'][1]
+
+        self.assertEqual('OK', result['check']['status'])
+        self.assertEqual('OK', ldy['status'])
+        self.assertEqual('OK', lowes['status'])
+        self.assertEqual(
+            {'main_min': 150, 'bsr_min': 90}, lowes['criteria']
+        )
+        self.assertEqual(
+            {'main': 194, 'bsr': 100}, lowes['criteria_actual']
+        )
+        self.assertIsNone(lowes['ok_threshold'])
+
+    def test_ldy_lowes_main_below_minimum_is_critical(self):
+        repo = self._all_ok_repo()
+        repo.appliance_rows['public.ldy_retail_com'] = [
+            ('Bestbuy', 300, 300, 100, 0, 'ldy-bestbuy'),
+            ('Lowes', 250, 149, 100, 0, 'ldy-lowes'),
+        ]
+        service = load_service(repo)
+
+        result = service.get_layer1_stats(
+            object(), date(2026, 8, 20), datetime(2026, 8, 21, 12, 0)
+        )
+        lowes = result['check']['categories'][2]['time_slots'][0][
+            'retailers'
+        ][1]
+
+        self.assertEqual('CRITICAL', lowes['status'])
+        self.assertEqual(250, lowes['count'])
+        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual(
+            'MAIN >= 150 / BSR >= 90',
+            result['failed_items'][0]['expected'],
+        )
+        self.assertEqual(
+            'MAIN 149 / BSR 100',
+            result['failed_items'][0]['actual_detail'],
+        )
+
+    def test_ldy_lowes_bsr_below_minimum_is_critical(self):
+        service = load_service(RepoStub())
+
+        retailers, _total, _status = service.check_retailer_data(
+            [('Lowes', 250, 180, 89, 0, 'ldy-lowes')],
+            'LDY',
+        )
+        lowes = next(
+            row for row in retailers if row['retailer'] == 'Lowes'
+        )
+
+        self.assertEqual('CRITICAL', lowes['status'])
+
+    def test_ldy_lowes_component_threshold_boundary_is_ok(self):
+        service = load_service(RepoStub())
+
+        retailers, _total, _status = service.check_retailer_data(
+            [('Lowes', 150, 150, 90, 0, 'ldy-lowes')],
+            'LDY',
+        )
+        lowes = next(
+            row for row in retailers if row['retailer'] == 'Lowes'
+        )
+
+        self.assertEqual('OK', lowes['status'])
+
+    def test_other_sea_retailers_keep_total_200_threshold(self):
+        service = load_service(RepoStub())
+
+        below_rows, _total, _status = service.check_retailer_data(
+            [('Bestbuy', 199, 199, 100, 0, 'ldy-bestbuy')],
+            'LDY',
+        )
+        boundary_rows, _total, _status = service.check_retailer_data(
+            [('Bestbuy', 200, 150, 90, 0, 'ldy-bestbuy')],
+            'LDY',
+        )
+        below = next(
+            row for row in below_rows if row['retailer'] == 'Bestbuy'
+        )
+        boundary = next(
+            row for row in boundary_rows if row['retailer'] == 'Bestbuy'
+        )
+
+        self.assertEqual('CRITICAL', below['status'])
+        self.assertEqual('OK', boundary['status'])
+        self.assertEqual({'total_min': 200}, boundary['criteria'])
+        self.assertEqual(200, boundary['ok_threshold'])
 
     def test_schedule_collecting_overrides_zero_count_and_suppresses_failures(self):
         repo = RepoStub()

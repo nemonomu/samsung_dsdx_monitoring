@@ -17,6 +17,8 @@ from . import retail_repositories as repo
 
 OK_THRESHOLD = 200
 DEFAULT_EXPECTED_COUNT = 300
+LDY_LOWES_MAIN_MIN = 150
+LDY_LOWES_BSR_MIN = 90
 
 ALLOWED_TABLES = {
     source['table_name'] for source in SEA_RETAIL_SOURCES.values()
@@ -117,6 +119,55 @@ def _daily_schedule_status(schedule_slots):
     return None
 
 
+def _retailer_criteria(category, retailer):
+    """Return the completed-collection rule for one SEA retailer."""
+
+    if (
+        str(category or '').strip().upper() == 'LDY'
+        and str(retailer or '').strip().lower() == 'lowes'
+    ):
+        return {
+            'main_min': LDY_LOWES_MAIN_MIN,
+            'bsr_min': LDY_LOWES_BSR_MIN,
+        }
+    return {'total_min': OK_THRESHOLD}
+
+
+def _meets_retailer_criteria(data, criteria):
+    if data['count'] == 0:
+        return False
+    if 'main_min' in criteria or 'bsr_min' in criteria:
+        return (
+            data['main'] >= criteria.get('main_min', 0)
+            and data['bsr'] >= criteria.get('bsr_min', 0)
+        )
+    return data['count'] >= criteria.get('total_min', OK_THRESHOLD)
+
+
+def _criteria_expected(criteria):
+    if 'main_min' in criteria or 'bsr_min' in criteria:
+        return (
+            f"MAIN >= {criteria.get('main_min', 0)} / "
+            f"BSR >= {criteria.get('bsr_min', 0)}"
+        )
+    return f">= {criteria.get('total_min', OK_THRESHOLD)}"
+
+
+def _criteria_actual(data, criteria):
+    if 'main_min' in criteria or 'bsr_min' in criteria:
+        return {'main': data['main'], 'bsr': data['bsr']}
+    return {'total': data['count']}
+
+
+def _criteria_actual_detail(actual):
+    if 'main' in actual or 'bsr' in actual:
+        return (
+            f"MAIN {actual.get('main', 0)} / "
+            f"BSR {actual.get('bsr', 0)}"
+        )
+    return str(actual.get('total', 0))
+
+
 def check_retailer_data(rows, category='TV', slot_retailers=None):
     if slot_retailers:
         retailer_names = [
@@ -169,7 +220,11 @@ def check_retailer_data(rows, category='TV', slot_retailers=None):
         count = data['count']
         total_count += count
         expected = expected_map.get(retailer, DEFAULT_EXPECTED_COUNT)
-        status = 'OK' if count >= OK_THRESHOLD else 'CRITICAL'
+        criteria = _retailer_criteria(category, retailer)
+        status = (
+            'OK' if _meets_retailer_criteria(data, criteria)
+            else 'CRITICAL'
+        )
         statuses.append(status)
 
         items = [
@@ -185,7 +240,9 @@ def check_retailer_data(rows, category='TV', slot_retailers=None):
             'retailer': display_names.get(retailer, retailer.capitalize()),
             'count': count,
             'expected': expected,
-            'ok_threshold': OK_THRESHOLD,
+            'ok_threshold': criteria.get('total_min'),
+            'criteria': criteria,
+            'criteria_actual': _criteria_actual(data, criteria),
             'status': status,
             'items': items,
             'batch_id': (
@@ -279,8 +336,11 @@ def _build_category(cursor, source, inspection_date, now):
                     '수집 없음' if retailer['count'] == 0
                     else '수집량 부족'
                 ),
-                'expected': f'>= {OK_THRESHOLD}',
+                'expected': _criteria_expected(retailer['criteria']),
                 'actual': retailer['count'],
+                'actual_detail': _criteria_actual_detail(
+                    retailer['criteria_actual']
+                ),
                 'timestamp': f"{source['category']} 일일",
             })
 
