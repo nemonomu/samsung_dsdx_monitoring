@@ -167,6 +167,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'YouTube Comments' ? 'youtube_comments' :
                        tableName === 'YouTube Videos' ? 'youtube_videos' :
                        tableName === 'SEA Retail' ? 'tv_retail' :
+                       tableName === 'SEA TV' ? 'tv_retail' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :
                        tableName === 'TSE TV' ? 'tse_tv_retail' :
@@ -482,7 +483,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
         const seaScope = isSeaRetail && data.source_date
-            ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date} · batch_id: ${data.batch_id || '-'}`
+            ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date}`
             : '';
         const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}${seaScope}`;
         const wrapper = `<div class="inline-detail-view">

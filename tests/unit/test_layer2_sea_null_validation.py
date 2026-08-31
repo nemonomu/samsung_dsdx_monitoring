@@ -1,6 +1,6 @@
 import unittest
 from datetime import date
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from tests.unit.support import (
     ScriptedCursor,
@@ -11,6 +11,15 @@ from tests.unit.support import (
 
 
 SEA_SOURCES = {
+    'tv': {
+        'product_key': 'tv',
+        'source_key': 'sea_tv',
+        'category': 'TV',
+        'table_name': 'public.tv_retail_com',
+        'date_column': 'crawl_datetime',
+        'retailers': ('Amazon', 'Bestbuy', 'Walmart'),
+        'latest_main_batch': False,
+    },
     'ref': {
         'product_key': 'ref',
         'source_key': 'sea_ref',
@@ -18,6 +27,7 @@ SEA_SOURCES = {
         'table_name': 'public.ref_retail_com',
         'date_column': 'crawl_strdatetime',
         'retailers': ('Bestbuy', 'Lowes'),
+        'latest_main_batch': True,
     },
     'ldy': {
         'product_key': 'ldy',
@@ -26,6 +36,7 @@ SEA_SOURCES = {
         'table_name': 'public.ldy_retail_com',
         'date_column': 'crawl_strdatetime',
         'retailers': ('Bestbuy', 'Lowes'),
+        'latest_main_batch': True,
     },
 }
 
@@ -139,6 +150,146 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual(
             'public.ref_retail_com',
             config['sea_ref_retail']['checks']['bestbuy']['table_name'],
+        )
+
+    def test_sea_tv_summary_uses_crawl_datetime_d_minus_one_without_anchor(self):
+        tv_config = {
+            'tv_retail': {
+                'display_name': 'TV Retail',
+                'display_order': 1,
+                'has_retailer': True,
+                'checks': {
+                    'amazon_tv': {
+                        'display_name': 'Amazon',
+                        'table_name': 'tv_retail_com',
+                        'date_column': 'crawl_datetime',
+                        'columns': {
+                            'item': {
+                                'check_type': 'both',
+                                'display_columns': ['id', 'item'],
+                                'query_columns': ['id', 'item'],
+                                'query_days': 0,
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        cursor = ScriptedCursor([
+            {'fetchone': (300, 2)},
+            {'fetchall': []},
+        ])
+
+        with patch.object(
+            self.service, 'load_null_check_config', return_value=tv_config
+        ), patch.object(
+            self.service, '_append_tse_null_stats', return_value=0
+        ):
+            result, issues = self.service.get_null_stats(
+                cursor, date(2026, 8, 31), include_youtube=False
+            )
+
+        self.assertEqual(2, issues)
+        table = result['tables'][0]
+        self.assertEqual('2026-08-31', table['inspection_date'])
+        self.assertEqual('2026-08-30', table['source_date'])
+        self.assertEqual(-1, table['offset_days'])
+        self.assertIsNone(table['retailers'][0]['batch_id'])
+        self.assertEqual(2, len(cursor.calls))
+
+        summary_sql, summary_params = cursor.calls[0]
+        self.assertIn('DATE(crawl_datetime) = %s', summary_sql)
+        self.assertIn('FROM tv_retail_com', summary_sql)
+        self.assertIn('AND TRUE', summary_sql)
+        self.assertEqual(['2026-08-30', 'Amazon'], summary_params)
+        self.assertNotIn('ORDER BY anchor.id DESC', summary_sql)
+
+        correction_sql, correction_params = cursor.calls[1]
+        self.assertIn(
+            'record_id IN (SELECT id FROM tv_retail_com', correction_sql
+        )
+        self.assertEqual(
+            [
+                'tv_retail_com', '2026-08-31', 'Amazon',
+                '2026-08-30', 'Amazon',
+            ],
+            correction_params,
+        )
+
+    def test_sea_tv_detail_uses_crawl_datetime_d_minus_one_without_batch(self):
+        tv_config = {
+            'tv_retail': {
+                'display_name': 'TV Retail',
+                'display_order': 1,
+                'has_retailer': True,
+                'checks': {
+                    'amazon_tv': {
+                        'display_name': 'Amazon',
+                        'table_name': 'tv_retail_com',
+                        'date_column': 'crawl_datetime',
+                        'columns': {
+                            'item': {
+                                'check_type': 'both',
+                                'display_columns': ['id', 'item'],
+                                'query_columns': ['id', 'item'],
+                                'query_days': 0,
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        description = [
+            ('id',), ('account_name',), ('item',), ('crawl_datetime',),
+        ]
+        cursor = ScriptedCursor([
+            {
+                'description': description,
+                'fetchall': [(7, 'Amazon', None, '2026-08-30 17:00:13')],
+            },
+            {'fetchall': []},
+        ])
+
+        with patch.object(
+            self.service, 'load_null_check_config', return_value=tv_config
+        ), patch.object(
+            self.service, 'load_retail_columns',
+            return_value={'tv': {'Amazon': ['id', 'item']}},
+        ), patch.object(
+            self.service, 'get_editable_columns',
+            return_value=['item'],
+        ):
+            result = self.service.get_null_detail(
+                cursor, date(2026, 8, 31), 'tv_retail',
+                'Amazon', 1, 'item',
+            )
+
+        self.assertEqual([7], [row['id'] for row in result['results']])
+        self.assertEqual('2026-08-31', result['inspection_date'])
+        self.assertEqual('2026-08-30', result['source_date'])
+        self.assertEqual(-1, result['offset_days'])
+        self.assertIsNone(result['batch_id'])
+        self.assertTrue(result['supports_day_history'])
+        self.assertEqual(['id', 'item'], result['select_cols'])
+        self.assertEqual(['item'], result['editable_cols'])
+
+        detail_sql, detail_params = cursor.calls[0]
+        self.assertIn(
+            'crawl_datetime::timestamp >= %s AND '
+            'crawl_datetime::timestamp < %s',
+            detail_sql,
+        )
+        self.assertIn('FROM tv_retail_com', detail_sql)
+        self.assertIn('AND TRUE', detail_sql)
+        self.assertEqual(
+            ['2026-08-30', '2026-08-31', 'Amazon'], detail_params
+        )
+        self.assertNotIn('batch_id = %s', detail_sql)
+
+        correction_sql, correction_params = cursor.calls[1]
+        self.assertIn('FROM monitoring_corrections', correction_sql)
+        self.assertEqual(
+            ('tv_retail_com', '2026-08-31', 'item'), correction_params
         )
 
     def test_summary_uses_d_minus_one_latest_main_anchor_and_same_batch(self):

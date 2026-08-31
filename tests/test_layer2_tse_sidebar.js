@@ -23,6 +23,8 @@ assert.ok(!indexSource.includes('/dx/layer1/api/backup-status/'));
 let openedIndex = null;
 const sidebarItems = [
     makeSidebarItem('TV', 'tv_retail'),
+    makeSidebarItem('REF', 'sea_ref_retail'),
+    makeSidebarItem('LDY', 'sea_ldy_retail'),
     makeSidebarItem('TV', 'tse_tv_retail'),
     makeSidebarItem('REF', 'tse_ref_retail'),
     makeSidebarItem('LDY', 'tse_ldy_retail'),
@@ -72,7 +74,9 @@ vm.runInContext(`
     dxData = {
         validation_types: [{
             tables: [
-                { table: 'tv_retail', table_name: 'SEA Retail' },
+                { table: 'tv_retail', table_name: 'SEA TV' },
+                { table: 'sea_ref_retail', table_name: 'SEA REF' },
+                { table: 'sea_ldy_retail', table_name: 'SEA LDY' },
                 { table: 'tse_tv_retail', table_name: 'TSE TV' },
                 { table: 'tse_ref_retail', table_name: 'TSE REF' },
                 { table: 'tse_ldy_retail', table_name: 'TSE LDY' },
@@ -83,9 +87,9 @@ vm.runInContext(`
 `, sandbox);
 
 for (const [label, detailCode, expectedIndex] of [
-    ['TSE TV', 'tse_tv_retail', 1],
-    ['TSE REF', 'tse_ref_retail', 2],
-    ['TSE LDY', 'tse_ldy_retail', 3]
+    ['TSE TV', 'tse_tv_retail', 3],
+    ['TSE REF', 'tse_ref_retail', 4],
+    ['TSE LDY', 'tse_ldy_retail', 5]
 ]) {
     openedIndex = null;
     sandbox.onSubitemClick('null_validation', label, detailCode);
@@ -98,14 +102,22 @@ for (const [label, detailCode, expectedIndex] of [
 }
 
 openedIndex = null;
-sandbox.onSubitemClick('null_validation', 'SEA Retail', 'tv_retail');
+sandbox.onSubitemClick('null_validation', 'SEA TV', 'tv_retail');
 assert.strictEqual(openedIndex, 0);
 assert.strictEqual(sidebarItems[0].classList.active, true);
 
 openedIndex = null;
+sandbox.onSubitemClick('null_validation', 'SEA REF', 'sea_ref_retail');
+assert.strictEqual(openedIndex, 1);
+
+openedIndex = null;
+sandbox.onSubitemClick('null_validation', 'SEA LDY', 'sea_ldy_retail');
+assert.strictEqual(openedIndex, 2);
+
+openedIndex = null;
 sandbox.onSubitemClick('null_validation', 'YouTube', '');
-assert.strictEqual(openedIndex, 4);
-assert.strictEqual(sidebarItems[4].classList.active, true);
+assert.strictEqual(openedIndex, 6);
+assert.strictEqual(sidebarItems[6].classList.active, true);
 
 sandbox.window.LAYER2.section = 'dashboard';
 sandbox.window.location.href = 'http://example.test/dx/layer2/';
@@ -115,8 +127,8 @@ assert.ok(sandbox.window.location.href.includes('focus=TSE%20TV'));
 assert.ok(!sandbox.window.location.href.includes('focus=TV&'));
 
 sandbox.window.location.href = 'http://example.test/dx/layer2/';
-sandbox.onSubitemClick('null_validation', 'SEA Retail', 'tv_retail');
-assert.ok(sandbox.window.location.href.includes('focus=SEA%20Retail'));
+sandbox.onSubitemClick('null_validation', 'SEA TV', 'tv_retail');
+assert.ok(sandbox.window.location.href.includes('focus=SEA%20TV'));
 assert.ok(!sandbox.window.location.href.includes('focus=TV&'));
 
 vm.runInContext(sidebarSource, sandbox);

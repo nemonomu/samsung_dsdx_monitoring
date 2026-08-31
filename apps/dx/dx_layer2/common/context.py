@@ -39,7 +39,7 @@ TSE_RETAIL_SIDEBAR_CHILDREN = (
 
 SEA_RETAIL_SIDEBAR_CHILDREN = (
     {
-        'name': 'SEA Retail',
+        'name': 'SEA TV',
         'label': 'TV',
         'detail_code': 'tv_retail',
     },
@@ -60,7 +60,7 @@ SEA_RETAIL_CATEGORIES = {
 
 
 DISPLAY_NAME_OVERRIDES = {
-    'tv_retail': 'SEA Retail',
+    'tv_retail': 'SEA TV',
     'sea_ref_retail': 'SEA REF',
     'sea_ldy_retail': 'SEA LDY',
 }
@@ -133,12 +133,15 @@ def build_sidebar_groups(section, focus=''):
                     child_display_name = _get_display_name(
                         detail_code, child_info
                     )
+                    focus_names = (
+                        child_item['name'], child_display_name,
+                        child_info['display_name'], detail_code,
+                    )
+                    if detail_code == 'tv_retail':
+                        focus_names += ('SEA Retail',)
                     child_item['active'] = (
                         section == sec
-                        and focus in (
-                            child_item['name'], child_display_name,
-                            child_info['display_name'], detail_code,
-                        )
+                        and focus in focus_names
                     )
                     sea_children.append(child_item)
                 items.append({

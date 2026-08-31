@@ -1,6 +1,6 @@
 // ==================== DX ====================
 const LAYER2_TABLE_DISPLAY_NAMES = {
-    tv_retail: 'SEA Retail',
+    tv_retail: 'SEA TV',
     sea_ref_retail: 'SEA REF',
     sea_ldy_retail: 'SEA LDY'
 };
@@ -14,6 +14,69 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     tse_ldy_retail: 5,
     youtube: 6
 };
+
+const LAYER2_NULL_TABLE_GROUPS = [
+    {
+        key: 'sea',
+        name: 'SEA Retail',
+        description: 'SEA TV/REF/LDY NULL 검증',
+        tableCodes: ['tv_retail', 'sea_ref_retail', 'sea_ldy_retail']
+    },
+    {
+        key: 'tse',
+        name: 'TSE Retail',
+        description: 'TSE TV/REF/LDY NULL 검증',
+        tableCodes: ['tse_tv_retail', 'tse_ref_retail', 'tse_ldy_retail']
+    }
+];
+
+function buildLayer2NullGroups(tables) {
+    const indexedTables = (tables || []).map(function(table, index) {
+        return { table, index };
+    });
+    const groupedCodes = new Set();
+    const entries = [];
+
+    LAYER2_NULL_TABLE_GROUPS.forEach(function(group) {
+        const members = group.tableCodes.map(function(code) {
+            const found = indexedTables.find(function(entry) {
+                return entry.table.table === code;
+            });
+            if (found) groupedCodes.add(code);
+            return found;
+        }).filter(Boolean);
+        if (members.length === 0) return;
+
+        const totalRecords = members.reduce(function(total, member) {
+            return total + Number(
+                member.table.total_records || member.table.total_checked || 0
+            );
+        }, 0);
+        const totalIssues = members.reduce(function(total, member) {
+            return total + Number(member.table.total_issues || 0);
+        }, 0);
+        const hasError = members.some(function(member) {
+            return String(member.table.status || '').toUpperCase() === 'ERROR';
+        });
+        entries.push({
+            type: 'group',
+            key: group.key,
+            name: group.name,
+            description: group.description,
+            members,
+            total_records: totalRecords,
+            total_issues: totalIssues,
+            status: hasError ? 'ERROR' : totalIssues > 0 ? 'CRITICAL' : 'OK'
+        });
+    });
+
+    indexedTables.forEach(function(entry) {
+        if (!groupedCodes.has(entry.table.table)) {
+            entries.push({ type: 'table', member: entry });
+        }
+    });
+    return entries;
+}
 
 function prepareLayer2DisplayData(data) {
     if (!data || !Array.isArray(data.validation_types)) return data;
@@ -215,6 +278,64 @@ function renderDXSummary(data) {
     document.getElementById('dx-duplicateIssues').className = `value ${getStatusClass(summary.duplicate_issues)}`;
 }
 
+function renderInlineTableRow(member, childClass) {
+    const table = member.table;
+    const issueCount = Number(table.total_issues || 0);
+    const checkedCount = Number(table.total_records || table.total_checked || 0);
+    const status = String(table.status || 'OK');
+    return `
+        <div class="table-item clickable-table ${childClass || ''}"
+             onclick="showTableDetail(${member.index})">
+            <div class="table-header">
+                <div class="table-info">
+                    <span class="table-name">${table.table_name}</span>
+                    <span class="null-table-checked">(${checkedCount.toLocaleString()}건 검사)</span>
+                </div>
+                <div class="table-stats">
+                    <span class="table-count ${status.toLowerCase()}">${issueCount.toLocaleString()}건</span>
+                    <span class="status-badge ${status.toLowerCase()}">${status}</span>
+                    <span class="toggle-icon">▶</span>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderInlineTableList(vType) {
+    return (vType.tables || []).map(function(table, index) {
+        return renderInlineTableRow({ table, index });
+    }).join('');
+}
+
+function renderInlineNullGroups(vType) {
+    return buildLayer2NullGroups(vType.tables).map(function(entry) {
+        if (entry.type === 'table') {
+            return renderInlineTableRow(entry.member);
+        }
+
+        const groupId = `inline-null-group-${entry.key}`;
+        const children = entry.members.map(function(member) {
+            return renderInlineTableRow(member, 'null-group-child');
+        }).join('');
+        return `
+            <div class="table-item null-country-group">
+                <div class="table-header null-country-header"
+                     onclick="toggleNullTableGroup('${groupId}', 'icon-${groupId}')">
+                    <div class="null-country-info">
+                        <span class="table-name">${entry.name}</span>
+                        <span class="null-country-description">${entry.description}</span>
+                        <span class="null-country-checked">${entry.total_records.toLocaleString()}건 검사</span>
+                    </div>
+                    <div class="table-stats">
+                        <span class="table-count ${entry.status.toLowerCase()}">${entry.total_issues.toLocaleString()}건</span>
+                        <span class="status-badge ${entry.status.toLowerCase()}">${entry.status}</span>
+                        <span class="toggle-icon" id="icon-${groupId}">▶</span>
+                    </div>
+                </div>
+                <div class="null-group-children" id="${groupId}">${children}</div>
+            </div>`;
+    }).join('');
+}
+
 function renderDXValidationTypes(data) {
     const container = document.getElementById('dx-validation-container');
 
@@ -237,28 +358,11 @@ function renderDXValidationTypes(data) {
         // 테이블 클릭 → 인라인 상세 전환
         const vType = data.validation_types[0];
         if (vType && vType.tables) {
-            vType.tables.forEach((table, tIdx) => {
-                const issueCount = table.total_issues || 0;
-                html += `
-                    <div class="table-item clickable-table" onclick="showTableDetail(${tIdx})">
-                        <div class="table-header">
-                            <div class="table-info">
-                                <span class="table-name">${table.table_name}</span>
-                                <span style="font-size: 12px; color: var(--text-secondary);">
-                                    (${(table.total_records || table.total_checked || 0).toLocaleString()}건 검사)
-                                </span>
-                            </div>
-                            <div class="table-stats">
-                                <span class="table-count ${table.status.toLowerCase()}">${issueCount.toLocaleString()}건</span>
-                                <span class="status-badge ${table.status.toLowerCase()}">${table.status}</span>
-                                <span class="toggle-icon">▶</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
+            html = vType.type === 'null'
+                ? renderInlineNullGroups(vType)
+                : renderInlineTableList(vType);
         }
-        // focus 결정: currentFocusTable > URL focus > 첫 번째 테이블
+        // focus 결정: currentFocusTable > URL focus
         var focusTarget = currentFocusTable;
         if (!focusTarget) {
             const focus = new URLSearchParams(window.location.search).get('focus');
@@ -266,13 +370,20 @@ function renderDXValidationTypes(data) {
                 focusTarget = decodeURIComponent(focus);
             }
         }
-        // focus 없으면 첫 번째 테이블
-        if (!focusTarget && vType && vType.tables && vType.tables.length > 0) {
+        // NULL 검증은 국가 그룹 목록을 먼저 보여준다.
+        if (
+            !focusTarget && vType && vType.type !== 'null'
+            && vType.tables && vType.tables.length > 0
+        ) {
             focusTarget = vType.tables[0].table_name;
         }
 
         if (focusTarget && vType) {
-            const idx = vType.tables.findIndex(t => t.table_name === focusTarget);
+            const idx = vType.tables.findIndex(function(table) {
+                return table.table_name === focusTarget
+                    || table.table === focusTarget
+                    || (focusTarget === 'SEA Retail' && table.table === 'tv_retail');
+            });
             if (idx >= 0) {
                 // 목록 HTML은 ViewStack에만 저장 (뒤로가기용)
                 ViewStack.stack = [{ html: html, scrollTop: 0 }];
@@ -361,32 +472,70 @@ function renderDXTables(vType, vIdx) {
         return '<p style="padding: 20px; color: var(--text-secondary);">테이블 데이터 없음</p>';
     }
 
-    let html = '';
+    if (vType.type === 'null') {
+        return renderDashboardNullGroups(vType, vIdx);
+    }
 
-    vType.tables.forEach((table, tIdx) => {
-        html += `
-            <div class="table-item">
-                <div class="table-header" onclick="toggleTable(${vIdx}, ${tIdx})">
-                    <div class="table-info">
-                        <span class="table-name">${table.table_name}</span>
-                        <span style="font-size: 12px; color: var(--text-secondary);">
-                            (${(table.total_records || table.total_checked || 0).toLocaleString()}건 검사)
-                        </span>
-                    </div>
-                    <div class="table-stats">
-                        <span class="table-count ${table.status.toLowerCase()}">${table.total_issues.toLocaleString()}건</span>
-                        <span class="status-badge ${table.status.toLowerCase()}">${table.status}</span>
-                        <span class="toggle-icon" id="toggle-dx-t-${vIdx}-${tIdx}">▶</span>
-                    </div>
+    return vType.tables.map(function(table, tIdx) {
+        return renderDashboardTableItem(vType, vIdx, table, tIdx);
+    }).join('');
+}
+
+function renderDashboardTableItem(vType, vIdx, table, tIdx, childClass) {
+    const checkedCount = Number(table.total_records || table.total_checked || 0);
+    const issueCount = Number(table.total_issues || 0);
+    const status = String(table.status || 'OK');
+    return `
+        <div class="table-item ${childClass || ''}">
+            <div class="table-header" onclick="toggleTable(${vIdx}, ${tIdx})">
+                <div class="table-info">
+                    <span class="table-name">${table.table_name}</span>
+                    <span class="null-table-checked">(${checkedCount.toLocaleString()}건 검사)</span>
                 </div>
-                <div class="detail-container" id="dx-detail-${vIdx}-${tIdx}">
-                    ${renderDXTableDetail(vType, table)}
+                <div class="table-stats">
+                    <span class="table-count ${status.toLowerCase()}">${issueCount.toLocaleString()}건</span>
+                    <span class="status-badge ${status.toLowerCase()}">${status}</span>
+                    <span class="toggle-icon" id="toggle-dx-t-${vIdx}-${tIdx}">▶</span>
                 </div>
             </div>
-        `;
-    });
+            <div class="detail-container" id="dx-detail-${vIdx}-${tIdx}">
+                ${renderDXTableDetail(vType, table)}
+            </div>
+        </div>`;
+}
 
-    return html;
+function renderDashboardNullGroups(vType, vIdx) {
+    return buildLayer2NullGroups(vType.tables).map(function(entry) {
+        if (entry.type === 'table') {
+            return renderDashboardTableItem(
+                vType, vIdx, entry.member.table, entry.member.index
+            );
+        }
+
+        const groupId = `dashboard-null-group-${vIdx}-${entry.key}`;
+        const children = entry.members.map(function(member) {
+            return renderDashboardTableItem(
+                vType, vIdx, member.table, member.index, 'null-group-child'
+            );
+        }).join('');
+        return `
+            <div class="table-item null-country-group">
+                <div class="table-header null-country-header"
+                     onclick="toggleNullTableGroup('${groupId}', 'icon-${groupId}')">
+                    <div class="null-country-info">
+                        <span class="table-name">${entry.name}</span>
+                        <span class="null-country-description">${entry.description}</span>
+                        <span class="null-country-checked">${entry.total_records.toLocaleString()}건 검사</span>
+                    </div>
+                    <div class="table-stats">
+                        <span class="table-count ${entry.status.toLowerCase()}">${entry.total_issues.toLocaleString()}건</span>
+                        <span class="status-badge ${entry.status.toLowerCase()}">${entry.status}</span>
+                        <span class="toggle-icon" id="icon-${groupId}">▶</span>
+                    </div>
+                </div>
+                <div class="null-group-children" id="${groupId}">${children}</div>
+            </div>`;
+    }).join('');
 }
 
 function renderDXTableDetail(vType, table) {
@@ -426,7 +575,6 @@ function renderDXTableDetail(vType, table) {
                         <div class="retailer-detail">
                             총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드
                         </div>
-                        ${retailer.batch_id ? `<div class="retailer-detail">batch_id: ${retailer.batch_id}</div>` : ''}
                         <div class="retailer-fields">
                             ${renderNullFieldsDetail(retailer.fields_detail)}
                         </div>
@@ -560,6 +708,15 @@ function toggleTable(vIdx, tIdx) {
         container.classList.add('show');
         icon.classList.add('expanded');
     }
+}
+
+function toggleNullTableGroup(groupId, iconId) {
+    const container = document.getElementById(groupId);
+    const icon = document.getElementById(iconId);
+    if (!container) return;
+
+    const expanded = container.classList.toggle('show');
+    if (icon) icon.classList.toggle('expanded', expanded);
 }
 
 function updateCurrentInfo(date) {

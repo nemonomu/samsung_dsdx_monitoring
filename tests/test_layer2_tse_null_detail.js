@@ -46,7 +46,7 @@ function testDashboardDisplayOrderAndCanonicalCode() {
     );
     assert.strictEqual(
         data.validation_types[0].tables[0].table_name,
-        'SEA Retail'
+        'SEA TV'
     );
 
     const tseHtml = sandbox.renderDXTableDetail(

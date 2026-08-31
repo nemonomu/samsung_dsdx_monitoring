@@ -116,7 +116,7 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
         sea_parent = null_group['items'][0]
         self.assertEqual('SEA Retail', sea_parent['name'])
         self.assertEqual(
-            [('SEA Retail', 'TV', 'tv_retail', False)],
+            [('SEA TV', 'TV', 'tv_retail', False)],
             [
                 (
                     child['name'], child['label'],
@@ -135,7 +135,7 @@ class Layer2TseSidebarContextTests(unittest.TestCase):
             'tse_tv_retail', 'tse_ref_retail', 'tse_ldy_retail',
         ])
 
-        for focus in ('SEA Retail', 'TV Retail', 'tv_retail'):
+        for focus in ('SEA TV', 'SEA Retail', 'TV Retail', 'tv_retail'):
             with self.subTest(focus=focus), patch.dict('sys.modules', stubs):
                 null_group = context.build_sidebar_groups(
                     'null_validation', focus=focus

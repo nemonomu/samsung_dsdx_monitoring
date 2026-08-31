@@ -108,6 +108,8 @@ def _get_sea_null_source_for_table(table_name):
 
 
 def _get_sea_null_source_for_category(category):
+    if str(category or '').lower() == 'tv_retail':
+        return SEA_RETAIL_SOURCES.get('tv')
     product = SEA_NULL_PRODUCT_BY_CATEGORY.get(str(category or '').lower())
     return SEA_RETAIL_SOURCES.get(product) if product else None
 
@@ -1723,7 +1725,10 @@ def get_null_stats(cursor, target_date, include_youtube=True):
             retailer_name = check_info['display_name']
             anchor_batch_id = None
 
-            if sea_source and sea_date:
+            if (
+                sea_source and sea_date
+                and sea_source.get('latest_main_batch')
+            ):
                 anchor_batch_id = _get_sea_null_anchor_batch(
                     cursor, sea_source, sea_date['source_date'], retailer_name
                 )
@@ -1733,7 +1738,8 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                 )
             else:
                 date_where, params = _build_null_date_where(
-                    query_parts, target_date
+                    query_parts,
+                    sea_date['source_date'] if sea_date else target_date,
                 )
                 date_where, params = _apply_static_scope(
                     date_where, params, query_parts
@@ -1888,10 +1894,18 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     actual_table = category_config['table_name']
     date_col = category_config.get('date_column', 'created_at')
     sea_source = _get_sea_null_source_for_table(actual_table)
+    if category == 'tv_retail':
+        sea_source = SEA_RETAIL_SOURCES.get('tv')
     sea_date = (
         _resolve_sea_null_date(target_date, sea_source)
         if sea_source else None
     )
+    detail_target_date = target_date
+    if sea_date and not sea_source.get('latest_main_batch'):
+        detail_target_date = datetime.strptime(
+            sea_date['source_date'], '%Y-%m-%d'
+        ).date()
+    next_date = detail_target_date + timedelta(days=1)
     anchor_batch_id = None
     query_parts = {
         'table_name': actual_table,
@@ -1905,7 +1919,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     where_cond = _build_null_sql_condition(column, check_type)
 
     # 쿼리 생성 — 전체 컬럼 조회 (프론트 컬럼 선택 지원)
-    if sea_source and sea_date and retailer:
+    if (
+        sea_source and sea_date and retailer
+        and sea_source.get('latest_main_batch')
+    ):
         anchor_batch_id = _get_sea_null_anchor_batch(
             cursor, sea_source, sea_date['source_date'], retailer
         )
@@ -1926,7 +1943,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             WHERE {date_col}::timestamp >= %s AND {date_col}::timestamp < %s
               AND {where_cond}
         """
-        params = [str(target_date), str(next_date)]
+        params = [str(detail_target_date), str(next_date)]
         if retailer:
             query += " AND account_name = %s"
             params.append(retailer)
@@ -1977,13 +1994,16 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     # retail + days > 1: 오류 item 추출 후 N일치 확장 조회
     is_expanded = False
     id_idx = col_index['id']
-    if has_retailer and not sea_source and days > 1 and rows:
+    latest_anchor_scope = bool(
+        sea_source and sea_source.get('latest_main_batch')
+    )
+    if has_retailer and not latest_anchor_scope and days > 1 and rows:
         item_idx = select_cols.index('item') if 'item' in select_cols else None
         if item_idx is not None:
             # 정상처리 건 제외 후 에러 item 추출
             error_items = list(set(r[item_idx] for r in rows if r[item_idx] and r[id_idx] not in normal_set))
             if error_items:
-                start_date = target_date - timedelta(days=days - 1)
+                start_date = detail_target_date - timedelta(days=days - 1)
                 placeholders = ', '.join(['%s'] * len(error_items))
                 non_product_scope = get_non_product_exclusion_condition(actual_table)
                 expand_query = f"""
@@ -2039,7 +2059,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     all_retail_cols = []
     editable_cols = []
     if has_retailer and retailer:
-        if sea_source:
+        if latest_anchor_scope:
             all_retail_cols = list(select_cols)
         else:
             product_line = 'tv' if category == 'tv_retail' else 'hhp'
@@ -2065,8 +2085,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             'offset_days': sea_date['offset_days'],
             'source_key': sea_date['source_key'],
             'batch_id': anchor_batch_id,
-            'supports_day_history': False,
-            'history_days': 1,
+            'supports_day_history': not latest_anchor_scope,
+            'history_days': days if not latest_anchor_scope else 1,
         })
     return response
 
