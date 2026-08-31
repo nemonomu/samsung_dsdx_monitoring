@@ -31,6 +31,7 @@ except (ImportError, AttributeError):
 
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
+    'ref_retail_com', 'ldy_retail_com',
     'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
@@ -42,9 +43,13 @@ def _get_sea_edit_context(table_name):
 
     if not resolve_monitoring_date:
         return None
+    table_basename = str(table_name or '').strip().lower().split('.')[-1]
     for product_key in ('ref', 'ldy'):
         source = SEA_RETAIL_SOURCES.get(product_key)
-        if source and source['table_name'] == table_name:
+        source_basename = str(
+            source.get('table_name') if source else ''
+        ).strip().lower().split('.')[-1]
+        if source and source_basename == table_basename:
             return source
     return None
 
@@ -93,6 +98,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         if column_name not in tse_context['max_editable']:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif sea_context:
+        table_name = sea_context['table_name']
         product_line = sea_context['product_line']
     else:
         product_line = 'tv' if table_name == 'tv_retail_com' else 'hhp'

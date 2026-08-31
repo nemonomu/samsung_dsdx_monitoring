@@ -106,6 +106,8 @@ class SEALayer2DataEditTests(unittest.TestCase):
         self.assertEqual('2026-08-31', str(cursor.calls[2][1][7]))
 
     def test_ref_and_ldy_are_allow_listed_but_unknown_tables_are_not(self):
+        self.assertIn('ref_retail_com', self.service.VALID_TABLES_UPDATE)
+        self.assertIn('ldy_retail_com', self.service.VALID_TABLES_UPDATE)
         self.assertIn(
             'public.ref_retail_com', self.service.VALID_TABLES_UPDATE
         )
@@ -114,6 +116,25 @@ class SEALayer2DataEditTests(unittest.TestCase):
         )
         self.assertNotIn(
             'public.ref_retail_com_backup', self.service.VALID_TABLES_UPDATE
+        )
+
+    def test_unqualified_ldy_table_is_normalized_before_update(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'Lowes', 'item-1')},
+            {},
+            {},
+        ])
+
+        result = self.service.update_cell_value(
+            cursor, Mock(), 'ldy_retail_com', 43, 'sku', 'SKU-2',
+            date(2026, 8, 31), 'null', 'tester', 'fixed',
+        )
+
+        self.assertTrue(result['success'])
+        self.assertIn('FROM public.ldy_retail_com source', cursor.calls[0][0])
+        self.assertIn(
+            'UPDATE public.ldy_retail_com SET sku = %s',
+            cursor.calls[1][0],
         )
 
 

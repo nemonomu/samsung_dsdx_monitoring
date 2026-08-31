@@ -1920,6 +1920,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     sea_source = _get_sea_null_source_for_table(actual_table)
     if category == 'tv_retail':
         sea_source = SEA_RETAIL_SOURCES.get('tv')
+    if sea_source and sea_source.get('latest_main_batch'):
+        actual_table = sea_source['table_name']
     sea_date = (
         _resolve_sea_null_date(target_date, sea_source)
         if sea_source else None
