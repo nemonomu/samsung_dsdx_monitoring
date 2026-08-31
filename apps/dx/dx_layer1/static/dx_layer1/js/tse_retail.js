@@ -12,12 +12,16 @@ function renderTseRetailerRow(retailer) {
     var bsrCount = tseNumber(retailer.bsr_count);
     var actual = tseNumber(retailer.actual !== undefined ? retailer.actual : retailer.count);
     var retailerLabel = esc(retailer.retailer || '-');
+    var batchId = retailer.batch_id || '';
+    var batchHtml = batchId
+        ? '<div class="retail-anchor-batch" style="font-size:11px;color:#64748b;margin-top:3px;">batch_id: ' + esc(batchId) + '</div>'
+        : '';
     var bsrDisplay = retailer.bsr_applicable === false
         ? '-'
         : bsrCount.toLocaleString();
 
     return '<tr>' +
-        '<td class="rt-name">' + retailerLabel + '</td>' +
+        '<td class="rt-name">' + retailerLabel + batchHtml + '</td>' +
         '<td>' + mainCount.toLocaleString() + '</td>' +
         '<td>' + bsrDisplay + '</td>' +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +

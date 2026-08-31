@@ -12,6 +12,15 @@ def _timestamp_range(date_field):
     return f"({expression}) >= %s::timestamp AND ({expression}) < %s::timestamp"
 
 
+def _nonblank_batch_ids():
+    """Return deterministic batch metadata without changing row scope."""
+
+    batch_id = "NULLIF(BTRIM(CAST(batch_id AS TEXT)), '')"
+    return (
+        f"STRING_AGG(DISTINCT {batch_id}, ', ' ORDER BY {batch_id})"
+    )
+
+
 def _text_date_condition(date_column, alias=''):
     prefix = f'{alias}.' if alias else ''
     return (
@@ -38,7 +47,8 @@ def query_retail_counts(cursor, table_name, date_field, extra_rank_field,
                COUNT(*) as cnt,
                COUNT(CASE WHEN main_rank IS NOT NULL THEN 1 END) as main_count,
                COUNT(CASE WHEN bsr_rank IS NOT NULL THEN 1 END) as bsr_count,
-               COUNT(CASE WHEN {extra_rank_field} IS NOT NULL THEN 1 END) as extra_count
+               COUNT(CASE WHEN {extra_rank_field} IS NOT NULL THEN 1 END) as extra_count,
+               {_nonblank_batch_ids()} as batch_id
         FROM {table_name}
         WHERE {_timestamp_range(date_field)}
         GROUP BY account_name
@@ -56,7 +66,8 @@ def query_retail_counts_by_retailer(cursor, table_name, date_field,
             COUNT(CASE WHEN main_rank IS NOT NULL THEN 1 END) as main_count,
             COUNT(CASE WHEN bsr_rank IS NOT NULL THEN 1 END) as bsr_count,
             COUNT(CASE WHEN {extra_rank_field} IS NOT NULL THEN 1 END) as extra_count,
-            COUNT(*) as total
+            COUNT(*) as total,
+            {_nonblank_batch_ids()} as batch_id
         FROM {table_name}
         WHERE {_timestamp_range(date_field)}
         AND LOWER(account_name) = LOWER(%s)
@@ -65,13 +76,14 @@ def query_retail_counts_by_retailer(cursor, table_name, date_field,
 
 
 def get_tv_retail_detail_list(cursor, target_date):
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT
             account_name as retailer,
             COUNT(*) as total,
             COUNT(CASE WHEN main_rank IS NOT NULL THEN 1 END) as main_count,
             COUNT(CASE WHEN bsr_rank IS NOT NULL THEN 1 END) as bsr_count,
-            COUNT(CASE WHEN final_sku_price IS NOT NULL THEN 1 END) as price_count
+            COUNT(CASE WHEN final_sku_price IS NOT NULL THEN 1 END) as price_count,
+            {_nonblank_batch_ids()} as batch_id
         FROM public.tv_retail_com
         WHERE (crawl_datetime::timestamp) >= %s::date
           AND (crawl_datetime::timestamp) < (%s::date + INTERVAL '1 day')

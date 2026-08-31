@@ -129,9 +129,12 @@ class SeaLayer1ServiceTests(unittest.TestCase):
     def _all_ok_repo(self):
         repo = RepoStub()
         repo.tv_rows = [
-            ('Amazon', 300, 300, 0, 0),
-            ('Bestbuy', 300, 300, 0, 10),
-            ('Walmart', 300, 300, 0, 0),
+            ('Amazon', 300, 300, 0, 0, 'a_20260819_000001'),
+            (
+                'Bestbuy', 300, 300, 0, 10,
+                'b_20260819_000001, b_20260819_120001',
+            ),
+            ('Walmart', 300, 300, 0, 0, None),
         ]
         for table in ('public.ref_retail_com', 'public.ldy_retail_com'):
             repo.appliance_rows[table] = [
@@ -187,6 +190,16 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             retailer['batch_id']
             for retailer in ref['time_slots'][0]['retailers']
         ))
+
+        tv_retailers = check['categories'][0]['time_slots'][0]['retailers']
+        self.assertEqual(
+            [
+                'a_20260819_000001',
+                'b_20260819_000001, b_20260819_120001',
+                '',
+            ],
+            [retailer['batch_id'] for retailer in tv_retailers],
+        )
 
     def test_no_schedule_uses_threshold_and_fixed_retailer_fallback(self):
         repo = RepoStub()
@@ -352,6 +365,48 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(
             ['bestbuy-ref', 'lowes-ref'],
             [row['batch_id'] for row in result['summary']],
+        )
+
+    def test_tv_summary_and_detail_return_all_nonblank_daily_batch_ids(self):
+        repo = RepoStub()
+        repo.summary_counts = {
+            'Amazon': (300, 0, 0, 300, 'a_20260819_000001'),
+            'Bestbuy': (
+                300, 100, 10, 305,
+                'b_20260819_000001, b_20260819_120001',
+            ),
+            'Walmart': (300, 0, 0, 300, None),
+        }
+        repo.detail_rows = [
+            ('Amazon', 300, 300, 0, 300, 'a_20260819_000001'),
+            (
+                'Bestbuy', 305, 300, 100, 305,
+                'b_20260819_000001, b_20260819_120001',
+            ),
+            ('Walmart', 300, 300, 0, 300, None),
+        ]
+        service = load_service(repo)
+
+        @contextmanager
+        def connection():
+            yield object(), object()
+
+        service.dx_connection = connection
+        summary = service.get_retail_summary(date(2026, 8, 20), 'tv')
+        detail = service.get_retail_detail(date(2026, 8, 20), 'tv')
+
+        expected_batch_ids = [
+            'a_20260819_000001',
+            'b_20260819_000001, b_20260819_120001',
+            '',
+        ]
+        self.assertEqual(
+            expected_batch_ids,
+            [row['batch_id'] for row in summary['summary']],
+        )
+        self.assertEqual(
+            expected_batch_ids,
+            [row['batch_id'] for row in detail['results']],
         )
 
     def test_appliance_detail_and_raw_use_safe_core_columns(self):

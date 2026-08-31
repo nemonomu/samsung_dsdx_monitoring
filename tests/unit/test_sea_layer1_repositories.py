@@ -68,7 +68,21 @@ class SeaLayer1RepositoryTests(unittest.TestCase):
             self.assertIn('crawl_datetime::timestamp', sql)
             self.assertIn('>=', sql)
             self.assertIn('<', sql)
-            self.assertNotIn('batch_id', sql)
+            self.assertNotIn('batch_id IS NOT DISTINCT FROM', sql)
+            self.assertNotRegex(sql, r'\bbatch_id\s*=')
+
+        batch_metadata_calls = [
+            count_cursor.calls[0], retailer_cursor.calls[0],
+            detail_cursor.calls[0],
+        ]
+        for sql, _params in batch_metadata_calls:
+            self.assertIn('STRING_AGG(DISTINCT', sql)
+            self.assertIn(
+                "NULLIF(BTRIM(CAST(batch_id AS TEXT)), '')", sql,
+            )
+            self.assertIn(
+                "ORDER BY NULLIF(BTRIM(CAST(batch_id AS TEXT)), '')", sql,
+            )
 
         self.assertEqual(
             ('2026-08-19 00:00:00', '2026-08-20 00:00:00'),

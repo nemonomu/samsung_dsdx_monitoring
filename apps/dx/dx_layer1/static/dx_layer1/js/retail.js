@@ -153,7 +153,7 @@ function renderRetailRankRow(categoryName, period, retailerName, row, status, sh
     if (showExtra === undefined) showExtra = true;
     var batchId = row.batch_id || retailerBatchId || '';
     var batchHtml = batchId
-        ? '<div class="retail-anchor-batch" style="font-size:11px;color:#64748b;margin-top:3px;">Anchor batch_id: ' + esc(batchId) + '</div>'
+        ? '<div class="retail-anchor-batch" style="font-size:11px;color:#64748b;margin-top:3px;">batch_id: ' + esc(batchId) + '</div>'
         : '';
     var detailUrl = '/dx/layer1/retail/?category=' + encodeURIComponent(categoryName) +
         '&retailer=' + encodeURIComponent(retailerName) +

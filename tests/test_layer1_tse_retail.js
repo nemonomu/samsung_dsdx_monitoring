@@ -78,13 +78,14 @@ const html = context.renderTseCategory({
 assert(html.includes('<th>MAIN</th>'));
 assert(html.includes('<th>BSR</th>'));
 assert(html.includes('<th>총 건수</th>'));
-assert(!html.includes('최신 배치'));
-assert(!html.includes('hidden-batch-id'));
+assert(html.includes('batch_id: hidden-batch-id'));
+assert(html.includes('batch_id: another-hidden-batch-id'));
+assert(!html.includes('Anchor batch_id:'));
 assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=6"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=7"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',

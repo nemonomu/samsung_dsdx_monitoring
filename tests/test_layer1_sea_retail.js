@@ -36,9 +36,9 @@ const summaries = {
         null_columns: [],
         totals: { grand_total: 60 },
         summary: [
-            { retailer: 'Amazon', total: 10, batch_id: '', rows: [{ time_slot: '일일', main: 5, bsr: 3, extra: 2, total: 10, batch_id: '' }] },
-            { retailer: 'Bestbuy', total: 20, batch_id: '', rows: [{ time_slot: '일일', main: 10, bsr: 6, extra: 4, total: 20, batch_id: '' }] },
-            { retailer: 'Walmart', total: 30, batch_id: '', rows: [{ time_slot: '일일', main: 15, bsr: 9, extra: 6, total: 30, batch_id: '' }] },
+            { retailer: 'Amazon', total: 10, batch_id: 'TV-AMAZON-1', rows: [{ time_slot: '일일', main: 5, bsr: 3, extra: 2, total: 10, batch_id: 'TV-AMAZON-1' }] },
+            { retailer: 'Bestbuy', total: 20, batch_id: 'TV-BESTBUY-1, TV-BESTBUY-2', rows: [{ time_slot: '일일', main: 10, bsr: 6, extra: 4, total: 20, batch_id: 'TV-BESTBUY-1, TV-BESTBUY-2' }] },
+            { retailer: 'Walmart', total: 30, batch_id: 'TV-WALMART-1', rows: [{ time_slot: '일일', main: 15, bsr: 9, extra: 6, total: 30, batch_id: 'TV-WALMART-1' }] },
         ],
     },
     ref: {
@@ -166,8 +166,8 @@ function categoryFromSummary(key) {
     assert.ok(refHtml.includes('검수일 2026-08-20'));
     assert.ok(refHtml.includes('데이터일 2026-08-19'));
     assert.ok(refHtml.includes('D-1 (offset_days=-1)'));
-    assert.ok(refHtml.includes('Anchor batch_id: REF-BESTBUY-ANCHOR'));
-    assert.ok(refHtml.includes('Anchor batch_id: REF-LOWES-ANCHOR'));
+    assert.ok(refHtml.includes('batch_id: REF-BESTBUY-ANCHOR'));
+    assert.ok(refHtml.includes('batch_id: REF-LOWES-ANCHOR'));
     assert.ok(refHtml.includes('category=REF'));
     assert.ok(refHtml.includes('date=2026-08-20'));
     assert.ok(refHtml.includes('<th>MAIN</th>'));
@@ -186,7 +186,7 @@ function categoryFromSummary(key) {
 
     const ldyHtml = context.renderRetailCategory(categoryFromSummary('ldy'), 0, 2);
     assert.ok(ldyHtml.includes('category=LDY'));
-    assert.ok(ldyHtml.includes('Anchor batch_id: LDY-LOWES-ANCHOR'));
+    assert.ok(ldyHtml.includes('batch_id: LDY-LOWES-ANCHOR'));
     assert.ok(!ldyHtml.includes('rt-extra'));
 
     const tvHtml = context.renderRetailCategory(categoryFromSummary('tv'), 0, 0);
@@ -195,6 +195,9 @@ function categoryFromSummary(key) {
     assert.ok(tvHtml.includes('Amazon'));
     assert.ok(tvHtml.includes('Bestbuy'));
     assert.ok(tvHtml.includes('Walmart'));
+    assert.ok(tvHtml.includes('batch_id: TV-AMAZON-1'));
+    assert.ok(tvHtml.includes('batch_id: TV-BESTBUY-1, TV-BESTBUY-2'));
+    assert.ok(tvHtml.includes('batch_id: TV-WALMART-1'));
     assert.ok(!tvHtml.includes('Anchor batch_id:'));
 
     const fallbackHtml = context.renderRetailCheck({
@@ -221,11 +224,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=9"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=9"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=10"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=10"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=5"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=6"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=7"));
 
     console.log('Layer1 SEA retail frontend tests passed');
 })().catch(function(error) {

@@ -487,7 +487,7 @@ def get_retail_summary(target_date, product_line):
                 main_count, bsr_count, extra_count, total = [
                     int(value or 0) for value in row[:4]
                 ]
-                batch_id = None
+                batch_id = row[4] if len(row) > 4 else None
             else:
                 (
                     main_count, bsr_count, extra_count, total, batch_id,
