@@ -461,7 +461,7 @@ function renderData(data) {
 
     // 상태 표시 텍스트 변환
     const statusText = (status) => {
-        if (status === 'REVIEW_NEEDED') return '검토필요';
+        if (status === 'REVIEW_NEEDED') return '확인 필요';
         return status;
     };
 
@@ -471,9 +471,14 @@ function renderData(data) {
         const config = categoryConfig[categoryName] || { icon: '📋', class: 'time-series' };
         const totalChecked = checks.reduce((sum, c) => sum + (c.checked || 0), 0);
         const totalFailed = checks.reduce((sum, c) => sum + (c.failed || 0), 0);
-        const hasReviewNeeded = checks.some(c => c.status === 'REVIEW_NEEDED');
+        const totalReviewNeeded = checks.reduce((sum, c) => sum + (c.review_needed || 0), 0);
+        const hasReviewNeeded = totalReviewNeeded > 0 || checks.some(c => c.status === 'REVIEW_NEEDED');
         const hasLoadError = checks.some(c => c.load_error || c.status === 'ERROR');
-        const catStatus = hasLoadError ? 'critical' : (hasReviewNeeded ? 'review_needed' : (totalFailed === 0 ? 'ok' : (totalFailed < 10 ? 'warning' : 'critical')));
+        const catStatus = hasLoadError
+            ? 'critical'
+            : (totalFailed > 0
+                ? (totalFailed < 10 ? 'warning' : 'critical')
+                : (hasReviewNeeded ? 'review_needed' : 'ok'));
 
         if (filterCategory) {
             // 섹션 페이지: 카테고리 헤더 없이 체크 항목만 표시
@@ -497,6 +502,10 @@ function renderData(data) {
                             <div class="value" style="color: var(--color-critical);">${totalFailed.toLocaleString()}</div>
                             <div class="label">이상치</div>
                         </div>
+                        ${totalReviewNeeded > 0 ? `<div class="category-stat">
+                            <div class="value review-needed-value">${totalReviewNeeded.toLocaleString()}</div>
+                            <div class="label">확인 필요</div>
+                        </div>` : ''}
                         <span class="status-badge ${catStatus}">${statusText(catStatus.toUpperCase())}</span>
                     </div>
                 </div>
@@ -506,6 +515,7 @@ function renderData(data) {
 
         const renderCheckItem = (check, childLabel) => {
             const status = (check.status || 'OK').toLowerCase();
+            const reviewNeeded = check.review_needed || 0;
             const displayName = getLayer3DisplayName(check.name, check.detail_code || '');
             const renderedDisplayName = childLabel || displayName;
             // 카테고리별 특성은 모두 검증 규칙 버튼 표시, 크로스 필드는 특정 항목만
@@ -542,6 +552,10 @@ function renderData(data) {
                             <div class="value" style="color: var(--color-critical);">${(check.failed || 0).toLocaleString()}</div>
                             <div class="label">이상치</div>
                         </div>
+                        ${reviewNeeded > 0 ? `<div class="check-stat">
+                            <div class="value review-needed-value">${reviewNeeded.toLocaleString()}</div>
+                            <div class="label">확인 필요</div>
+                        </div>` : ''}
                         <span class="status-badge ${status}">${statusText(status.toUpperCase())}</span>
                     </div>
                 </div>
@@ -580,13 +594,14 @@ function renderData(data) {
                 const groupChecked = groupChecks.reduce((sum, check) => sum + (check.checked || 0), 0);
                 const groupPassed = groupChecks.reduce((sum, check) => sum + (check.passed || 0), 0);
                 const groupFailed = groupChecks.reduce((sum, check) => sum + (check.failed || 0), 0);
-                const groupHasReview = groupChecks.some(check => check.status === 'REVIEW_NEEDED');
+                const groupReviewNeeded = groupChecks.reduce((sum, check) => sum + (check.review_needed || 0), 0);
+                const groupHasReview = groupReviewNeeded > 0 || groupChecks.some(check => check.status === 'REVIEW_NEEDED');
                 const groupHasError = groupChecks.some(check => check.load_error || check.status === 'ERROR');
                 const groupStatus = groupHasError
                     ? 'critical'
-                    : (groupHasReview
-                        ? 'review_needed'
-                        : (groupFailed === 0 ? 'ok' : (groupFailed < 10 ? 'warning' : 'critical')));
+                    : (groupFailed > 0
+                        ? (groupFailed < 10 ? 'warning' : 'critical')
+                        : (groupHasReview ? 'review_needed' : 'ok'));
                 const groupId = `crossfield-region-${catIdx}-${region.key}`;
 
                 html += `
@@ -614,6 +629,10 @@ function renderData(data) {
                                     <div class="value" style="color: var(--color-critical);">${groupFailed.toLocaleString()}</div>
                                     <div class="label">이상치</div>
                                 </div>
+                                ${groupReviewNeeded > 0 ? `<div class="check-stat">
+                                    <div class="value review-needed-value">${groupReviewNeeded.toLocaleString()}</div>
+                                    <div class="label">확인 필요</div>
+                                </div>` : ''}
                                 <span class="status-badge ${groupStatus}">${statusText(groupStatus.toUpperCase())}</span>
                             </div>
                         </button>
@@ -896,6 +915,23 @@ function renderDetailModal(title, category, data) {
     }
 }
 
+function getCrossfieldCountLabel(data) {
+    const anomalyCount = Number(data?.total_anomalies || 0);
+    const reviewCount = Number(data?.total_review_needed || 0);
+    if (reviewCount > 0) {
+        return `이상 ${anomalyCount.toLocaleString()}건 · 확인 필요 ${reviewCount.toLocaleString()}건`;
+    }
+    return `${anomalyCount.toLocaleString()}건`;
+}
+
+function renderCrossfieldReviewTypes(summary) {
+    const entries = Object.entries(summary || {}).filter(([, count]) => Number(count) > 0);
+    if (entries.length === 0) return '';
+    return `<div class="review-type-summary">${entries.map(([label, count]) => `
+        <span class="review-type-chip">${esc(label)} <strong>${Number(count).toLocaleString()}건</strong></span>
+    `).join('')}</div>`;
+}
+
 // 크로스필드 요약 렌더링 (모달 / 인라인 공용)
 function renderCrossfieldSummaryContent(title, _category, data) {
     const inline = isCrossFieldInline();
@@ -909,7 +945,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
     window.crossfieldTitle = title;
     window.crossfieldProductLine = data.product_line;
 
-    const titleText = title + ` (${data.total_anomalies || 0}건)`;
+    const titleText = title + ` (${getCrossfieldCountLabel(data)})`;
 
     // 날짜 선택 UI (인라인은 상단 필터바 사용)
     let html = '';
@@ -950,6 +986,12 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                     rule.query, tableName, dateCol, noReviewTexts, targetDate
                 );
             const detailTitle = `${fieldDisplay} (${rule.error_message})`;
+            const errorCount = Number(rule.error_count || 0);
+            const reviewCount = Number(rule.review_count || 0);
+            const countBadges = errorCount === 0 && reviewCount === 0
+                ? '<span class="rule-count zero">0건</span>'
+                : `${errorCount > 0 ? `<span class="rule-count">이상 ${errorCount.toLocaleString()}건</span>` : ''}
+                   ${reviewCount > 0 ? `<span class="rule-count review-needed">확인 필요 ${reviewCount.toLocaleString()}건</span>` : ''}`;
             html += `
                 <div class="rule-summary-card-wrapper">
                     <div class="rule-summary-card" data-rule-id="${esc(String(rule.rule_id))}" onclick="loadCrossfieldRuleDetail('${escJs(data.product_line.toLowerCase())}', '${escJs(rule.rule_id)}', '${escJs(data.date)}', '${escJs(detailTitle)}')">
@@ -959,8 +1001,9 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                                 <button class="btn-show-query" onclick="event.stopPropagation(); toggleCrossfieldQuery('${escJs(queryId)}')" title="검증 쿼리 보기">SQL</button>
                             </div>
                             <div class="rule-desc">${esc(rule.error_message)}</div>
+                            ${renderCrossfieldReviewTypes(rule.review_type_summary)}
                         </div>
-                        <div class="rule-count${rule.error_count === 0 ? ' zero' : ''}">${rule.error_count}건</div>
+                        <div class="rule-count-group">${countBadges}</div>
                     </div>
                     <div id="${queryId}" class="crossfield-query-box" style="display: none;">
                         <pre>${esc(displayQuery)}</pre>
@@ -1086,7 +1129,11 @@ function showSeaCrossfieldGuide() {
                         <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
                         <li><strong>별점 0과 별점 수 0 일치</strong><p>한쪽만 0이면 이상입니다. 둘 다 0이거나 둘 다 양수이면 정상입니다.</p></li>
                         <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt;= original_sku_price → 이상</code></li>
-                        <li><strong>리뷰본문 개수</strong><code>리뷰본문 개수 &gt; count_of_reviews → 이상</code></li>
+                        <li>
+                            <strong>리뷰 수·본문 확인</strong>
+                            <p>사이트 특성상 이상치로 집계하지 않고 파란색 <b>확인 필요</b>로 표시합니다.</p>
+                            <code>리뷰 수 있음·본문 없음 / 리뷰 수 0·본문 있음 / reviewN이 리뷰 수보다 큼 / 리뷰 수 20 이상·review20 없음</code>
+                        </li>
                         <li><strong>savings 누락</strong><p>최종가와 원가가 있는데 <code>savings</code>가 없으면 이상입니다.</p></li>
                         <li><strong>원가 누락</strong><p>최종가와 <code>savings</code>가 있는데 원가가 없으면 이상입니다.</p></li>
                         <li><strong>할인 금액 일치</strong><code>original_sku_price - final_sku_price &lt;&gt; savings → 이상</code></li>
@@ -1242,7 +1289,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
         const anomalies = data.anomalies || [];
         const retailerSummary = data.retailer_summary || {};
         if (anomalies.length === 0) {
-            html += '<p>해당 검증 유형에 대한 이상치 데이터가 없습니다.</p>';
+            html += '<p>해당 검증 유형에 대한 이상 또는 확인 필요 데이터가 없습니다.</p>';
         } else {
             // 리테일러별 rows 그룹핑 (건수 계산은 백엔드 retailer_summary 사용)
             const retailerData = {};
@@ -1277,7 +1324,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldPendingEdits = {};
 
             // 건수는 백엔드 계산값 사용
-            const titleText = `${ruleName} (${data.total_anomalies}건)`;
+            const titleText = `${ruleName} (${getCrossfieldCountLabel(data)})`;
 
             // 리테일러 목록 (rule-summary-card 스타일)
             html += '<div class="rule-summary-section">';
@@ -1285,14 +1332,19 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             html += '<div class="rule-summary-container">';
             Object.keys(retailerSummary).sort().forEach(retailer => {
                 const info = retailerSummary[retailer];
-                if (info.count === 0) return;
+                const anomalyCount = Number(info.count || 0);
+                const reviewCount = Number(info.review_count || 0);
+                if (anomalyCount === 0 && reviewCount === 0) return;
+                const retailerCounts = `${anomalyCount > 0 ? `<span class="rule-count">이상 ${anomalyCount.toLocaleString()}건</span>` : ''}
+                    ${reviewCount > 0 ? `<span class="rule-count review-needed">확인 필요 ${reviewCount.toLocaleString()}건</span>` : ''}`;
                 html += `
                     <div class="rule-summary-card" data-retailer="${esc(retailer)}" onclick="showRetailerDetail('${escJs(retailer)}')">
                         <div class="rule-info">
                             <div class="rule-name">${esc(retailer)}</div>
                             <div class="rule-desc">${info.items.length} items</div>
+                            ${renderCrossfieldReviewTypes(info.review_type_summary)}
                         </div>
-                        <span class="rule-count">${info.count}건</span>
+                        <div class="rule-count-group">${retailerCounts}</div>
                     </div>
                 `;
             });
@@ -1305,7 +1357,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
                 detailEl.innerHTML = `<button class="btn-back" onclick="ViewStack.pop()">← 뒤로가기</button>` + html;
             }
         } else {
-            AppModal.setTitle('detail', ruleName + ' (' + (data.total_anomalies || 0) + '건)');
+            AppModal.setTitle('detail', ruleName + ' (' + getCrossfieldCountLabel(data) + ')');
             AppModal.setBody('detail', html);
         }
 

@@ -137,20 +137,48 @@ class SeaCrossfieldEvaluationTests(unittest.TestCase):
             'recommendation_intent',
         }.issubset(errors))
 
-    def test_lowes_review_body_only_flags_body_over_review_count(self):
-        too_many = sea_services.evaluate_sea_row(_lowes_row(
-            count_of_reviews='1',
-            count_of_star_ratings='1',
-            detailed_review_content='review1 - a ||| review2 - b',
-        ))
-        fewer_body_entries = sea_services.evaluate_sea_row(_lowes_row(
+    def test_lowes_review_body_cases_are_review_candidates_not_anomalies(self):
+        cases = (
+            ('body_missing', {
+                'count_of_reviews': '3',
+                'count_of_star_ratings': '3',
+                'detailed_review_content': None,
+            }),
+            ('body_without_reviews', {
+                'count_of_reviews': '0',
+                'count_of_star_ratings': '0',
+                'star_rating': '0',
+                'detailed_review_content': 'review1 - a',
+                'recommendation_intent': None,
+            }),
+            ('body_over_review_count', {
+                'count_of_reviews': '1',
+                'count_of_star_ratings': '1',
+                'detailed_review_content': 'review1 - a ||| review2 - b',
+            }),
+            ('review20_missing', {
+                'count_of_reviews': '25',
+                'count_of_star_ratings': '25',
+                'detailed_review_content': ' ||| '.join(
+                    f'review{i} - body' for i in range(1, 20)
+                ),
+            }),
+        )
+        for expected, overrides in cases:
+            with self.subTest(expected=expected):
+                row = _lowes_row(**overrides)
+                self.assertEqual(
+                    expected, sea_services.evaluate_lowes_review_body(row),
+                )
+                self.assertNotIn(
+                    'review_body_count', sea_services.evaluate_sea_row(row),
+                )
+
+        self.assertIsNone(sea_services.evaluate_lowes_review_body(_lowes_row(
             count_of_reviews='3',
             count_of_star_ratings='3',
             detailed_review_content='review1 - a ||| review2 - b',
-        ))
-
-        self.assertIn('review_body_count', too_many)
-        self.assertNotIn('review_body_count', fewer_body_entries)
+        )))
 
     def test_lowes_price_and_four_savings_cases(self):
         self.assertIn(
@@ -243,6 +271,71 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
         self.assertIn('source.product_url', query)
         self.assertIn('ranked_batches', query)
         self.assertIn("'2026-08-30'", query)
+
+    def test_lowes_review_candidates_are_separate_from_anomalies(self):
+        rows = [
+            _lowes_row(
+                id=21, item='L-21', count_of_reviews='3',
+                count_of_star_ratings='3', detailed_review_content=None,
+            ),
+            _lowes_row(
+                id=22, item='L-22', count_of_reviews='0',
+                count_of_star_ratings='0', star_rating='0',
+                detailed_review_content='review1 - a',
+                recommendation_intent=None,
+            ),
+            _lowes_row(
+                id=23, item='L-23', count_of_reviews='1',
+                count_of_star_ratings='1',
+                detailed_review_content='review1 - a ||| review2 - b',
+            ),
+            _lowes_row(
+                id=24, item='L-24', count_of_reviews='25',
+                count_of_star_ratings='25',
+                detailed_review_content=' ||| '.join(
+                    f'review{i} - body' for i in range(1, 20)
+                ),
+            ),
+        ]
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(7, 'review_body_count', retailer='Lowes')]},
+            {'fetchall': rows},
+            {'fetchall': []},
+        ])
+
+        result = sea_services.get_sea_cross_field_summary(
+            cursor, date(2026, 8, 31), 'sea_ref',
+        )
+
+        self.assertEqual(0, result['total_anomalies'])
+        self.assertEqual(4, result['total_review_needed'])
+        self.assertEqual(4, result['review_needed_records'])
+        self.assertEqual(0, result['passed_records'])
+        rule = result['rule_summary'][0]
+        self.assertEqual(0, rule['error_count'])
+        self.assertEqual(4, rule['review_count'])
+        self.assertEqual(
+            set(sea_services.LOWES_REVIEW_ISSUES.values()),
+            {label for label, count in rule['review_type_summary'].items()
+             if count == 1},
+        )
+
+        detail_cursor = ScriptedCursor([
+            {'fetchall': [_rule(7, 'review_body_count', retailer='Lowes')]},
+            {'fetchall': rows},
+            {'fetchall': []},
+        ])
+        detail = sea_services.get_sea_cross_field_rule_detail(
+            detail_cursor, date(2026, 8, 31), 'sea_ref', 7,
+        )
+        self.assertEqual(0, detail['total_anomalies'])
+        self.assertEqual(4, detail['total_review_needed'])
+        self.assertEqual(4, detail['total_findings'])
+        self.assertTrue(all(
+            row['finding_level'] == 'review_needed'
+            and row.get('issue_type')
+            for row in detail['anomalies']
+        ))
 
     def test_detail_returns_full_source_row_and_inspection_date(self):
         cursor = ScriptedCursor([

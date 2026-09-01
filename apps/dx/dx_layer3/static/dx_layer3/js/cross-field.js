@@ -17,7 +17,7 @@ function backToCrossfieldSummary() {
         return;
     }
     if (window.crossfieldSummaryData && window.crossfieldTitle) {
-        AppModal.setTitle('detail', window.crossfieldTitle + ` (${window.crossfieldSummaryData.total_anomalies}건)`);
+        AppModal.setTitle('detail', window.crossfieldTitle + ` (${getCrossfieldCountLabel(window.crossfieldSummaryData)})`);
         renderDetailModal(window.crossfieldTitle, '크로스 필드 검증', window.crossfieldSummaryData);
     }
 }
@@ -76,20 +76,29 @@ function showRetailerDetail(retailer) {
     const productLineDisplay = productLine.toUpperCase();
     const isCanonicalProductLine = /^(SEA_|TSE_)/.test(productLineDisplay);
     const ruleNameDisplay = window.crossfieldRuleName || '';
-    const titleText = `${ruleNameDisplay} (${rSummary.count || 0}건)`;
+    const anomalyCount = Number(rSummary.count || 0);
+    const reviewCount = Number(rSummary.review_count || 0);
+    const findingCountText = reviewCount > 0
+        ? `이상 ${anomalyCount.toLocaleString()}건 · 확인 필요 ${reviewCount.toLocaleString()}건`
+        : `${anomalyCount.toLocaleString()}건`;
+    const titleText = `${ruleNameDisplay} (${findingCountText})`;
     const subtitleText = `${productLineDisplay} Retail | ${retailer}`;
 
     const editableCols = inline ? (window.crossfieldEditableCols || new Set()) : new Set();
     const normalReviews = inline ? (window.crossfieldNormalReviews || {}) : {};
 
     // 동적 컬럼
-    const excludeKeys = ['id', 'item', 'account_name', 'page_type'];
-    const dynamicKeys = [];
+    const excludeKeys = ['id', 'item', 'account_name', 'page_type', 'finding_level'];
+    let dynamicKeys = [];
     if (rows.length > 0) {
         Object.keys(rows[0]).forEach(key => {
             if (!excludeKeys.includes(key)) dynamicKeys.push(key);
         });
     }
+    dynamicKeys = [
+        ...dynamicKeys.filter(key => key === 'issue_type'),
+        ...dynamicKeys.filter(key => key !== 'issue_type'),
+    ];
     const urlKey = dynamicKeys.find(k => k === 'product_url');
     const otherKeys = dynamicKeys.filter(k => k !== 'product_url');
 
@@ -191,7 +200,7 @@ function showRetailerDetail(retailer) {
 
     // 기본 표시 컬럼: 고정 + 규칙 컬럼 (규칙 없으면 otherKeys 전체)
     const fixedKeys = [
-        '_no', 'id', 'item', 'retailer_sku_name', 'page_type'
+        '_no', 'id', 'item', 'issue_type', 'retailer_sku_name', 'page_type'
     ];
     const defaultDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
 
@@ -203,7 +212,11 @@ function showRetailerDetail(retailer) {
         { key: 'page_type', label: 'page_type', width: 80 }
     ];
     otherKeys.forEach(k => {
-        allColumns.push({ key: k, label: k, width: 140 });
+        allColumns.push({
+            key: k,
+            label: k === 'issue_type' ? '확인 유형' : k,
+            width: k === 'issue_type' ? 230 : 140,
+        });
     });
     if (urlKey) {
         allColumns.push({ key: 'product_url', label: 'product_url', width: 100 });
@@ -500,6 +513,10 @@ function _cfRenderPage(page) {
                 tr += '<td style="text-align:center;">' + displayVal + '</td>';
                 return;
             }
+            if (c.key === 'issue_type') {
+                tr += '<td><span class="review-type-chip">' + esc(displayVal) + '</span></td>';
+                return;
+            }
             if (c.key === 'product_url') {
                 tr += '<td>' + displayVal + '</td>';
                 return;
@@ -633,13 +650,15 @@ async function reloadCfDays() {
             var normalReviews = window.crossfieldNormalReviews;
 
             // 동적 컬럼
-            var excludeKeys = ['id', 'item', 'account_name', 'page_type'];
+            var excludeKeys = ['id', 'item', 'account_name', 'page_type', 'finding_level'];
             var dynamicKeys = [];
             if (rows.length > 0) {
                 Object.keys(rows[0]).forEach(function(key) {
                     if (!excludeKeys.includes(key)) dynamicKeys.push(key);
                 });
             }
+            dynamicKeys = dynamicKeys.filter(function(key) { return key === 'issue_type'; })
+                .concat(dynamicKeys.filter(function(key) { return key !== 'issue_type'; }));
             var urlKey = dynamicKeys.find(function(k) { return k === 'product_url'; });
             var otherKeys = dynamicKeys.filter(function(k) { return k !== 'product_url'; });
 
@@ -680,7 +699,13 @@ async function reloadCfDays() {
                 var titleEl = document.querySelector('.inline-detail-title');
                 var daysLabel = days > 1 ? ' / ' + days + '일치' : '';
                 var ruleNameDisplay = window.crossfieldRuleName || '';
-                if (titleEl) titleEl.textContent = ruleNameDisplay + ' (' + rows.length + '건' + daysLabel + ')';
+                var currentSummary = (data.retailer_summary || {})[currentRetailer] || {};
+                var currentAnomalies = Number(currentSummary.count || 0);
+                var currentReviews = Number(currentSummary.review_count || 0);
+                var currentCountText = currentReviews > 0
+                    ? '이상 ' + currentAnomalies + '건 · 확인 필요 ' + currentReviews + '건'
+                    : currentAnomalies + '건';
+                if (titleEl) titleEl.textContent = ruleNameDisplay + ' (' + currentCountText + daysLabel + ')';
                 if (!isCrossFieldInline()) {
                     var productLineDisplay = (
                         window.crossfieldProductLine || ''
@@ -688,7 +713,7 @@ async function reloadCfDays() {
                     AppModal.setTitle(
                         'detail',
                         ruleNameDisplay + ' : ' + productLineDisplay + ' '
-                        + currentRetailer + ' (' + rows.length + '건'
+                        + currentRetailer + ' (' + currentCountText
                         + daysLabel + ')'
                     );
                 }
@@ -1260,38 +1285,54 @@ function _cfUpdateRuleCardCount() {
     if (!ruleId || !retailerData) return;
 
     // 현재 규칙의 실제 활성 건수 계산
-    var activeCount = 0;
+    var activeAnomalies = 0;
+    var activeReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
         retailerData[retailer].rows.forEach(function(row) {
             var rowId = row.id;
-            if (!rowId) { activeCount++; return; }
+            if (!rowId) {
+                if (row.finding_level === 'review_needed') activeReviews++;
+                else activeAnomalies++;
+                return;
+            }
             var hasNormal = false;
             editableCols.forEach(function(col) {
                 if (normalReviews[rowId + '_' + col]) hasNormal = true;
             });
-            if (!hasNormal) activeCount++;
+            if (!hasNormal) {
+                if (row.finding_level === 'review_needed') activeReviews++;
+                else activeAnomalies++;
+            }
         });
     });
 
     // 해당 규칙 카드의 건수 갱신
     var card = document.querySelector('.rule-summary-card[data-rule-id="' + ruleId + '"]');
     if (card) {
-        var countEl = card.querySelector('.rule-count');
-        if (countEl) {
-            countEl.textContent = activeCount + '건';
-            countEl.className = 'rule-count' + (activeCount === 0 ? ' zero' : '');
+        var countGroup = card.querySelector('.rule-count-group');
+        if (countGroup) {
+            countGroup.innerHTML = activeAnomalies === 0 && activeReviews === 0
+                ? '<span class="rule-count zero">0건</span>'
+                : (activeAnomalies > 0 ? '<span class="rule-count">이상 ' + activeAnomalies + '건</span>' : '')
+                    + (activeReviews > 0 ? '<span class="rule-count review-needed">확인 필요 ' + activeReviews + '건</span>' : '');
         }
     }
 
-    // 전체 타이틀 건수 갱신 (모든 규칙 카드의 건수 합산)
-    var totalActive = 0;
+    // 전체 타이틀 건수 갱신 (이상과 확인 필요를 분리)
+    var totalAnomalies = 0;
+    var totalReviews = 0;
     document.querySelectorAll('.rule-summary-card[data-rule-id] .rule-count').forEach(function(el) {
-        var num = parseInt(el.textContent) || 0;
-        totalActive += num;
+        var match = el.textContent.match(/(\d[\d,]*)/);
+        var num = match ? parseInt(match[1].replace(/,/g, '')) : 0;
+        if (el.classList.contains('review-needed')) totalReviews += num;
+        else if (!el.classList.contains('zero')) totalAnomalies += num;
     });
     var headerEl = document.querySelector('.rule-summary-section-header span');
     if (headerEl) {
-        headerEl.textContent = headerEl.textContent.replace(/\(\d+건\)/, '(' + totalActive + '건)');
+        var countText = totalReviews > 0
+            ? '이상 ' + totalAnomalies + '건 · 확인 필요 ' + totalReviews + '건'
+            : totalAnomalies + '건';
+        headerEl.textContent = headerEl.textContent.replace(/\([^)]*\)$/, '(' + countText + ')');
     }
 }
 
@@ -1302,10 +1343,11 @@ function _cfUpdateRetailerCounts() {
     var editableCols = window.crossfieldEditableCols || new Set();
     if (!retailerData || editableCols.size === 0) return;
 
-    var totalActive = 0;
+    var totalAnomalies = 0;
+    var totalReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
         var rows = retailerData[retailer].rows;
-        var activeCount = rows.filter(function(row) {
+        var activeRows = rows.filter(function(row) {
             var rowId = row.id;
             if (!rowId) return true;
             var hasNormal = false;
@@ -1313,16 +1355,23 @@ function _cfUpdateRetailerCounts() {
                 if (normalReviews[rowId + '_' + col]) hasNormal = true;
             });
             return !hasNormal;
+        });
+        var activeAnomalies = activeRows.filter(function(row) {
+            return row.finding_level !== 'review_needed';
         }).length;
-        totalActive += activeCount;
+        var activeReviews = activeRows.length - activeAnomalies;
+        totalAnomalies += activeAnomalies;
+        totalReviews += activeReviews;
 
         // 리테일러 카드 건수 갱신
         var card = document.querySelector('.rule-summary-card[data-retailer="' + retailer + '"]');
         if (card) {
-            var countEl = card.querySelector('.rule-count');
-            if (countEl) {
-                countEl.textContent = activeCount + '건';
-                countEl.className = 'rule-count' + (activeCount === 0 ? ' zero' : '');
+            var countGroup = card.querySelector('.rule-count-group');
+            if (countGroup) {
+                countGroup.innerHTML = activeAnomalies === 0 && activeReviews === 0
+                    ? '<span class="rule-count zero">0건</span>'
+                    : (activeAnomalies > 0 ? '<span class="rule-count">이상 ' + activeAnomalies + '건</span>' : '')
+                        + (activeReviews > 0 ? '<span class="rule-count review-needed">확인 필요 ' + activeReviews + '건</span>' : '');
             }
         }
     });
@@ -1330,7 +1379,10 @@ function _cfUpdateRetailerCounts() {
     // 상위 타이틀 건수 갱신
     var headerEl = document.querySelector('.rule-summary-section-header span');
     if (headerEl) {
-        headerEl.textContent = headerEl.textContent.replace(/\(\d+건\)/, '(' + totalActive + '건)');
+        var countText = totalReviews > 0
+            ? '이상 ' + totalAnomalies + '건 · 확인 필요 ' + totalReviews + '건'
+            : totalAnomalies + '건';
+        headerEl.textContent = headerEl.textContent.replace(/\([^)]*\)$/, '(' + countText + ')');
     }
 }
 

@@ -20,6 +20,13 @@ SEA_PRODUCT_KEYS = {
     'sea_ldy': 'ldy',
 }
 
+LOWES_REVIEW_ISSUES = OrderedDict((
+    ('body_missing', '리뷰 수 있음 · 리뷰본문 없음'),
+    ('body_without_reviews', '리뷰 수 0 · 리뷰본문 있음'),
+    ('body_over_review_count', '리뷰본문 번호가 리뷰 수보다 큼'),
+    ('review20_missing', '리뷰 수 20 이상 · review20 없음'),
+))
+
 SEA_RULE_SPECS = OrderedDict((
     ('review_count_match', {
         'detail_name': '리뷰 수와 별점 수 일치',
@@ -213,6 +220,30 @@ def _review_body_max(value):
     return max(numbers, default=0)
 
 
+def evaluate_lowes_review_body(row):
+    """Return a non-critical Lowes review-body issue code, if any."""
+    retailer = str(row.get('account_name') or '').strip().title()
+    if retailer != 'Lowes':
+        return None
+
+    review_count = parse_sea_number(row.get('count_of_reviews'))
+    if review_count is None:
+        return None
+
+    body = row.get('detailed_review_content')
+    body_present = _has_value(body)
+    body_max = _review_body_max(body)
+    if review_count > 0 and not body_present:
+        return 'body_missing'
+    if review_count == 0 and body_present:
+        return 'body_without_reviews'
+    if body_max > review_count:
+        return 'body_over_review_count'
+    if review_count >= 20 and body_max < 20:
+        return 'review20_missing'
+    return None
+
+
 def _recommendation_valid(retailer, review_count, value):
     has_recommendation = _has_value(value)
     if review_count == 0:
@@ -281,9 +312,8 @@ def evaluate_sea_row(row):
         if retailer == 'Bestbuy' and review_count > 0:
             if body_max < min(int(review_count), 20):
                 errors.add('review_body_count')
-        elif retailer == 'Lowes' and body_max > review_count:
-            # Confirmed Lowes policy: report only review-count < body-count.
-            errors.add('review_body_count')
+        # Lowes review/body combinations are review candidates, not anomalies.
+        # They are evaluated separately by evaluate_lowes_review_body().
 
         if not _recommendation_valid(
                 retailer, review_count, row.get('recommendation_intent')):
@@ -551,6 +581,10 @@ def build_sea_crossfield_result(
         str(row.get('id')): evaluate_sea_row(row)
         for row in rows
     }
+    lowes_review_evaluations = {
+        str(row.get('id')): evaluate_lowes_review_body(row)
+        for row in rows
+    }
 
     retailer_rows = {}
     for row in rows:
@@ -560,15 +594,16 @@ def build_sea_crossfield_result(
 
     rule_results = []
     finding_count = 0
+    review_finding_count = 0
     failed_record_ids = set()
+    review_record_ids = set()
     for rule in rules:
         error_details = []
+        review_details = []
         for row in rows:
             retailer = str(row.get('account_name') or 'Unknown').strip().title()
             row_id = str(row.get('id'))
             if not _rule_applies_to_retailer(rule, retailer):
-                continue
-            if rule['rule_key'] not in evaluations[row_id]:
                 continue
             source_rule_ids = {
                 str(rule_id)
@@ -577,23 +612,54 @@ def build_sea_crossfield_result(
             if any((row_id, rule_id) in normal_pairs
                    for rule_id in source_rule_ids):
                 continue
+
+            if rule['rule_key'] == 'review_body_count' and retailer == 'Lowes':
+                issue_code = lowes_review_evaluations.get(row_id)
+                if not issue_code:
+                    continue
+                detail = dict(row)
+                detail['issue_type'] = LOWES_REVIEW_ISSUES[issue_code]
+                detail['validation_tag'] = (
+                    f"확인 필요: {LOWES_REVIEW_ISSUES[issue_code]}"
+                )
+                detail['rule_key'] = rule['rule_key']
+                detail['finding_level'] = 'review_needed'
+                review_details.append(detail)
+                review_record_ids.add(row_id)
+                continue
+
+            if rule['rule_key'] not in evaluations[row_id]:
+                continue
             detail = dict(row)
             detail['validation_tag'] = rule['error_message']
             detail['rule_key'] = rule['rule_key']
+            detail['finding_level'] = 'anomaly'
             error_details.append(detail)
             failed_record_ids.add(row_id)
 
         result = dict(rule)
         result['error_details'] = error_details
         result['error_count'] = len(error_details)
+        result['review_details'] = review_details
+        result['review_count'] = len(review_details)
+        result['review_type_summary'] = {
+            issue_label: sum(
+                detail.get('issue_type') == issue_label
+                for detail in review_details
+            )
+            for issue_label in LOWES_REVIEW_ISSUES.values()
+        }
         rule_results.append(result)
         finding_count += len(error_details)
+        review_finding_count += len(review_details)
 
     retailer_summaries = []
     for retailer, source_rows in sorted(retailer_rows.items()):
         rules_summary = []
         retailer_failed_records = set()
+        retailer_review_records = set()
         retailer_error_count = 0
+        retailer_review_count = 0
         for result in rule_results:
             if not _retailer_supported(result['rule_key'], retailer):
                 continue
@@ -605,11 +671,20 @@ def build_sea_crossfield_result(
             retailer_failed_records.update(
                 str(detail.get('id')) for detail in details
             )
+            review_details = [
+                detail for detail in result['review_details']
+                if detail.get('account_name') == retailer
+            ]
+            retailer_review_count += len(review_details)
+            retailer_review_records.update(
+                str(detail.get('id')) for detail in review_details
+            )
             rules_summary.append({
                 'rule_id': result['rule_id'],
                 'detail_code': result['detail_code'],
                 'detail_name': result['detail_name'],
                 'error_count': len(details),
+                'review_count': len(review_details),
             })
         batch_ids = sorted({str(row.get('batch_id') or '') for row in source_rows})
         retailer_summaries.append({
@@ -618,6 +693,8 @@ def build_sea_crossfield_result(
             'total_checked': len(source_rows),
             'failed_records': len(retailer_failed_records),
             'total_errors': retailer_error_count,
+            'review_needed_records': len(retailer_review_records),
+            'total_review_needed': retailer_review_count,
             'rules': rules_summary,
         })
 
@@ -634,6 +711,11 @@ def build_sea_crossfield_result(
         'total_checked': len(rows),
         'failed_records': len(failed_record_ids),
         'total_anomalies': finding_count,
+        'review_needed_records': len(review_record_ids),
+        'total_review_needed': review_finding_count,
+        'passed_records': max(
+            0, len(rows) - len(failed_record_ids | review_record_ids)
+        ),
         'rule_results': rule_results,
         'retailers': retailer_summaries,
         'normal_corrections': corrections,
@@ -750,13 +832,15 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
     ]
     for rule in result['rule_results']:
         error_rows = rule.get('error_details') or []
+        review_rows = rule.get('review_details') or []
+        finding_rows = error_rows + review_rows
         pairs = [
             (
                 str(row.get('account_name')).strip(),
                 None if row.get('item') is None or str(row.get('item')) == ''
                 else str(row.get('item')),
             )
-            for row in error_rows
+            for row in finding_rows
             if str(row.get('account_name') or '').strip()
         ]
         scoped_retailers = sorted({pair[0] for pair in pairs})
@@ -767,15 +851,25 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
             ]
         if not pairs and not scoped_retailers:
             continue
+        detail_name = rule['detail_name']
+        error_message = rule['error_message']
+        if rule['rule_key'] == 'review_body_count' and rule['review_count']:
+            detail_name = '리뷰 수와 리뷰본문 확인'
+            error_message = (
+                'Bestbuy의 리뷰본문 부족은 이상, Lowes의 네 가지 사이트 '
+                '특성 후보는 확인 필요로 구분합니다.'
+            )
         rule_summary.append({
             'rule_id': rule['rule_id'],
             'detail_code': rule['detail_code'],
-            'detail_name': rule['detail_name'],
+            'detail_name': detail_name,
             'field1': rule['field1'],
             'field2': rule.get('field2'),
             'validation_type': rule['rule_key'],
-            'error_message': rule['error_message'],
+            'error_message': error_message,
             'error_count': rule['error_count'],
+            'review_count': rule['review_count'],
+            'review_type_summary': rule['review_type_summary'],
             'query': build_sea_display_query(
                 inspection_date, result['product_line'], rule,
                 retailers=[] if pairs else scoped_retailers,
@@ -795,6 +889,9 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
         'total_checked': result['total_checked'],
         'failed_records': result['failed_records'],
         'total_anomalies': result['total_anomalies'],
+        'review_needed_records': result['review_needed_records'],
+        'total_review_needed': result['total_review_needed'],
+        'passed_records': result['passed_records'],
         'rule_summary': rule_summary,
         'table_name': result['table_name'],
         'date_col': result['date_col'],
@@ -816,7 +913,9 @@ def get_sea_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    anomalies = selected['error_details']
+    error_details = selected['error_details']
+    review_details = selected['review_details']
+    anomalies = error_details + review_details
     retailers = sorted({
         str(row.get('account_name') or 'Unknown').strip().title()
         for row in anomalies
@@ -856,9 +955,21 @@ def get_sea_cross_field_rule_detail(
     retailer_summary = {}
     for row in anomalies:
         retailer = str(row.get('account_name') or 'Unknown').strip().title()
-        summary = retailer_summary.setdefault(retailer, {'count': 0, 'items': []})
+        summary = retailer_summary.setdefault(retailer, {
+            'count': 0,
+            'review_count': 0,
+            'items': [],
+            'review_type_summary': {},
+        })
         if str(row.get('id')) not in normal_record_ids:
-            summary['count'] += 1
+            if row.get('finding_level') == 'review_needed':
+                summary['review_count'] += 1
+                issue_type = row.get('issue_type') or '확인 필요'
+                summary['review_type_summary'][issue_type] = (
+                    summary['review_type_summary'].get(issue_type, 0) + 1
+                )
+            else:
+                summary['count'] += 1
         item = str(row.get('item') or '')
         if item and item not in summary['items']:
             summary['items'].append(item)
@@ -894,9 +1005,15 @@ def get_sea_cross_field_rule_detail(
         'field2': selected.get('field2'),
         'validation_type': selected['rule_key'],
         'error_message': selected['error_message'],
-        'total_anomalies': sum(
-            item['count'] for item in retailer_summary.values()
+        'total_anomalies': sum(item['count'] for item in retailer_summary.values()),
+        'total_review_needed': sum(
+            item['review_count'] for item in retailer_summary.values()
         ),
+        'total_findings': sum(
+            item['count'] + item['review_count']
+            for item in retailer_summary.values()
+        ),
+        'review_type_summary': selected['review_type_summary'],
         'retailer_summary': retailer_summary,
         'anomalies': anomalies,
         'select_fields': selected.get('select_fields') or '',

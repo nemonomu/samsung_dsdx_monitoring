@@ -560,6 +560,10 @@
     border: 1px dashed #1565c0;
 }
 
+.review-needed-value {
+    color: #1976d2;
+}
+
 /* 필드 누락 탐지 UI */
 .field-missing-tabs {
     display: flex;
@@ -820,6 +824,42 @@
 
 .rule-summary-card .rule-count.zero {
     background: #4caf50;
+}
+
+.rule-count-group {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.rule-summary-card .rule-count.review-needed {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #90caf9;
+}
+
+.review-type-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.review-type-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: 1px solid #bbdefb;
+    border-radius: 999px;
+    background: #eaf4ff;
+    color: #0d5ea6;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: nowrap;
 }
 
 /* 크로스필드 검증 쿼리 토글 */

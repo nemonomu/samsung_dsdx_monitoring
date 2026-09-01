@@ -74,7 +74,7 @@ assert(commonSource.includes('function showCrossfieldGuide()'));
 assert(commonSource.includes('새 대상도 등록 규칙을 자동 표시'));
 assert(!commonSource.includes('D-1 (offset_days='));
 assert(baseTemplate.includes("AppModal.create('crossfield-guide'"));
-assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=5'));
+assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=6'));
 assert(layer3Css.includes('.btn-crossfield-guide'));
 assert(layer3Css.includes('margin-left: auto'));
 assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));
@@ -104,20 +104,21 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
     vm.createContext(renderSandbox);
     vm.runInContext(commonSource, renderSandbox);
 
-    const check = (name, detailCode, checked, failed) => ({
+    const check = (name, detailCode, checked, failed, reviewNeeded = 0) => ({
         category: '크로스 필드 검증',
         name,
         detail_code: detailCode,
         description: `${detailCode} 설명`,
         checked,
-        passed: checked - failed,
+        passed: checked - failed - reviewNeeded,
         failed,
-        status: failed ? 'WARNING' : 'OK',
+        review_needed: reviewNeeded,
+        status: failed ? 'WARNING' : (reviewNeeded ? 'REVIEW_NEEDED' : 'OK'),
     });
     renderSandbox.renderData({
         checks: [
             check('SEA Retail', 'tv', 10, 1),
-            check('SEA REF 논리적 일관성', 'sea_ref', 20, 0),
+            check('SEA REF 논리적 일관성', 'sea_ref', 20, 0, 4),
             check('SEA LDY 논리적 일관성', 'sea_ldy', 30, 2),
             check('TSE TV 논리적 일관성', 'tse_tv', 40, 0),
             check('TSE REF 논리적 일관성', 'tse_ref', 50, 0),
@@ -135,6 +136,8 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
     assert(html.includes('<div class="crossfield-region-name">SEA Retail</div>'));
     assert(html.includes('<div class="crossfield-region-name">TSE Retail</div>'));
     assert(html.includes('TV Sentiment↔리뷰 일관성'));
+    assert(html.includes('확인 필요'));
+    assert(html.includes('review-needed-value'));
     assert(html.indexOf('SEA Retail') < html.indexOf('TSE Retail'));
     assert(html.indexOf('TSE Retail') < html.indexOf('TV Sentiment↔리뷰 일관성'));
     assert.strictEqual((html.match(/\bcrossfield-region-child\b/g) || []).length, 6);
@@ -264,7 +267,7 @@ assert(commonSource.includes('preserveRaw === true ? text : formatSQL(text)'));
 assert(source.includes("itemTitle.textContent = listLabel + ' 목록 ('"));
 assert(source.includes("document.getElementById('${queryId}'), true"));
 assert(source.includes("if (!isCrossFieldInline())"));
-assert(/fixedKeys = \[\s*'_no', 'id', 'item', 'retailer_sku_name'/.test(source));
+assert(/fixedKeys = \[\s*'_no', 'id', 'item', 'issue_type', 'retailer_sku_name'/.test(source));
 assert(source.includes("if (urlKey) defaultVisibleSet.add('product_url')"));
 assert(source.includes("r['product_url'] = renderProductUrl(row[urlKey])"));
 assert(source.includes('window.crossfieldSourceDate'));
@@ -393,6 +396,35 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     assert(detailModal.body.includes('논리 오류 데이터가 없습니다'));
     assert(detailModal.body.includes('onclick="showCrossfieldGuide()"'));
     assert.strictEqual(detailModal.opened, true);
+
+    commonSandbox.renderCrossfieldSummaryContent(
+        'SEA LDY 논리적 일관성', '크로스 필드 검증', {
+            date: '2026-08-11',
+            source_date: '2026-08-10',
+            product_line: 'SEA_LDY',
+            total_anomalies: 0,
+            total_review_needed: 4,
+            rule_summary: [{
+                rule_id: 7,
+                field1: 'count_of_reviews',
+                field2: 'detailed_review_content',
+                error_message: 'Lowes 확인 필요 항목',
+                error_count: 0,
+                review_count: 4,
+                review_type_summary: {
+                    '리뷰 수 있음 · 리뷰본문 없음': 2,
+                    '리뷰 수 0 · 리뷰본문 있음': 2,
+                },
+                query: 'SELECT 1',
+            }],
+        }
+    );
+    assert.strictEqual(
+        detailModal.title,
+        'SEA LDY 논리적 일관성 (이상 0건 · 확인 필요 4건)'
+    );
+    assert(detailModal.body.includes('rule-count review-needed'));
+    assert(detailModal.body.includes('리뷰 수 있음 · 리뷰본문 없음'));
 
     await commonSandbox.loadCrossfieldRuleDetail(
         'tse_tv', 'rule-1', '2026-08-11', 'TSE 규칙'

@@ -335,6 +335,13 @@ def layer_stats(request):
                         sea_total = sea_result['total_checked']
                         sea_failed = sea_result['failed_records']
                         sea_findings = sea_result['total_anomalies']
+                        sea_review_needed = sea_result.get(
+                            'review_needed_records', 0
+                        )
+                        sea_passed = sea_result.get(
+                            'passed_records',
+                            max(0, sea_total - sea_failed - sea_review_needed),
+                        )
                     except Exception as e:
                         log_error(e)
                         continue
@@ -350,10 +357,17 @@ def layer_stats(request):
                             '추천 의향 형식 검증'
                         ),
                         'checked': sea_total,
-                        'passed': max(0, sea_total - sea_failed),
+                        'passed': sea_passed,
                         'failed': sea_failed,
+                        'review_needed': sea_review_needed,
                         'finding_count': sea_findings,
-                        'status': get_status(sea_failed, sea_total),
+                        'status': (
+                            get_status(sea_failed, sea_total)
+                            if sea_failed
+                            else 'REVIEW_NEEDED'
+                            if sea_review_needed
+                            else 'OK'
+                        ),
                     })
 
             if False and run_crossfield and product_line in ['hhp', 'all']:
