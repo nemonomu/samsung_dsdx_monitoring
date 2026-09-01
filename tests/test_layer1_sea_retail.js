@@ -172,7 +172,8 @@ function categoryFromSummary(key) {
     const refHtml = context.renderRetailCategory(categoryFromSummary('ref'), 0, 1);
     assert.ok(refHtml.includes('검수일 2026-08-20'));
     assert.ok(refHtml.includes('데이터일 2026-08-19'));
-    assert.ok(refHtml.includes('D-1 (offset_days=-1)'));
+    assert.ok(refHtml.includes('D-1'));
+    assert.ok(!refHtml.includes('offset_days='));
     assert.ok(refHtml.includes('/ REF-BESTBUY-ANCHOR</span>'));
     assert.ok(refHtml.includes('/ REF-LOWES-ANCHOR</span>'));
     assert.ok(refHtml.includes('category=REF'));
@@ -236,15 +237,15 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=12"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=12"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=13"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=13"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=6"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
-    assert.ok(youtubeSource.includes("(offset_days="));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/youtube.js' %}?v=20260831-1"));
+    assert.ok(!youtubeSource.includes("(offset_days="));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/youtube.js' %}?v=20260901-1"));
 
     console.log('Layer1 SEA retail frontend tests passed');
 })().catch(function(error) {

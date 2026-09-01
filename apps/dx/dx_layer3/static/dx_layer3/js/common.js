@@ -830,8 +830,18 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         </div>`;
     }
 
-    if (data.source_date && data.source_date !== data.date) {
-        html += `<div class="inline-detail-subtitle" style="margin-bottom:12px;">검수일 ${esc(data.date)} · 데이터일 ${esc(data.source_date)} · D-1 (offset_days=${esc(String(data.offset_days ?? -1))})</div>`;
+    const showSeaGuide = /^(SEA_REF|SEA_LDY)$/.test(
+        String(data.product_line || '').toUpperCase()
+    );
+    if ((data.source_date && data.source_date !== data.date) || showSeaGuide) {
+        html += '<div class="crossfield-summary-toolbar">';
+        if (data.source_date && data.source_date !== data.date) {
+            html += `<div class="inline-detail-subtitle">검수일 ${esc(data.date)} · 데이터일 ${esc(data.source_date)} · D-1</div>`;
+        }
+        if (showSeaGuide) {
+            html += '<button type="button" class="btn-crossfield-guide" onclick="showSeaCrossfieldGuide()">검수 기준 안내</button>';
+        }
+        html += '</div>';
     }
 
     if (ruleSummary.length === 0) {
@@ -888,6 +898,56 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         AppModal.setBody('detail', html);
         AppModal.open('detail');
     }
+}
+
+function showSeaCrossfieldGuide() {
+    const html = `
+        <div class="sea-crossfield-guide">
+            <div class="sea-guide-scope">
+                <div class="sea-guide-scope-title">먼저 확인할 조회 범위</div>
+                <div class="sea-guide-scope-items">
+                    <span>SEA REF·LDY 동일 적용</span>
+                    <span>검수일 D → 데이터일 D-1</span>
+                    <span>리테일러별 최신 MAIN batch의 MAIN+BSR</span>
+                    <span>NULL·형식 오류는 Layer2에서 확인</span>
+                </div>
+            </div>
+            <div class="sea-guide-grid">
+                <section class="sea-guide-card">
+                    <div class="sea-guide-card-header">
+                        <h3>Bestbuy</h3><span>7개</span>
+                    </div>
+                    <ol class="sea-guide-rule-list">
+                        <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
+                        <li><strong>별점 0과 별점 수 0 일치</strong><p>한쪽만 0이면 이상입니다. 둘 다 0이거나 둘 다 양수이면 정상입니다.</p></li>
+                        <li><strong>페이지 유형과 순위 일치</strong><p>MAIN이면 <code>main_rank</code>, BSR이면 <code>bsr_rank</code>가 있어야 합니다.</p></li>
+                        <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt; original_sku_price → 이상</code></li>
+                        <li><strong>90% 이상 할인</strong><code>(원가-최종가)/원가 &gt;= 90% → 이상</code></li>
+                        <li><strong>리뷰본문 개수</strong><p>리뷰 수가 20개 이하면 해당 수까지, 20개 이상이면 <code>review20</code>까지 있어야 합니다.</p></li>
+                        <li><strong>추천 의향 형식</strong><p>리뷰가 있으면 <code>NN% would recommend to a friend</code>, 0~100% 범위여야 합니다. 리뷰가 0이면 값도 비어 있어야 합니다.</p></li>
+                    </ol>
+                </section>
+                <section class="sea-guide-card">
+                    <div class="sea-guide-card-header">
+                        <h3>Lowes</h3><span>9개</span>
+                    </div>
+                    <ol class="sea-guide-rule-list">
+                        <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
+                        <li><strong>별점 0과 별점 수 0 일치</strong><p>한쪽만 0이면 이상입니다. 둘 다 0이거나 둘 다 양수이면 정상입니다.</p></li>
+                        <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt;= original_sku_price → 이상</code></li>
+                        <li><strong>리뷰본문 개수</strong><code>리뷰본문 개수 &gt; count_of_reviews → 이상</code></li>
+                        <li><strong>savings 누락</strong><p>최종가와 원가가 있는데 <code>savings</code>가 없으면 이상입니다.</p></li>
+                        <li><strong>원가 누락</strong><p>최종가와 <code>savings</code>가 있는데 원가가 없으면 이상입니다.</p></li>
+                        <li><strong>할인 금액 일치</strong><code>original_sku_price - final_sku_price &lt;&gt; savings → 이상</code></li>
+                        <li><strong>최종가 누락</strong><p>최종가가 없는데 원가 또는 <code>savings</code>가 있으면 이상입니다.</p></li>
+                        <li><strong>추천 의향 형식</strong><p>리뷰가 있으면 <code>NN% Recommend this product</code>, 0~100% 범위여야 합니다. 리뷰가 0이면 값도 비어 있어야 합니다.</p></li>
+                    </ol>
+                </section>
+            </div>
+        </div>`;
+    AppModal.setTitle('sea-crossfield-guide', 'SEA REF/LDY 크로스필드 검수 기준');
+    AppModal.setBody('sea-crossfield-guide', html);
+    AppModal.open('sea-crossfield-guide');
 }
 
 // 카테고리별 특성 요약 렌더링 (모달 / 인라인 공용)

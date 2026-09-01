@@ -31,6 +31,32 @@ const commonSource = fs.readFileSync(
     ),
     'utf8'
 );
+const baseTemplate = fs.readFileSync(
+    path.join(
+        __dirname,
+        '..',
+        'apps',
+        'dx',
+        'dx_layer3',
+        'templates',
+        'base_layer3.html'
+    ),
+    'utf8'
+);
+const layer3Css = fs.readFileSync(
+    path.join(
+        __dirname,
+        '..',
+        'apps',
+        'dx',
+        'dx_layer3',
+        'static',
+        'dx_layer3',
+        'css',
+        'layer3.css'
+    ),
+    'utf8'
+);
 
 assert(commonSource.includes('/dx/layer1/retail/api/backup-status/'));
 for (const label of [
@@ -39,6 +65,15 @@ for (const label of [
 ]) {
     assert(commonSource.includes(label));
 }
+assert(commonSource.includes('검수 기준 안내'));
+assert(commonSource.includes('SEA REF/LDY 크로스필드 검수 기준'));
+assert(commonSource.includes('별점 0과 별점 수 0 일치'));
+assert(commonSource.includes('<h3>Bestbuy</h3><span>7개</span>'));
+assert(commonSource.includes('<h3>Lowes</h3><span>9개</span>'));
+assert(!commonSource.includes('D-1 (offset_days='));
+assert(baseTemplate.includes("AppModal.create('sea-crossfield-guide'"));
+assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=3'));
+assert(layer3Css.includes('.btn-crossfield-guide'));
 
 let inlineHtml = '';
 const modal = { title: '', body: '', opened: false };

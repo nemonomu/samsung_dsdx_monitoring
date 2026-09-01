@@ -91,7 +91,8 @@ const html = sandbox.renderDXTableDetail(
 );
 assert.ok(html.includes('검수일 2026-08-31'));
 assert.ok(html.includes('데이터일 2026-08-30'));
-assert.ok(html.includes('D-1 (offset_days=-1)'));
+assert.ok(html.includes('D-1'));
+assert.ok(!html.includes('offset_days='));
 assert.ok(!html.includes('batch_id:'));
 assert.ok(html.includes("this.dataset.fields, 'sea_ldy_retail'"));
 

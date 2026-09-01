@@ -27,9 +27,9 @@ WITH products (
          'count_of_reviews와 count_of_star_ratings가 다릅니다.',
          'count_of_reviews|count_of_star_ratings|detailed_review_content', 10),
         ('Bestbuy', 'rating_count_presence',
-         '별점과 별점 수 존재 일치',
+         '별점 0과 별점 수 0 일치',
          'star_rating', 'count_of_star_ratings',
-         '양수 star_rating이 있는데 count_of_star_ratings가 없거나 0입니다.',
+         'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
          'star_rating|count_of_star_ratings|count_of_reviews', 20),
         ('Bestbuy', 'rank_page_type',
          '페이지 유형과 순위 필드 일치',
@@ -62,6 +62,11 @@ WITH products (
          'count_of_reviews', 'count_of_star_ratings',
          'count_of_reviews와 count_of_star_ratings가 다릅니다.',
          'count_of_reviews|count_of_star_ratings|detailed_review_content', 10),
+        ('Lowes', 'rating_count_presence',
+         '별점 0과 별점 수 0 일치',
+         'star_rating', 'count_of_star_ratings',
+         'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
+         'star_rating|count_of_star_ratings|count_of_reviews', 20),
         ('Lowes', 'final_original_price',
          '최종가와 원가 순서',
          'final_sku_price', 'original_sku_price',
@@ -235,7 +240,7 @@ WHERE product_line IN ('sea_ref', 'sea_ldy')
   AND is_active IS TRUE
   AND COALESCE(is_del, FALSE) IS FALSE;
 
--- Verification: expected 30 active rows (15 per product line).
+-- Verification: expected 32 active rows (16 per product line).
 SELECT
     product_line,
     retailer,

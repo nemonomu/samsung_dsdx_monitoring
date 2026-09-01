@@ -146,7 +146,7 @@ class UnifiedInspectionPageWiringTests(unittest.TestCase):
         self.assertIn('ui-mapping-body', template)
         self.assertIn('TSE 실제 조회 확인', template)
         self.assertIn('ui-tse-body', template)
-        self.assertIn('offset_days=0', template)
+        self.assertNotIn('offset_days=', template)
         self.assertIn('기존 Layer1 조회를 읽기 전용으로 재사용합니다.', template)
         self.assertIn(
             '/dx/layer4/api/unified-inspection/date-mapping/?date=',

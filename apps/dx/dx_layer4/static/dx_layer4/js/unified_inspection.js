@@ -55,7 +55,7 @@
 
     function resetTsePanel(message) {
         document.getElementById('ui-tse-contract').textContent =
-            'TSE · D · offset_days=0';
+            'TSE · D';
         document.getElementById('ui-tse-inspection-date').textContent = '-';
         document.getElementById('ui-tse-source-date').textContent = '-';
         document.getElementById('ui-tse-status').textContent = '-';
@@ -64,8 +64,7 @@
 
     function prepareTsePanel(mapping) {
         document.getElementById('ui-tse-contract').textContent =
-            mapping.country + ' · ' + mapping.rule + ' · offset_days=' +
-            mapping.offset_days;
+            mapping.country + ' · ' + mapping.rule;
         document.getElementById('ui-tse-inspection-date').textContent =
             mapping.inspection_date;
         document.getElementById('ui-tse-source-date').textContent =

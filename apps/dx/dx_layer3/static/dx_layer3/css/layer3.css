@@ -1032,6 +1032,152 @@
     color: #4b5563;
 }
 
+.crossfield-summary-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 36px;
+    margin-bottom: 12px;
+}
+
+.btn-crossfield-guide {
+    flex-shrink: 0;
+    border: 1px solid var(--layer-color);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--layer-color);
+    padding: 8px 13px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.btn-crossfield-guide:hover {
+    background: var(--layer-color);
+    color: #fff;
+}
+
+.sea-crossfield-guide {
+    color: #1f2937;
+}
+
+.sea-guide-scope {
+    padding: 16px 18px;
+    border: 1px solid #fed7aa;
+    border-radius: 10px;
+    background: #fff7ed;
+    margin-bottom: 18px;
+}
+
+.sea-guide-scope-title {
+    margin-bottom: 10px;
+    color: #9a3412;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.sea-guide-scope-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.sea-guide-scope-items span {
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: #fff;
+    color: #7c2d12;
+    font-size: 12px;
+    border: 1px solid #ffedd5;
+}
+
+.sea-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.sea-guide-card {
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: #fff;
+}
+
+.sea-guide-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+    background: #f8fafc;
+}
+
+.sea-guide-card-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.sea-guide-card-header span {
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #ffedd5;
+    color: #9a3412;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.sea-guide-rule-list {
+    margin: 0;
+    padding: 4px 16px 8px 44px;
+}
+
+.sea-guide-rule-list li {
+    padding: 10px 0 10px 4px;
+    border-bottom: 1px solid #eef2f7;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.sea-guide-rule-list li:last-child {
+    border-bottom: 0;
+}
+
+.sea-guide-rule-list strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.sea-guide-rule-list p {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.sea-guide-rule-list code {
+    display: inline-block;
+    max-width: 100%;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 12px;
+    white-space: normal;
+    word-break: break-word;
+}
+
+@media (max-width: 900px) {
+    .sea-guide-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .crossfield-summary-toolbar {
+        align-items: flex-start;
+    }
+}
+
 /* 검증 규칙 모달 스타일 */
 .rules-list {
     margin: 0;

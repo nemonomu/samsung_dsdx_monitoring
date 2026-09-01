@@ -59,13 +59,10 @@ function renderRetailDateContract(categoryData) {
     if (!inspectionDate && !sourceDate && offsetDays === '') return '';
 
     var offsetLabel = formatRetailOffset(offsetDays);
-    var offsetText = offsetLabel
-        ? offsetLabel + ' (offset_days=' + Number(offsetDays) + ')'
-        : 'offset_days=-';
     return '<span class="retail-date-contract" style="font-size:12px;font-weight:400;color:#64748b;margin-left:10px;">' +
         '검수일 ' + esc(inspectionDate || '-') +
         ' · 데이터일 ' + esc(sourceDate || '-') +
-        ' · ' + esc(offsetText) +
+        (offsetLabel ? ' · ' + esc(offsetLabel) : '') +
     '</span>';
 }
 

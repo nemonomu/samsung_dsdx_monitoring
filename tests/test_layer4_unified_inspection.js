@@ -160,7 +160,7 @@ async function main() {
     assert.ok(tseHtml.includes('정상'));
     assert.strictEqual(
         elements['ui-tse-contract'].textContent,
-        'TSE · D · offset_days=0'
+        'TSE · D'
     );
     assert.strictEqual(
         elements['ui-tse-inspection-date'].textContent,

@@ -95,6 +95,30 @@ def _rule(rule_id, rule_key, retailer='ALL', product_line='sea_ref'):
 
 
 class SeaCrossfieldEvaluationTests(unittest.TestCase):
+    def test_rating_zero_pair_is_bidirectional_for_both_retailers(self):
+        for row_factory in (_bestbuy_row, _lowes_row):
+            with self.subTest(retailer=row_factory.__name__, direction='rating_zero'):
+                errors = sea_services.evaluate_sea_row(row_factory(
+                    star_rating='0', count_of_star_ratings='2',
+                    count_of_reviews='2',
+                ))
+                self.assertIn('rating_count_presence', errors)
+
+            with self.subTest(retailer=row_factory.__name__, direction='count_zero'):
+                errors = sea_services.evaluate_sea_row(row_factory(
+                    star_rating='4.5', count_of_star_ratings='0',
+                    count_of_reviews='0',
+                ))
+                self.assertIn('rating_count_presence', errors)
+
+            with self.subTest(retailer=row_factory.__name__, state='both_zero'):
+                errors = sea_services.evaluate_sea_row(row_factory(
+                    star_rating='0', count_of_star_ratings='0',
+                    count_of_reviews='0', detailed_review_content=None,
+                    recommendation_intent=None,
+                ))
+                self.assertNotIn('rating_count_presence', errors)
+
     def test_bestbuy_tv_style_rules(self):
         self.assertEqual(set(), sea_services.evaluate_sea_row(_bestbuy_row()))
 

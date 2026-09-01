@@ -33,14 +33,14 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
     }),
     ('rating_count_presence', {
-        'detail_name': '별점과 별점 수 존재 일치',
+        'detail_name': '별점 0과 별점 수 0 일치',
         'field1': 'star_rating',
         'field2': 'count_of_star_ratings',
-        'retailers': ('Bestbuy',),
+        'retailers': ('Bestbuy', 'Lowes'),
         'display_fields': (
             'star_rating', 'count_of_star_ratings', 'count_of_reviews',
         ),
-        'error_message': '양수 star_rating이 있는데 count_of_star_ratings가 없거나 0입니다.',
+        'error_message': 'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
     }),
     ('rank_page_type', {
         'detail_name': '페이지 유형과 순위 필드 일치',
@@ -245,11 +245,11 @@ def evaluate_sea_row(row):
         if review_count != star_count:
             errors.add('review_count_match')
 
-    if retailer == 'Bestbuy':
-        if rating is not None and rating > 0:
-            if star_count is None or star_count == 0:
-                errors.add('rating_count_presence')
+    if rating is not None and star_count is not None:
+        if (rating == 0) != (star_count == 0):
+            errors.add('rating_count_presence')
 
+    if retailer == 'Bestbuy':
         page_type = str(row.get('page_type') or '').strip().upper()
         if page_type == 'MAIN' and not _has_value(row.get('main_rank')):
             errors.add('rank_page_type')

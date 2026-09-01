@@ -108,7 +108,7 @@ function renderYouTubeCheck(check, checkIdx) {
         ? '<div class="retail-date-contract" style="font-size:12px;color:#64748b;margin-bottom:10px;">' +
             '검수일 ' + esc(check.inspection_date || '-') +
             ' · 데이터일 ' + esc(check.source_date || '-') +
-            ' · ' + esc(offsetLabel) + ' (offset_days=' + esc(String(check.offset_days)) + ')' +
+            ' · ' + esc(offsetLabel) +
           '</div>'
         : '';
 

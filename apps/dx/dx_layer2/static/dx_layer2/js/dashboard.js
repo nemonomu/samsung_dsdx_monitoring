@@ -546,9 +546,10 @@ function renderDXTableDetail(vType, table) {
     // NULL 검증 - 리테일러별 상세
     if (vType.type === 'null' && table.retailers) {
         if (table.inspection_date && table.source_date) {
-            const offsetLabel = Number(table.offset_days) === -1
-                ? 'D-1 (offset_days=-1)'
-                : `offset_days=${Number(table.offset_days || 0)}`;
+            const offsetDays = Number(table.offset_days || 0);
+            const offsetLabel = offsetDays === 0
+                ? 'D'
+                : (offsetDays > 0 ? `D+${offsetDays}` : `D${offsetDays}`);
             html += `<div style="margin:0 0 12px;color:var(--text-secondary);font-size:12px;">
                 검수일 ${table.inspection_date} · 데이터일 ${table.source_date} · ${offsetLabel}
             </div>`;
