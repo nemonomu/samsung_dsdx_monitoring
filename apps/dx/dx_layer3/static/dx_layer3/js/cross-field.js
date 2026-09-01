@@ -1,4 +1,14 @@
 // 크로스필드 검증 유형 목록으로 돌아가기
+function getDefaultCrossfieldHistoryDays(productLine) {
+    const key = String(productLine || '').toLowerCase();
+    return key === 'tv'
+        || key === 'sea_tv'
+        || key.startsWith('sea_')
+        || key.startsWith('tse_')
+        ? 2
+        : 1;
+}
+
 function backToCrossfieldSummary() {
     if (isCrossFieldInline()) {
         ViewStack.pop();
@@ -91,7 +101,8 @@ function showRetailerDetail(retailer) {
     // Item 목록 토글 + 3일치 쿼리 (모달)
     const retailerSafe = retailer.replace(/[^a-zA-Z0-9]/g, '');
     const itemListDisplay = listValues.join(', ');
-    const displayDays = window.crossfieldDays || 1;
+    const displayDays = window.crossfieldDays
+        || getDefaultCrossfieldHistoryDays(productLine);
     const tseDisplayQuery = (window.crossfieldDisplayQueries || {})[retailer]
         || window.crossfieldDisplayQuery || '';
     const tseQueryBox = isCanonicalProductLine
@@ -559,11 +570,12 @@ function _cfClearFilter() {
 // 일수 변경하여 크로스필드 상세 재조회
 async function reloadCfDays() {
     var daysInput = document.getElementById('cf-detail-days');
-    var days = daysInput ? parseInt(daysInput.value) || 1 : 1;
+    var productLine = (window.crossfieldProductLine || 'tv').toLowerCase();
+    var defaultDays = getDefaultCrossfieldHistoryDays(productLine);
+    var days = daysInput ? parseInt(daysInput.value) || defaultDays : defaultDays;
     if (days < 1) days = 1;
     if (days > 30) days = 30;
 
-    var productLine = (window.crossfieldProductLine || 'tv').toLowerCase();
     var date = window.crossfieldDate || '';
     var ruleId = window._cfDetailState?._ruleId || '';
     var currentRetailer = window._cfCurrentRetailer || '';

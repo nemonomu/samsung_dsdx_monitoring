@@ -1205,6 +1205,7 @@ async function reloadCrossfieldData(date, productLine, title) {
 // 크로스필드 검증 유형별 상세 데이터 로드
 async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
     const inline = isCrossFieldInline();
+    const historyDays = getDefaultCrossfieldHistoryDays(productLine);
 
     if (inline) {
         ViewStack.push(`
@@ -1218,7 +1219,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
     }
 
     try {
-        const data = await fetchAPI(`/layer3/api/cross-field-detail/?date=${date}&type=${productLine}&rule_id=${ruleId}`);
+        const data = await fetchAPI(`/layer3/api/cross-field-detail/?date=${date}&type=${productLine}&rule_id=${ruleId}&days=${historyDays}`);
 
         if (data.error) {
             const errHtml = `<p style="color: red;">오류: ${esc(data.error)}</p>`;
@@ -1272,7 +1273,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldRetailerColumns = data.retailer_columns || {};
             window.crossfieldDisplayQuery = data.query || '';
             window.crossfieldDisplayQueries = data.queries || {};
-            window.crossfieldDays = data.days || 1;
+            window.crossfieldDays = data.days || historyDays;
             window.crossfieldPendingEdits = {};
 
             // 건수는 백엔드 계산값 사용

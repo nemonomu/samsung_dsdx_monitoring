@@ -103,13 +103,14 @@ assert.ok(nullSource.includes('data.actual_table'));
 assert.ok(!nullSource.includes('· batch_id: ${data.batch_id'));
 
 let youtubeDetailHtml = '';
+let youtubeTableOptions = null;
 const youtubeSandbox = {
     console,
     getDetailBody() { return { innerHTML: '' }; },
     getSelectedDate() { return '2026-08-31'; },
     isInlineMode() { return true; },
     buildDetailContainerHtml() { return '<div id="youtube-detail"></div>'; },
-    renderDetailWithTable() {},
+    renderDetailWithTable(options) { youtubeTableOptions = options; },
     ViewStack: {
         push(html) { youtubeDetailHtml = html; },
         getContainer() { return null; }
@@ -117,6 +118,11 @@ const youtubeSandbox = {
 };
 vm.createContext(youtubeSandbox);
 vm.runInContext(nullSource, youtubeSandbox);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('tv_retail'), 2);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('sea_ref_retail'), 2);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('sea_ldy_retail'), 2);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('tse_tv_retail'), 2);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('youtube'), 1);
 vm.runInContext(`
     modalState.tableParam = 'youtube';
     modalState.tableName = 'YouTube';
@@ -139,6 +145,40 @@ youtubeSandbox.renderNullFieldDetailView('batch_id', {
 }, true);
 assert.ok(youtubeDetailHtml.includes('검수일 2026-08-31'));
 assert.ok(youtubeDetailHtml.includes('데이터일 2026-08-30'));
+
+vm.runInContext(`
+    modalState.tableParam = 'sea_ldy_retail';
+    modalState.tableName = 'SEA LDY';
+    modalState.retailer = 'Lowes';
+    modalState.days = 2;
+`, youtubeSandbox);
+youtubeSandbox.renderNullFieldDetailView('sku', {
+    results: [
+        {
+            id: 41, item: 'item-1', sku: 'OLD-SKU',
+            crawl_strdatetime: '2026-08-29 19:04:00'
+        },
+        {
+            id: 42, item: 'item-1', sku: null,
+            crawl_strdatetime: '2026-08-30 19:19:36', null_fields: ['sku']
+        }
+    ],
+    display_config: {
+        sku: { select_columns: ['id', 'item', 'sku', 'crawl_strdatetime'] }
+    },
+    query_config: { sku: ['id', 'item', 'sku', 'crawl_strdatetime'] },
+    actual_table: 'public.ldy_retail_com',
+    inspection_date: '2026-08-31',
+    source_date: '2026-08-30',
+    supports_day_history: true,
+    history_days: 2,
+    date: '2026-08-31',
+    date_column: 'crawl_strdatetime'
+}, true);
+assert.ok(youtubeDetailHtml.includes('value="2"'));
+assert.ok(youtubeDetailHtml.includes('2일치'));
+assert.strictEqual(youtubeTableOptions.crawlDate, '2026-08-31');
+assert.strictEqual(youtubeTableOptions.editableDate, '2026-08-30');
 
 function makeReviewCell(rowId, columnName) {
     const classes = new Set();
@@ -191,6 +231,9 @@ vm.runInContext(`
     detailViewState.type = 'null';
     detailViewState.editableCols = new Set();
     detailViewState.crawlDate = '2026-08-31';
+    detailViewState.editableDate = '2026-08-30';
+    detailViewState.dateColumn = 'crawl_strdatetime';
+    modalState.days = 1;
 `, commonSandbox);
 
 const reviewCellHtml = commonSandbox.getCellHtml(
@@ -202,6 +245,30 @@ assert.ok(reviewCellHtml.includes('class="null-value"'));
 assert.ok(reviewCellHtml.includes('data-row-id="42"'));
 assert.ok(reviewCellHtml.includes('data-col="ref_capacity"'));
 assert.ok(!reviewCellHtml.includes('data-editable="true"'));
+
+vm.runInContext('modalState.days = 2;', commonSandbox);
+const currentSourceCellHtml = commonSandbox.getCellHtml(
+    {
+        id: 43,
+        sku: null,
+        crawl_strdatetime: '2026-08-30 19:19:36',
+        null_fields: ['sku']
+    },
+    { key: 'sku' },
+    'sea_ldy_retail'
+);
+const previousSourceCellHtml = commonSandbox.getCellHtml(
+    {
+        id: 41,
+        sku: 'OLD-SKU',
+        crawl_strdatetime: '2026-08-29 19:04:00',
+        null_fields: []
+    },
+    { key: 'sku' },
+    'sea_ldy_retail'
+);
+assert.ok(currentSourceCellHtml.includes('data-row-id="43"'));
+assert.ok(!previousSourceCellHtml.includes('data-row-id="41"'));
 
 const first = makeReviewCell(1, 'ref_capacity');
 const second = makeReviewCell(2, 'ref_capacity');

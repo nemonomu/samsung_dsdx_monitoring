@@ -2029,26 +2029,65 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     latest_anchor_scope = bool(
         sea_source and sea_source.get('latest_main_batch')
     )
-    if has_retailer and not latest_anchor_scope and days > 1 and rows:
+    if has_retailer and days > 1 and rows:
         item_idx = select_cols.index('item') if 'item' in select_cols else None
         if item_idx is not None:
             # 정상처리 건 제외 후 에러 item 추출
             error_items = list(set(r[item_idx] for r in rows if r[item_idx] and r[id_idx] not in normal_set))
             if error_items:
-                start_date = detail_target_date - timedelta(days=days - 1)
                 placeholders = ', '.join(['%s'] * len(error_items))
-                non_product_scope = get_non_product_exclusion_condition(actual_table)
-                expand_query = f"""
-                    SELECT *
-                    FROM {actual_table}
-                    WHERE {date_col}::timestamp >= %s AND {date_col}::timestamp < %s
-                      AND account_name = %s
-                      AND item IN ({placeholders})
-                      {f'AND {get_tv_validation_condition()}' if actual_table == 'tv_retail_com' else ''}
-                      {f'AND {non_product_scope}' if non_product_scope else ''}
-                    ORDER BY item, {date_col}
-                """
-                expand_params = [str(start_date), str(next_date), retailer] + error_items
+                if latest_anchor_scope and sea_date:
+                    end_source_date = datetime.strptime(
+                        sea_date['source_date'], '%Y-%m-%d'
+                    ).date()
+                    start_source_date = end_source_date - timedelta(
+                        days=days - 1
+                    )
+                    date_text = (
+                        f"LEFT(TRIM(CAST({date_col} AS TEXT)), 10)"
+                    )
+                    expand_query = f"""
+                        WITH latest_batches AS (
+                            SELECT DISTINCT ON ({date_text})
+                                   {date_text} AS source_date,
+                                   batch_id
+                            FROM {actual_table}
+                            WHERE {date_text} >= %s
+                              AND {date_text} <= %s
+                              AND LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
+                              AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'
+                            ORDER BY {date_text}, id DESC
+                        )
+                        SELECT source.*
+                        FROM {actual_table} source
+                        JOIN latest_batches latest
+                          ON LEFT(TRIM(CAST(source.{date_col} AS TEXT)), 10)
+                             = latest.source_date
+                         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+                        WHERE LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+                          AND UPPER(TRIM(COALESCE(source.page_type, '')))
+                              IN ('MAIN', 'BSR')
+                          AND source.item IN ({placeholders})
+                        ORDER BY source.item, source.{date_col}, source.id
+                    """
+                    expand_params = [
+                        str(start_source_date), str(end_source_date),
+                        retailer, retailer, *error_items,
+                    ]
+                else:
+                    start_date = detail_target_date - timedelta(days=days - 1)
+                    non_product_scope = get_non_product_exclusion_condition(actual_table)
+                    expand_query = f"""
+                        SELECT *
+                        FROM {actual_table}
+                        WHERE {date_col}::timestamp >= %s AND {date_col}::timestamp < %s
+                          AND account_name = %s
+                          AND item IN ({placeholders})
+                          {f'AND {get_tv_validation_condition()}' if actual_table == 'tv_retail_com' else ''}
+                          {f'AND {non_product_scope}' if non_product_scope else ''}
+                        ORDER BY item, {date_col}
+                    """
+                    expand_params = [str(start_date), str(next_date), retailer] + error_items
                 cursor.execute(expand_query, expand_params)
                 rows = cursor.fetchall()
                 is_expanded = True
@@ -2115,9 +2154,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         'date': str(target_date)
     }
     if monitoring_date:
-        supports_day_history = bool(
-            has_retailer and not latest_anchor_scope
-        )
+        supports_day_history = bool(has_retailer)
         response.update({
             'inspection_date': monitoring_date['inspection_date'],
             'source_date': monitoring_date['source_date'],

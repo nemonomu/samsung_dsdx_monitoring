@@ -393,7 +393,8 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual('2026-08-30', result['source_date'])
         self.assertEqual('2026-08-31', result['inspection_date'])
         self.assertEqual('l_260830_191936', result['batch_id'])
-        self.assertFalse(result['supports_day_history'])
+        self.assertTrue(result['supports_day_history'])
+        self.assertEqual(1, result['history_days'])
         self.assertEqual(['sku'], result['editable_cols'])
         self.assertEqual(
             ['item', 'sku', 'retailer_sku_name', 'product_url'],
@@ -413,6 +414,60 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         correction_sql, correction_params = cursor.calls[2]
         self.assertIn('FROM monitoring_corrections', correction_sql)
         self.assertEqual('2026-08-31', correction_params[1])
+
+    def test_appliance_detail_expands_two_days_with_each_days_anchor_batch(self):
+        description = [
+            ('id',), ('account_name',), ('page_type',), ('item',),
+            ('sku',), ('crawl_strdatetime',), ('batch_id',),
+        ]
+        cursor = ScriptedCursor([
+            {'fetchone': ('l_260830_191936',)},
+            {
+                'description': description,
+                'fetchall': [(
+                    42, 'Lowes', 'main', 'item-1', None,
+                    '2026-08-30 19:19:36', 'l_260830_191936',
+                )],
+            },
+            {'fetchall': []},
+            {
+                'description': description,
+                'fetchall': [
+                    (
+                        41, 'Lowes', 'main', 'item-1', 'OLD-SKU',
+                        '2026-08-29 19:04:00', 'l_260829_190400',
+                    ),
+                    (
+                        42, 'Lowes', 'main', 'item-1', None,
+                        '2026-08-30 19:19:36', 'l_260830_191936',
+                    ),
+                ],
+            },
+        ])
+
+        result = self.service.get_null_detail(
+            cursor, date(2026, 8, 31), 'sea_ldy_retail',
+            'Lowes', 2, 'sku',
+        )
+
+        self.assertEqual([41, 42], [row['id'] for row in result['results']])
+        self.assertTrue(result['supports_day_history'])
+        self.assertEqual(2, result['history_days'])
+        self.assertEqual('2026-08-30', result['source_date'])
+
+        history_sql, history_params = cursor.calls[3]
+        self.assertIn('WITH latest_batches AS', history_sql)
+        self.assertIn('SELECT DISTINCT ON', history_sql)
+        self.assertIn("= 'MAIN'", history_sql)
+        self.assertIn("IN ('MAIN', 'BSR')", history_sql)
+        self.assertIn(
+            'source.batch_id IS NOT DISTINCT FROM latest.batch_id',
+            history_sql,
+        )
+        self.assertEqual(
+            ['2026-08-29', '2026-08-30', 'Lowes', 'Lowes', 'item-1'],
+            history_params,
+        )
 
     def test_normal_review_accepts_only_configured_column_in_anchor_scope(self):
         cursor = ScriptedCursor([

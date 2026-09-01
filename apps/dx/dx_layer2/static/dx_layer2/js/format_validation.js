@@ -306,8 +306,12 @@ async function reloadNullData(date) {
 
 function reloadNullDays() {
     var daysInput = document.getElementById('detail-days') || document.getElementById('null-modal-days');
-    var days = parseInt(daysInput && daysInput.value) || 1;
+    var defaultDays = typeof getDefaultNullHistoryDays === 'function'
+        ? getDefaultNullHistoryDays(modalState.tableParam)
+        : 1;
+    var days = parseInt(daysInput && daysInput.value) || defaultDays;
     if (days < 1) days = 1;
+    if (days > 30) days = 30;
     modalState.days = days;
 
     var date;

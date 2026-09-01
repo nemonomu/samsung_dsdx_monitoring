@@ -230,11 +230,13 @@ function _reviewAttr(row, key) {
     if (!isInlineMode()) return '';
     var rowId = row.id || (row._parent && row._parent.id);
     if (!rowId) return '';
-    // 다일치 조회 시 조회 날짜 데이터만 수정 가능
+    // 다일치 조회 시 현재 검수 대상 데이터일만 수정 가능
     if ((modalState.days || 1) > 1 && detailViewState.crawlDate) {
         var dateCol = detailViewState.dateColumn || (modalState.nullFieldsData && modalState.nullFieldsData.date_column) || 'crawl_datetime';
         var recDate = (row[dateCol] || '').substring(0, 10);
-        if (recDate !== detailViewState.crawlDate) return '';
+        var editableDate = detailViewState.editableDate
+            || detailViewState.crawlDate;
+        if (recDate !== editableDate) return '';
     }
     return ' data-row-id="' + rowId + '" data-col="' + esc(key) + '"';
 }
@@ -352,6 +354,7 @@ function renderDetailWithTable(options) {
     var editableCols = options.editableCols || [];
     var actualTable = options.actualTable || '';
     var crawlDate = options.crawlDate || '';
+    var editableDate = options.editableDate || crawlDate;
     var normalReviews = options.normalReviews || {};
     var dateColumn = options.dateColumn || '';
     var enableModalColumnSelector = options.enableModalColumnSelector === true;
@@ -366,6 +369,7 @@ function renderDetailWithTable(options) {
     detailViewState.normalReviews = normalReviews;
     detailViewState.actualTable = actualTable;
     detailViewState.crawlDate = crawlDate;
+    detailViewState.editableDate = editableDate;
     detailViewState.dateColumn = dateColumn;
 
     // flat 데이터 생성

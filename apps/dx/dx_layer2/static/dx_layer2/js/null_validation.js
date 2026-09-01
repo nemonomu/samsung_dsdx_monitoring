@@ -11,6 +11,20 @@ let modalState = {
     selectedField: null
 };
 var _dupPageSize = 50;
+const SEA_TSE_NULL_HISTORY_TABLES = new Set([
+    'tv_retail',
+    'sea_ref_retail',
+    'sea_ldy_retail',
+    'tse_tv_retail',
+    'tse_ref_retail',
+    'tse_ldy_retail'
+]);
+
+function getDefaultNullHistoryDays(tableParam) {
+    return SEA_TSE_NULL_HISTORY_TABLES.has(String(tableParam || '').toLowerCase())
+        ? 2
+        : 1;
+}
 
 function parseLayer2DetailResponse(response) {
     return response.json()
@@ -200,7 +214,10 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
         AppModal.open('l2-detail');
     }
 
-    modalState = { type, tableName, tableParam, retailer, count, currentPage: page, totalPages: 1, totalGroups: 0, nullFieldsData: null, selectedField: null, days: 1 };
+    const defaultDays = type === 'null'
+        ? getDefaultNullHistoryDays(tableParam)
+        : 1;
+    modalState = { type, tableName, tableParam, retailer, count, currentPage: page, totalPages: 1, totalGroups: 0, nullFieldsData: null, selectedField: null, days: defaultDays };
 
     // NULL 검증: fieldsDetail이 있으면 API 호출 없이 바로 요약 표시
     if (type === 'null' && fieldsDetailJson) {
@@ -334,20 +351,24 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const dateColumn = data.date_column || 'crawl_datetime';
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
-    const isLegacyRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail';
-    const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isSeaTv = tableParam === 'tv_retail';
+    const isSeaAppliance = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isSeaRetail = isSeaTv || isSeaAppliance;
+    const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || tableParam === 'youtube';
     const isRetail = isLegacyRetail || isSeaRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
-        || (isSeaRetail && data.supports_day_history === true)
+        || (isSeaAppliance && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
-    const currentDays = isTseRetail
+    const defaultDays = getDefaultNullHistoryDays(tableParam);
+    const currentDays = supportsDayHistory
         ? Math.min(
-            30, Math.max(1, Number(data.history_days || modalState.days || 1))
+            30,
+            Math.max(1, Number(data.history_days || modalState.days || defaultDays))
         )
-        : (modalState.days || 1);
-    if (isTseRetail) modalState.days = currentDays;
+        : 1;
+    if (supportsDayHistory) modalState.days = currentDays;
     const sourceScope = isSeaDMinusOneSource && data.source_date
         ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date}`
         : '';
@@ -384,7 +405,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
-            ${isTseRetail ? daysInputHtml : ''}
+            ${(isSeaRetail || isTseRetail) ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL 오류 (${records.length}건)</h4>`;
     }
@@ -439,11 +460,26 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 const inClause = items.map(item => `'${item}'`).join(', ');
                 const sourceDate = data.source_date || date;
                 const batchId = String(data.batch_id || '').replace(/'/g, "''");
+                const historyStartDate = _tseHistoryStartDate(
+                    sourceDate, currentDays
+                );
+                const seaQueryCols = queryColumns.length > 0
+                    ? queryColumns.map(function(column) {
+                        return 'source.' + column;
+                    }).join(', ')
+                    : 'source.*';
+                const seaApplianceHistoryQuery = currentDays > 1
+                    ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10))\n         LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND account_name = '${retailerName}'\n    AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'\n  ORDER BY LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10), id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(TRIM(CAST(source.${dateColumn} AS TEXT)), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE source.account_name = '${retailerName}'\n  AND source.item IN (${inClause})\n  AND UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR')\nORDER BY source.item, source.${dateColumn} ASC;`
+                    : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) = '${sourceDate}'\n  AND batch_id = '${batchId}'\n  AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')\nORDER BY item, ${dateColumn} ASC;`;
+                const seaTvHistoryQuery = `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND ${dateColumn}::timestamp >= '${historyStartDate}'::timestamp\n  AND ${dateColumn}::timestamp < '${_tseNextDate(sourceDate)}'::timestamp\nORDER BY item, ${dateColumn} ASC;`;
+                const seaHistoryQuery = isSeaAppliance
+                    ? seaApplianceHistoryQuery
+                    : seaTvHistoryQuery;
                 const query3Days = isSeaRetail
-                    ? `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) = '${sourceDate}'\n  AND batch_id = '${batchId}'\n  AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')\nORDER BY item, ${dateColumn} ASC;`
+                    ? seaHistoryQuery
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
                 const queryLabel = isSeaRetail
-                    ? `검수 범위 조회 쿼리 (데이터일 ${sourceDate})`
+                    ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">
                     <div class="item-list-box">
@@ -509,6 +545,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         editableCols: data.editable_cols || [],
         actualTable: data.actual_table || '',
         crawlDate: date,
+        editableDate: isSeaRetail ? (data.source_date || date) : date,
         dateColumn: data.date_column || '',
         normalReviews: data.normal_reviews || {},
         enableModalColumnSelector: isTseRetail

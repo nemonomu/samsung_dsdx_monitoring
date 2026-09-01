@@ -17,10 +17,16 @@ def cross_field_detail(request):
     date_str = request.GET.get('date')
     product_line = request.GET.get('type', 'tv')
     rule_id = request.GET.get('rule_id')  # 특정 규칙 상세 조회 시
+    product_line_key = str(product_line or '').lower()
+    default_days = 2 if (
+        product_line_key in {'tv', 'sea_tv'}
+        or product_line_key.startswith('sea_')
+        or product_line_key.startswith('tse_')
+    ) else 1
     try:
-        days = int(request.GET.get('days', 1))
+        days = int(request.GET.get('days', default_days))
     except (TypeError, ValueError):
-        days = 1
+        days = default_days
     if days < 1:
         days = 1
     if days > 30:
@@ -31,8 +37,8 @@ def cross_field_detail(request):
     else:
         target_date = (datetime.now() - timedelta(days=1)).date()
 
-    is_tse = str(product_line).lower() in ('tse_tv', 'tse_ref', 'tse_ldy')
-    is_sea = str(product_line).lower() in ('sea_ref', 'sea_ldy')
+    is_tse = product_line_key in ('tse_tv', 'tse_ref', 'tse_ldy')
+    is_sea = product_line_key in ('sea_ref', 'sea_ldy')
 
     # product_line을 section으로 변환
     section_map = {'tv': 'tv_retail', 'hhp': 'hhp_retail'}

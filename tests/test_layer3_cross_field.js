@@ -355,6 +355,12 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
 
     vm.createContext(commonSandbox);
     vm.runInContext(commonSource, commonSandbox);
+    vm.runInContext(source, commonSandbox);
+
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tv'), 2);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('sea_ref'), 2);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tse_ldy'), 2);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('hhp'), 1);
 
     let copiedSql = '';
     commonSandbox.navigator = {
@@ -387,6 +393,14 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     assert(detailModal.body.includes('논리 오류 데이터가 없습니다'));
     assert(detailModal.body.includes('onclick="showCrossfieldGuide()"'));
     assert.strictEqual(detailModal.opened, true);
+
+    await commonSandbox.loadCrossfieldRuleDetail(
+        'tse_tv', 'rule-1', '2026-08-11', 'TSE 규칙'
+    );
+    assert.strictEqual(
+        requestedUrl,
+        '/layer3/api/cross-field-detail/?date=2026-08-11&type=tse_tv&rule_id=rule-1&days=2'
+    );
 
     commonSandbox.window.crossfieldSummaryData = {
         product_line: 'TSE_TV',

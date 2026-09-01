@@ -13,6 +13,16 @@ from .services import get_all_categories
 from . import services
 
 
+SEA_TSE_DEFAULT_HISTORY_CATEGORIES = frozenset({
+    'tv_retail',
+    'sea_ref_retail',
+    'sea_ldy_retail',
+    'tse_tv_retail',
+    'tse_ref_retail',
+    'tse_ldy_retail',
+})
+
+
 def null_detail(request):
     """NULL 필드 상세 조회 API - category 기반 동적 처리"""
     target_date = parse_date(request.GET.get('date'))
@@ -23,10 +33,13 @@ def null_detail(request):
         return JsonResponse({'error': '잘못된 테이블 파라미터'}, status=400)
     retailer = request.GET.get('retailer')
     column = request.GET.get('column')
+    default_days = (
+        2 if category in SEA_TSE_DEFAULT_HISTORY_CATEGORIES else 1
+    )
     try:
-        days = max(1, int(request.GET.get('days', 1)))
+        days = min(30, max(1, int(request.GET.get('days', default_days))))
     except (ValueError, TypeError):
-        days = 1
+        days = default_days
 
     # column 필수 + regex 검증 (SQL injection 방지)
     if not column:
