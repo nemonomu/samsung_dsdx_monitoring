@@ -3,6 +3,7 @@ Layer 3 필드 누락 서비스 레이어
 """
 
 from datetime import timedelta
+from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_columns import get_missing_exclude_conditions
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import validate_exclude_condition
@@ -15,11 +16,27 @@ def get_field_missing_excluded_columns(product_line):
     return set()
 
 
-def field_missing_detection(cursor, target_date, product_line, retailer, retail_columns):
+def resolve_field_missing_date_contract(inspection_date, product_line):
+    """Resolve the inspection date without changing non-SEA placeholders."""
+    if (product_line or '').lower() == 'tv':
+        return resolve_monitoring_date(inspection_date, 'SEA', 'sea_tv')
+    value = inspection_date.isoformat()
+    return {
+        'inspection_date': value,
+        'source_date': value,
+        'offset_days': 0,
+        'country': '',
+        'source_key': '',
+    }
+
+
+def field_missing_detection(
+        cursor, target_date, product_line, retailer, retail_columns,
+        inspection_date=None):
     """
     필드 누락 탐지 비즈니스 로직
-    - 직전 2일 vs 오늘 비교
-    - 직전에는 값이 있었는데 오늘 NULL/빈값인 필드 탐지
+    - 데이터일과 그 직전 2일 비교
+    - 직전에는 값이 있었는데 데이터일에 NULL/빈값인 필드 탐지
     Returns: dict
     """
     if product_line != 'tv':
@@ -150,7 +167,9 @@ def field_missing_detection(cursor, target_date, product_line, retailer, retail_
                   AND table_name = %s AND crawl_date = %s AND retailer = %s
                   AND status = 'normal'
                 GROUP BY column_name
-            """, (table_name, str(target_date), ret))
+            """, (
+                table_name, str(inspection_date or target_date), ret,
+            ))
             for nr_row in cursor.fetchall():
                 nr_col, nr_count = nr_row[0], nr_row[1]
                 if nr_col in field_stats:
@@ -289,7 +308,7 @@ def field_missing_detail_all(cursor, target_date, product_line, retailer, displa
 
 def field_missing_detail_problem(cursor, target_date, product_line, retailer, columns_to_check, offset, limit):
     """
-    필드 누락 탐지 상세 - 문제 있는 item만 (직전에 있었는데 오늘 없는)
+    필드 누락 탐지 상세 - 문제 있는 item만 (직전에 있었는데 데이터일에 없는)
     column 파라미터 없으면 해당 리테일러의 모든 컬럼 검사
     무한 스크롤: offset, limit 파라미터 지원
     Returns: dict (empty result dict if no columns to check)
@@ -415,10 +434,10 @@ def field_missing_detail_problem(cursor, target_date, product_line, retailer, co
 
 def field_missing_detail_by_field(cursor, target_date, product_line, retailer, field, days,
                                    columns_info, display_fields, related_columns,
-                                   editable_cols):
+                                   editable_cols, inspection_date=None):
     """
     특정 필드의 누락 item들에 대한 N일치 raw 데이터 조회
-    - 직전 2일에 값이 있었는데 오늘 없는 item들의 N일치 전체 데이터
+    - 직전 2일에 값이 있었는데 데이터일에 없는 item들의 N일치 전체 데이터
     Returns: dict (empty result dict if no missing items)
     """
     if product_line != 'tv':
@@ -573,7 +592,7 @@ def field_missing_detail_by_field(cursor, target_date, product_line, retailer, f
             WHERE layer = 3 AND correction_type = 'field_missing'
               AND table_name = %s AND crawl_date = %s
               AND status = 'normal'
-        """, (table_name, str(target_date)))
+        """, (table_name, str(inspection_date or target_date)))
         for nr_row in cursor.fetchall():
             nk = str(nr_row[0]) + '_' + nr_row[1]
             normal_reviews[nk] = {

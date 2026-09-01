@@ -74,7 +74,7 @@ assert(commonSource.includes('function showCrossfieldGuide()'));
 assert(commonSource.includes('새 대상도 등록 규칙을 자동 표시'));
 assert(!commonSource.includes('D-1 (offset_days='));
 assert(baseTemplate.includes("AppModal.create('crossfield-guide'"));
-assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=9'));
+assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=10'));
 assert(layer3Css.includes('.btn-crossfield-guide'));
 assert(layer3Css.includes('margin-left: auto'));
 assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));

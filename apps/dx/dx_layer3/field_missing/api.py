@@ -3,7 +3,7 @@ Layer 3 필드 누락 API
 """
 
 from django.http import JsonResponse
-from datetime import datetime, timedelta
+from datetime import datetime
 from apps.common.db import dx_connection
 from apps.common.retail_columns import get_editable_columns
 from apps.common.response import safe_error, log_error
@@ -11,20 +11,41 @@ from . import services
 from .services import get_field_missing_excluded_columns
 
 
+def _resolve_request_dates(date_str, product_line):
+    inspection_date = (
+        datetime.strptime(date_str, '%Y-%m-%d').date()
+        if date_str
+        else datetime.now().date()
+    )
+    contract = services.resolve_field_missing_date_contract(
+        inspection_date, product_line
+    )
+    source_date = datetime.strptime(
+        contract['source_date'], '%Y-%m-%d'
+    ).date()
+    return inspection_date, source_date, contract
+
+
+def _attach_date_contract(result, contract):
+    result['inspection_date'] = contract['inspection_date']
+    result['source_date'] = contract['source_date']
+    result['offset_days'] = contract['offset_days']
+    return result
+
+
 def field_missing_detection(request):
     """
     필드 누락 탐지 API
-    - 직전 2일 vs 오늘 비교
-    - 직전에는 값이 있었는데 오늘 NULL/빈값인 필드 탐지
+    - 데이터일과 그 직전 2일 비교
+    - 직전에는 값이 있었는데 데이터일에 NULL/빈값인 필드 탐지
     """
     date_str = request.GET.get('date')
     product_line = request.GET.get('type', 'tv')  # tv, hhp
     retailer = request.GET.get('retailer', 'all')  # Amazon, Bestbuy, Walmart, all
 
-    if date_str:
-        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    else:
-        target_date = (datetime.now() - timedelta(days=1)).date()
+    _inspection_date, target_date, date_contract = _resolve_request_dates(
+        date_str, product_line
+    )
 
     # DB에서 리테일러별 수집 필드 로드 (skip_missing_check=TRUE인 필드 제외)
     from apps.common.retail_columns import get_retail_columns_for_retailer
@@ -36,7 +57,11 @@ def field_missing_detection(request):
 
     try:
         with dx_connection() as (conn, cursor):
-            result = services.field_missing_detection(cursor, target_date, product_line, retailer, retail_columns)
+            result = services.field_missing_detection(
+                cursor, target_date, product_line, retailer, retail_columns,
+                inspection_date=_inspection_date,
+            )
+        _attach_date_contract(result, date_contract)
         return JsonResponse(result)
     except Exception as e:
         log_error(e)
@@ -59,10 +84,9 @@ def field_missing_detail_all(request):
         offset = 0
         limit = 100
 
-    if date_str:
-        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    else:
-        target_date = (datetime.now() - timedelta(days=1)).date()
+    _inspection_date, target_date, date_contract = _resolve_request_dates(
+        date_str, product_line
+    )
 
     # DB에서 리테일러별 수집 필드 로드
     from apps.common.retail_columns import get_retailer_columns
@@ -74,7 +98,11 @@ def field_missing_detail_all(request):
 
     try:
         with dx_connection() as (conn, cursor):
-            result = services.field_missing_detail_all(cursor, target_date, product_line, retailer, display_fields, offset, limit)
+            result = services.field_missing_detail_all(
+                cursor, target_date, product_line, retailer,
+                display_fields, offset, limit
+            )
+        _attach_date_contract(result, date_contract)
         return JsonResponse(result)
     except Exception as e:
         log_error(e)
@@ -83,7 +111,7 @@ def field_missing_detail_all(request):
 
 def field_missing_detail_problem(request):
     """
-    필드 누락 탐지 상세 - 문제 있는 item만 (직전에 있었는데 오늘 없는)
+    필드 누락 탐지 상세 - 문제 있는 item만 (직전에 있었는데 데이터일에 없는)
     column 파라미터 없으면 해당 리테일러의 모든 컬럼 검사
     무한 스크롤: offset, limit 파라미터 지원
     """
@@ -98,10 +126,9 @@ def field_missing_detail_problem(request):
         offset = 0
         limit = 100
 
-    if date_str:
-        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    else:
-        target_date = (datetime.now() - timedelta(days=1)).date()
+    _inspection_date, target_date, date_contract = _resolve_request_dates(
+        date_str, product_line
+    )
 
     # DB에서 리테일러별 수집 필드 로드
     from apps.common.retail_columns import get_retailer_columns
@@ -118,7 +145,11 @@ def field_missing_detail_problem(request):
 
     try:
         with dx_connection() as (conn, cursor):
-            result = services.field_missing_detail_problem(cursor, target_date, product_line, retailer, columns_to_check, offset, limit)
+            result = services.field_missing_detail_problem(
+                cursor, target_date, product_line, retailer,
+                columns_to_check, offset, limit
+            )
+        _attach_date_contract(result, date_contract)
         return JsonResponse(result)
     except Exception as e:
         log_error(e)
@@ -128,24 +159,28 @@ def field_missing_detail_problem(request):
 def field_missing_detail_by_field(request):
     """
     특정 필드의 누락 item들에 대한 3일치 raw 데이터 조회
-    - 직전 2일에 값이 있었는데 오늘 없는 item들의 3일치 전체 데이터
+    - 직전 2일에 값이 있었는데 데이터일에 없는 item들의 3일치 전체 데이터
     """
     date_str = request.GET.get('date')
     product_line = request.GET.get('product_line', 'tv')
     retailer = request.GET.get('retailer', 'Amazon')
     field = request.GET.get('field', '')  # 필수: 조회할 필드
+    _inspection_date, target_date, date_contract = _resolve_request_dates(
+        date_str, product_line
+    )
     if field in get_field_missing_excluded_columns(product_line):
-        return JsonResponse({
+        result = {
             'status': 'success',
             'message': 'field excluded from missing validation',
-            'date': date_str or '',
+            'date': date_contract['source_date'],
             'product_line': product_line.upper(),
             'retailer': retailer,
             'field': field,
             'total_rows': 0,
             'data': [],
             'normal_reviews': {},
-        })
+        }
+        return JsonResponse(_attach_date_contract(result, date_contract))
     days = int(request.GET.get('days', 3))
     if days < 1:
         days = 1
@@ -154,11 +189,6 @@ def field_missing_detail_by_field(request):
 
     if not field:
         return JsonResponse({'status': 'error', 'message': 'field 파라미터가 필요합니다.'})
-
-    if date_str:
-        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-    else:
-        target_date = (datetime.now() - timedelta(days=1)).date()
 
     # DB에서 리테일러별 수집 필드 및 related_columns 로드
     from apps.common.retail_columns import get_retail_columns_with_related
@@ -179,8 +209,10 @@ def field_missing_detail_by_field(request):
         with dx_connection() as (conn, cursor):
             result = services.field_missing_detail_by_field(
                 cursor, target_date, product_line, retailer, field, days,
-                columns_info, display_fields, related_columns, editable_cols
+                columns_info, display_fields, related_columns, editable_cols,
+                inspection_date=_inspection_date,
             )
+        _attach_date_contract(result, date_contract)
         return JsonResponse(result)
     except Exception as e:
         log_error(e)

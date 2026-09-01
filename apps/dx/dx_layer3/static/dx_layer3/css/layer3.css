@@ -826,6 +826,20 @@
     background: #4caf50;
 }
 
+.field-missing-date-scope {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    background: #f8fbff;
+    color: #475569;
+    font-size: 12px;
+}
+
+.field-missing-date-scope:empty {
+    display: none;
+}
+
 .rule-count-group {
     flex-shrink: 0;
     display: flex;

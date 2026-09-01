@@ -58,6 +58,8 @@ async function loadAllRetailersMissing() {
     for (const retailer of retailers) {
         try {
             const data = await fetchAPI(`/layer3/api/field-missing/?date=${date}&type=${currentFieldMissingPL}&retailer=${retailer}`);
+            const inspectionDate = data.inspection_date || date;
+            const sourceDate = data.source_date || data.date || date;
 
             const missingCount = data.summary?.total_missing_cases || 0;
             const fieldsCount = data.summary?.fields_with_issues || 0;
@@ -84,9 +86,15 @@ async function loadAllRetailersMissing() {
             retailerMissingCache[cacheKey] = {
                 missingFields: data.missing_fields || [],
                 summary: data.summary || {},
-                date: date,
+                date: inspectionDate,
+                sourceDate: sourceDate,
                 prevDates: data.prev_dates || []
             };
+
+            const dateScopeEl = document.getElementById('field-missing-date-scope');
+            if (dateScopeEl) {
+                dateScopeEl.textContent = `검수일 ${inspectionDate} · 데이터일 ${sourceDate} · D-1`;
+            }
         } catch (error) {
             console.error(`Error loading ${retailer}:`, error);
             const badgeEl = document.getElementById(`badge-${currentFieldMissingPL}-${retailer}`);
@@ -158,7 +166,10 @@ function renderMissingSummaryFromCache(retailer) {
         return;
     }
 
-    renderMissingSummary(cached.missingFields, cached.summary, cached.date, cached.prevDates, retailer);
+    renderMissingSummary(
+        cached.missingFields, cached.summary, cached.date,
+        cached.prevDates, retailer, cached.sourceDate
+    );
 }
 
 // API로 요약 데이터 로드
@@ -172,7 +183,10 @@ async function loadMissingSummaryData(retailer, date) {
         const summary = data.summary || {};
         const prevDates = data.prev_dates || [];
 
-        renderMissingSummary(missingFields, summary, date, prevDates, retailer);
+        renderMissingSummary(
+            missingFields, summary, data.inspection_date || date,
+            prevDates, retailer, data.source_date || data.date || date
+        );
     } catch (error) {
         console.error('Error:', error);
         AppModal.setBody('detail', '<p style="text-align: center; padding: 40px;">데이터 로드 실패</p>');
@@ -180,9 +194,11 @@ async function loadMissingSummaryData(retailer, date) {
 }
 
 // 요약 화면 렌더링
-function renderMissingSummary(missingFields, summary, date, prevDates, retailer) {
-    const periodStart = prevDates.length > 0 ? prevDates[0] : date;
-    const periodEnd = date;
+function renderMissingSummary(missingFields, summary, date, prevDates, retailer, sourceDate) {
+    const periodStart = prevDates.length > 0
+        ? prevDates.slice().sort()[0]
+        : (sourceDate || date);
+    const periodEnd = sourceDate || date;
 
     if (missingFields.length === 0) {
         AppModal.setBody('detail', `
@@ -267,7 +283,10 @@ async function viewMissingSummaryInline(retailer, date) {
 
     // 캐시가 있고 같은 날짜면 캐시 사용
     if (cached && cached.date === actualDate) {
-        _fmRenderSummaryInline(cached.missingFields, cached.summary, cached.date, cached.prevDates, retailer);
+        _fmRenderSummaryInline(
+            cached.missingFields, cached.summary, cached.date,
+            cached.prevDates, retailer, cached.sourceDate
+        );
     } else {
         // 로딩 표시 후 API 호출
         var loadingHtml = '<div class="detail-view-wrapper" style="padding:40px;text-align:center;">데이터를 불러오는 중...</div>';
@@ -277,9 +296,13 @@ async function viewMissingSummaryInline(retailer, date) {
             var missingFields = data.missing_fields || [];
             var summary = data.summary || {};
             var prevDates = data.prev_dates || [];
-            var actualDate = date || getSelectedDate();
+            var actualDate = data.inspection_date || date || getSelectedDate();
+            var sourceDate = data.source_date || data.date || actualDate;
             ViewStack.pop();
-            _fmRenderSummaryInline(missingFields, summary, actualDate, prevDates, retailer);
+            _fmRenderSummaryInline(
+                missingFields, summary, actualDate, prevDates,
+                retailer, sourceDate
+            );
         } catch (e) {
             console.error(e);
             ViewStack.pop();
@@ -288,7 +311,7 @@ async function viewMissingSummaryInline(retailer, date) {
     }
 }
 
-function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retailer) {
+function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retailer, sourceDate) {
     var plUpper = currentFieldMissingPL.toUpperCase();
     var totalMissing = summary.total_missing_cases || 0;
 
@@ -320,10 +343,12 @@ function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retaile
         cardsHtml += '<p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">* 필드명을 클릭하면 해당 필드의 누락 item 데이터를 볼 수 있습니다.</p>';
     }
 
+    var dateScope = '검수일 ' + date + ' · 데이터일 ' + (sourceDate || date) + ' · D-1';
     var html = '<div class="inline-detail">'
         + '<button class="btn-back" onclick="ViewStack.pop()">&#8592; 뒤로가기</button>'
         + '<div class="rule-summary-section">'
         + '<div class="rule-summary-section-header">' + _inlineTitle(titleText) + '</div>'
+        + '<div class="field-missing-date-scope">' + esc(dateScope) + '</div>'
         + cardsHtml
         + '</div></div>';
 
@@ -370,9 +395,10 @@ function renderFieldMissingDetail(data, retailer, field) {
 
     // 상단: 뒤로가기 + 정보
     let html = `<div style="margin-bottom: 12px; padding: 12px; background: var(--bg-primary); border-radius: 8px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-        <button onclick="viewMissingSummary('${escJs(retailer)}', '${escJs(data.date)}')" style="padding: 6px 12px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">← 뒤로가기</button>
+        <button onclick="viewMissingSummary('${escJs(retailer)}', '${escJs(data.inspection_date || data.date)}')" style="padding: 6px 12px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">← 뒤로가기</button>
         <span style="color: #6b7280;">|</span>
         <span><strong>필드:</strong> <span style="color: #dc2626;">${esc(field)}</span></span>
+        <span><strong>검수일:</strong> ${data.inspection_date || data.date || ''}</span>
         <span><strong>기간:</strong> ${data.prev_dates?.[0] || ''} ~ ${data.date || ''}</span>
         <span><strong>누락 item 수:</strong> <span style="color: #dc2626;">${missingItemCount}개</span></span>
         <span><strong>누락 데이터 수:</strong> <span style="color: #dc2626;">${todayNullCount}건</span></span>
@@ -610,7 +636,7 @@ function renderMissingItemsModalInitial(data) {
             <div style="padding: 40px; text-align: center;">
                 <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
                 <div style="font-size: 16px; font-weight: 600; color: #059669;">누락된 필드가 없습니다</div>
-                <div style="font-size: 13px; margin-top: 8px; color: var(--text-secondary);">직전 2일과 비교하여 오늘 누락된 항목이 없습니다.</div>
+                <div style="font-size: 13px; margin-top: 8px; color: var(--text-secondary);">직전 2일과 비교하여 데이터일에 누락된 항목이 없습니다.</div>
             </div>`);
         return;
     }
@@ -623,7 +649,7 @@ function renderMissingItemsModalInitial(data) {
 
     html += `<div id="missing-items-scroll-container" style="flex: 1; overflow-y: auto; max-height: calc(80vh - 150px);">`;
     html += '<table class="detail-table" id="missing-items-table"><thead><tr>';
-    html += '<th>Item</th><th>Account</th><th>필드</th><th>직전 값</th><th>Today</th>';
+    html += '<th>Item</th><th>Account</th><th>필드</th><th>직전 값</th><th>데이터일 값</th>';
     html += '</tr></thead><tbody id="missing-items-tbody">';
 
     items.forEach(row => {
@@ -1134,7 +1160,7 @@ function renderFieldMissing(data) {
                         ${esc(field.field_name)}
                         <span class="threshold-badge">${esc(field.retailer)}</span>
                     </div>
-                    <div class="check-description">직전 2일 값 있었으나 오늘 누락된 케이스</div>
+                    <div class="check-description">직전 2일 값은 있었으나 데이터일에 누락된 케이스</div>
                 </div>
                 <div class="check-stats">
                     <div class="check-stat">
@@ -1238,7 +1264,7 @@ function renderFieldMissingDetailProblem(data, fieldName) {
     }
 
     let html = '<table class="detail-table"><thead><tr>';
-    html += '<th>No.</th><th>Item</th><th>Retailer</th><th>직전 값</th><th>오늘 값</th>';
+    html += '<th>No.</th><th>Item</th><th>Retailer</th><th>직전 값</th><th>데이터일 값</th>';
     html += '</tr></thead><tbody>';
 
     items.forEach((row, idx) => {
@@ -1290,8 +1316,10 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
     var columns = data.columns || [];
     var rawRows = data.data || [];
     var plDisplay = (productLine || 'tv').toUpperCase();
-    var _wn = ['일','월','화','수','목','금','토'][new Date(date).getDay()];
-    var dateDisplay = date + '(' + _wn + ')';
+    var inspectionDate = data.inspection_date || date;
+    var sourceDate = data.source_date || data.date || date;
+    var _wn = ['일','월','화','수','목','금','토'][new Date(inspectionDate).getDay()];
+    var dateDisplay = '검수일 ' + inspectionDate + '(' + _wn + ') · 데이터일 ' + sourceDate;
 
     // 컬럼 정의: API가 반환한 전체 컬럼
     var allColumns = [{ key: '_no', label: 'No', width: 50, fixed: true }];
@@ -1299,7 +1327,7 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
         var w = 120;
         if (col === 'id') w = 80;
         else if (col === 'item') w = 140;
-        else if (col === dateCol) w = 150;
+        else if (col === dateCol) w = 190;
         else if (col === 'product_url') w = 80;
         allColumns.push({ key: col, label: col, width: w });
     });
@@ -1332,7 +1360,7 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
     var seen = {};
     rawRows.forEach(function(row) {
         var rd = (row[dateCol] || '').substring(0, 10);
-        if (rd === date && !seen[row.item]) {
+        if (rd === sourceDate && !seen[row.item]) {
             var fv = row[fieldName];
             if (fv === null || fv === undefined || fv === '') {
                 missingItems.push(row.item);
@@ -1385,7 +1413,8 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
     window._fmCurrentRetailer = retailer;
     window._fmCurrentField = fieldName;
     window._fmCurrentPL = productLine;
-    window._fmDate = date;
+    window._fmDate = inspectionDate;
+    window._fmSourceDate = sourceDate;
     window._fmTableName = tableName;
 
     // FilterBar 옵션
@@ -1406,7 +1435,8 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
         filterBar: null,
         pager: null,
         fieldName: fieldName,
-        dateCol: dateCol
+        dateCol: dateCol,
+        sourceDate: sourceDate
     };
 
     window._fmDetailState.filterBar = new FilterBar('#fm-detail-filter-bar', {
@@ -1456,7 +1486,8 @@ window.reloadFmDays = function() {
             var dateCol = st.dateCol;
             var columns = data.columns || [];
             var rawRows = data.data || [];
-            var targetDate = window._fmDate;
+            var targetDate = data.source_date || data.date || window._fmSourceDate;
+            window._fmSourceDate = targetDate;
 
             var tableRows = rawRows.map(function(row, idx) {
                 var r = { _no: idx + 1 };
@@ -1477,6 +1508,7 @@ window.reloadFmDays = function() {
             st.filteredData = null;
             st.editableCols = new Set(data.editable_columns || []);
             st.normalReviews = data.normal_reviews || {};
+            st.sourceDate = targetDate;
             _fmRebuildTable();
             setTimeout(function() { _fmBindEditEvents(); }, 100);
         })
@@ -1572,7 +1604,7 @@ function _fmRenderPage(page) {
     pageData.forEach(function(r, i) { r._no = start + i + 1; });
 
     var visibleCols = st._visibleCols || st.allColumns;
-    var targetDate = window._fmDate || '';
+    var targetDate = st.sourceDate || window._fmSourceDate || '';
     var targetField = st.fieldName || '';
 
     // item 컬럼 rowspan 계산
