@@ -5,6 +5,8 @@
 -- already open.  Existing matching rows are updated; missing rows are added.
 -- The application performs validation with allow-listed Python rules; query
 -- text stored here is metadata only and is never executed by the validator.
+-- Legacy check_column/comparison_type fields are varchar(20) and are not used
+-- by the SEA validator, so they remain NULL instead of duplicating long keys.
 
 WITH products (
     product_line, category, section_code, section_name, table_name
@@ -124,9 +126,9 @@ SET
     field1 = seed.field1,
     field2 = seed.field2,
     validation_type = seed.validation_type,
-    check_column = seed.field1,
+    check_column = NULL,
     check_type = 'cross_field',
-    comparison_type = seed.validation_type,
+    comparison_type = NULL,
     error_message = seed.error_message,
     display_columns = seed.select_fields,
     select_fields = seed.select_fields,
@@ -185,9 +187,9 @@ SELECT
     seed.field1,
     seed.field2,
     seed.validation_type,
-    seed.field1,
+    NULL,
     'cross_field',
-    seed.validation_type,
+    NULL,
     NULL,
     NULL,
     NULL,
