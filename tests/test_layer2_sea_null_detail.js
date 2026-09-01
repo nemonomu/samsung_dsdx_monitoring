@@ -222,6 +222,17 @@ assert.strictEqual(
     ).filter(column => column.key === 'product_url').length,
     1
 );
+const normalizedDateColumns = commonSandbox.normalizeRetailSourceDateColumns([
+    { key: 'crawl_strdatetime', label: '데이터일', width: 120 },
+    { key: 'sku', label: 'sku', width: 120 }
+]);
+assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(normalizedDateColumns)),
+    [
+        { key: 'crawl_strdatetime', label: 'crawl_strdatetime', width: 190 },
+        { key: 'sku', label: 'sku', width: 120 }
+    ]
+);
 const duplicateRetailKeys = vm.runInContext(
     "getAllColumns(DETAIL_COLUMNS.dup_default).map(column => column.key)",
     commonSandbox
@@ -269,6 +280,22 @@ const previousSourceCellHtml = commonSandbox.getCellHtml(
 );
 assert.ok(currentSourceCellHtml.includes('data-row-id="43"'));
 assert.ok(!previousSourceCellHtml.includes('data-row-id="41"'));
+
+const currentDateCellHtml = commonSandbox.getCellHtml(
+    { id: 43, crawl_strdatetime: '2026-08-30 19:19:36' },
+    { key: 'crawl_strdatetime' },
+    'sea_ldy_retail'
+);
+const historyDateCellHtml = commonSandbox.getCellHtml(
+    { id: 41, crawl_strdatetime: '2026-08-29 19:04:00' },
+    { key: 'crawl_strdatetime' },
+    'sea_ldy_retail'
+);
+assert.ok(currentDateCellHtml.includes('2026-08-30'));
+assert.ok(currentDateCellHtml.includes('수정 대상'));
+assert.ok(!currentDateCellHtml.includes('19:19:36</span>'));
+assert.ok(historyDateCellHtml.includes('2026-08-29'));
+assert.ok(historyDateCellHtml.includes('비교 이력'));
 
 const first = makeReviewCell(1, 'ref_capacity');
 const second = makeReviewCell(2, 'ref_capacity');

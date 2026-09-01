@@ -884,7 +884,10 @@
 }
 
 .cf-data-date-cell {
-    white-space: nowrap;
+    min-width: 190px;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
 .cf-date-badge,

@@ -288,6 +288,11 @@ function testTseSqlAndDaysRenderInInlineAndDashboardViews() {
             'sku', 'product_url'
         ]
     );
+    const dateColumn = inline.tableOptions.config.find(
+        col => col.key === 'crawl_datetime'
+    );
+    assert.strictEqual(dateColumn.label, 'crawl_datetime');
+    assert.strictEqual(dateColumn.width, 190);
     assert.deepStrictEqual(
         JSON.parse(JSON.stringify(inline.tableOptions.selectCols)),
         [

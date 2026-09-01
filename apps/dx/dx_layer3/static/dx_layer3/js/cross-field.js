@@ -51,8 +51,8 @@ function _cfOrderReviewDetailKeys(keys) {
 function _cfColumnDefinition(key) {
     const definitions = {
         issue_type: { label: '확인 유형', width: 230 },
-        crawl_datetime: { label: '데이터일', width: 150 },
-        crawl_strdatetime: { label: '데이터일', width: 150 },
+        crawl_datetime: { label: 'crawl_datetime', width: 190 },
+        crawl_strdatetime: { label: 'crawl_strdatetime', width: 190 },
         count_of_reviews: { label: 'count_of_reviews', width: 130 },
         review_body_count: { label: '리뷰본문 수', width: 105 },
         detailed_review_content: { label: 'detailed_review_content', width: 240 },

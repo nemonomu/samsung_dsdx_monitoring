@@ -389,7 +389,13 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     var columns;
     if (selectColumns.length > 0) {
         columns = selectColumns.map(function(col) {
-            return { key: col, label: columnHeaders[col] || col, width: 120 };
+            const isRetailSourceDate = col === 'crawl_datetime'
+                || col === 'crawl_strdatetime';
+            return {
+                key: col,
+                label: isRetailSourceDate ? col : (columnHeaders[col] || col),
+                width: isRetailSourceDate ? 190 : 120
+            };
         });
     } else {
         columns = getColumnConfig('null', tableParam);

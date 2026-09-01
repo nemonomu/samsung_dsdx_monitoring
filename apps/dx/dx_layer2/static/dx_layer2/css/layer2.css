@@ -673,6 +673,36 @@
 .error-table tr:hover td { background: #f9fafb; }
 .error-value { color: var(--color-critical); font-family: monospace; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.source-date-cell {
+    min-width: 190px;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+}
+
+.source-date-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.source-date-badge.target {
+    border: 1px solid #99f6e4;
+    background: #ecfdf5;
+    color: #0f766e;
+}
+
+.source-date-badge.history {
+    border: 1px solid #d1d5db;
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
 .status-badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .status-badge.ok { background: #dcfce7; color: #16a34a; }
 .status-badge.warning { background: #fef3c7; color: #d97706; }

@@ -135,6 +135,23 @@ const DETAIL_COLUMNS = {
     },
 };
 
+const RETAIL_SOURCE_DATE_COLUMNS = new Set([
+    'crawl_datetime',
+    'crawl_strdatetime'
+]);
+
+function normalizeRetailSourceDateColumns(columns) {
+    return (columns || []).map(function(column) {
+        if (!column || !RETAIL_SOURCE_DATE_COLUMNS.has(column.key)) {
+            return column;
+        }
+        return Object.assign({}, column, {
+            label: column.key,
+            width: 190
+        });
+    });
+}
+
 // ==================== 상세 뷰 공통 함수 ====================
 // 상세 뷰 상태
 var detailViewState = {
@@ -262,6 +279,25 @@ function getCellHtml(row, col, tableParam) {
     val = row[key];
     if (val === undefined && row._parent) val = row._parent[key];
 
+    // 리테일 원본 날짜 컬럼은 날짜 전체와 수정 대상/비교 이력을 표시한다.
+    if (
+        detailViewState.type === 'null'
+        && RETAIL_SOURCE_DATE_COLUMNS.has(key)
+    ) {
+        var rawDateValue = val === null || val === undefined ? '' : String(val);
+        var sourceDateValue = rawDateValue.substring(0, 10) || '-';
+        var targetSourceDate = detailViewState.editableDate
+            || detailViewState.crawlDate || '';
+        var isTargetSourceDate = sourceDateValue === targetSourceDate;
+        var sourceDateBadge = isTargetSourceDate
+            ? '<span class="source-date-badge target">수정 대상</span>'
+            : '<span class="source-date-badge history">비교 이력</span>';
+        return '<td class="source-date-cell" title="' + esc(rawDateValue || '-') + '">'
+            + '<span>' + esc(sourceDateValue) + '</span>'
+            + sourceDateBadge
+            + '</td>';
+    }
+
     // product_url → 링크 아이콘 + URL 텍스트
     if (key === 'product_url') {
         if (!val) return '<td>-</td>';
@@ -362,6 +398,9 @@ function renderDetailWithTable(options) {
     // Retail inspection details must expose the source link whenever the
     // backend selected product_url, even if an older DB display rule omitted it.
     var defaultCols = ensureProductUrlColumn(getAllColumns(config), selectCols);
+    if (type === 'null') {
+        defaultCols = normalizeRetailSourceDateColumns(defaultCols);
+    }
 
     detailViewState.type = type;
     detailViewState.tableParam = tableParam;
@@ -420,7 +459,9 @@ function renderDetailWithTable(options) {
             extraCols.push({
                 key: key,
                 label: key,
-                width: 120
+                width: type === 'null' && RETAIL_SOURCE_DATE_COLUMNS.has(key)
+                    ? 190
+                    : 120
             });
         });
         extraCols.sort(function(a, b) { return a.key.localeCompare(b.key); });
