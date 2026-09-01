@@ -14,7 +14,9 @@ from apps.dx.dx_layer3.dashboard.services import (
 )
 
 
-def get_cross_field_rule_detail(cursor, target_date, product_line, section, rule_id, days):
+def get_cross_field_rule_detail(
+        cursor, target_date, product_line, section, rule_id, days,
+        inspection_date=None):
     """특정 규칙 상세 조회 - 에러 아이템 원본 데이터 + 정상 처리 이력 반환"""
     crossfield_result = validate_crossfield(target_date, section)
 
@@ -139,13 +141,14 @@ def get_cross_field_rule_detail(cursor, target_date, product_line, section, rule
 
             # 기존 정상 처리 이력 조회
             normal_reviews = {}
+            correction_date = inspection_date or target_date
             cursor.execute("""
                 SELECT record_id, column_name, memo, reason, created_id, created_at
                 FROM monitoring_corrections
                 WHERE layer = 3 AND correction_type = 'cross_field'
                   AND crawl_date = %s AND status = 'normal'
                   AND table_name = %s AND rule_id = %s
-            """, (str(target_date), table_name, rule_id))
+            """, (str(correction_date), table_name, rule_id))
             for nr_row in cursor.fetchall():
                 nr_key = f"{nr_row[0]}_{nr_row[1]}"
                 normal_reviews[nr_key] = {
@@ -183,7 +186,9 @@ def get_cross_field_rule_detail(cursor, target_date, product_line, section, rule
 
             return {
                 'found': True,
-                'date': str(target_date),
+                'date': str(correction_date),
+                'inspection_date': str(correction_date),
+                'source_date': str(target_date),
                 'days': days,
                 'product_line': product_line.upper(),
                 'rule_id': rule_result['rule_id'],
@@ -205,12 +210,16 @@ def get_cross_field_rule_detail(cursor, target_date, product_line, section, rule
     return {'found': False}
 
 
-def get_cross_field_summary(target_date, product_line, section):
+def get_cross_field_summary(
+        target_date, product_line, section, inspection_date=None):
     """규칙별 요약 반환 (검증 유형별 건수) - DB 연결 불필요"""
     crossfield_result = validate_crossfield(target_date, section)
 
     table_name_for_normal = 'tv_retail_com' if product_line == 'tv' else 'hhp_retail_com'
-    normal_counts = get_crossfield_normal_counts(target_date, table_name_for_normal)
+    correction_date = inspection_date or target_date
+    normal_counts = get_crossfield_normal_counts(
+        correction_date, table_name_for_normal
+    )
 
     rule_summary = []
     total_anomalies = 0
@@ -233,7 +242,9 @@ def get_cross_field_summary(target_date, product_line, section):
     date_col = crossfield_result.get('date_col', '')
 
     return {
-        'date': str(target_date),
+        'date': str(correction_date),
+        'inspection_date': str(correction_date),
+        'source_date': str(target_date),
         'product_line': product_line.upper(),
         'total_anomalies': total_anomalies,
         'rule_summary': rule_summary,

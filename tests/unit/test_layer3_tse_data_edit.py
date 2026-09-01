@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from tests.unit.support import ScriptedCursor, load_module, module_stub, package_stub
-from apps.common import tse_retail
+from apps.common import inspection_dates, sea_retail, tse_retail
 
 
 services = load_module(
@@ -19,6 +19,8 @@ services = load_module(
             'apps.common.retail_columns',
             get_editable_columns=lambda *_: [],
         ),
+        'apps.common.inspection_dates': inspection_dates,
+        'apps.common.sea_retail': sea_retail,
         'apps.common.tse_retail': tse_retail,
     },
 )

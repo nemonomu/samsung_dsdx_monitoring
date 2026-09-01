@@ -1,5 +1,6 @@
 import unittest
 
+from apps.common import inspection_dates
 from tests.unit.support import load_module, module_stub, package_stub
 
 
@@ -41,6 +42,7 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 'apps.common.db': module_stub(
                     'apps.common.db', dx_connection=lambda: None
                 ),
+                'apps.common.inspection_dates': inspection_dates,
                 'apps.common.monitoring_exclusions': module_stub(
                     'apps.common.monitoring_exclusions',
                     DISABLED_SOURCE_TABLES=set(),
@@ -62,6 +64,9 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 ),
                 'apps.dx.dx_layer3.cross_field.tse_services': module_stub(
                     'apps.dx.dx_layer3.cross_field.tse_services'
+                ),
+                'apps.dx.dx_layer3.cross_field.sea_services': module_stub(
+                    'apps.dx.dx_layer3.cross_field.sea_services'
                 ),
                 'apps.dx.dx_layer3.dashboard': package_stub(
                     'apps.dx.dx_layer3.dashboard'

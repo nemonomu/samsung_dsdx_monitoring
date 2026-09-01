@@ -58,12 +58,13 @@ function showRetailerDetail(retailer) {
 
     const productLine = window.crossfieldProductLine || 'HHP';
     const date = window.crossfieldDate || new Date().toISOString().slice(0, 10);
+    const sourceDate = window.crossfieldSourceDate || date;
     const tableName = window.crossfieldTableName
         || (productLine.toUpperCase() === 'HHP' ? 'hhp_retail_com' : 'tv_retail_com');
     const dateCol = window.crossfieldDateCol
         || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
-    const isTseProductLine = productLineDisplay.startsWith('TSE_');
+    const isCanonicalProductLine = /^(SEA_|TSE_)/.test(productLineDisplay);
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const titleText = `${ruleNameDisplay} (${rSummary.count || 0}건)`;
     const subtitleText = `${productLineDisplay} Retail | ${retailer}`;
@@ -82,8 +83,10 @@ function showRetailerDetail(retailer) {
     const urlKey = dynamicKeys.find(k => k === 'product_url');
     const otherKeys = dynamicKeys.filter(k => k !== 'product_url');
 
-    const _wn = ['일','월','화','수','목','금','토'][new Date(date).getDay()];
-    const dateDisplay = `${date}(${_wn})`;
+    const _wn = ['일','월','화','수','목','금','토'][new Date(sourceDate).getDay()];
+    const dateDisplay = sourceDate === date
+        ? `${date}(${_wn})`
+        : `검수일 ${date} · 데이터일 ${sourceDate}(${_wn})`;
 
     // Item 목록 토글 + 3일치 쿼리 (모달)
     const retailerSafe = retailer.replace(/[^a-zA-Z0-9]/g, '');
@@ -91,7 +94,7 @@ function showRetailerDetail(retailer) {
     const displayDays = window.crossfieldDays || 1;
     const tseDisplayQuery = (window.crossfieldDisplayQueries || {})[retailer]
         || window.crossfieldDisplayQuery || '';
-    const tseQueryBox = isTseProductLine
+    const tseQueryBox = isCanonicalProductLine
         ? _cfBuildTseDisplayQueryBox(tseDisplayQuery, retailerSafe, displayDays)
         : '';
     var itemQueryHtml = '';
@@ -115,7 +118,7 @@ function showRetailerDetail(retailer) {
         }
     } else {
         // 모달: Item 목록 + 3일치 쿼리 (원본 모달 로직)
-        if (isTseProductLine) {
+        if (isCanonicalProductLine) {
             const itemListBox = listValues.length > 0 ? `
                 <div class="item-list-box">
                     <div class="query-box-header">
@@ -147,7 +150,7 @@ function showRetailerDetail(retailer) {
             validationTagCol = "\n'review' || LEAST(CAST(REPLACE(count_of_reviews, ',', '') AS INTEGER), 20)::text || ' -' AS expected_pattern,\nCASE WHEN LOWER(detailed_review_content) LIKE '%review' || LEAST(CAST(REPLACE(count_of_reviews, ',', '') AS INTEGER), 20)::text || ' -%' THEN 'OK' ELSE 'MISSING' END AS validation_tag,";
         }
         var selectCols = ['id', 'account_name', 'item', dateCol].join(', ');
-        const query = `SELECT ${selectCols},${validationTagCol}\n${dynamicCols.join(', ')}, product_url\nFROM ${tableName}\nWHERE account_name = '${retailer}'\nAND item IN (${inClause})\nAND DATE(${dateCol}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\nAND DATE(${dateCol}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateCol};`;
+        const query = `SELECT ${selectCols},${validationTagCol}\n${dynamicCols.join(', ')}, product_url\nFROM ${tableName}\nWHERE account_name = '${retailer}'\nAND item IN (${inClause})\nAND DATE(${dateCol}::timestamp) >= DATE('${sourceDate}') - INTERVAL '2 days'\nAND DATE(${dateCol}::timestamp) <= DATE('${sourceDate}')\nORDER BY item, ${dateCol};`;
 
         if (items.length > 0) {
             itemQueryHtml = `
@@ -462,7 +465,8 @@ function _cfRenderPage(page) {
     }
 
     // renderBody로 tr을 직접 생성 (td에 data-editable, cell-normal 등 속성 부여)
-    var targetDate = window.crossfieldDate || '';
+    var targetDate = window.crossfieldSourceDate
+        || window.crossfieldDate || '';
     var _cfPageIdx = 0;
     st.table.renderBody(pageData, function(row) {
         var rowIdx = _cfPageIdx++;
@@ -597,6 +601,8 @@ async function reloadCfDays() {
         window.crossfieldRetailerColumns = data.retailer_columns || {};
         window.crossfieldDisplayQuery = data.query || '';
         window.crossfieldDisplayQueries = data.queries || {};
+        window.crossfieldSourceDate = data.source_date || date;
+        window.crossfieldOffsetDays = Number(data.offset_days || 0);
         window.crossfieldDays = data.days || days;
         window.crossfieldPendingEdits = {};
 

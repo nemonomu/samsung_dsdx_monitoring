@@ -2,14 +2,15 @@
 Layer 3 대시보드 API — 전체 통계 오케스트레이터
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from django.http import JsonResponse
 from apps.common.db import dx_connection
+from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
-from apps.dx.dx_layer3.cross_field import tse_services
+from apps.dx.dx_layer3.cross_field import sea_services, tse_services
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -254,18 +255,26 @@ def layer_stats(request):
             if not hhp_needed:
                 hhp_total = table_totals.get('hhp_retail_com', 0)
 
+            sea_tv_contract = resolve_monitoring_date(
+                target_date, 'SEA', 'sea_tv'
+            )
+            sea_tv_source_date = date.fromisoformat(
+                sea_tv_contract['source_date']
+            )
+
             if run_crossfield:
-                if tv_total == 0 and product_line in ['tv', 'all']:
+                if product_line in ['tv', 'all']:
                     try:
                         cursor.execute("""
                             SELECT COUNT(*) FROM tv_retail_com
                             WHERE DATE(crawl_datetime::timestamp) = %s
                               AND NOT (account_name = 'Amazon' AND redirect IS TRUE)
-                        """, (target_date,))
+                        """, (sea_tv_source_date,))
                         tv_total = cursor.fetchone()[0] or 0
                         table_totals['tv_retail_com'] = tv_total
-                    except:
-                        pass
+                    except Exception as e:
+                        log_error(e)
+                        tv_total = 0
 
                 if False and hhp_total == 0 and product_line in ['hhp', 'all'] and not hhp_needed:
                     with dx_connection() as (hhp_conn, hhp_cursor):
@@ -282,7 +291,9 @@ def layer_stats(request):
             if run_crossfield and product_line in ['tv', 'all']:
                 tv_cross_total = tv_total
                 try:
-                    tv_crossfield_result = validate_crossfield(target_date, 'tv_retail')
+                    tv_crossfield_result = validate_crossfield(
+                        sea_tv_source_date, 'tv_retail'
+                    )
                     tv_cross_errors = tv_crossfield_result['total_errors']
                     tv_normal = get_crossfield_normal_counts(target_date, 'tv_retail_com')
                     tv_cross_errors = max(0, tv_cross_errors - sum(tv_normal.values()))
@@ -296,12 +307,54 @@ def layer_stats(request):
                 results['checks'].append({
                     'category': '크로스 필드 검증',
                     'name': 'TV 논리적 일관성',
+                    'detail_code': 'tv',
                     'description': 'star_rating↔count, page_type↔rank, 가격, count_of_reviews↔detail_review_content 검증',
                     'checked': tv_cross_total,
                     'passed': tv_cross_total - tv_cross_errors,
                     'failed': tv_cross_errors,
                     'status': get_status(tv_cross_errors, tv_cross_total)
                 })
+
+            # SEA REF/LDY는 검수일 D의 전날(D-1), retailer별 최신 MAIN
+            # anchor batch와 같은 batch의 MAIN+BSR만 검증한다.
+            if run_crossfield:
+                sea_product_lines = (
+                    ['sea_ref', 'sea_ldy']
+                    if product_line == 'all'
+                    else [product_line]
+                    if product_line in ('sea_ref', 'sea_ldy')
+                    else []
+                )
+                for sea_product_line in sea_product_lines:
+                    try:
+                        sea_result = sea_services.get_sea_cross_field_summary(
+                            cursor, target_date, sea_product_line,
+                        )
+                        if not sea_result.get('configured'):
+                            continue
+                        sea_total = sea_result['total_checked']
+                        sea_failed = sea_result['failed_records']
+                        sea_findings = sea_result['total_anomalies']
+                    except Exception as e:
+                        log_error(e)
+                        continue
+
+                    total_checked += sea_total
+                    total_anomalies += sea_findings
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{sea_result['label']} 논리적 일관성",
+                        'detail_code': sea_product_line,
+                        'description': (
+                            '리뷰·별점 수, 가격·할인, 리뷰본문, '
+                            '추천 의향 형식 검증'
+                        ),
+                        'checked': sea_total,
+                        'passed': max(0, sea_total - sea_failed),
+                        'failed': sea_failed,
+                        'finding_count': sea_findings,
+                        'status': get_status(sea_failed, sea_total),
+                    })
 
             if False and run_crossfield and product_line in ['hhp', 'all']:
                 hhp_cross_total = hhp_total

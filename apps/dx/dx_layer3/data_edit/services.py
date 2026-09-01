@@ -6,6 +6,8 @@ from datetime import datetime
 import re
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
+from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.sea_retail import SEA_RETAIL_SOURCES
 from apps.common.tse_retail import (
     TSE_TABLE_TO_PRODUCT_LINE,
     get_tse_product_line_for_table,
@@ -15,6 +17,8 @@ from apps.common.tse_retail import (
 
 VALID_TABLES_UPDATE = {
     'tv_retail_com',
+    'ref_retail_com', 'ldy_retail_com',
+    'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } - DISABLED_SOURCE_TABLES
@@ -25,10 +29,52 @@ def _is_tse_table(table_name):
     return table_name in TSE_TABLE_TO_PRODUCT_LINE
 
 
+def _get_sea_edit_context(table_name):
+    table_basename = str(table_name or '').strip().lower().split('.')[-1]
+    for product_key in ('ref', 'ldy'):
+        source = SEA_RETAIL_SOURCES[product_key]
+        source_basename = source['table_name'].lower().split('.')[-1]
+        if table_basename == source_basename:
+            return source
+    return None
+
+
 def _get_product_line(table_name):
     if _is_tse_table(table_name):
         return get_tse_product_line_for_table(table_name)
+    sea_context = _get_sea_edit_context(table_name)
+    if sea_context:
+        return sea_context['product_line']
     return 'tv' if table_name == 'tv_retail_com' else 'hhp'
+
+
+def _select_sea_record(
+        cursor, source, select_columns, row_id, inspection_date):
+    date_contract = resolve_monitoring_date(
+        inspection_date, 'SEA', source['source_key']
+    )
+    table_name = source['table_name']
+    date_column = source['date_column']
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {table_name} source
+        WHERE source.id = %s
+          AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+          AND UPPER(TRIM(COALESCE(source.page_type, '')))
+              IN ('MAIN', 'BSR')
+          AND source.batch_id = (
+              SELECT anchor.batch_id
+              FROM {table_name} anchor
+              WHERE LEFT(TRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+                AND LOWER(TRIM(anchor.account_name)) =
+                    LOWER(TRIM(source.account_name))
+                AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+              ORDER BY anchor.id DESC
+              LIMIT 1
+          )
+    """, (
+        row_id, date_contract['source_date'], date_contract['source_date'],
+    ))
 
 
 def _validate_edit_target(table_name, column_name):
@@ -79,6 +125,9 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if invalid_target:
         return invalid_target
     product_line = _get_product_line(table_name)
+    sea_context = _get_sea_edit_context(table_name)
+    if sea_context:
+        table_name = sea_context['table_name']
 
     try:
         _validate_tse_column(table_name, column_name)
@@ -98,6 +147,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
               AND country = 'TSE'
               AND LEFT(TRIM(crawl_datetime), 10) = %s
         """, (row_id, str(crawl_date)))
+    elif sea_context:
+        _select_sea_record(
+            cursor, sea_context, select_columns, row_id, crawl_date
+        )
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
@@ -162,6 +215,9 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     if invalid_target:
         return invalid_target
     product_line = _get_product_line(table_name)
+    sea_context = _get_sea_edit_context(table_name)
+    if sea_context:
+        table_name = sea_context['table_name']
     try:
         _validate_tse_column(table_name, column_name)
     except ValueError as exc:
@@ -175,6 +231,11 @@ def save_review(cursor, conn, table_name, record_id, column_name,
               AND country = 'TSE'
               AND LEFT(TRIM(crawl_datetime), 10) = %s
         """, (record_id, str(crawl_date)))
+    elif sea_context:
+        _select_sea_record(
+            cursor, sea_context,
+            f'{column_name}, account_name, item', record_id, crawl_date,
+        )
     else:
         cursor.execute(
             f"SELECT {column_name}, account_name, item FROM {table_name} WHERE id = %s",

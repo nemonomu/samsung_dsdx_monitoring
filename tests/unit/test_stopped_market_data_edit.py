@@ -1,6 +1,7 @@
 import unittest
 
 from tests.unit.support import load_module, module_stub, package_stub
+from apps.common import inspection_dates, sea_retail
 from apps.common.tse_retail import (
     TSE_TABLE_TO_PRODUCT_LINE,
     get_tse_product_line_for_table,
@@ -28,6 +29,8 @@ class StoppedMarketDataEditTests(unittest.TestCase):
                 'apps.common.retail_columns',
                 get_editable_columns=lambda *_: [],
             ),
+            'apps.common.inspection_dates': inspection_dates,
+            'apps.common.sea_retail': sea_retail,
             'apps.common.tse_retail': module_stub(
                 'apps.common.tse_retail',
                 TSE_TABLE_TO_PRODUCT_LINE=TSE_TABLE_TO_PRODUCT_LINE,

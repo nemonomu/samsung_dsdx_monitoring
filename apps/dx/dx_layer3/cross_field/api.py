@@ -3,10 +3,12 @@ Layer 3 크로스 필드 검증 API
 """
 
 from django.http import JsonResponse
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.db import dx_connection
 from apps.common.response import safe_error, log_error
 from . import services
+from . import sea_services
 from . import tse_services
 
 
@@ -30,6 +32,7 @@ def cross_field_detail(request):
         target_date = (datetime.now() - timedelta(days=1)).date()
 
     is_tse = str(product_line).lower() in ('tse_tv', 'tse_ref', 'tse_ldy')
+    is_sea = str(product_line).lower() in ('sea_ref', 'sea_ldy')
 
     # product_line을 section으로 변환
     section_map = {'tv': 'tv_retail', 'hhp': 'hhp_retail'}
@@ -52,17 +55,52 @@ def cross_field_detail(request):
             result.pop('found', None)
             return JsonResponse(result)
 
+        if is_sea:
+            with dx_connection() as (conn, cursor):
+                if rule_id:
+                    result = sea_services.get_sea_cross_field_rule_detail(
+                        cursor, target_date, product_line, rule_id, days,
+                    )
+                else:
+                    result = sea_services.get_sea_cross_field_summary(
+                        cursor, target_date, product_line,
+                    )
+
+            if rule_id and not result.get('found'):
+                return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})
+            result.pop('found', None)
+            return JsonResponse(result)
+
+        source_date = target_date
+        inspection_date = None
+        if str(product_line).lower() == 'tv':
+            date_contract = resolve_monitoring_date(
+                target_date, 'SEA', 'sea_tv'
+            )
+            source_date = date.fromisoformat(date_contract['source_date'])
+            inspection_date = target_date
+
         if rule_id:
             with dx_connection() as (conn, cursor):
-                result = services.get_cross_field_rule_detail(cursor, target_date, product_line, section, rule_id, days)
+                result = services.get_cross_field_rule_detail(
+                    cursor, source_date, product_line, section, rule_id, days,
+                    inspection_date=inspection_date,
+                )
 
             if not result.get('found'):
                 return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})
 
             result.pop('found')
+            if inspection_date is not None:
+                result['offset_days'] = -1
             return JsonResponse(result)
 
-        result = services.get_cross_field_summary(target_date, product_line, section)
+        result = services.get_cross_field_summary(
+            source_date, product_line, section,
+            inspection_date=inspection_date,
+        )
+        if inspection_date is not None:
+            result['offset_days'] = -1
         return JsonResponse(result)
 
     except Exception as e:

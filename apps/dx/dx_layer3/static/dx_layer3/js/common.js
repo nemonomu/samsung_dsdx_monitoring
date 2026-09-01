@@ -181,6 +181,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function formatBackupPendingCounts(data) {
     return `SEA TV: ${Number(data.tv_count || 0).toLocaleString()}, ` +
+        `SEA REF: ${Number(data.sea_ref_count || 0).toLocaleString()}, ` +
+        `SEA LDY: ${Number(data.sea_ldy_count || 0).toLocaleString()}, ` +
         `TSE TV: ${Number(data.tse_tv_count || 0).toLocaleString()}, ` +
         `TSE REF: ${Number(data.tse_ref_count || 0).toLocaleString()}, ` +
         `TSE LDY: ${Number(data.tse_ldy_count || 0).toLocaleString()}`;
@@ -508,6 +510,7 @@ function renderData(data) {
             // 카테고리별 특성은 모두 검증 규칙 버튼 표시, 크로스 필드는 특정 항목만
             const hasRules = categoryName === '카테고리별 특성'
                 || crossfieldChecksWithRules.includes(check.name)
+                || /^SEA (REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
 
@@ -633,6 +636,8 @@ async function showDetail(category, checkName, detailCode) {
             // TV/HHP 논리적 일관성
             let type = 'hhp';
             if (detailCode === 'tv') type = 'tv';
+            else if (detailCode === 'sea_ref' || checkName.includes('SEA REF')) type = 'sea_ref';
+            else if (detailCode === 'sea_ldy' || checkName.includes('SEA LDY')) type = 'sea_ldy';
             else if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
             else if (detailCode === 'tse_ref' || checkName.includes('TSE REF')) type = 'tse_ref';
             else if (detailCode === 'tse_ldy' || checkName.includes('TSE LDY')) type = 'tse_ldy';
@@ -803,8 +808,9 @@ function renderDetailModal(title, category, data) {
 function renderCrossfieldSummaryContent(title, _category, data) {
     const inline = isCrossFieldInline();
     const ruleSummary = data.rule_summary || [];
-    const isTseProductLine = String(data.product_line || '')
-        .toUpperCase().startsWith('TSE_');
+    const isCanonicalProductLine = /^(SEA_|TSE_)/.test(
+        String(data.product_line || '').toUpperCase()
+    );
 
     // 현재 상태 저장 (뒤로가기용)
     window.crossfieldSummaryData = data;
@@ -824,6 +830,10 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         </div>`;
     }
 
+    if (data.source_date && data.source_date !== data.date) {
+        html += `<div class="inline-detail-subtitle" style="margin-bottom:12px;">검수일 ${esc(data.date)} · 데이터일 ${esc(data.source_date)} · D-1 (offset_days=${esc(String(data.offset_days ?? -1))})</div>`;
+    }
+
     if (ruleSummary.length === 0) {
         html += '<p>논리 오류 데이터가 없습니다.</p>';
     } else {
@@ -831,7 +841,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         const tableName = data.table_name || '';
         const dateCol = data.date_col || '';
         const noReviewTexts = data.no_review_texts || '';
-        const targetDate = data.date || '';
+        const targetDate = data.source_date || data.date || '';
 
         html += '<div class="rule-summary-section">';
         if (inline) html += `<div class="rule-summary-section-header">${_inlineTitle(titleText)}</div>`;
@@ -839,7 +849,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         ruleSummary.forEach((rule, idx) => {
             const fieldDisplay = rule.field2 ? `${rule.field1} ↔ ${rule.field2}` : rule.field1;
             const queryId = `crossfield-query-${idx}`;
-            const displayQuery = isTseProductLine
+            const displayQuery = isCanonicalProductLine
                 ? (rule.query || '쿼리 없음')
                 : replaceCrossfieldQueryPlaceholders(
                     rule.query, tableName, dateCol, noReviewTexts, targetDate
@@ -859,7 +869,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                     </div>
                     <div id="${queryId}" class="crossfield-query-box" style="display: none;">
                         <pre>${esc(displayQuery)}</pre>
-                        <button class="btn-copy-query" onclick="copyQueryToClipboard(this.previousElementSibling, ${isTseProductLine})">복사</button>
+                        <button class="btn-copy-query" onclick="copyQueryToClipboard(this.previousElementSibling, ${isCanonicalProductLine})">복사</button>
                     </div>
                 </div>
             `;
@@ -1038,6 +1048,8 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldAnomalies = anomalies;
             window.crossfieldProductLine = productLine;
             window.crossfieldDate = date;
+            window.crossfieldSourceDate = data.source_date || date;
+            window.crossfieldOffsetDays = Number(data.offset_days || 0);
             window.crossfieldRuleName = ruleName;
             window.crossfieldRuleId = ruleId;
             window.crossfieldSelectFields = data.select_fields || '';
@@ -1149,8 +1161,9 @@ async function showRulesModal(checkName) {
 
     // 크로스필드 규칙 체크 (Sentiment, 논리적 일관성)
     const crossfieldChecks = ['TV 논리적 일관성', 'HHP 논리적 일관성', 'TV Sentiment↔리뷰 일관성', 'HHP Sentiment↔리뷰 일관성'];
+    const isSeaCrossfield = /^SEA (REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
-    const isCrossfield = crossfieldChecks.includes(checkName) || isTseCrossfield;
+    const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isTseCrossfield;
 
     // checkName에서 category 추출
     let category = 'all';
@@ -1158,7 +1171,11 @@ async function showRulesModal(checkName) {
 
     if (isCrossfield) {
         // 크로스필드 규칙
-        if (checkName.includes('TSE TV')) {
+        if (checkName.includes('SEA REF')) {
+            category = 'sea_ref_retail';
+        } else if (checkName.includes('SEA LDY')) {
+            category = 'sea_ldy_retail';
+        } else if (checkName.includes('TSE TV')) {
             category = 'tse_tv_retail';
         } else if (checkName.includes('TSE REF')) {
             category = 'tse_ref_retail';

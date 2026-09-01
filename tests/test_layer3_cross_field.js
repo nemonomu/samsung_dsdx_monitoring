@@ -33,7 +33,10 @@ const commonSource = fs.readFileSync(
 );
 
 assert(commonSource.includes('/dx/layer1/retail/api/backup-status/'));
-for (const label of ['SEA TV:', 'TSE TV:', 'TSE REF:', 'TSE LDY:']) {
+for (const label of [
+    'SEA TV:', 'SEA REF:', 'SEA LDY:',
+    'TSE TV:', 'TSE REF:', 'TSE LDY:'
+]) {
     assert(commonSource.includes(label));
 }
 
@@ -132,6 +135,26 @@ function testTseCorrectionQueryRendersInInlineAndModalDetail() {
 }
 
 testTseCorrectionQueryRendersInInlineAndModalDetail();
+
+function testSeaCorrectionQueryUsesInspectionAndSourceDates() {
+    sandbox.window.crossfieldProductLine = 'SEA_REF';
+    sandbox.window.crossfieldDate = '2026-08-31';
+    sandbox.window.crossfieldSourceDate = '2026-08-30';
+    sandbox.window.crossfieldDateCol = 'crawl_strdatetime';
+    sandbox.window.crossfieldDisplayQueries = {
+        Homepro: 'SELECT product_url FROM public.ref_retail_com;'
+    };
+
+    inlineHtml = '';
+    sandbox.isCrossFieldInline = () => true;
+    sandbox.showRetailerDetail('Homepro');
+
+    assert(inlineHtml.includes('검수일 2026-08-31'));
+    assert(inlineHtml.includes('데이터일 2026-08-30'));
+    assert(inlineHtml.includes('SELECT product_url FROM public.ref_retail_com;'));
+}
+
+testSeaCorrectionQueryUsesInspectionAndSourceDates();
 assert(commonSource.includes('window.crossfieldDisplayQuery = data.query ||'));
 assert(commonSource.includes('window.crossfieldDisplayQueries = data.queries ||'));
 assert(commonSource.includes("? (rule.query || '쿼리 없음')"));
@@ -142,6 +165,8 @@ assert(source.includes("if (!isCrossFieldInline())"));
 assert(/fixedKeys = \[\s*'_no', 'id', 'item', 'retailer_sku_name'/.test(source));
 assert(source.includes("if (urlKey) defaultVisibleSet.add('product_url')"));
 assert(source.includes("r['product_url'] = renderProductUrl(row[urlKey])"));
+assert(source.includes('window.crossfieldSourceDate'));
+assert(source.includes("/^(SEA_|TSE_)/.test(productLineDisplay)"));
 assert(source.includes('Shift+클릭으로 범위 선택'));
 assert(source.includes("showToast(successCount + '건 확인 처리 완료'"));
 

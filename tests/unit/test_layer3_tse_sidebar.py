@@ -145,6 +145,35 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         self.assertTrue(crossfield_group['items'][0]['active'])
         self.assertTrue(crossfield_group['items'][0]['children'][0]['active'])
 
+    def test_sea_ref_and_ldy_share_the_sea_parent(self):
+        context = self._load_context([
+            {'section_code': 'tv_retail', 'section_name': 'TV Retail'},
+            {'section_code': 'sea_ref_retail', 'section_name': 'SEA REF'},
+            {'section_code': 'sea_ldy_retail', 'section_name': 'SEA LDY'},
+        ])
+
+        crossfield_group = context._build_sidebar_groups(
+            'cross_field', focus='SEA REF', detail_code='sea_ref'
+        )[1]
+        sea_parent = crossfield_group['items'][0]
+
+        self.assertEqual('SEA Retail', sea_parent['name'])
+        self.assertTrue(sea_parent['active'])
+        self.assertEqual(
+            [
+                ('SEA Retail', 'TV', 'tv', False),
+                ('SEA REF', 'REF', 'sea_ref', True),
+                ('SEA LDY', 'LDY', 'sea_ldy', False),
+            ],
+            [
+                (
+                    child['name'], child['label'],
+                    child['detail_code'], child['active'],
+                )
+                for child in sea_parent['children']
+            ],
+        )
+
     def test_build_context_preserves_selected_date_and_tse_identity(self):
         context = self._load_context([
             {'section_code': 'tse_ldy_retail', 'section_name': 'TSE LDY'},

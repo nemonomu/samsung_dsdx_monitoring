@@ -40,6 +40,17 @@ def _get_sidebar_items():
             sidebar['time_series'].append({'name': name, 'detail_code': r['detail_code']})
 
     crossfield_rules = load_crossfield_rules()
+    sea_sections = {
+        'tv_retail': {
+            'name': 'SEA Retail', 'label': 'TV', 'detail_code': 'tv',
+        },
+        'sea_ref_retail': {
+            'name': 'SEA REF', 'label': 'REF', 'detail_code': 'sea_ref',
+        },
+        'sea_ldy_retail': {
+            'name': 'SEA LDY', 'label': 'LDY', 'detail_code': 'sea_ldy',
+        },
+    }
     tse_section_codes = {
         source['section_code'] for source in TSE_SOURCE_CONFIG.values()
     }
@@ -49,6 +60,10 @@ def _get_sidebar_items():
     for rule in crossfield_rules:
         section_code = str(rule.get('section_code') or '').strip()
         section_name = str(rule.get('section_name') or '').strip()
+        if section_code in sea_sections:
+            if sea_item_index is None:
+                sea_item_index = len(crossfield_items)
+            continue
         if not section_name or section_code in tse_section_codes:
             continue
 
@@ -57,22 +72,26 @@ def _get_sidebar_items():
             continue
         seen_crossfield_sections.add(identity)
 
-        if section_code == 'tv_retail':
-            sea_item_index = len(crossfield_items)
-            crossfield_items.append({
-                'name': 'SEA Retail',
-                'children': [{
-                    'name': 'SEA Retail',
-                    'label': 'TV',
-                    'detail_code': 'tv',
-                }],
-            })
-        else:
-            crossfield_items.append(section_name)
+        crossfield_items.append(section_name)
 
-    active_tse_sections = {
-        r.get('section_code') for r in crossfield_rules
+    active_sections = {
+        str(rule.get('section_code') or '').strip()
+        for rule in crossfield_rules
     }
+    sea_children = [
+        dict(child)
+        for section_code, child in sea_sections.items()
+        if section_code in active_sections
+    ]
+    if sea_children:
+        if sea_item_index is None:
+            sea_item_index = len(crossfield_items)
+        crossfield_items.insert(sea_item_index, {
+            'name': 'SEA Retail',
+            'children': sea_children,
+        })
+
+    active_tse_sections = active_sections
     tse_children = []
     for detail_code, source in TSE_SOURCE_CONFIG.items():
         if source['section_code'] not in active_tse_sections:
