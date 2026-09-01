@@ -2,7 +2,7 @@
 형식 검증 서비스 — 순수 비즈니스 로직 (DB 커넥션/HTTP 무관)
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 import re
 
 from apps.common.retail_columns import (
@@ -45,19 +45,62 @@ except (ImportError, AttributeError):
     def tse_retailer_supports_column(_product_line, _retailer, _column):
         return True
 
+try:
+    from apps.common.inspection_dates import resolve_monitoring_date
+    from apps.common.sea_retail import SEA_RETAIL_SOURCES
+except (ImportError, AttributeError):
+    resolve_monitoring_date = None
+    SEA_RETAIL_SOURCES = {}
+
+
+SEA_FORMAT_SECTION_BY_PRODUCT = {
+    'ref': 'sea_ref_retail',
+    'ldy': 'sea_ldy_retail',
+}
+SEA_FORMAT_PRODUCT_BY_SECTION = {
+    section_code: product_key
+    for product_key, section_code in SEA_FORMAT_SECTION_BY_PRODUCT.items()
+}
+SEA_FORMAT_COMMON_FIELDS = (
+    'item', 'account_name', 'country', 'product', 'page_type',
+    'product_url', 'count_of_reviews', 'count_of_star_ratings',
+    'star_rating', 'final_sku_price', 'original_sku_price', 'savings',
+    'detailed_review_content', 'calendar_week',
+)
+SEA_FORMAT_EXTRA_FIELDS = {
+    'ref': ('ref_capacity',),
+    'ldy': ('ldy_capacity', 'ldy_loading_type'),
+}
+
+
+def _sea_format_section_codes():
+    return {
+        section_code
+        for product_key, section_code in SEA_FORMAT_SECTION_BY_PRODUCT.items()
+        if SEA_RETAIL_SOURCES.get(product_key)
+    }
+
+
+def _sea_format_rule_tables():
+    return {
+        str(SEA_RETAIL_SOURCES[product_key]['table_name']).split('.')[-1]
+        for product_key in SEA_FORMAT_SECTION_BY_PRODUCT
+        if SEA_RETAIL_SOURCES.get(product_key)
+    }
+
 
 # table 파라미터 화이트리스트
 VALID_TABLES_FORMAT = {
     'tv_retail',
     'market',
-} | {
+} | _sea_format_section_codes() | {
     source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
-} | set(TSE_SOURCE_CONFIG)
+} | _sea_format_rule_tables() | set(TSE_SOURCE_CONFIG)
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
 
 
@@ -601,6 +644,314 @@ def _safe_tse_format_editable_columns(product_line, retailer_config):
     ]
 
 
+def _sea_format_product_key(table):
+    value = str(table or '').strip().lower()
+    if value in SEA_FORMAT_PRODUCT_BY_SECTION:
+        return SEA_FORMAT_PRODUCT_BY_SECTION[value]
+    for product_key, source in SEA_RETAIL_SOURCES.items():
+        if product_key not in SEA_FORMAT_SECTION_BY_PRODUCT:
+            continue
+        table_name = str(source.get('table_name') or '').strip().lower()
+        if value in {
+            product_key,
+            str(source.get('key') or '').strip().lower(),
+            table_name,
+            table_name.split('.')[-1],
+        }:
+            return product_key
+    return None
+
+
+def _resolve_sea_format_retailer(source, retailer):
+    retailer_key = str(retailer or '').strip().casefold()
+    for configured in source.get('retailers', ()):
+        if retailer_key == str(configured).strip().casefold():
+            return configured
+    return None
+
+
+def _get_sea_format_fields(product_key):
+    return tuple(dict.fromkeys(
+        SEA_FORMAT_COMMON_FIELDS + SEA_FORMAT_EXTRA_FIELDS.get(
+            product_key, ()
+        )
+    ))
+
+
+def _fetch_sea_format_rows(
+        cursor, start_date, end_date, source, retailer_value):
+    """Fetch each day's latest SEA MAIN-anchored appliance batch."""
+    canonical_table = source['table_name']
+    date_column = source['date_column']
+    product_key = source['product_key']
+    format_fields = _get_sea_format_fields(product_key)
+    select_columns = list(dict.fromkeys((
+        'id', 'batch_id', 'country', 'product', 'account_name', 'page_type',
+        'item', 'sku', 'retailer_sku_name', *format_fields,
+        date_column, 'product_url',
+    )))
+    source_date_sql = (
+        f"LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)"
+    )
+    cursor.execute(f"""
+        WITH latest_batches AS (
+            SELECT DISTINCT ON ({source_date_sql})
+                   {source_date_sql} AS crawl_date,
+                   source.batch_id,
+                   source.id
+            FROM {canonical_table} source
+            WHERE {source_date_sql} >= %s
+              AND {source_date_sql} <= %s
+              AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+              AND UPPER(TRIM(COALESCE(source.page_type, ''))) = 'MAIN'
+            ORDER BY crawl_date, source.id DESC
+        )
+        SELECT {', '.join('source.' + column for column in select_columns)}
+        FROM {canonical_table} source
+        JOIN latest_batches latest
+          ON {source_date_sql} = latest.crawl_date
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE {source_date_sql} >= %s
+          AND {source_date_sql} <= %s
+          AND (
+              LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+              OR source.account_name IS NULL
+              OR TRIM(CAST(source.account_name AS TEXT)) = ''
+          )
+          AND (
+              UPPER(TRIM(COALESCE(source.country, ''))) = 'SEA'
+              OR source.country IS NULL
+              OR TRIM(CAST(source.country AS TEXT)) = ''
+          )
+          AND UPPER(TRIM(COALESCE(source.page_type, '')))
+              IN ('MAIN', 'BSR')
+        ORDER BY source.item, {source_date_sql}, source.id
+    """, (
+        str(start_date), str(end_date), retailer_value,
+        str(start_date), str(end_date), retailer_value,
+    ))
+    return [
+        dict(zip(select_columns, row))
+        for row in cursor.fetchall()
+    ]
+
+
+def evaluate_sea_format_row(row, product_key, retailer):
+    """Return DB-configured SEA REF/LDY format errors for one row."""
+    source = SEA_RETAIL_SOURCES.get(product_key)
+    if not source:
+        return {}
+    table_name = str(source['table_name']).split('.')[-1]
+    errors = {}
+    for field in _get_sea_format_fields(product_key):
+        error = validate_field(
+            table_name, field, row.get(field), retailer,
+            product_line='ALL', row_context=row,
+        )
+        if error:
+            errors[field] = error
+    return errors
+
+
+def _format_sea_record(row, product_key, retailer):
+    record = {
+        key: (str(value) if value is not None and key != 'id' else value)
+        for key, value in row.items()
+    }
+    error_map = evaluate_sea_format_row(row, product_key, retailer)
+    record['error_fields'] = list(error_map)
+    record['error_details'] = {}
+    for field, error in error_map.items():
+        rule, separator, reason = str(error).partition(':')
+        record['error_details'][field] = {
+            'rule': rule.strip() or 'SEA 형식 검증',
+            'reason': reason.strip() if separator else str(error),
+        }
+    return record
+
+
+def _load_sea_format_normal_reviews(
+        cursor, canonical_table, inspection_date, retailer_value):
+    cursor.execute("""
+        SELECT record_id, column_name, memo, created_id, created_at, reason
+        FROM monitoring_corrections
+        WHERE table_name = %s AND crawl_date = %s
+          AND correction_type = 'format_check' AND status = 'normal'
+          AND LOWER(retailer) = LOWER(%s)
+    """, (canonical_table, str(inspection_date), retailer_value))
+    reviews = {}
+    for row in cursor.fetchall():
+        reviews[f'{row[0]}_{row[1]}'] = {
+            'memo': row[2],
+            'created_id': row[3],
+            'created_at': (
+                row[4].strftime('%Y-%m-%d %H:%M:%S')
+                if hasattr(row[4], 'strftime') else str(row[4] or '') or None
+            ),
+            'reason': row[5],
+        }
+    return reviews
+
+
+def _get_sea_format_detail(cursor, target_date, table, retailer, days):
+    product_key = _sea_format_product_key(table)
+    source = SEA_RETAIL_SOURCES.get(product_key)
+    retailer_value = (
+        _resolve_sea_format_retailer(source, retailer) if source else None
+    )
+    if not source or not retailer_value or not resolve_monitoring_date:
+        return {
+            'date': str(target_date), 'table': table, 'retailer': retailer,
+            'column_names': [], 'editable_cols': [], 'actual_table': '',
+            'normal_reviews': {}, 'results': [], 'field_counts': {},
+            'total_format_count': 0,
+        }
+
+    date_mapping = resolve_monitoring_date(
+        target_date, 'SEA', source['source_key']
+    )
+    inspection_date = date_mapping['inspection_date']
+    source_date = date.fromisoformat(date_mapping['source_date'])
+    target_rows = _fetch_sea_format_rows(
+        cursor, source_date, source_date, source, retailer_value
+    )
+    normal_reviews = _load_sea_format_normal_reviews(
+        cursor, source['table_name'], inspection_date, retailer_value
+    )
+
+    target_records = []
+    for row in target_rows:
+        record = _format_sea_record(row, product_key, retailer_value)
+        record['error_fields'] = [
+            field for field in record['error_fields']
+            if f"{record['id']}_{field}" not in normal_reviews
+        ]
+        if record['error_fields']:
+            target_records.append(record)
+
+    history_days = min(max(int(days or 1), 1), 30)
+    results = target_records
+    if history_days > 1 and target_records:
+        error_items = {
+            str(record.get('item') or '').strip().casefold()
+            for record in target_records
+            if str(record.get('item') or '').strip()
+        }
+        history_rows = _fetch_sea_format_rows(
+            cursor,
+            source_date - timedelta(days=history_days - 1),
+            source_date,
+            source,
+            retailer_value,
+        )
+        results = [
+            _format_sea_record(row, product_key, retailer_value)
+            for row in history_rows
+            if str(row.get('item') or '').strip().casefold() in error_items
+        ]
+
+    field_counts = {}
+    for record in target_records:
+        for field in record['error_fields']:
+            field_counts[field] = field_counts.get(field, 0) + 1
+
+    format_fields = _get_sea_format_fields(product_key)
+    date_column = source['date_column']
+    column_names = list(dict.fromkeys((
+        'id', date_column, 'account_name', 'page_type', 'item', 'sku',
+        'retailer_sku_name', *format_fields, 'product_url',
+    )))
+    editable_columns = set(get_editable_columns(
+        source['product_line'], retailer_value
+    ))
+    return {
+        'date': inspection_date,
+        'inspection_date': inspection_date,
+        'source_date': source_date.isoformat(),
+        'editable_date': source_date.isoformat(),
+        'offset_days': date_mapping['offset_days'],
+        'table': table,
+        'retailer': retailer_value,
+        'column_names': column_names,
+        'select_cols': column_names,
+        'editable_cols': [
+            column for column in column_names if column in editable_columns
+        ],
+        'actual_table': source['table_name'],
+        'normal_reviews': normal_reviews,
+        'results': results,
+        'field_counts': field_counts,
+        'total_format_count': sum(field_counts.values()),
+        'supports_day_history': True,
+        'history_days': history_days,
+        'date_column': date_column,
+        'latest_batch_only': history_days == 1,
+    }
+
+
+def _append_sea_format_stats(cursor, target_date, validation):
+    if not resolve_monitoring_date:
+        return 0
+    savepoint = 'layer2_sea_format_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    total_issues = 0
+    try:
+        for product_key, section_code in SEA_FORMAT_SECTION_BY_PRODUCT.items():
+            source = SEA_RETAIL_SOURCES.get(product_key)
+            if not source:
+                continue
+            date_mapping = resolve_monitoring_date(
+                target_date, 'SEA', source['source_key']
+            )
+            source_date = date.fromisoformat(date_mapping['source_date'])
+            retailer_rows = []
+            table_checked = 0
+            table_issues = 0
+            for retailer_value in source.get('retailers', ()):
+                rows = _fetch_sea_format_rows(
+                    cursor, source_date, source_date, source, retailer_value
+                )
+                normal_reviews = _load_sea_format_normal_reviews(
+                    cursor, source['table_name'],
+                    date_mapping['inspection_date'], retailer_value,
+                )
+                issue_count = 0
+                for row in rows:
+                    for field in evaluate_sea_format_row(
+                        row, product_key, retailer_value
+                    ):
+                        if f"{row['id']}_{field}" not in normal_reviews:
+                            issue_count += 1
+                retailer_rows.append({
+                    'retailer': retailer_value,
+                    'total': len(rows),
+                    'issue_count': issue_count,
+                    'status': get_status(issue_count),
+                })
+                table_checked += len(rows)
+                table_issues += issue_count
+
+            validation['tables'].append({
+                'table': section_code,
+                'table_name': f"SEA {source['category']}",
+                'total_checked': table_checked,
+                'total_issues': table_issues,
+                'status': get_status(table_issues),
+                'retailers': retailer_rows,
+                'inspection_date': date_mapping['inspection_date'],
+                'source_date': date_mapping['source_date'],
+                'offset_days': date_mapping['offset_days'],
+            })
+            total_issues += table_issues
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        print(f'[WARN] layer2_sea_format_stats: {exc}')
+        return 0
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return total_issues
+
+
 def _fetch_tse_format_rows(
         cursor, start_date, end_date, source, retailer_value,
         include_unassigned=False):
@@ -868,6 +1219,10 @@ def get_format_detail(cursor, target_date, table, retailer, days):
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if _sea_format_product_key(table):
+        return _get_sea_format_detail(
+            cursor, target_date, table, retailer, days
+        )
     if _tse_format_product_line(table):
         return _get_tse_format_detail(
             cursor, target_date, table, retailer, days
@@ -1495,8 +1850,11 @@ def get_format_rules(cursor, table_name, retailer):
         # 메인 검증 규칙 (template 기반)
         if check_type:
             if check_type in ('regex', 'regex_clean'):
-                patterns.append(pattern)
-                description = error_message or _get_description_for_type(check_type, pattern, [])
+                effective_pattern = pattern or rule_value
+                patterns.append(effective_pattern)
+                description = error_message or _get_description_for_type(
+                    check_type, effective_pattern, []
+                )
             elif check_type == 'range':
                 parts = rule_value.split('~')
                 if len(parts) == 2:
@@ -1933,6 +2291,10 @@ def get_format_stats(cursor, target_date):
             total_format_issues += market_total_format_issues
     except Exception as e:
         print(f'[WARN] layer_stats market_format: {e}')
+
+    total_format_issues += _append_sea_format_stats(
+        cursor, target_date, format_validation
+    )
 
     total_format_issues += _append_tse_format_stats(
         cursor, target_date, format_validation

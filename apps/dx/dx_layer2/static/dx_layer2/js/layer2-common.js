@@ -133,6 +133,24 @@ const DETAIL_COLUMNS = {
             { key: 'product_url', label: 'URL', width: 80 },
         ]
     },
+    dup_sea_retail: {
+        group: [
+            { key: '_no', label: 'No', width: 50, align: 'center' },
+            { key: 'duplicate_type', label: '중복 유형', width: 130 },
+            { key: 'page_type', label: 'Page Type', width: 100 },
+            { key: 'item', label: 'Item', width: 150 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 240 },
+            { key: 'reason', label: '중복사유', width: 260 },
+        ],
+        detail: [
+            { key: 'id', label: 'ID', width: 80 },
+            { key: 'sku', label: 'SKU', width: 140 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 220 },
+            { key: 'final_sku_price', label: '판매가', width: 110 },
+            { key: 'crawl_strdatetime', label: 'crawl_strdatetime', width: 190 },
+            { key: 'product_url', label: 'URL', width: 80 },
+        ]
+    },
 };
 
 const RETAIL_SOURCE_DATE_COLUMNS = new Set([
@@ -171,6 +189,9 @@ var detailViewState = {
 
 function getColumnConfig(type, tableParam) {
     if (type === 'duplicate') {
+        if (/^sea_(ref|ldy)_retail$/.test(tableParam)) {
+            return DETAIL_COLUMNS.dup_sea_retail;
+        }
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_tse_retail;
         }
@@ -281,7 +302,7 @@ function getCellHtml(row, col, tableParam) {
 
     // 리테일 원본 날짜 컬럼은 날짜 전체와 수정 대상/비교 이력을 표시한다.
     if (
-        detailViewState.type === 'null'
+        (detailViewState.type === 'null' || detailViewState.type === 'format')
         && RETAIL_SOURCE_DATE_COLUMNS.has(key)
     ) {
         var rawDateValue = val === null || val === undefined ? '' : String(val);
@@ -398,7 +419,7 @@ function renderDetailWithTable(options) {
     // Retail inspection details must expose the source link whenever the
     // backend selected product_url, even if an older DB display rule omitted it.
     var defaultCols = ensureProductUrlColumn(getAllColumns(config), selectCols);
-    if (type === 'null') {
+    if (type === 'null' || type === 'format') {
         defaultCols = normalizeRetailSourceDateColumns(defaultCols);
     }
 
@@ -1536,6 +1557,8 @@ async function openRuleModal(tableName, retailer) {
     const tableNameMap = {
         'TV Retail': 'tv_retail_com',
         'HHP Retail': 'hhp_retail_com',
+        'SEA REF': 'ref_retail_com',
+        'SEA LDY': 'ldy_retail_com',
         'TSE TV': 'tse_tv',
         'TSE REF': 'tse_ref',
         'TSE LDY': 'tse_ldy',

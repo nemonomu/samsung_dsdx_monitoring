@@ -30,7 +30,7 @@ const LAYER2_NULL_TABLE_GROUPS = [
     }
 ];
 
-function buildLayer2NullGroups(tables) {
+function buildLayer2NullGroups(tables, validationType) {
     const indexedTables = (tables || []).map(function(table, index) {
         return { table, index };
     });
@@ -62,7 +62,9 @@ function buildLayer2NullGroups(tables) {
             type: 'group',
             key: group.key,
             name: group.name,
-            description: group.description,
+            description: validationType && validationType.type_name
+                ? `${group.key.toUpperCase()} TV/REF/LDY ${validationType.type_name}`
+                : group.description,
             members,
             total_records: totalRecords,
             total_issues: totalIssues,
@@ -307,7 +309,7 @@ function renderInlineTableList(vType) {
 }
 
 function renderInlineNullGroups(vType) {
-    return buildLayer2NullGroups(vType.tables).map(function(entry) {
+    return buildLayer2NullGroups(vType.tables, vType).map(function(entry) {
         if (entry.type === 'table') {
             return renderInlineTableRow(entry.member);
         }
@@ -358,9 +360,7 @@ function renderDXValidationTypes(data) {
         // 테이블 클릭 → 인라인 상세 전환
         const vType = data.validation_types[0];
         if (vType && vType.tables) {
-            html = vType.type === 'null'
-                ? renderInlineNullGroups(vType)
-                : renderInlineTableList(vType);
+            html = renderInlineNullGroups(vType);
         }
         // focus 결정: currentFocusTable > URL focus
         var focusTarget = currentFocusTable;
@@ -370,14 +370,6 @@ function renderDXValidationTypes(data) {
                 focusTarget = decodeURIComponent(focus);
             }
         }
-        // NULL 검증은 국가 그룹 목록을 먼저 보여준다.
-        if (
-            !focusTarget && vType && vType.type !== 'null'
-            && vType.tables && vType.tables.length > 0
-        ) {
-            focusTarget = vType.tables[0].table_name;
-        }
-
         if (focusTarget && vType) {
             const idx = vType.tables.findIndex(function(table) {
                 return table.table_name === focusTarget
@@ -472,13 +464,7 @@ function renderDXTables(vType, vIdx) {
         return '<p style="padding: 20px; color: var(--text-secondary);">테이블 데이터 없음</p>';
     }
 
-    if (vType.type === 'null') {
-        return renderDashboardNullGroups(vType, vIdx);
-    }
-
-    return vType.tables.map(function(table, tIdx) {
-        return renderDashboardTableItem(vType, vIdx, table, tIdx);
-    }).join('');
+    return renderDashboardNullGroups(vType, vIdx);
 }
 
 function renderDashboardTableItem(vType, vIdx, table, tIdx, childClass) {
@@ -505,7 +491,7 @@ function renderDashboardTableItem(vType, vIdx, table, tIdx, childClass) {
 }
 
 function renderDashboardNullGroups(vType, vIdx) {
-    return buildLayer2NullGroups(vType.tables).map(function(entry) {
+    return buildLayer2NullGroups(vType.tables, vType).map(function(entry) {
         if (entry.type === 'table') {
             return renderDashboardTableItem(
                 vType, vIdx, entry.member.table, entry.member.index
@@ -618,6 +604,7 @@ function renderDXTableDetail(vType, table) {
     if (vType.type === 'duplicate' && table.retailers) {
         const isYouTube = table.table === 'youtube';
         const isMarket = table.table === 'market';
+        const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(table.table || '');
         const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
@@ -645,7 +632,9 @@ function renderDXTableDetail(vType, table) {
             } else if (isMarket && retailer.retailer === 'Event') {
                 detailText = 'batch_id + comp_brand + comp_sku 중복';
             } else if (isTseRetail) {
-                detailText = '완전 중복 및 Item→Retailer SKU Name 매핑 충돌';
+                detailText = '완전 중복 및 Item↔Retailer SKU Name 매핑 충돌';
+            } else if (isSeaRetail) {
+                detailText = '최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌';
             }
             html += `
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}"

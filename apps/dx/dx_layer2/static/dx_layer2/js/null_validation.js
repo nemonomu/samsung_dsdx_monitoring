@@ -26,6 +26,12 @@ function getDefaultNullHistoryDays(tableParam) {
         : 1;
 }
 
+function getDefaultFormatHistoryDays(tableParam) {
+    return SEA_TSE_NULL_HISTORY_TABLES.has(String(tableParam || '').toLowerCase())
+        ? 2
+        : 1;
+}
+
 function parseLayer2DetailResponse(response) {
     return response.json()
         .catch(function() { return {}; })
@@ -182,6 +188,8 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'YouTube Videos' ? 'youtube_videos' :
                        tableName === 'SEA Retail' ? 'tv_retail' :
                        tableName === 'SEA TV' ? 'tv_retail' :
+                       tableName === 'SEA REF' ? 'sea_ref_retail' :
+                       tableName === 'SEA LDY' ? 'sea_ldy_retail' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :
                        tableName === 'TSE TV' ? 'tse_tv_retail' :
@@ -216,7 +224,9 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
 
     const defaultDays = type === 'null'
         ? getDefaultNullHistoryDays(tableParam)
-        : 1;
+        : type === 'format'
+            ? getDefaultFormatHistoryDays(tableParam)
+            : 1;
     modalState = { type, tableName, tableParam, retailer, count, currentPage: page, totalPages: 1, totalGroups: 0, nullFieldsData: null, selectedField: null, days: defaultDays };
 
     // NULL 검증: fieldsDetail이 있으면 API 호출 없이 바로 요약 표시
@@ -228,7 +238,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
 
     let apiUrl;
     if (type === 'format') {
-        apiUrl = `/dx/layer2/api/format-detail/?table=${tableParam}&retailer=${retailer}&date=${date}`;
+        apiUrl = `/dx/layer2/api/format-detail/?table=${tableParam}&retailer=${retailer}&date=${date}&days=${defaultDays}`;
     } else if (type === 'duplicate') {
         apiUrl = `/dx/layer2/api/anomaly-detail/?table=${tableParam}&retailer=${retailer}&date=${date}&page=${page}&page_size=${_dupPageSize}`;
     } else {

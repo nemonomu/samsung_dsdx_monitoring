@@ -3,6 +3,8 @@ anomaly_validation 서비스 — 중복 검증 비즈니스 로직
 cursor + params 를 받아 plain dict 를 반환한다.
 """
 
+from datetime import date
+
 from apps.common.retail_columns import (
     get_editable_columns, get_duplicate_key_columns,
     get_retailer_list, get_retail_duplicate_keys,
@@ -25,11 +27,32 @@ except (ImportError, AttributeError):
     def tse_retailer_include_unassigned(_retailer):
         return False
 
+try:
+    from apps.common.inspection_dates import resolve_monitoring_date
+    from apps.common.sea_retail import SEA_RETAIL_SOURCES
+except (ImportError, AttributeError):
+    resolve_monitoring_date = None
+    SEA_RETAIL_SOURCES = {}
+
+
+SEA_DUPLICATE_SECTION_BY_PRODUCT = {
+    'ref': 'sea_ref_retail',
+    'ldy': 'sea_ldy_retail',
+}
+SEA_DUPLICATE_PRODUCT_BY_SECTION = {
+    section_code: product_key
+    for product_key, section_code in SEA_DUPLICATE_SECTION_BY_PRODUCT.items()
+}
+
 
 # table 파라미터 화이트리스트
 VALID_TABLES_ANOMALY = {
     'tv_retail', 'youtube_videos',
     'market_trend', 'market_product', 'market_event',
+} | {
+    section_code
+    for product_key, section_code in SEA_DUPLICATE_SECTION_BY_PRODUCT.items()
+    if SEA_RETAIL_SOURCES.get(product_key)
 } | {
     source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 }
@@ -76,11 +99,284 @@ _DUP_TABLE_CONFIG = {
     },
 }
 
+for _sea_product_key, _sea_section_code in (
+        SEA_DUPLICATE_SECTION_BY_PRODUCT.items()):
+    _sea_source = SEA_RETAIL_SOURCES.get(_sea_product_key)
+    if not _sea_source:
+        continue
+    _DUP_TABLE_CONFIG[_sea_section_code] = {
+        'actual': _sea_source['table_name'],
+        'dup_keys': 'page_type, item',
+        'date_col': _sea_source['date_column'],
+        'use_period': False,
+        'retailer_col': 'account_name',
+        'sea_product_key': _sea_product_key,
+        'backup_table': _sea_source['backup_table'],
+    }
+
 # 직접 상세조회·중복삭제 API도 중단 원본 테이블에 접근하지 못하게 한다.
 for _table_key, _table_config in tuple(_DUP_TABLE_CONFIG.items()):
     if _table_config['actual'] in DISABLED_SOURCE_TABLES:
         VALID_TABLES_ANOMALY.discard(_table_key)
         _DUP_TABLE_CONFIG.pop(_table_key)
+
+
+def _sea_duplicate_product_key(table):
+    value = str(table or '').strip().lower()
+    if value in SEA_DUPLICATE_PRODUCT_BY_SECTION:
+        return SEA_DUPLICATE_PRODUCT_BY_SECTION[value]
+    for product_key, source in SEA_RETAIL_SOURCES.items():
+        if product_key not in SEA_DUPLICATE_SECTION_BY_PRODUCT:
+            continue
+        table_name = str(source.get('table_name') or '').strip().lower()
+        if value in {
+            product_key,
+            str(source.get('key') or '').strip().lower(),
+            table_name,
+            table_name.split('.')[-1],
+        }:
+            return product_key
+    return None
+
+
+def _resolve_sea_duplicate_retailer(source, retailer):
+    retailer_key = str(retailer or '').strip().casefold()
+    for configured in source.get('retailers', ()):
+        if retailer_key == str(configured).strip().casefold():
+            return configured
+    return None
+
+
+def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
+    """Fetch one retailer's latest MAIN-anchored SEA appliance batch."""
+    canonical_table = source['table_name']
+    date_column = source['date_column']
+    source_date_sql = (
+        f"LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)"
+    )
+    select_columns = [
+        'id', 'batch_id', 'country', 'account_name', 'page_type', 'item',
+        'sku', 'retailer_sku_name', 'final_sku_price', date_column,
+        'product_url',
+    ]
+    cursor.execute(f"""
+        WITH latest_batch AS (
+            SELECT source.batch_id
+            FROM {canonical_table} source
+            WHERE {source_date_sql} = %s
+              AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+              AND UPPER(TRIM(COALESCE(source.page_type, ''))) = 'MAIN'
+            ORDER BY source.id DESC
+            LIMIT 1
+        )
+        SELECT {', '.join('source.' + column for column in select_columns)}
+        FROM {canonical_table} source
+        CROSS JOIN latest_batch
+        WHERE {source_date_sql} = %s
+          AND (
+              LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+              OR source.account_name IS NULL
+              OR TRIM(CAST(source.account_name AS TEXT)) = ''
+          )
+          AND (
+              UPPER(TRIM(COALESCE(source.country, ''))) = 'SEA'
+              OR source.country IS NULL
+              OR TRIM(CAST(source.country AS TEXT)) = ''
+          )
+          AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
+          AND UPPER(TRIM(COALESCE(source.page_type, '')))
+              IN ('MAIN', 'BSR')
+        ORDER BY UPPER(TRIM(source.page_type)), source.item, source.id
+    """, (
+        str(source_date), retailer_value,
+        str(source_date), retailer_value,
+    ))
+    return [
+        dict(zip(select_columns, row))
+        for row in cursor.fetchall()
+    ]
+
+
+def _serialize_sea_duplicate_row(row):
+    return {
+        key: (str(value) if value is not None and key != 'id' else value)
+        for key, value in row.items()
+    }
+
+
+def build_sea_duplicate_groups(rows):
+    """Group duplicate page_type+item rows and classify mapping conflicts."""
+    grouped = {}
+    for row in rows:
+        page_type_key = _duplicate_key(row.get('page_type'))
+        item_key = _duplicate_key(row.get('item'))
+        if not page_type_key or not item_key:
+            continue
+        grouped.setdefault((page_type_key, item_key), []).append(row)
+
+    groups = []
+    for duplicate_rows in grouped.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        first = duplicate_rows[0]
+        sku_values = {
+            _duplicate_key(row.get('sku')) or ''
+            for row in duplicate_rows
+        }
+        name_values = {
+            _duplicate_key(row.get('retailer_sku_name')) or ''
+            for row in duplicate_rows
+        }
+        is_mapping_conflict = len(sku_values) > 1 or len(name_values) > 1
+        duplicate_type = (
+            '상품 매핑 충돌' if is_mapping_conflict else '완전 중복'
+        )
+        page_type = _duplicate_text(first.get('page_type')).upper()
+        item = _duplicate_text(first.get('item'))
+        groups.append({
+            'duplicate_type': duplicate_type,
+            'page_type': page_type,
+            'item': item,
+            'retailer_sku_name': ', '.join(sorted({
+                _duplicate_text(row.get('retailer_sku_name'))
+                for row in duplicate_rows
+                if _duplicate_text(row.get('retailer_sku_name'))
+            })),
+            'dup_count': len(duplicate_rows),
+            'reason': (
+                f'{page_type}의 동일 item에 서로 다른 SKU/상품명이 '
+                f'{len(duplicate_rows)}건 연결됨'
+                if is_mapping_conflict else
+                f'{page_type}의 동일 item이 최신 배치에 '
+                f'{len(duplicate_rows)}건 수집됨'
+            ),
+            'records': [
+                _serialize_sea_duplicate_row(row) for row in duplicate_rows
+            ],
+        })
+    groups.sort(key=lambda group: (
+        group['page_type'], group['item'], group['duplicate_type']
+    ))
+    return groups
+
+
+def _get_sea_anomaly_detail(
+        cursor, target_date, table, retailer, page, page_size):
+    product_key = _sea_duplicate_product_key(table)
+    source = SEA_RETAIL_SOURCES.get(product_key)
+    retailer_value = (
+        _resolve_sea_duplicate_retailer(source, retailer) if source else None
+    )
+    if not source or not retailer_value or not resolve_monitoring_date:
+        return {
+            'date': str(target_date), 'table': table, 'retailer': retailer,
+            'select_cols': {'group': [], 'record': []},
+            'editable_cols': [], 'actual_table': '', 'readonly': True,
+            'results': {
+                'duplicates': [], 'total_groups': 0, 'page': page,
+                'page_size': page_size, 'total_pages': 0,
+            },
+        }
+
+    date_mapping = resolve_monitoring_date(
+        target_date, 'SEA', source['source_key']
+    )
+    source_date = date.fromisoformat(date_mapping['source_date'])
+    rows = _fetch_sea_duplicate_rows(
+        cursor, source_date, source, retailer_value
+    )
+    groups = build_sea_duplicate_groups(rows)
+    total_groups = len(groups)
+    total_pages = (
+        (total_groups + page_size - 1) // page_size if total_groups else 0
+    )
+    offset = (page - 1) * page_size
+    return {
+        'date': date_mapping['inspection_date'],
+        'inspection_date': date_mapping['inspection_date'],
+        'source_date': date_mapping['source_date'],
+        'offset_days': date_mapping['offset_days'],
+        'date_column': source['date_column'],
+        'table': table,
+        'retailer': retailer_value,
+        'select_cols': {
+            'group': [
+                'duplicate_type', 'page_type', 'item',
+                'retailer_sku_name', 'dup_count', 'reason',
+            ],
+            'record': [
+                'id', 'sku', 'retailer_sku_name', 'final_sku_price',
+                source['date_column'], 'product_url',
+            ],
+        },
+        'editable_cols': [],
+        'actual_table': source['table_name'],
+        'backup_table': source['backup_table'],
+        'readonly': False,
+        'results': {
+            'duplicates': groups[offset:offset + page_size],
+            'total_groups': total_groups,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+        },
+    }
+
+
+def _append_sea_anomaly_stats(cursor, target_date, validation):
+    if not resolve_monitoring_date:
+        return 0
+    savepoint = 'layer2_sea_duplicate_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    total_issues = 0
+    try:
+        for product_key, section_code in (
+                SEA_DUPLICATE_SECTION_BY_PRODUCT.items()):
+            source = SEA_RETAIL_SOURCES.get(product_key)
+            if not source:
+                continue
+            date_mapping = resolve_monitoring_date(
+                target_date, 'SEA', source['source_key']
+            )
+            source_date = date.fromisoformat(date_mapping['source_date'])
+            retailer_rows = []
+            table_records = 0
+            table_issues = 0
+            for retailer_value in source.get('retailers', ()):
+                rows = _fetch_sea_duplicate_rows(
+                    cursor, source_date, source, retailer_value
+                )
+                duplicate_count = len(build_sea_duplicate_groups(rows))
+                retailer_rows.append({
+                    'retailer': retailer_value,
+                    'total': len(rows),
+                    'duplicate_groups': duplicate_count,
+                    'duplicate_keys': ['page_type + item'],
+                    'status': get_status(duplicate_count),
+                })
+                table_records += len(rows)
+                table_issues += duplicate_count
+            validation['tables'].append({
+                'table': section_code,
+                'table_name': f"SEA {source['category']}",
+                'total_records': table_records,
+                'total_issues': table_issues,
+                'duplicate_groups': table_issues,
+                'duplicate_keys': ['page_type + item'],
+                'status': get_status(table_issues),
+                'retailers': retailer_rows,
+                'inspection_date': date_mapping['inspection_date'],
+                'source_date': date_mapping['source_date'],
+                'offset_days': date_mapping['offset_days'],
+            })
+            total_issues += table_issues
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        print(f'[WARN] layer2_sea_duplicate_stats: {exc}')
+        return 0
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return total_issues
 
 
 def _tse_duplicate_product_line(table):
@@ -401,6 +697,10 @@ def _build_dup_delete_query(table, retailer=''):
 
 def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
+    if _sea_duplicate_product_key(table):
+        return _get_sea_anomaly_detail(
+            cursor, target_date, table, retailer, page, page_size
+        )
     if _tse_duplicate_product_line(table):
         return _get_tse_anomaly_detail(
             cursor, target_date, table, retailer, page, page_size
@@ -896,6 +1196,8 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
     use_period = cfg.get('use_period', False)
     date_col = cfg.get('date_col', '')
     backup_table = 'monitoring_duplicate_deletes'
+    sea_product_key = cfg.get('sea_product_key')
+    sea_source = SEA_RETAIL_SOURCES.get(sea_product_key)
 
     now = datetime.now()
 
@@ -904,17 +1206,88 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
     validation_where = ''
     if actual_table == 'tv_retail_com':
         validation_where = f" AND {get_tv_validation_condition('t')}"
-    cursor.execute(
-        f"SELECT id, row_to_json(t.*) as record_data FROM {actual_table} t "
-        f"WHERE id IN ({id_placeholders}){validation_where}",
-        ids
-    )
+    if sea_source:
+        if not resolve_monitoring_date or not target_date:
+            return {
+                'success': False,
+                'error': 'SEA 중복 삭제에는 검수일이 필요합니다.',
+                'status': 400,
+            }
+        try:
+            date_mapping = resolve_monitoring_date(
+                target_date, 'SEA', sea_source['source_key']
+            )
+        except (TypeError, ValueError) as exc:
+            return {
+                'success': False,
+                'error': f'검수일이 올바르지 않습니다: {exc}',
+                'status': 400,
+            }
+        source_date = date_mapping['source_date']
+        date_column = sea_source['date_column']
+        retailers = tuple(sea_source.get('retailers', ()))
+        retailer_placeholders = ', '.join(['%s'] * len(retailers))
+        cursor.execute(f"""
+            WITH latest_batches AS (
+                SELECT DISTINCT ON (LOWER(TRIM(anchor.account_name)))
+                       LOWER(TRIM(anchor.account_name)) AS retailer_key,
+                       anchor.batch_id,
+                       anchor.id
+                FROM {actual_table} anchor
+                WHERE LEFT(
+                          TRIM(CAST(anchor.{date_column} AS TEXT)), 10
+                      ) = %s
+                  AND LOWER(TRIM(anchor.account_name)) IN (
+                      {retailer_placeholders}
+                  )
+                  AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+                ORDER BY retailer_key, anchor.id DESC
+            )
+            SELECT DISTINCT ON (t.id)
+                   t.id, row_to_json(t.*) AS record_data
+            FROM {actual_table} t
+            JOIN latest_batches latest
+              ON t.batch_id IS NOT DISTINCT FROM latest.batch_id
+             AND (
+                 LOWER(TRIM(t.account_name)) = latest.retailer_key
+                 OR t.account_name IS NULL
+                 OR TRIM(CAST(t.account_name AS TEXT)) = ''
+             )
+            WHERE t.id IN ({id_placeholders})
+              AND LEFT(TRIM(CAST(t.{date_column} AS TEXT)), 10) = %s
+              AND UPPER(TRIM(COALESCE(t.page_type, '')))
+                  IN ('MAIN', 'BSR')
+            ORDER BY t.id
+        """, (
+            source_date,
+            *[retailer.lower() for retailer in retailers],
+            *ids,
+            source_date,
+        ))
+    else:
+        cursor.execute(
+            f"SELECT id, row_to_json(t.*) as record_data "
+            f"FROM {actual_table} t "
+            f"WHERE id IN ({id_placeholders}){validation_where}",
+            ids
+        )
     rows = cursor.fetchall()
 
     if not rows:
         return {'success': True, 'deleted_count': 0, 'message': '해당 레코드가 존재하지 않습니다.'}
 
-    # 2. 백업 INSERT + corrections 이력 저장
+    # 2. SEA 원본 백업 + 삭제 감사 백업 + corrections 이력 저장
+    if sea_source:
+        fetched_ids = [row[0] for row in rows]
+        fetched_placeholders = ', '.join(['%s'] * len(fetched_ids))
+        cursor.execute(f"""
+            INSERT INTO {sea_source['backup_table']}
+            SELECT source.*
+            FROM {actual_table} source
+            WHERE source.id IN ({fetched_placeholders})
+            ON CONFLICT DO NOTHING
+        """, fetched_ids)
+
     for row in rows:
         record_id = row[0]
         record_data = row[1]
@@ -947,7 +1320,10 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
         ))
 
         # corrections 이력
-        item_col_name = dup_keys.split(',')[0].strip() if dup_keys else None
+        item_col_name = (
+            'item' if sea_source
+            else dup_keys.split(',')[0].strip() if dup_keys else None
+        )
         item_value = str(record_dict.get(item_col_name, '')) if item_col_name else ''
         retailer_col = cfg.get('retailer_col')
         retailer_value = str(record_dict.get(retailer_col, '')) if retailer_col else ''
@@ -972,7 +1348,10 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
     return {
         'success': True,
         'deleted_count': deleted_count,
-        'backup_table': backup_table,
+        'backup_table': (
+            sea_source['backup_table'] if sea_source else backup_table
+        ),
+        'audit_backup_table': backup_table,
     }
 
 
@@ -1286,6 +1665,10 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
             'retailers': market_retailers
         })
         total_anomaly_issues += market_total_dup
+
+    total_anomaly_issues += _append_sea_anomaly_stats(
+        cursor, target_date, anomaly_validation
+    )
 
     total_anomaly_issues += _append_tse_anomaly_stats(
         cursor, target_date, anomaly_validation

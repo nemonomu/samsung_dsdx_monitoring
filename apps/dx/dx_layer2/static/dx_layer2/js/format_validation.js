@@ -49,16 +49,21 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
-    const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail' || isTseRetail;
-    const currentDays = modalState.days || 1;
+    const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
+        || isSeaRetail || isTseRetail;
+    const currentDays = modalState.days
+        || (typeof getDefaultFormatHistoryDays === 'function'
+            ? getDefaultFormatHistoryDays(tableParam) : 1);
 
     var filteredRecords;
     if (currentDays > 1 && isRetail) {
         // days > 1: 조회 날짜에 해당 필드 오류인 item 추출 → 해당 item 전체 레코드 표시
-        var targetDateStr = date;
+        var targetDateStr = data.source_date || date;
+        var sourceDateColumn = data.date_column || 'crawl_datetime';
         var errorItems = new Set();
         records.forEach(function(record) {
-            var recDate = (record.crawl_datetime || '').substring(0, 10);
+            var recDate = (record[sourceDateColumn] || '').substring(0, 10);
             if (recDate === targetDateStr && (record.error_fields || []).includes(fieldName)) {
                 if (record.item) errorItems.add(record.item);
             }
@@ -88,9 +93,10 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     var columns;
     var selectCols = [];
     if (isRetail && columnNames.length > 0) {
-        var defaultKeys = isTseRetail
-            ? ['id', 'item', 'retailer_sku_name', 'crawl_datetime', fieldName, 'product_url']
-            : ['id', 'item', 'crawl_datetime', fieldName, 'product_url'];
+        var retailDateColumn = data.date_column || 'crawl_datetime';
+        var defaultKeys = (isTseRetail || isSeaRetail)
+            ? ['id', 'item', 'retailer_sku_name', retailDateColumn, fieldName, 'product_url']
+            : ['id', 'item', retailDateColumn, fieldName, 'product_url'];
         var _seen = {};
         columns = [];
         defaultKeys.forEach(function(k) {
@@ -124,7 +130,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 <input type="date" id="fmt-modal-date" value="${date}"
                     onchange="reloadFormatData(this.value)">
             </div>
-            ${isTseRetail ? `<div class="modal-date-picker">
+            ${(isTseRetail || isSeaRetail) ? `<div class="modal-date-picker">
                 <label>일수:</label>
                 <input type="number" id="fmt-modal-days" value="${currentDays}" min="1" max="30"
                     style="width:58px;" onkeydown="if(event.key==='Enter')reloadFormatDays()">
@@ -230,7 +236,9 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         editableCols: data.editable_cols || [],
         actualTable: data.actual_table || '',
         crawlDate: date,
-        normalReviews: data.normal_reviews || {}
+        normalReviews: data.normal_reviews || {},
+        editableDate: data.editable_date || data.source_date || date,
+        dateColumn: data.date_column || ''
     });
 }
 
@@ -323,7 +331,10 @@ function reloadNullDays() {
 
 function reloadFormatDays() {
     var daysInput = document.getElementById('fmt-detail-days') || document.getElementById('fmt-modal-days');
-    var days = parseInt(daysInput && daysInput.value) || 1;
+    var defaultDays = typeof getDefaultFormatHistoryDays === 'function'
+        ? getDefaultFormatHistoryDays(modalState.tableParam)
+        : 1;
+    var days = parseInt(daysInput && daysInput.value) || defaultDays;
     if (days < 1) days = 1;
     if (days > 30) days = 30;
     modalState.days = days;
