@@ -4,7 +4,7 @@
 {% block title %}Layer 3: {{ layer.name }} - {% block page_title %}대시보드{% endblock %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'dx_layer3/css/layer3.css' %}?v=4">
+<link rel="stylesheet" href="{% static 'dx_layer3/css/layer3.css' %}?v=5">
 <style>
     :root { --layer-color: {{ layer.color|escapejs }}; --page-color: {{ layer.color|escapejs }}; }
 </style>
@@ -99,7 +99,7 @@
     }
 
     AppModal.create('detail', { style: 'wide' });
-    AppModal.create('sea-crossfield-guide', { style: 'wide', closeOnOverlay: true });
+    AppModal.create('crossfield-guide', { style: 'wide', closeOnOverlay: true });
 </script>
 {% block layer3_js %}{% endblock %}
 {% endblock %}

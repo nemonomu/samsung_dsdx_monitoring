@@ -1124,6 +1124,7 @@
 
 .btn-crossfield-guide {
     flex-shrink: 0;
+    margin-left: auto;
     border: 1px solid var(--layer-color);
     border-radius: 7px;
     background: #fff;
@@ -1178,6 +1179,10 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+}
+
+.sea-guide-grid.single {
+    grid-template-columns: 1fr;
 }
 
 .sea-guide-card {

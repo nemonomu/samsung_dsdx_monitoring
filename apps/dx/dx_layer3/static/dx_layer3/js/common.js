@@ -922,19 +922,12 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         </div>`;
     }
 
-    const showSeaGuide = /^(SEA_REF|SEA_LDY)$/.test(
-        String(data.product_line || '').toUpperCase()
-    );
-    if ((data.source_date && data.source_date !== data.date) || showSeaGuide) {
-        html += '<div class="crossfield-summary-toolbar">';
-        if (data.source_date && data.source_date !== data.date) {
-            html += `<div class="inline-detail-subtitle">검수일 ${esc(data.date)} · 데이터일 ${esc(data.source_date)} · D-1</div>`;
-        }
-        if (showSeaGuide) {
-            html += '<button type="button" class="btn-crossfield-guide" onclick="showSeaCrossfieldGuide()">검수 기준 안내</button>';
-        }
-        html += '</div>';
+    html += '<div class="crossfield-summary-toolbar">';
+    if (data.source_date && data.source_date !== data.date) {
+        html += `<div class="inline-detail-subtitle">검수일 ${esc(data.date)} · 데이터일 ${esc(data.source_date)} · D-1</div>`;
     }
+    html += '<button type="button" class="btn-crossfield-guide" onclick="showCrossfieldGuide()">검수 기준 안내</button>';
+    html += '</div>';
 
     if (ruleSummary.length === 0) {
         html += '<p>논리 오류 데이터가 없습니다.</p>';
@@ -1001,6 +994,63 @@ function toggleCrossfieldRegion(groupId, trigger) {
     if (arrow) arrow.classList.toggle('expanded', expanded);
 }
 
+function showCrossfieldGuide() {
+    const data = window.crossfieldSummaryData || {};
+    const productLine = String(data.product_line || '').toUpperCase();
+    if (/^(SEA_REF|SEA_LDY)$/.test(productLine)) {
+        showSeaCrossfieldGuide();
+        return;
+    }
+    showGenericCrossfieldGuide(data, window.crossfieldTitle || data.label || productLine);
+}
+
+function showGenericCrossfieldGuide(data, title) {
+    const rules = Array.isArray(data.rule_summary) ? data.rule_summary : [];
+    const inspectionDate = data.inspection_date || data.date || '-';
+    const sourceDate = data.source_date || data.date || '-';
+    const datePolicy = inspectionDate !== sourceDate ? '검수일 D → 데이터일 D-1' : '검수일 D → 데이터일 D';
+    const targetName = title || data.label || data.product_line || '크로스필드';
+    let ruleItems = '<li><p>등록된 검수 규칙 설명이 없습니다.</p></li>';
+
+    if (rules.length) {
+        ruleItems = rules.map(rule => {
+            const fieldDisplay = rule.field2
+                ? `${rule.field1 || '-'} ↔ ${rule.field2}`
+                : (rule.field1 || rule.detail_code || '-');
+            const ruleName = rule.detail_name || fieldDisplay;
+            return `<li>
+                <strong>${esc(ruleName)}</strong>
+                <code>${esc(fieldDisplay)}</code>
+                <p>${esc(rule.error_message || '등록된 검수 조건을 확인합니다.')}</p>
+            </li>`;
+        }).join('');
+    }
+
+    const html = `
+        <div class="sea-crossfield-guide">
+            <div class="sea-guide-scope">
+                <div class="sea-guide-scope-title">현재 화면에 적용된 검수 기준</div>
+                <div class="sea-guide-scope-items">
+                    <span>${esc(targetName)}</span>
+                    <span>${esc(datePolicy)}</span>
+                    <span>현재 등록된 규칙 ${rules.length}개</span>
+                    <span>새 대상도 등록 규칙을 자동 표시</span>
+                </div>
+            </div>
+            <div class="sea-guide-grid single">
+                <section class="sea-guide-card">
+                    <div class="sea-guide-card-header">
+                        <h3>${esc(targetName)}</h3><span>${rules.length}개</span>
+                    </div>
+                    <ol class="sea-guide-rule-list">${ruleItems}</ol>
+                </section>
+            </div>
+        </div>`;
+    AppModal.setTitle('crossfield-guide', `${targetName} 검수 기준 안내`);
+    AppModal.setBody('crossfield-guide', html);
+    AppModal.open('crossfield-guide');
+}
+
 function showSeaCrossfieldGuide() {
     const html = `
         <div class="sea-crossfield-guide">
@@ -1046,9 +1096,9 @@ function showSeaCrossfieldGuide() {
                 </section>
             </div>
         </div>`;
-    AppModal.setTitle('sea-crossfield-guide', 'SEA REF/LDY 크로스필드 검수 기준');
-    AppModal.setBody('sea-crossfield-guide', html);
-    AppModal.open('sea-crossfield-guide');
+    AppModal.setTitle('crossfield-guide', 'SEA REF/LDY 크로스필드 검수 기준');
+    AppModal.setBody('crossfield-guide', html);
+    AppModal.open('crossfield-guide');
 }
 
 // 카테고리별 특성 요약 렌더링 (모달 / 인라인 공용)

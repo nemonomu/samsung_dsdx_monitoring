@@ -70,10 +70,13 @@ assert(commonSource.includes('SEA REF/LDY 크로스필드 검수 기준'));
 assert(commonSource.includes('별점 0과 별점 수 0 일치'));
 assert(commonSource.includes('<h3>Bestbuy</h3><span>7개</span>'));
 assert(commonSource.includes('<h3>Lowes</h3><span>9개</span>'));
+assert(commonSource.includes('function showCrossfieldGuide()'));
+assert(commonSource.includes('새 대상도 등록 규칙을 자동 표시'));
 assert(!commonSource.includes('D-1 (offset_days='));
-assert(baseTemplate.includes("AppModal.create('sea-crossfield-guide'"));
-assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=4'));
+assert(baseTemplate.includes("AppModal.create('crossfield-guide'"));
+assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=5'));
 assert(layer3Css.includes('.btn-crossfield-guide'));
+assert(layer3Css.includes('margin-left: auto'));
 assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));
 assert(commonSource.includes("{ key: 'tse', title: 'TSE Retail'"));
 assert(commonSource.includes("toggleCrossfieldRegion('${groupId}', this)"));
@@ -326,6 +329,12 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
         },
         getSelectedDate: () => '2026-08-11',
         escJs: value => String(value || ''),
+        esc: value => String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;'),
         fetchAPI: async url => {
             requestedUrl = url;
             return {
@@ -376,7 +385,29 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     );
     assert.strictEqual(detailModal.title, 'SEA Retail (0건)');
     assert(detailModal.body.includes('논리 오류 데이터가 없습니다'));
+    assert(detailModal.body.includes('onclick="showCrossfieldGuide()"'));
     assert.strictEqual(detailModal.opened, true);
+
+    commonSandbox.window.crossfieldSummaryData = {
+        product_line: 'TSE_TV',
+        date: '2026-08-11',
+        source_date: '2026-08-11',
+        rule_summary: [{
+            detail_name: '리뷰 수 일치',
+            detail_code: 'review_count_match',
+            field1: 'count_of_reviews',
+            field2: 'count_of_star_ratings',
+            error_message: '두 값이 다르면 이상입니다.',
+        }],
+    };
+    commonSandbox.window.crossfieldTitle = 'TSE TV 논리적 일관성';
+    commonSandbox.showCrossfieldGuide();
+
+    assert.strictEqual(detailModal.title, 'TSE TV 논리적 일관성 검수 기준 안내');
+    assert(detailModal.body.includes('리뷰 수 일치'));
+    assert(detailModal.body.includes('count_of_reviews ↔ count_of_star_ratings'));
+    assert(detailModal.body.includes('현재 등록된 규칙 1개'));
+    assert(detailModal.body.includes('새 대상도 등록 규칙을 자동 표시'));
 }
 
 testSeaRetailDisplayKeepsCanonicalTvRoute().catch(error => {
