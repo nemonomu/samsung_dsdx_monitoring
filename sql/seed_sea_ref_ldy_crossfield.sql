@@ -1,11 +1,11 @@
 -- SEA REF/LDY Layer 3 cross-field rules (idempotent).
 -- Run this file in PostgreSQL with DBeaver after deploying the application.
+-- It intentionally has no BEGIN/COMMIT and creates no temporary table, so it
+-- can be rerun safely whether DBeaver auto-commit is on or a transaction is
+-- already open.  Existing matching rows are updated; missing rows are added.
 -- The application performs validation with allow-listed Python rules; query
 -- text stored here is metadata only and is never executed by the validator.
 
-BEGIN;
-
-CREATE TEMP TABLE sea_crossfield_seed ON COMMIT DROP AS
 WITH products (
     product_line, category, section_code, section_name, table_name
 ) AS (
@@ -95,7 +95,7 @@ WITH products (
          'recommendation_intent', 'count_of_reviews',
          'recommendation_intent는 NN% Recommend this product 형식이어야 합니다.',
          'count_of_reviews|recommendation_intent|detailed_review_content', 110)
-)
+), seed AS (
 SELECT
     p.product_line,
     p.category,
@@ -112,7 +112,8 @@ SELECT
     r.select_fields,
     r.sort_order
 FROM products p
-CROSS JOIN retailer_rules r;
+CROSS JOIN retailer_rules r
+), updated AS (
 
 UPDATE public.monitoring_validation_rules target
 SET
@@ -133,12 +134,14 @@ SET
     query_detail = '',
     sort_order = seed.sort_order,
     is_active = TRUE
-FROM sea_crossfield_seed seed
+FROM seed
 WHERE target.rule_type = 'crossfield'
   AND target.section_code = seed.section_code
   AND target.table_name = seed.table_name
   AND target.detail_code = seed.detail_code
-  AND LOWER(BTRIM(target.retailer)) = LOWER(BTRIM(seed.retailer));
+  AND LOWER(BTRIM(target.retailer)) = LOWER(BTRIM(seed.retailer))
+RETURNING target.id
+)
 
 INSERT INTO public.monitoring_validation_rules (
     rule_type,
@@ -197,7 +200,7 @@ SELECT
     TRUE,
     NOW(),
     'seed_sea_crossfield'
-FROM sea_crossfield_seed seed
+FROM seed
 WHERE NOT EXISTS (
     SELECT 1
     FROM public.monitoring_validation_rules existing
@@ -229,8 +232,6 @@ WHERE product_line IN ('sea_ref', 'sea_ldy')
   )
   AND is_active IS TRUE
   AND COALESCE(is_del, FALSE) IS FALSE;
-
-COMMIT;
 
 -- Verification: expected 30 active rows (15 per product line).
 SELECT
