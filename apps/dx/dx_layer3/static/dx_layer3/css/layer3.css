@@ -862,6 +862,19 @@
     white-space: nowrap;
 }
 
+.anomaly-type-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    border: 1px solid #fecaca;
+    border-radius: 999px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: nowrap;
+}
+
 /* 크로스필드 검증 쿼리 토글 */
 .rule-summary-card-wrapper {
     margin-bottom: 8px;

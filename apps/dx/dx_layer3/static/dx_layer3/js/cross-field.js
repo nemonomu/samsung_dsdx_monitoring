@@ -35,6 +35,32 @@ function _cfBuildTseDisplayQueryBox(query, retailerSafe, days) {
         </div>`;
 }
 
+function _cfOrderReviewDetailKeys(keys) {
+    const priority = [
+        'issue_type',
+        'count_of_reviews',
+        'review_body_count',
+        'max_review_number',
+        'review_body_criterion',
+        'detailed_review_content',
+    ];
+    return priority.filter(key => keys.includes(key))
+        .concat(keys.filter(key => !priority.includes(key)));
+}
+
+function _cfColumnDefinition(key) {
+    const definitions = {
+        issue_type: { label: '확인 유형', width: 230 },
+        count_of_reviews: { label: '리뷰 수', width: 90 },
+        review_body_count: { label: '리뷰본문 수', width: 105 },
+        max_review_number: { label: '최대 reviewN', width: 110 },
+        review_body_criterion: { label: '검수 기준', width: 130 },
+        detailed_review_content: { label: '리뷰본문 원문', width: 220 },
+    };
+    const definition = definitions[key] || { label: key, width: 140 };
+    return { key, label: definition.label, width: definition.width };
+}
+
 function showRetailerDetail(retailer) {
     const inline = isCrossFieldInline();
     const retailerData = window.crossfieldRetailerData;
@@ -95,10 +121,7 @@ function showRetailerDetail(retailer) {
             if (!excludeKeys.includes(key)) dynamicKeys.push(key);
         });
     }
-    dynamicKeys = [
-        ...dynamicKeys.filter(key => key === 'issue_type'),
-        ...dynamicKeys.filter(key => key !== 'issue_type'),
-    ];
+    dynamicKeys = _cfOrderReviewDetailKeys(dynamicKeys);
     const urlKey = dynamicKeys.find(k => k === 'product_url');
     const otherKeys = dynamicKeys.filter(k => k !== 'product_url');
 
@@ -200,7 +223,9 @@ function showRetailerDetail(retailer) {
 
     // 기본 표시 컬럼: 고정 + 규칙 컬럼 (규칙 없으면 otherKeys 전체)
     const fixedKeys = [
-        '_no', 'id', 'item', 'issue_type', 'retailer_sku_name', 'page_type'
+        '_no', 'id', 'item', 'issue_type', 'count_of_reviews',
+        'review_body_count', 'max_review_number', 'review_body_criterion',
+        'retailer_sku_name', 'page_type'
     ];
     const defaultDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
 
@@ -208,16 +233,12 @@ function showRetailerDetail(retailer) {
     const allColumns = [
         { key: '_no', label: 'No', width: 50, fixed: true },
         { key: 'id', label: 'id', width: 80 },
-        { key: 'item', label: 'item', width: 140 },
-        { key: 'page_type', label: 'page_type', width: 80 }
+        { key: 'item', label: 'item', width: 140 }
     ];
     otherKeys.forEach(k => {
-        allColumns.push({
-            key: k,
-            label: k === 'issue_type' ? '확인 유형' : k,
-            width: k === 'issue_type' ? 230 : 140,
-        });
+        allColumns.push(_cfColumnDefinition(k));
     });
+    allColumns.push({ key: 'page_type', label: 'page_type', width: 80 });
     if (urlKey) {
         allColumns.push({ key: 'product_url', label: 'product_url', width: 100 });
     }
@@ -297,6 +318,7 @@ function showRetailerDetail(retailer) {
         }
         r._rowId = row.id;
         r._rowDate = (row[dateCol] || '').substring(0, 10);
+        r._findingLevel = row.finding_level || 'anomaly';
         return r;
     });
 
@@ -514,7 +536,14 @@ function _cfRenderPage(page) {
                 return;
             }
             if (c.key === 'issue_type') {
-                tr += '<td><span class="review-type-chip">' + esc(displayVal) + '</span></td>';
+                var issueClass = row._findingLevel === 'review_needed'
+                    ? 'review-type-chip'
+                    : 'anomaly-type-chip';
+                tr += '<td><span class="' + issueClass + '">' + esc(displayVal) + '</span></td>';
+                return;
+            }
+            if (c.key === 'review_body_count' && displayVal !== '-') {
+                tr += '<td style="text-align:center;font-weight:700;">' + esc(displayVal) + '개</td>';
                 return;
             }
             if (c.key === 'product_url') {
@@ -657,8 +686,7 @@ async function reloadCfDays() {
                     if (!excludeKeys.includes(key)) dynamicKeys.push(key);
                 });
             }
-            dynamicKeys = dynamicKeys.filter(function(key) { return key === 'issue_type'; })
-                .concat(dynamicKeys.filter(function(key) { return key !== 'issue_type'; }));
+            dynamicKeys = _cfOrderReviewDetailKeys(dynamicKeys);
             var urlKey = dynamicKeys.find(function(k) { return k === 'product_url'; });
             var otherKeys = dynamicKeys.filter(function(k) { return k !== 'product_url'; });
 
@@ -674,6 +702,7 @@ async function reloadCfDays() {
                 var dateCol = window.crossfieldDateCol
                     || ((window.crossfieldProductLine || 'tv').toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
                 r._rowDate = (row[dateCol] || '').substring(0, 10);
+                r._findingLevel = row.finding_level || 'anomaly';
                 return r;
             });
 
@@ -690,7 +719,11 @@ async function reloadCfDays() {
                 st.allColumns.forEach(function(c) { existKeys[c.key] = true; });
                 otherKeys.forEach(function(k) {
                     if (!existKeys[k]) {
-                        st.allColumns.splice(st.allColumns.length - (urlKey ? 1 : 0), 0, { key: k, label: k, width: 120 });
+                        st.allColumns.splice(
+                            st.allColumns.length - (urlKey ? 1 : 0),
+                            0,
+                            _cfColumnDefinition(k)
+                        );
                         existKeys[k] = true;
                     }
                 });

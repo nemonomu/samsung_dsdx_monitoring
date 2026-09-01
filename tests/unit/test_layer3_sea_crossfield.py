@@ -336,6 +336,34 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
             and row.get('issue_type')
             for row in detail['anomalies']
         ))
+        detail_by_id = {row['id']: row for row in detail['anomalies']}
+        self.assertEqual(0, detail_by_id[21]['review_body_count'])
+        self.assertEqual('-', detail_by_id[21]['max_review_number'])
+        self.assertEqual('본문 존재 확인', detail_by_id[21]['review_body_criterion'])
+        self.assertEqual(2, detail_by_id[23]['review_body_count'])
+        self.assertEqual('review2', detail_by_id[23]['max_review_number'])
+        self.assertEqual('review20 확인', detail_by_id[24]['review_body_criterion'])
+
+    def test_bestbuy_review_detail_includes_body_metrics(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(7, 'review_body_count', retailer='Bestbuy')]},
+            {'fetchall': [_bestbuy_row(
+                count_of_reviews='3', count_of_star_ratings='3',
+                detailed_review_content='review1 - a ||| review2 - b',
+            )]},
+            {'fetchall': []},
+        ])
+
+        detail = sea_services.get_sea_cross_field_rule_detail(
+            cursor, date(2026, 8, 31), 'sea_ref', 7,
+        )
+
+        row = detail['anomalies'][0]
+        self.assertEqual('anomaly', row['finding_level'])
+        self.assertEqual('review3 없음', row['issue_type'])
+        self.assertEqual(2, row['review_body_count'])
+        self.assertEqual('review2', row['max_review_number'])
+        self.assertEqual('review3 필수', row['review_body_criterion'])
 
     def test_detail_returns_full_source_row_and_inspection_date(self):
         cursor = ScriptedCursor([

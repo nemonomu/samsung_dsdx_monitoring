@@ -210,14 +210,49 @@ def parse_sea_money(value):
         return None
 
 
-def _review_body_max(value):
+def _review_body_numbers(value):
     if not _has_value(value):
-        return 0
-    numbers = [
+        return []
+    return sorted({
         int(number)
         for number in re.findall(r'(?i)\breview\s*(\d+)\s*-', str(value))
-    ]
-    return max(numbers, default=0)
+    })
+
+
+def _review_body_max(value):
+    return max(_review_body_numbers(value), default=0)
+
+
+def _review_body_detail_fields(row, issue_code=None):
+    numbers = _review_body_numbers(row.get('detailed_review_content'))
+    max_number = max(numbers, default=0)
+    review_count = parse_sea_number(row.get('count_of_reviews'))
+    retailer = str(row.get('account_name') or '').strip().title()
+
+    if retailer == 'Bestbuy' and review_count is not None and review_count > 0:
+        expected = min(int(review_count), 20)
+        criterion = f'review{expected} 필수'
+        if not _has_value(row.get('detailed_review_content')):
+            issue_type = '리뷰 수 있음 · 리뷰본문 없음'
+        elif expected == 20:
+            issue_type = 'review20 없음'
+        else:
+            issue_type = f'review{expected} 없음'
+    else:
+        issue_type = LOWES_REVIEW_ISSUES.get(issue_code, '리뷰본문 확인')
+        criterion = {
+            'body_missing': '본문 존재 확인',
+            'body_without_reviews': '리뷰 수 참고',
+            'body_over_review_count': '리뷰 수 참고',
+            'review20_missing': 'review20 확인',
+        }.get(issue_code, '사이트 내용 확인')
+
+    return {
+        'issue_type': issue_type,
+        'review_body_count': len(numbers),
+        'max_review_number': f'review{max_number}' if max_number else '-',
+        'review_body_criterion': criterion,
+    }
 
 
 def evaluate_lowes_review_body(row):
@@ -618,7 +653,7 @@ def build_sea_crossfield_result(
                 if not issue_code:
                     continue
                 detail = dict(row)
-                detail['issue_type'] = LOWES_REVIEW_ISSUES[issue_code]
+                detail.update(_review_body_detail_fields(row, issue_code))
                 detail['validation_tag'] = (
                     f"확인 필요: {LOWES_REVIEW_ISSUES[issue_code]}"
                 )
@@ -631,6 +666,8 @@ def build_sea_crossfield_result(
             if rule['rule_key'] not in evaluations[row_id]:
                 continue
             detail = dict(row)
+            if rule['rule_key'] == 'review_body_count':
+                detail.update(_review_body_detail_fields(row))
             detail['validation_tag'] = rule['error_message']
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
