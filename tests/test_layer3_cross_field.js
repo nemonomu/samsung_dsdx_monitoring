@@ -72,8 +72,72 @@ assert(commonSource.includes('<h3>Bestbuy</h3><span>7개</span>'));
 assert(commonSource.includes('<h3>Lowes</h3><span>9개</span>'));
 assert(!commonSource.includes('D-1 (offset_days='));
 assert(baseTemplate.includes("AppModal.create('sea-crossfield-guide'"));
-assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=3'));
+assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=4'));
 assert(layer3Css.includes('.btn-crossfield-guide'));
+assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));
+assert(commonSource.includes("{ key: 'tse', title: 'TSE Retail'"));
+assert(commonSource.includes("toggleCrossfieldRegion('${groupId}', this)"));
+assert(layer3Css.includes('.crossfield-region-children.show'));
+
+function testCrossfieldRetailChecksRenderAsRegionAccordions() {
+    const container = {
+        innerHTML: '',
+        querySelectorAll() { return []; },
+    };
+    const renderSandbox = {
+        console,
+        window: { LAYER3: { section: 'cross_field' } },
+        document: {
+            addEventListener() {},
+            querySelector() { return null; },
+            getElementById(id) {
+                return id === 'categories-container' ? container : null;
+            },
+        },
+        esc(value) { return String(value == null ? '' : value); },
+        escJs(value) { return String(value == null ? '' : value); },
+        AppModal: { getTitle() { return ''; } },
+    };
+    vm.createContext(renderSandbox);
+    vm.runInContext(commonSource, renderSandbox);
+
+    const check = (name, detailCode, checked, failed) => ({
+        category: '크로스 필드 검증',
+        name,
+        detail_code: detailCode,
+        description: `${detailCode} 설명`,
+        checked,
+        passed: checked - failed,
+        failed,
+        status: failed ? 'WARNING' : 'OK',
+    });
+    renderSandbox.renderData({
+        checks: [
+            check('SEA Retail', 'tv', 10, 1),
+            check('SEA REF 논리적 일관성', 'sea_ref', 20, 0),
+            check('SEA LDY 논리적 일관성', 'sea_ldy', 30, 2),
+            check('TSE TV 논리적 일관성', 'tse_tv', 40, 0),
+            check('TSE REF 논리적 일관성', 'tse_ref', 50, 0),
+            check('TSE LDY 논리적 일관성', 'tse_ldy', 60, 0),
+            check('TV Sentiment↔리뷰 일관성', '', 0, 0),
+        ],
+        summary: {},
+    });
+
+    const html = container.innerHTML;
+    assert(html.includes('crossfield-region-0-sea'));
+    assert(html.includes('crossfield-region-0-tse'));
+    assert(html.includes('SEA TV/REF/LDY 크로스필드 검증'));
+    assert(html.includes('TSE TV/REF/LDY 크로스필드 검증'));
+    assert(html.includes('<div class="crossfield-region-name">SEA Retail</div>'));
+    assert(html.includes('<div class="crossfield-region-name">TSE Retail</div>'));
+    assert(html.includes('TV Sentiment↔리뷰 일관성'));
+    assert(html.indexOf('SEA Retail') < html.indexOf('TSE Retail'));
+    assert(html.indexOf('TSE Retail') < html.indexOf('TV Sentiment↔리뷰 일관성'));
+    assert.strictEqual((html.match(/\bcrossfield-region-child\b/g) || []).length, 6);
+}
+
+testCrossfieldRetailChecksRenderAsRegionAccordions();
 
 let inlineHtml = '';
 const modal = { title: '', body: '', opened: false };

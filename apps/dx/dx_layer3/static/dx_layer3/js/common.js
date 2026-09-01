@@ -504,9 +504,10 @@ function renderData(data) {
             `;
         }
 
-        checks.forEach((check, checkIdx) => {
+        const renderCheckItem = (check, childLabel) => {
             const status = (check.status || 'OK').toLowerCase();
             const displayName = getLayer3DisplayName(check.name, check.detail_code || '');
+            const renderedDisplayName = childLabel || displayName;
             // 카테고리별 특성은 모두 검증 규칙 버튼 표시, 크로스 필드는 특정 항목만
             const hasRules = categoryName === '카테고리별 특성'
                 || crossfieldChecksWithRules.includes(check.name)
@@ -514,14 +515,15 @@ function renderData(data) {
                 || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
 
-            const rowClass = check.load_error ? 'check-item' : 'check-item clickable-row';
+            let rowClass = check.load_error ? 'check-item' : 'check-item clickable-row';
+            if (childLabel) rowClass += ' crossfield-region-child';
             const rowAction = check.load_error ? '' : `onclick="showDetail('${escJs(categoryName)}', '${escJs(check.name)}', '${escJs(check.detail_code || '')}')"`;
 
-            html += `
+            return `
                 <div class="${rowClass}" ${rowAction}>
                     <div class="check-info">
                         <div class="check-name">
-                            ${esc(displayName)}
+                            ${esc(renderedDisplayName)}
                             ${check.threshold ? `<span class="threshold-badge">${esc(String(check.threshold))}</span>` : ''}
                             ${rulesBtn}
                         </div>
@@ -544,7 +546,97 @@ function renderData(data) {
                     </div>
                 </div>
             `;
-        });
+        };
+
+        if (categoryName === '크로스 필드 검증') {
+            const regionGroups = { sea: [], tse: [] };
+            const standaloneChecks = [];
+            checks.forEach(check => {
+                const detailCode = String(check.detail_code || '').toLowerCase();
+                const checkName = String(check.name || '');
+                if (
+                    detailCode === 'sea_ref'
+                    || detailCode === 'sea_ldy'
+                    || (
+                        detailCode === 'tv'
+                        && (checkName === 'SEA Retail' || checkName === 'TV 논리적 일관성')
+                    )
+                ) {
+                    regionGroups.sea.push(check);
+                } else if (/^tse_(tv|ref|ldy)$/.test(detailCode)) {
+                    regionGroups.tse.push(check);
+                } else {
+                    standaloneChecks.push(check);
+                }
+            });
+
+            [
+                { key: 'sea', title: 'SEA Retail', description: 'SEA TV/REF/LDY 크로스필드 검증' },
+                { key: 'tse', title: 'TSE Retail', description: 'TSE TV/REF/LDY 크로스필드 검증' },
+            ].forEach(region => {
+                const groupChecks = regionGroups[region.key];
+                if (groupChecks.length === 0) return;
+
+                const groupChecked = groupChecks.reduce((sum, check) => sum + (check.checked || 0), 0);
+                const groupPassed = groupChecks.reduce((sum, check) => sum + (check.passed || 0), 0);
+                const groupFailed = groupChecks.reduce((sum, check) => sum + (check.failed || 0), 0);
+                const groupHasReview = groupChecks.some(check => check.status === 'REVIEW_NEEDED');
+                const groupHasError = groupChecks.some(check => check.load_error || check.status === 'ERROR');
+                const groupStatus = groupHasError
+                    ? 'critical'
+                    : (groupHasReview
+                        ? 'review_needed'
+                        : (groupFailed === 0 ? 'ok' : (groupFailed < 10 ? 'warning' : 'critical')));
+                const groupId = `crossfield-region-${catIdx}-${region.key}`;
+
+                html += `
+                    <div class="crossfield-region-group">
+                        <button type="button" class="crossfield-region-header"
+                                aria-expanded="false" aria-controls="${groupId}"
+                                onclick="toggleCrossfieldRegion('${groupId}', this)">
+                            <div class="crossfield-region-title">
+                                <span class="crossfield-region-arrow">▶</span>
+                                <div>
+                                    <div class="crossfield-region-name">${region.title}</div>
+                                    <div class="check-description">${region.description}</div>
+                                </div>
+                            </div>
+                            <div class="check-stats">
+                                <div class="check-stat">
+                                    <div class="value">${groupChecked.toLocaleString()}</div>
+                                    <div class="label">검사</div>
+                                </div>
+                                <div class="check-stat">
+                                    <div class="value" style="color: var(--color-ok);">${groupPassed.toLocaleString()}</div>
+                                    <div class="label">정상</div>
+                                </div>
+                                <div class="check-stat">
+                                    <div class="value" style="color: var(--color-critical);">${groupFailed.toLocaleString()}</div>
+                                    <div class="label">이상치</div>
+                                </div>
+                                <span class="status-badge ${groupStatus}">${statusText(groupStatus.toUpperCase())}</span>
+                            </div>
+                        </button>
+                        <div class="crossfield-region-children" id="${groupId}">
+                            ${groupChecks.map(check => {
+                                const detailCode = String(check.detail_code || '').toLowerCase();
+                                const label = detailCode === 'tv' || detailCode === 'tse_tv'
+                                    ? 'TV'
+                                    : (detailCode === 'sea_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
+                                return renderCheckItem(check, label);
+                            }).join('')}
+                        </div>
+                    </div>`;
+            });
+
+            standaloneChecks.forEach(check => {
+                html += renderCheckItem(check, '');
+            });
+        } else {
+            checks.forEach(check => {
+                html += renderCheckItem(check, '');
+            });
+        }
 
         html += `
                 </div>
@@ -898,6 +990,15 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         AppModal.setBody('detail', html);
         AppModal.open('detail');
     }
+}
+
+function toggleCrossfieldRegion(groupId, trigger) {
+    const children = document.getElementById(groupId);
+    if (!children || !trigger) return;
+    const expanded = children.classList.toggle('show');
+    trigger.setAttribute('aria-expanded', String(expanded));
+    const arrow = trigger.querySelector('.crossfield-region-arrow');
+    if (arrow) arrow.classList.toggle('expanded', expanded);
 }
 
 function showSeaCrossfieldGuide() {
