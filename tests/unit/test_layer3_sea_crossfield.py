@@ -338,11 +338,9 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
         ))
         detail_by_id = {row['id']: row for row in detail['anomalies']}
         self.assertEqual(0, detail_by_id[21]['review_body_count'])
-        self.assertEqual('-', detail_by_id[21]['max_review_number'])
-        self.assertEqual('본문 존재 확인', detail_by_id[21]['review_body_criterion'])
         self.assertEqual(2, detail_by_id[23]['review_body_count'])
-        self.assertEqual('review2', detail_by_id[23]['max_review_number'])
-        self.assertEqual('review20 확인', detail_by_id[24]['review_body_criterion'])
+        self.assertNotIn('max_review_number', detail_by_id[23])
+        self.assertNotIn('review_body_criterion', detail_by_id[24])
 
     def test_bestbuy_review_detail_includes_body_metrics(self):
         cursor = ScriptedCursor([
@@ -362,8 +360,8 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
         self.assertEqual('anomaly', row['finding_level'])
         self.assertEqual('review3 없음', row['issue_type'])
         self.assertEqual(2, row['review_body_count'])
-        self.assertEqual('review2', row['max_review_number'])
-        self.assertEqual('review3 필수', row['review_body_criterion'])
+        self.assertNotIn('max_review_number', row)
+        self.assertNotIn('review_body_criterion', row)
 
     def test_detail_returns_full_source_row_and_inspection_date(self):
         cursor = ScriptedCursor([

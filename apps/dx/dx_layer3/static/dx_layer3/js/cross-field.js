@@ -38,10 +38,10 @@ function _cfBuildTseDisplayQueryBox(query, retailerSafe, days) {
 function _cfOrderReviewDetailKeys(keys) {
     const priority = [
         'issue_type',
+        'crawl_datetime',
+        'crawl_strdatetime',
         'count_of_reviews',
         'review_body_count',
-        'max_review_number',
-        'review_body_criterion',
         'detailed_review_content',
     ];
     return priority.filter(key => keys.includes(key))
@@ -51,11 +51,11 @@ function _cfOrderReviewDetailKeys(keys) {
 function _cfColumnDefinition(key) {
     const definitions = {
         issue_type: { label: '확인 유형', width: 230 },
-        count_of_reviews: { label: '리뷰 수', width: 90 },
+        crawl_datetime: { label: '데이터일', width: 150 },
+        crawl_strdatetime: { label: '데이터일', width: 150 },
+        count_of_reviews: { label: 'count_of_reviews', width: 130 },
         review_body_count: { label: '리뷰본문 수', width: 105 },
-        max_review_number: { label: '최대 reviewN', width: 110 },
-        review_body_criterion: { label: '검수 기준', width: 130 },
-        detailed_review_content: { label: '리뷰본문 원문', width: 220 },
+        detailed_review_content: { label: 'detailed_review_content', width: 240 },
     };
     const definition = definitions[key] || { label: key, width: 140 };
     return { key, label: definition.label, width: definition.width };
@@ -223,8 +223,8 @@ function showRetailerDetail(retailer) {
 
     // 기본 표시 컬럼: 고정 + 규칙 컬럼 (규칙 없으면 otherKeys 전체)
     const fixedKeys = [
-        '_no', 'id', 'item', 'issue_type', 'count_of_reviews',
-        'review_body_count', 'max_review_number', 'review_body_criterion',
+        '_no', 'id', 'item', 'issue_type', 'crawl_datetime',
+        'crawl_strdatetime', 'count_of_reviews', 'review_body_count',
         'retailer_sku_name', 'page_type'
     ];
     const defaultDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
@@ -516,9 +516,9 @@ function _cfRenderPage(page) {
     var _cfPageIdx = 0;
     st.table.renderBody(pageData, function(row) {
         var rowIdx = _cfPageIdx++;
-        var tr = '<tr>';
         var rowId = row._rowId;
         var isTargetDate = row._rowDate === targetDate;
+        var tr = '<tr class="' + (isTargetDate ? 'cf-target-date-row' : 'cf-history-date-row') + '">';
         visibleCols.forEach(function(c) {
             // item 컬럼 rowspan 처리
             if (c.key === 'item' && hasItemCol) {
@@ -542,6 +542,14 @@ function _cfRenderPage(page) {
                 tr += '<td><span class="' + issueClass + '">' + esc(displayVal) + '</span></td>';
                 return;
             }
+            if (c.key === 'crawl_datetime' || c.key === 'crawl_strdatetime') {
+                var dataDate = displayVal === '-' ? '-' : displayVal.substring(0, 10);
+                var dateBadge = isTargetDate
+                    ? '<span class="cf-date-badge target">수정 대상</span>'
+                    : '<span class="cf-date-badge history">비교 이력</span>';
+                tr += '<td class="cf-data-date-cell"><span>' + esc(dataDate) + '</span>' + dateBadge + '</td>';
+                return;
+            }
             if (c.key === 'review_body_count' && displayVal !== '-') {
                 tr += '<td style="text-align:center;font-weight:700;">' + esc(displayVal) + '개</td>';
                 return;
@@ -563,7 +571,13 @@ function _cfRenderPage(page) {
                 if (isCorrected) {
                     tr += '<td class="cell-corrected" data-row-id="' + rowId + '" data-col="' + esc(c.key) + '" title="수정 완료">' + esc(displayVal) + '<span class="corrected-badge">수정됨</span></td>';
                 } else {
-                    tr += '<td data-editable="true" data-row-id="' + rowId + '" data-col="' + esc(c.key) + '">' + esc(displayVal) + '</td>';
+                    var editClass = c.key === 'detailed_review_content'
+                        ? ' class="cf-review-body-editable"'
+                        : '';
+                    var editTitle = c.key === 'detailed_review_content'
+                        ? ' title="더블클릭해 수정하거나 클릭 후 Ctrl+V로 붙여넣기"'
+                        : '';
+                    tr += '<td' + editClass + editTitle + ' data-editable="true" data-row-id="' + rowId + '" data-col="' + esc(c.key) + '">' + esc(displayVal) + '</td>';
                 }
             } else if (isTargetDate && rowId) {
                 tr += '<td data-row-id="' + rowId + '" data-col="' + esc(c.key) + '">' + esc(displayVal) + '</td>';
@@ -905,13 +919,17 @@ function _cfBindEditEvents() {
         if (oldText === '-') oldText = '';
 
         var rect = td.getBoundingClientRect();
-        var input = document.createElement('input');
-        input.type = 'text';
+        var isReviewBody = td.dataset.col === 'detailed_review_content';
+        var input = document.createElement(isReviewBody ? 'textarea' : 'input');
+        if (!isReviewBody) input.type = 'text';
         input.className = 'cell-edit-overlay';
         input.value = oldText;
+        var editWidth = isReviewBody ? Math.max(rect.width, 560) : rect.width;
+        var editHeight = isReviewBody ? 180 : rect.height;
+        var editLeft = Math.min(rect.left, window.innerWidth - editWidth - 16);
         input.style.cssText = 'position:fixed;z-index:9999;'
-            + 'left:' + rect.left + 'px;top:' + rect.top + 'px;'
-            + 'width:' + rect.width + 'px;height:' + rect.height + 'px;';
+            + 'left:' + Math.max(8, editLeft) + 'px;top:' + rect.top + 'px;'
+            + 'width:' + editWidth + 'px;height:' + editHeight + 'px;';
         document.body.appendChild(input);
         setTimeout(function() { input.focus(); input.select(); }, 0);
 
@@ -926,7 +944,10 @@ function _cfBindEditEvents() {
         }
 
         input.addEventListener('keydown', function(ev) {
-            if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+            if (ev.key === 'Enter' && (!isReviewBody || ev.ctrlKey || ev.metaKey)) {
+                ev.preventDefault();
+                commit();
+            }
             if (ev.key === 'Escape') { committed = true; input.remove(); }
         });
         input.addEventListener('blur', commit);

@@ -74,6 +74,38 @@ class SeaLayer3DataEditTests(unittest.TestCase):
         self.assertEqual(71, history_params[-1])
         self.assertEqual(1, conn.commits)
 
+    @patch.object(services, 'get_editable_columns',
+                  return_value=['detailed_review_content'])
+    def test_review_body_can_be_edited_on_the_current_sea_source_date(
+            self, _editable):
+        cursor = ScriptedCursor([
+            {'fetchone': (
+                'review1 - old', None, 'Lowes', 'L-REVIEW-1',
+            )},
+            {},
+            {},
+        ])
+        conn = FakeConnection()
+
+        result = services.update_cell_value(
+            cursor, conn, 'public.ldy_retail_com', 31,
+            'detailed_review_content', 'review1 - corrected',
+            '2026-08-31', 'cross_field', 'tester',
+            '리뷰본문 수정', 73,
+        )
+
+        self.assertTrue(result['success'])
+        source_sql, source_params = cursor.calls[0]
+        self.assertIn('FROM public.ldy_retail_com source', source_sql)
+        self.assertEqual((31, '2026-08-30', '2026-08-30'), source_params)
+        update_sql, update_params = cursor.calls[1]
+        self.assertIn(
+            'UPDATE public.ldy_retail_com SET detailed_review_content = %s',
+            update_sql,
+        )
+        self.assertEqual(('review1 - corrected', 31), update_params)
+        self.assertEqual(1, conn.commits)
+
     def test_normal_review_uses_same_source_scope_and_inspection_date(self):
         cursor = ScriptedCursor([
             {'fetchone': ('$900', 'Bestbuy', 'B-1')},

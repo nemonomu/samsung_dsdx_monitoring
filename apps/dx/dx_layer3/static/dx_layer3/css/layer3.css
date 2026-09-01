@@ -875,6 +875,47 @@
     white-space: nowrap;
 }
 
+.cf-target-date-row {
+    background: #f8fffc;
+}
+
+.cf-history-date-row {
+    background: #fafafa;
+}
+
+.cf-data-date-cell {
+    white-space: nowrap;
+}
+
+.cf-date-badge,
+.cf-review-body-editable::after {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.cf-date-badge.target,
+.cf-review-body-editable::after {
+    border: 1px solid #99f6e4;
+    background: #ecfdf5;
+    color: #0f766e;
+}
+
+.cf-review-body-editable::after {
+    content: '더블클릭 수정';
+}
+
+.cf-date-badge.history {
+    border: 1px solid #d1d5db;
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
 /* 크로스필드 검증 쿼리 토글 */
 .rule-summary-card-wrapper {
     margin-bottom: 8px;
