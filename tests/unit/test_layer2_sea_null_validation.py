@@ -42,11 +42,13 @@ SEA_SOURCES = {
 
 NULL_COLUMNS = {
     'ref': (
+        'item', 'product_url', 'account_name', 'country',
         'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
         'ref_capacity', 'ref_refrigerator_type', 'retailer_sku_name',
         'sku', 'star_rating',
     ),
     'ldy': (
+        'item', 'product_url', 'account_name', 'country',
         'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
         'retailer_sku_name', 'sku', 'star_rating',
     ),
@@ -59,7 +61,8 @@ def db_rows():
         for retailer in ('Bestbuy', 'Lowes'):
             for column in columns:
                 display_columns = [
-                    'item', 'sku', 'retailer_sku_name', 'product_url',
+                    'crawl_strdatetime', 'item', 'account_name', 'country',
+                    'sku', 'retailer_sku_name', 'product_url',
                 ]
                 if column not in display_columns:
                     display_columns.append(column)
@@ -75,7 +78,11 @@ def db_rows():
                     'check_column': column,
                     'check_type': 'both',
                     'display_columns': '|'.join(display_columns),
-                    'query_columns': f'id|item|{column}|batch_id',
+                    'query_columns': (
+                        f'id|crawl_strdatetime|batch_id|account_name|country|'
+                        f'page_type|item|sku|retailer_sku_name|{column}|'
+                        f'product_url'
+                    ),
                     'query_days': 0,
                 })
     return rows
@@ -160,8 +167,8 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         )
         self.assertEqual(
             [
-                'item', 'sku', 'retailer_sku_name', 'product_url',
-                'ref_capacity',
+                'crawl_strdatetime', 'item', 'account_name', 'country',
+                'sku', 'retailer_sku_name', 'product_url', 'ref_capacity',
             ],
             config['sea_ref_retail']['checks']['bestbuy']['columns'][
                 'ref_capacity'
@@ -315,12 +322,15 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         )
 
     def test_summary_uses_d_minus_one_latest_main_anchor_and_same_batch(self):
-        ref_counts = (300,) + (1,) + (0,) * 7
-        ldy_counts = (200,) + (0,) * 6
+        ref_counts = (300,) + (1,) + (0,) * (
+            len(NULL_COLUMNS['ref']) - 1
+        )
+        ldy_counts = (200,) + (0,) * len(NULL_COLUMNS['ldy'])
         cursor = ScriptedCursor([
             {'fetchone': ('b_ref',)}, {'fetchone': ref_counts},
             {'fetchall': []},
-            {'fetchone': ('l_ref',)}, {'fetchone': (299,) + (0,) * 8},
+            {'fetchone': ('l_ref',)},
+            {'fetchone': (299,) + (0,) * len(NULL_COLUMNS['ref'])},
             {'fetchall': []},
             {'fetchone': ('b_ldy',)}, {'fetchone': ldy_counts},
             {'fetchall': []},
@@ -350,6 +360,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertIn('FROM public.ref_retail_com', count_sql)
         self.assertIn("IN ('MAIN', 'BSR')", count_sql)
         self.assertIn('batch_id = %s', count_sql)
+        self.assertIn('OR account_name IS NULL', count_sql)
         self.assertEqual(
             ['2026-08-30', 'Bestbuy', 'b_ref'], count_params
         )
@@ -397,7 +408,10 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertEqual(1, result['history_days'])
         self.assertEqual(['sku'], result['editable_cols'])
         self.assertEqual(
-            ['item', 'sku', 'retailer_sku_name', 'product_url'],
+            [
+                'crawl_strdatetime', 'item', 'account_name', 'country',
+                'sku', 'retailer_sku_name', 'product_url',
+            ],
             result['display_config']['sku']['select_columns'],
         )
         self.assertNotIn(
@@ -407,6 +421,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         detail_sql, detail_params = cursor.calls[1]
         self.assertIn('FROM public.ldy_retail_com', detail_sql)
         self.assertIn("IN ('MAIN', 'BSR')", detail_sql)
+        self.assertIn('OR account_name IS NULL', detail_sql)
         self.assertEqual(
             ['2026-08-30', 'Lowes', 'l_260830_191936'],
             detail_params,
@@ -464,6 +479,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
             'source.batch_id IS NOT DISTINCT FROM latest.batch_id',
             history_sql,
         )
+        self.assertIn('OR source.account_name IS NULL', history_sql)
         self.assertEqual(
             ['2026-08-29', '2026-08-30', 'Lowes', 'Lowes', 'item-1'],
             history_params,
@@ -486,10 +502,21 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertTrue(result['success'])
         scope_sql, scope_params = cursor.calls[0]
         self.assertIn('FROM public.ldy_retail_com source', scope_sql)
-        self.assertIn('ORDER BY anchor.id DESC', scope_sql)
+        self.assertIn(
+            'SELECT DISTINCT ON (LOWER(TRIM(anchor.account_name)))',
+            scope_sql,
+        )
+        self.assertIn(
+            'resolved.batch_id IS NOT DISTINCT FROM source.batch_id',
+            scope_sql,
+        )
         self.assertIn("IN ('MAIN', 'BSR')", scope_sql)
         self.assertEqual(
-            (42, '2026-08-30', '2026-08-30'), scope_params
+            (
+                '2026-08-30', 'bestbuy', 'lowes', 42,
+                '2026-08-30',
+            ),
+            scope_params,
         )
         conn.commit.assert_called_once_with()
 
@@ -499,6 +526,39 @@ class SEALayer2NullValidationTests(unittest.TestCase):
             'null', 'tester',
         )
         self.assertEqual('허용되지 않는 컬럼', blocked['error'])
+
+    def test_blank_account_name_review_uses_retailer_resolved_from_batch(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'Lowes', 'item-2')},
+            {'fetchone': None},
+            {},
+        ])
+        conn = Mock()
+
+        result = self.service.save_null_review(
+            cursor, conn, 'public.ref_retail_com', 77, 'account_name',
+            'normal', '확인 메모', '수집처 특례', '2026-08-31',
+            'null', 'tester',
+        )
+
+        self.assertTrue(result['success'])
+        scope_sql, scope_params = cursor.calls[0]
+        self.assertIn(
+            'resolved.batch_id IS NOT DISTINCT FROM source.batch_id',
+            scope_sql,
+        )
+        self.assertEqual(
+            (
+                '2026-08-30', 'bestbuy', 'lowes', 77,
+                '2026-08-30',
+            ),
+            scope_params,
+        )
+        insert_params = cursor.calls[2][1]
+        self.assertEqual('account_name', insert_params[4])
+        self.assertEqual('Lowes', insert_params[13])
+        self.assertEqual('item-2', insert_params[14])
+        conn.commit.assert_called_once_with()
 
 
 if __name__ == '__main__':

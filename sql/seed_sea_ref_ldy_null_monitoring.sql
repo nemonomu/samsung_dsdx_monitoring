@@ -112,6 +112,18 @@ INSERT INTO _sea_null_column_seed
     (product_key, check_column, check_type,
      display_columns, query_columns, query_days)
 VALUES
+    ('ref', 'item', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
+    ('ref', 'product_url', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
+    ('ref', 'account_name', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
+    ('ref', 'country', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
     ('ref', 'count_of_reviews', 'both',
      'id|crawl_strdatetime|batch_id|account_name|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|ref_capacity|ref_refrigerator_type|product_url',
      'id|crawl_strdatetime|batch_id|account_name|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|ref_capacity|ref_refrigerator_type|product_url', 0),
@@ -136,6 +148,18 @@ VALUES
     ('ref', 'star_rating', 'both',
      'id|crawl_strdatetime|batch_id|account_name|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|ref_capacity|ref_refrigerator_type|product_url',
      'id|crawl_strdatetime|batch_id|account_name|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|ref_capacity|ref_refrigerator_type|product_url', 0),
+    ('ldy', 'item', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
+    ('ldy', 'product_url', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
+    ('ldy', 'account_name', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
+    ('ldy', 'country', 'both',
+     'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url',
+     'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|product_url', 0),
     ('ldy', 'count_of_reviews', 'both',
      'id|crawl_strdatetime|batch_id|account_name|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|product_url',
      'id|crawl_strdatetime|batch_id|account_name|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|product_url', 0),
@@ -200,16 +224,23 @@ WHERE NOT EXISTS (
       AND target.check_column = seed.check_column
 );
 
--- Keep the inline detail table compact. The query column list remains intact
--- for copied diagnostic SQL, while display_columns controls visible columns.
+-- Keep the inline detail table compact while always showing identity, country,
+-- source date, and product link. query_columns controls copied diagnostic SQL.
 UPDATE public.monitoring_null_column null_column
 SET display_columns = CASE
     WHEN null_column.check_column IN (
-        'item', 'sku', 'retailer_sku_name', 'product_url'
+        'item', 'account_name', 'country', 'sku',
+        'retailer_sku_name', 'product_url'
     )
-        THEN 'item|sku|retailer_sku_name|product_url'
-    ELSE 'item|sku|retailer_sku_name|product_url|' || null_column.check_column
-END
+        THEN 'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|product_url'
+    ELSE 'crawl_strdatetime|item|account_name|country|sku|retailer_sku_name|'
+         || null_column.check_column || '|product_url'
+END,
+    query_columns = CASE
+        WHEN category.category_name = 'sea_ref_retail'
+            THEN 'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|ref_capacity|ref_refrigerator_type|product_url'
+        ELSE 'id|crawl_strdatetime|batch_id|account_name|country|page_type|item|sku|retailer_sku_name|final_sku_price|star_rating|count_of_star_ratings|count_of_reviews|product_url'
+    END
 FROM public.monitoring_null_group null_group
 JOIN public.monitoring_null_category category
   ON category.id = null_group.category_id
@@ -218,7 +249,7 @@ WHERE null_column.group_id = null_group.id
 
 COMMIT;
 
--- Expected result: REF 8 rows per retailer, LDY 6 rows per retailer, 28 total.
+-- Expected result: REF 12 rows per retailer, LDY 10 rows per retailer, 44 total.
 SELECT
     REGEXP_REPLACE(LOWER(null_group.table_name), '^.*\.', '') AS table_name,
     null_group.display_name AS retailer,

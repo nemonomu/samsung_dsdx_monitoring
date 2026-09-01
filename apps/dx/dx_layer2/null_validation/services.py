@@ -82,11 +82,13 @@ SEA_NULL_PRODUCT_BY_CATEGORY = {
 }
 SEA_NULL_COLUMNS = {
     'ref': (
+        'item', 'product_url', 'account_name', 'country',
         'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
         'ref_capacity', 'ref_refrigerator_type', 'retailer_sku_name',
         'sku', 'star_rating',
     ),
     'ldy': (
+        'item', 'product_url', 'account_name', 'country',
         'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
         'retailer_sku_name', 'sku', 'star_rating',
     ),
@@ -167,12 +169,50 @@ def _build_sea_null_scope(source, source_date, retailer, batch_id):
     return (
         f"""
             LEFT(TRIM(CAST({source['date_column']} AS TEXT)), 10) = %s
-            AND LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
+            AND (
+                LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
+                OR account_name IS NULL
+                OR TRIM(CAST(account_name AS TEXT)) = ''
+            )
             AND batch_id = %s
             AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')
         """,
         [source_date, retailer, batch_id],
     )
+
+
+def _build_sea_latest_batch_record_query(source, column_name):
+    """Return a row query that resolves blank account_name from its batch."""
+    retailers = tuple(source.get('retailers') or ())
+    if not retailers:
+        return None, []
+    retailer_placeholders = ', '.join(['%s'] * len(retailers))
+    table_name = source['table_name']
+    date_column = source['date_column']
+    query = f"""
+        SELECT source.{column_name}, resolved.account_name, source.item
+        FROM {table_name} source
+        JOIN (
+            SELECT DISTINCT ON (LOWER(TRIM(anchor.account_name)))
+                   anchor.account_name,
+                   anchor.batch_id
+            FROM {table_name} anchor
+            WHERE LEFT(
+                      TRIM(CAST(anchor.{date_column} AS TEXT)), 10
+                  ) = %s
+              AND LOWER(TRIM(anchor.account_name)) IN (
+                  {retailer_placeholders}
+              )
+              AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+            ORDER BY LOWER(TRIM(anchor.account_name)), anchor.id DESC
+        ) resolved
+          ON resolved.batch_id IS NOT DISTINCT FROM source.batch_id
+        WHERE source.id = %s
+          AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+          AND UPPER(TRIM(COALESCE(source.page_type, '')))
+              IN ('MAIN', 'BSR')
+    """
+    return query, [retailer.lower() for retailer in retailers]
 
 
 def _youtube_column(check_type, display_columns):
@@ -2064,7 +2104,12 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                           ON LEFT(TRIM(CAST(source.{date_col} AS TEXT)), 10)
                              = latest.source_date
                          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-                        WHERE LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+                        WHERE (
+                                LOWER(TRIM(source.account_name)) =
+                                    LOWER(TRIM(%s))
+                                OR source.account_name IS NULL
+                                OR TRIM(CAST(source.account_name AS TEXT)) = ''
+                              )
                           AND UPPER(TRIM(COALESCE(source.page_type, '')))
                               IN ('MAIN', 'BSR')
                           AND source.item IN ({placeholders})
@@ -2241,28 +2286,14 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         sea_date = _resolve_sea_null_date(crawl_date, sea_source)
         if not sea_date:
             return {'error': 'SEA 날짜 설정 조회 실패', 'status_code': 500}
-        date_column = sea_source['date_column']
-        cursor.execute(f"""
-            SELECT {select_columns}
-            FROM {table_name} source
-            WHERE source.id = %s
-              AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
-              AND UPPER(TRIM(COALESCE(source.page_type, '')))
-                  IN ('MAIN', 'BSR')
-              AND source.batch_id = (
-                  SELECT anchor.batch_id
-                  FROM {table_name} anchor
-                  WHERE LEFT(
-                            TRIM(CAST(anchor.{date_column} AS TEXT)), 10
-                        ) = %s
-                    AND LOWER(TRIM(anchor.account_name)) =
-                        LOWER(TRIM(source.account_name))
-                    AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
-                  ORDER BY anchor.id DESC
-                  LIMIT 1
-              )
-        """, (
-            record_id, sea_date['source_date'], sea_date['source_date'],
+        scope_query, retailer_params = _build_sea_latest_batch_record_query(
+            sea_source, column_name
+        )
+        if not scope_query:
+            return {'error': 'SEA 리테일러 설정 조회 실패', 'status_code': 500}
+        cursor.execute(scope_query, (
+            sea_date['source_date'], *retailer_params,
+            record_id, sea_date['source_date'],
         ))
     else:
         cursor.execute(
