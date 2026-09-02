@@ -49,14 +49,14 @@ const categoryHtml = context.renderSielCategory({
         retailer: 'Amazon',
         batch_id: 'a_20260810_203042',
         main_count: 174,
-        bsr_count: 66,
+        bsr_count: 100,
         actual: 240,
         status: 'OK',
     }, {
         retailer: 'Flipkart',
         batch_id: 'f_20260810_231559',
         main_count: 300,
-        bsr_count: 9,
+        bsr_count: 100,
         actual: 309,
         status: 'OK',
     }],
@@ -65,7 +65,7 @@ const categoryHtml = context.renderSielCategory({
 assert(categoryHtml.includes('<th>MAIN</th>'));
 assert(categoryHtml.includes('<th>BSR</th>'));
 assert(categoryHtml.includes('/ a_20260810_203042</span>'));
-assert(categoryHtml.includes('<tr class="rt-sum"><td>합계</td><td>474</td><td>75</td><td>549</td>'));
+assert(categoryHtml.includes('<tr class="rt-sum"><td>합계</td><td>474</td><td>200</td><td>549</td>'));
 
 const checkHtml = context.renderSielRetailCheck({
     name: 'SIEL Retail',

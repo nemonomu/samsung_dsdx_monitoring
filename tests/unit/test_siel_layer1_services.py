@@ -93,36 +93,36 @@ class SielLayer1ServiceTests(unittest.TestCase):
                 {
                     'retailer': 'Amazon', 'batch_id': 'tv-a',
                     'actual_count': 333, 'main_count': 300,
-                    'bsr_count': 33,
+                    'bsr_count': 100,
                 },
                 {
                     'retailer': 'Flipkart', 'batch_id': 'tv-f',
                     'actual_count': 300, 'main_count': 300,
-                    'bsr_count': 0,
+                    'bsr_count': 100,
                 },
             ],
             'siel_ref': [
                 {
                     'retailer': 'Amazon', 'batch_id': 'ref-a',
                     'actual_count': 333, 'main_count': 300,
-                    'bsr_count': 33,
+                    'bsr_count': 100,
                 },
                 {
                     'retailer': 'Flipkart', 'batch_id': 'ref-f',
                     'actual_count': 302, 'main_count': 300,
-                    'bsr_count': 2,
+                    'bsr_count': 100,
                 },
             ],
             'siel_ldy': [
                 {
                     'retailer': 'Amazon', 'batch_id': 'ldy-a',
                     'actual_count': 240, 'main_count': 174,
-                    'bsr_count': 66,
+                    'bsr_count': 100,
                 },
                 {
                     'retailer': 'Flipkart', 'batch_id': 'ldy-f',
                     'actual_count': 309, 'main_count': 300,
-                    'bsr_count': 9,
+                    'bsr_count': 100,
                 },
             ],
         })
@@ -151,7 +151,7 @@ class SielLayer1ServiceTests(unittest.TestCase):
         ldy_amazon = check['categories'][2]['retailers'][0]
         self.assertEqual('ldy-a', ldy_amazon['batch_id'])
         self.assertEqual(174, ldy_amazon['main_count'])
-        self.assertEqual(66, ldy_amazon['bsr_count'])
+        self.assertEqual(100, ldy_amazon['bsr_count'])
 
     def test_before_completion_zero_is_collecting(self):
         self._set_counts({})

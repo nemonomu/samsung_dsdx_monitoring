@@ -9,12 +9,14 @@ from apps.common.siel_retail import (
 
 
 def get_latest_main_batch_counts(cursor, product_line, source_date):
-    """Return each retailer's latest MAIN batch and its MAIN+BSR counts.
+    """Return physical rows and MAIN/BSR rank coverage for the latest batch.
 
     The source date is bounded by KST calendar-day boundaries. The anchor
     batch comes from the greatest ``id`` among MAIN rows for each retailer;
-    only MAIN and BSR rows from that same batch are counted. No other date or
-    batch is used as a fallback.
+    only MAIN and BSR rows from that same batch contribute to the physical
+    row count. MAIN/BSR coverage is counted by non-NULL rank values because
+    one physical row may belong to both rankings. No other date or batch is
+    used as a fallback.
     """
     source = get_siel_source(product_line)
     table_name = source['table_name']
@@ -23,7 +25,8 @@ def get_latest_main_batch_counts(cursor, product_line, source_date):
     placeholders = ', '.join(['%s'] * len(retailer_keys))
     query = f"""
         WITH dated_rows AS (
-            SELECT id, batch_id, account_name, page_type
+            SELECT id, batch_id, account_name, page_type,
+                   main_rank, bsr_rank
             FROM {table_name}
             WHERE {date_column} >= (
                     %s::date::timestamp AT TIME ZONE
@@ -51,12 +54,8 @@ def get_latest_main_batch_counts(cursor, product_line, source_date):
                    WHERE LOWER(BTRIM(CAST(rows.page_type AS TEXT)))
                          IN ('main', 'bsr')
                ) AS actual_count,
-               COUNT(rows.id) FILTER (
-                   WHERE LOWER(BTRIM(CAST(rows.page_type AS TEXT))) = 'main'
-               ) AS main_count,
-               COUNT(rows.id) FILTER (
-                   WHERE LOWER(BTRIM(CAST(rows.page_type AS TEXT))) = 'bsr'
-               ) AS bsr_count
+               COUNT(rows.main_rank) AS main_count,
+               COUNT(rows.bsr_rank) AS bsr_count
         FROM latest_main_batches latest
         JOIN dated_rows rows
           ON LOWER(BTRIM(CAST(rows.account_name AS TEXT)))
