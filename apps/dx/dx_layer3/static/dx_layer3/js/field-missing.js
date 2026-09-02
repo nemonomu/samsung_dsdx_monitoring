@@ -1536,7 +1536,7 @@ function _fmRebuildTable() {
     st.table = new CommonTable('#fm-detail-table-area', {
         variant: 'detail', columns: ctColumns, vlines: true, section: true, showTotalCount: true,
         padding: '6px 12px', reorder: true, fixedColumns: ['_no'], multiSort: true,
-        pageSize: 15,
+        pageSize: 100,
         onPageSizeChange: async function(val) {
             if (Object.keys(fmPendingEdits).length > 0) {
                 if (!await showConfirm('변경된 값이 있습니다.\n저장하지 않고 이동하시겠습니까?', 'warning', { okText: '이동', cancelText: '취소' })) return;
@@ -1548,7 +1548,7 @@ function _fmRebuildTable() {
         onSort: function(sortArr) { st.sortState = sortArr; _fmSortAndRender(); }
     }).render();
 
-    var pageSize = 15;
+    var pageSize = 100;
     st.pager = new Pagination('#fm-detail-pagination', {
         pageSize: pageSize, showInfo: true,
         onPageChange: async function(page) {
@@ -1597,7 +1597,7 @@ function _fmRenderPage(page) {
     if (!st || !st.table) return;
 
     var dataArr = st._sortedData || st.allData;
-    var pageSize = (st.table && st.table.getPageSize) ? st.table.getPageSize() : 15;
+    var pageSize = (st.table && st.table.getPageSize) ? st.table.getPageSize() : 100;
     if (st.pager) st.pager.options.pageSize = pageSize;
     var start = (page - 1) * pageSize;
     var pageData = dataArr.slice(start, start + pageSize);

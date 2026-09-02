@@ -22,13 +22,13 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
 
 function getDefaultNullHistoryDays(tableParam) {
     return SEA_TSE_NULL_HISTORY_TABLES.has(String(tableParam || '').toLowerCase())
-        ? 2
+        ? 3
         : 1;
 }
 
 function getDefaultFormatHistoryDays(tableParam) {
     return SEA_TSE_NULL_HISTORY_TABLES.has(String(tableParam || '').toLowerCase())
-        ? 2
+        ? 3
         : 1;
 }
 

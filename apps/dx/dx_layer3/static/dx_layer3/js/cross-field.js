@@ -5,7 +5,7 @@ function getDefaultCrossfieldHistoryDays(productLine) {
         || key === 'sea_tv'
         || key.startsWith('sea_')
         || key.startsWith('tse_')
-        ? 2
+        ? 3
         : 1;
 }
 
@@ -409,7 +409,7 @@ function _cfRebuildTable() {
         reorder: true,
         fixedColumns: ['_no'],
         multiSort: true,
-        pageSize: 15,
+        pageSize: 100,
         onPageSizeChange: function(val) {
             if (st.pager) st.pager.options.pageSize = val;
             _cfRenderPage(1);
@@ -420,7 +420,7 @@ function _cfRebuildTable() {
         }
     }).render();
 
-    var pageSize = 15;
+    var pageSize = 100;
     st.pager = new Pagination('#cf-detail-pagination', {
         pageSize: pageSize,
         showInfo: true,
@@ -482,7 +482,7 @@ function _cfRenderPage(page) {
     var st = window._cfDetailState;
     if (!st || !st.table) return;
     var dataArr = st._sortedData || st.allData;
-    var pageSize = (st.table && st.table.getPageSize) ? st.table.getPageSize() : 15;
+    var pageSize = (st.table && st.table.getPageSize) ? st.table.getPageSize() : 100;
     if (st.pager) st.pager.options.pageSize = pageSize;
     var start = (page - 1) * pageSize;
     var pageData = dataArr.slice(start, start + pageSize);

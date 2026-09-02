@@ -15,6 +15,8 @@ assert(source.includes('st.sourceDate || window._fmSourceDate'));
 assert(source.includes('window._fmDate = inspectionDate'));
 assert(source.includes('window._fmSourceDate = sourceDate'));
 assert(source.includes('crawl_date: window._fmDate'));
+assert(source.includes('pageSize: 100'));
+assert(source.includes('getPageSize() : 100'));
 assert(template.includes('id="field-missing-date-scope"'));
 assert(template.includes("field-missing.js' %}?v=3"));
 

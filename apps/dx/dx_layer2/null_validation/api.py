@@ -34,7 +34,7 @@ def null_detail(request):
     retailer = request.GET.get('retailer')
     column = request.GET.get('column')
     default_days = (
-        2 if category in SEA_TSE_DEFAULT_HISTORY_CATEGORIES else 1
+        3 if category in SEA_TSE_DEFAULT_HISTORY_CATEGORIES else 1
     )
     try:
         days = min(30, max(1, int(request.GET.get('days', default_days))))

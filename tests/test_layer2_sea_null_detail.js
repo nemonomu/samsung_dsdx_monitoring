@@ -118,11 +118,14 @@ const youtubeSandbox = {
 };
 vm.createContext(youtubeSandbox);
 vm.runInContext(nullSource, youtubeSandbox);
-assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('tv_retail'), 2);
-assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('sea_ref_retail'), 2);
-assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('sea_ldy_retail'), 2);
-assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('tse_tv_retail'), 2);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('tv_retail'), 3);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('sea_ref_retail'), 3);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('sea_ldy_retail'), 3);
+assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('tse_tv_retail'), 3);
 assert.strictEqual(youtubeSandbox.getDefaultNullHistoryDays('youtube'), 1);
+assert.strictEqual(youtubeSandbox.getDefaultFormatHistoryDays('tv_retail'), 3);
+assert.ok(layer2CommonSource.includes('detailViewState.pageSize || 100'));
+assert.ok(layer2CommonSource.includes('getPageSize() : 100'));
 vm.runInContext(`
     modalState.tableParam = 'youtube';
     modalState.tableName = 'YouTube';

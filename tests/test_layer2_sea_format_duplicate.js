@@ -23,7 +23,7 @@ assert(nullUi.includes("tableName === 'SEA LDY' ? 'sea_ldy_retail'"));
 assert(nullUi.includes("'sea_ref_retail'"));
 assert(nullUi.includes("'sea_ldy_retail'"));
 assert(nullUi.includes('function getDefaultFormatHistoryDays(tableParam)'));
-assert(nullUi.includes('? 2'));
+assert(nullUi.includes('? 3'));
 
 assert(format.includes("const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam)"));
 assert(format.includes('(isTseRetail || isSeaRetail)'));

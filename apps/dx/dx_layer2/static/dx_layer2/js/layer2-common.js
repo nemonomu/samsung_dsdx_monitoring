@@ -531,7 +531,7 @@ function renderDetailWithTable(options) {
     }
 
     // Pagination
-    var pageSize = detailViewState.pageSize || 15;
+    var pageSize = detailViewState.pageSize || 100;
     detailViewState.pager = new Pagination('#detail-pagination', {
         pageSize: pageSize,
         showInfo: true,
@@ -597,7 +597,7 @@ function _buildDetailTable() {
         reorder: true,
         fixedColumns: ['_no'],
         multiSort: !isRowspan,
-        pageSize: detailViewState.pageSize || 15,
+        pageSize: detailViewState.pageSize || 100,
         onPageSizeChange: function(val) {
             detailViewState.pageSize = val;
             if (detailViewState.pager) detailViewState.pager.options.pageSize = val;
@@ -1272,7 +1272,7 @@ function detailRenderPage(page) {
     var visibleCols = detailViewState.columns;
     var pageSize = (detailViewState.table && detailViewState.table.getPageSize)
         ? detailViewState.table.getPageSize()
-        : (detailViewState.pager ? detailViewState.pager.getPageSize() : 15);
+        : (detailViewState.pager ? detailViewState.pager.getPageSize() : 100);
     if (detailViewState.pager) detailViewState.pager.options.pageSize = pageSize;
 
     // rowspan인 경우 그룹 단위로 페이징

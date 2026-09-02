@@ -372,10 +372,12 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     vm.runInContext(commonSource, commonSandbox);
     vm.runInContext(source, commonSandbox);
 
-    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tv'), 2);
-    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('sea_ref'), 2);
-    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tse_ldy'), 2);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tv'), 3);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('sea_ref'), 3);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tse_ldy'), 3);
     assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('hhp'), 1);
+    assert.ok(source.includes('pageSize: 100'));
+    assert.ok(source.includes('getPageSize() : 100'));
 
     let copiedSql = '';
     commonSandbox.navigator = {
@@ -443,7 +445,7 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     );
     assert.strictEqual(
         requestedUrl,
-        '/layer3/api/cross-field-detail/?date=2026-08-11&type=tse_tv&rule_id=rule-1&days=2'
+        '/layer3/api/cross-field-detail/?date=2026-08-11&type=tse_tv&rule_id=rule-1&days=3'
     );
 
     commonSandbox.window.crossfieldSummaryData = {

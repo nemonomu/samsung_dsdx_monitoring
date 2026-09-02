@@ -18,7 +18,7 @@ def cross_field_detail(request):
     product_line = request.GET.get('type', 'tv')
     rule_id = request.GET.get('rule_id')  # 특정 규칙 상세 조회 시
     product_line_key = str(product_line or '').lower()
-    default_days = 2 if (
+    default_days = 3 if (
         product_line_key in {'tv', 'sea_tv'}
         or product_line_key.startswith('sea_')
         or product_line_key.startswith('tse_')
