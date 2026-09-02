@@ -315,11 +315,7 @@ async function run() {
     assert(!emailHtml.includes('예상건수'));
     assert(!emailHtml.includes('예상 건수'));
     assert(!emailHtml.includes('필터링 기준'));
-    assert(emailHtml.includes(
-        '<tr><th colspan="4">합 계</th><th>4780</th><th>3600</th><th>570</th></tr>'
-    ));
-    assert(emailHtml.includes('>main_rank</span></th>'));
-    assert(emailHtml.includes('>bsr_rank</span></th>'));
+    assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4780</th></tr>'));
     assert(emailHtml.includes(
         'main_rank/bsr_rank는 값이 존재하는 행 수이며'
     ));
@@ -330,6 +326,8 @@ async function run() {
     const emailDailyTable = emailHtml.match(
         /<table class="e"[^>]*>[\s\S]*?<\/table>/
     )[0];
+    assert(!emailDailyTable.includes('main_rank'));
+    assert(!emailDailyTable.includes('bsr_rank'));
     assert.strictEqual(
         (emailDailyTable.match(/RAW_EXT_TV_RETAIL_COM_VIEW/g) || []).length,
         1
@@ -379,7 +377,7 @@ async function run() {
     );
     assert.strictEqual(
         (emailDailyTable.match(/border-top:2px solid #1f4e78;/g) || []).length,
-        21
+        15
     );
     const dividerRows = Array.from(
         emailDailyTable.matchAll(/<tr><td align="center" style="border-top:2px solid #1f4e78;">(\d+)<\/td>/g),
@@ -403,6 +401,23 @@ async function run() {
     assert(emailHtml.includes(
         'TSE - LDY · 데이터일 2026.07.29 (D)'
     ));
+    const rankSummary = emailHtml.match(
+        /<div class="et">main_rank \/ bsr_rank 수집 현황<\/div>(<table[\s\S]*?<\/table>)/
+    );
+    assert(rankSummary);
+    assert(rankSummary[1].includes(
+        '<th colspan="2">TV</th><th colspan="2">REF</th><th colspan="2">LDY</th>'
+    ));
+    assert(rankSummary[1].includes(
+        '<tr><th>SEA</th><td>750</td><td>100</td><td>600</td><td>100</td><td>-</td><td>-</td></tr>'
+    ));
+    assert(rankSummary[1].includes(
+        '<tr><th>TSE</th><td>-</td><td>-</td><td>-</td><td>-</td><td>250</td><td>80</td></tr>'
+    ));
+    assert(
+        emailHtml.indexOf('main_rank / bsr_rank 수집 현황')
+        < emailHtml.indexOf('SEA - TV · 데이터일')
+    );
     assert(!emailDailyTable.includes('국가 공통'));
     assert(!emailDailyTable.includes('한 번만 표시'));
     assert(!emailDailyTable.includes('public.tv_retail_com'));
