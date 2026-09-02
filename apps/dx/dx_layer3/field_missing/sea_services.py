@@ -25,6 +25,14 @@ SEA_FIELD_MISSING_COLUMNS = {
     ),
 }
 
+SEA_FIELD_MISSING_RELATED_COLUMNS = {
+    'recommendation_intent': (
+        'detailed_review_content',
+        'count_of_reviews',
+        'count_of_star_ratings',
+    ),
+}
+
 _PRODUCT_ALIASES = {
     'ref': 'sea_ref',
     'sea_ref': 'sea_ref',
@@ -51,6 +59,12 @@ def get_validation_columns(product_line):
     if not is_sea_product_line(product_line):
         return []
     return list(SEA_FIELD_MISSING_COLUMNS[normalize_product_line(product_line)])
+
+
+def get_default_related_columns(product_line, field):
+    if not is_sea_product_line(product_line):
+        return []
+    return list(SEA_FIELD_MISSING_RELATED_COLUMNS.get(field, ()))
 
 
 def get_retailers(product_line):
@@ -487,6 +501,9 @@ def field_missing_detail_by_field(
     fields = _safe_columns(display_fields)
     if field not in fields:
         fields.append(field)
+    for related_column in _safe_columns(related_columns):
+        if related_column not in fields:
+            fields.append(related_column)
     rows = _load_latest_rows(
         cursor, query_start, target_date, key, retailer, fields,
     )

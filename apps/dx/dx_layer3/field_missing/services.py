@@ -18,6 +18,10 @@ def get_field_missing_validation_columns(product_line):
     return sea_services.get_validation_columns(product_line)
 
 
+def get_field_missing_default_related_columns(product_line, field):
+    return sea_services.get_default_related_columns(product_line, field)
+
+
 def get_field_missing_retailers(product_line):
     if sea_services.is_sea_product_line(product_line):
         return sea_services.get_retailers(product_line)

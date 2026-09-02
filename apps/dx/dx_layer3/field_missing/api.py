@@ -25,16 +25,22 @@ def _columns_with_related(product_line, retailer):
     fixed = services.get_field_missing_validation_columns(product_line)
     if not fixed:
         return configured
-    configured_by_name = {
-        column['column_name']: column for column in configured
-    }
-    return [
-        configured_by_name.get(column, {
+    result = []
+    configured_names = set()
+    for column in configured:
+        column_name = column.get('column_name')
+        if not column_name or column_name in configured_names:
+            continue
+        configured_names.add(column_name)
+        result.append(column)
+    for column in fixed:
+        if column in configured_names:
+            continue
+        result.append({
             'column_name': column,
             'related_columns': '',
         })
-        for column in fixed
-    ]
+    return result
 
 
 def _resolve_request_dates(date_str, product_line):
@@ -115,9 +121,10 @@ def field_missing_detail_all(request):
 
     # DB에서 리테일러별 수집 필드 로드
     if services.is_sea_field_missing_product_line(product_line):
-        retail_columns = services.get_field_missing_validation_columns(
-            product_line
-        )
+        retail_columns = [
+            column['column_name']
+            for column in _columns_with_related(product_line, retailer)
+        ]
     else:
         from apps.common.retail_columns import get_retailer_columns
         retail_columns = get_retailer_columns(product_line, retailer)
@@ -233,6 +240,11 @@ def field_missing_detail_by_field(request):
         if c['column_name'] == field and c['related_columns']:
             related_columns = [col.strip() for col in c['related_columns'].split('|') if col.strip()]
             break
+    default_related = services.get_field_missing_default_related_columns(
+        product_line, field
+    )
+    if default_related:
+        related_columns = default_related
 
     if field not in display_fields:
         return JsonResponse({'status': 'error', 'message': '허용되지 않은 필드'})

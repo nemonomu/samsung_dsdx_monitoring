@@ -1,5 +1,6 @@
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 from apps.common import inspection_dates
 from tests.unit.support import ScriptedCursor, load_module, module_stub, package_stub
@@ -141,6 +142,45 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             services.get_field_missing_validation_columns('sea_ldy'),
         )
 
+    def test_ref_detail_columns_keep_all_configured_columns(self):
+        configured = [
+            {'column_name': 'final_sku_price', 'related_columns': ''},
+            {
+                'column_name': 'recommendation_intent',
+                'related_columns': 'legacy_related',
+            },
+            {'column_name': 'detailed_review_content', 'related_columns': ''},
+        ]
+        retail_columns_stub = module_stub(
+            'apps.common.retail_columns',
+            get_retail_columns_with_related=lambda *_args: configured,
+        )
+        with patch.dict(
+            'sys.modules',
+            {'apps.common.retail_columns': retail_columns_stub},
+        ):
+            result = api._columns_with_related('sea_ref', 'Bestbuy')
+
+        names = [column['column_name'] for column in result]
+        self.assertEqual('final_sku_price', names[0])
+        self.assertIn('detailed_review_content', names)
+        self.assertIn('ref_capacity', names)
+        self.assertIn('ref_refrigerator_type', names)
+        self.assertIn('sku', names)
+        self.assertEqual(1, names.count('recommendation_intent'))
+
+    def test_recommendation_intent_uses_review_context_by_default(self):
+        self.assertEqual(
+            [
+                'detailed_review_content',
+                'count_of_reviews',
+                'count_of_star_ratings',
+            ],
+            services.get_field_missing_default_related_columns(
+                'sea_ref', 'recommendation_intent'
+            ),
+        )
+
     def test_ref_maps_inspection_date_to_previous_source_date(self):
         contract = services.resolve_field_missing_date_contract(
             date(2026, 9, 1), 'sea_ref'
@@ -189,6 +229,10 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             'ref_capacity': '25 cu ft',
             'sku': 'SKU-1',
             'recommendation_intent': '90% would recommend to a friend',
+            'detailed_review_content': 'review1 - good',
+            'count_of_reviews': 1,
+            'count_of_star_ratings': 1,
+            'final_sku_price': '$999.99',
             'product_url': 'https://example.test/ref',
         }
         rows = [
@@ -240,6 +284,10 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             'ref_capacity': '25 cu ft',
             'sku': 'SKU-1',
             'recommendation_intent': '90% would recommend to a friend',
+            'detailed_review_content': 'review1 - good',
+            'count_of_reviews': 1,
+            'count_of_star_ratings': 1,
+            'final_sku_price': '$999.99',
             'product_url': 'https://example.test/ref',
         }
         rows = [
@@ -252,11 +300,13 @@ class SeaFieldMissingDateTests(unittest.TestCase):
                 'id': 2, 'account_name': 'Bestbuy', 'page_type': 'MAIN',
                 'item': 'OLD-1', 'crawl_strdatetime': '2026-08-31',
                 'ref_refrigerator_type': None, **values,
+                'recommendation_intent': None,
             },
             {
                 'id': 3, 'account_name': 'Bestbuy', 'page_type': 'MAIN',
                 'item': 'NEW-NULL', 'crawl_strdatetime': '2026-08-31',
                 'ref_refrigerator_type': None, **values,
+                'recommendation_intent': None,
             },
         ]
         cursor = ScriptedCursor([
@@ -264,11 +314,21 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             {'fetchall': []},
         ])
 
+        display_fields = (
+            services.get_field_missing_validation_columns('sea_ref') + [
+                'detailed_review_content', 'count_of_reviews',
+                'count_of_star_ratings', 'final_sku_price',
+            ]
+        )
+        related_columns = (
+            services.get_field_missing_default_related_columns(
+                'sea_ref', 'recommendation_intent'
+            )
+        )
         result = services.field_missing_detail_by_field(
             cursor, date(2026, 8, 31), 'sea_ref', 'Bestbuy',
-            'ref_refrigerator_type', 3, [],
-            services.get_field_missing_validation_columns('sea_ref'),
-            [], ['ref_refrigerator_type'],
+            'recommendation_intent', 3, [], display_fields,
+            related_columns, ['recommendation_intent'],
             inspection_date=date(2026, 9, 1),
         )
 
@@ -280,6 +340,15 @@ class SeaFieldMissingDateTests(unittest.TestCase):
         self.assertEqual(1, result['new_item_count'])
         self.assertNotIn('batch_id', result['columns'])
         self.assertIn('product_url', result['columns'])
+        self.assertIn('final_sku_price', result['columns'])
+        self.assertEqual(
+            [
+                'id', 'crawl_strdatetime', 'item',
+                'recommendation_intent', 'detailed_review_content',
+                'count_of_reviews', 'count_of_star_ratings', 'product_url',
+            ],
+            result['default_columns'],
+        )
 
     def test_ldy_detects_new_null_item_in_latest_batch_scope(self):
         rows = [{
