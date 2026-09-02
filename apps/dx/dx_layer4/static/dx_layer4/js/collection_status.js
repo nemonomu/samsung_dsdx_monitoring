@@ -475,15 +475,15 @@
         }
 
         var columnOrder = (source.column_order || []).filter(isVisibleColumn);
-        var isSeaTv = String(source.key || '').toLowerCase() === 'sea_tv'
-            || (String(source.country || '').toUpperCase() === 'SEA'
-                && String(source.product || '').toUpperCase() === 'TV');
         var retailers = (source.retailers || []).map(function(retailer) {
             var copy = Object.assign({}, retailer);
             copy.columns = (retailer.columns || []).filter(function(column) {
                 return isVisibleColumn(column.column);
             });
-            if (isSeaTv && retailer.retailer === 'Amazon'
+            var hasRedirectMetric = Object.prototype.hasOwnProperty.call(
+                retailer, 'redirect_true_count'
+            );
+            if (hasRedirectMetric
                     && !copy.columns.some(function(column) { return column.column === 'redirect'; })) {
                 copy.columns.push({
                     column: 'redirect',
@@ -494,7 +494,11 @@
             }
             return copy;
         });
-        if (isSeaTv && retailers.some(function(retailer) { return retailer.retailer === 'Amazon'; })
+        if (retailers.some(function(retailer) {
+                    return Object.prototype.hasOwnProperty.call(
+                        retailer, 'redirect_true_count'
+                    );
+                })
                 && columnOrder.indexOf('redirect') === -1) {
             columnOrder.push('redirect');
         }

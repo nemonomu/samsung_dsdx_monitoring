@@ -506,6 +506,75 @@ async function run() {
     assert(offerRow);
     assert.strictEqual((offerRow[1].match(/>-<\/td>/g) || []).length, 2);
 
+    const sielEmailData = {
+        success: true,
+        complete: true,
+        date: '2026-07-29',
+        inspection_date: '2026-07-29',
+        sources: ['TV', 'REF', 'LDY'].map(function(product, index) {
+            return {
+                key: 'siel_' + product.toLowerCase(),
+                country: 'SIEL',
+                product: product,
+                table_name: 'dx_siel.dx_siel_' + product.toLowerCase() + '_retail_com',
+                inspection_date: '2026-07-29',
+                source_date: '2026-07-29',
+                offset_days: 0,
+                total_count: 605 + index,
+                main_count: 600,
+                bsr_count: 100,
+                column_order: ['item'],
+                retailers: [{
+                    retailer: 'Amazon',
+                    total_count: 305,
+                    main_count: 300,
+                    bsr_count: 100,
+                    redirect_true_count: 5 + index,
+                    columns: [{ column: 'item', total_count: 305, null_count: 0 }]
+                }, {
+                    retailer: 'Flipkart',
+                    total_count: 300,
+                    main_count: 300,
+                    bsr_count: 0,
+                    columns: [{ column: 'item', total_count: 300, null_count: 0 }]
+                }]
+            };
+        }),
+        errors: []
+    };
+    const sielEmail = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        layer1Data,
+        { success: true, retailers: [] },
+        sielEmailData
+    );
+    sielEmail.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const sielHtml = sielEmail.elements['cs-email-container'].innerHTML;
+    ['TV', 'REF', 'LDY'].forEach(function(product, index) {
+        const sectionStart = sielHtml.indexOf(
+            '<div class="et">SIEL - ' + product
+        );
+        const nextProduct = ['REF', 'LDY'][index];
+        const sectionEnd = nextProduct
+            ? sielHtml.indexOf('<div class="et">SIEL - ' + nextProduct, sectionStart)
+            : sielHtml.indexOf('<br>감사합니다.', sectionStart);
+        const sectionTables = Array.from(
+            sielHtml.slice(sectionStart, sectionEnd).matchAll(/<table[\s\S]*?<\/table>/g),
+            match => match[0]
+        );
+        assert.strictEqual(sectionTables.length, 2);
+        const redirectRow = sectionTables[1].match(
+            /<tr><td[^>]*>redirect<\/td>([\s\S]*?)<\/tr>/
+        );
+        assert(redirectRow);
+        assert(redirectRow[1].includes(
+            '<td align="center">' + (5 + index) + '</td><td align="center">0</td>'
+        ));
+        assert.strictEqual((redirectRow[1].match(/>-<\/td>/g) || []).length, 2);
+        assert(redirectRow[1].includes('Amazon redirect=TRUE 건수'));
+    });
+
     const lotussEmailData = JSON.parse(JSON.stringify(emailReportData));
     const lotussLdy = lotussEmailData.sources.find(source => source.key === 'tse_ldy');
     lotussLdy.total_count = 326;

@@ -161,6 +161,22 @@ class EmailRegistryTests(unittest.TestCase):
                 ('original_sku_price', 'savings'),
             )
 
+        siel_sources = [
+            source for source in registry.EMAIL_REPORT_SOURCES
+            if source['country'] == 'SIEL'
+        ]
+        self.assertEqual(
+            {source['product'] for source in siel_sources},
+            {'TV', 'REF', 'LDY'},
+        )
+        for configured_source in siel_sources:
+            retailers = {
+                retailer['name']: retailer
+                for retailer in configured_source['retailers']
+            }
+            self.assertTrue(retailers['Amazon']['email_redirect_metric'])
+            self.assertFalse(retailers['Flipkart']['email_redirect_metric'])
+
 
 class EmailReportDataTests(unittest.TestCase):
     def test_db_columns_latest_batch_and_whitespace_missing_counts(self):
@@ -387,6 +403,46 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertIn('GREATEST', promotion_missing)
         self.assertIn('source.promotion_type', promotion_missing)
         self.assertEqual(promotion_remark, '프로모션 페이지 수집 항목')
+
+    def test_siel_amazon_redirect_metric_uses_latest_batch(self):
+        registry = load_registry()
+        siel_ref = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'siel_ref'
+        )
+        siel_ref = {
+            **siel_ref,
+            'retailers': (siel_ref['retailers'][0],),
+        }
+        cursor = ScriptedCursor([
+            {'fetchall': [('sku', 'amazon', False)]},
+            {'fetchone': ('a_20260811_000011',)},
+            {'fetchone': (305, 305, 0, 305, 0, 300, 100)},
+            {'fetchone': (5,)},
+        ])
+        service = load_service(cursor)
+
+        result = service.get_email_report_data(
+            date(2026, 8, 11), sources=(siel_ref,)
+        )
+
+        self.assertTrue(result['complete'])
+        amazon = result['sources'][0]['retailers'][0]
+        self.assertEqual(5, amazon['redirect_true_count'])
+        aggregate_sql = cursor.calls[2][0]
+        redirect_sql, redirect_params = cursor.calls[3]
+        self.assertNotIn(
+            'COALESCE(source.redirect, FALSE) IS NOT TRUE', aggregate_sql,
+        )
+        self.assertIn(
+            'FROM dx_siel.dx_siel_ref_retail_com source', redirect_sql,
+        )
+        self.assertIn('source.redirect IS TRUE', redirect_sql)
+        self.assertIn(
+            'source.batch_id IS NOT DISTINCT FROM %s', redirect_sql,
+        )
+        self.assertEqual('a_20260811_000011', redirect_params[-1])
 
     def test_tse_latest_batch_anchor_excludes_unassigned_rows(self):
         tse_source = {

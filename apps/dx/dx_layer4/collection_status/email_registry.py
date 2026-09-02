@@ -18,7 +18,8 @@ _TABLE_IDENTIFIER = re.compile(
 
 def _retailer(name, *aliases, exclude_redirect=False,
               include_unassigned=None, unsupported_columns=(),
-              conditional_columns=(), optional_if_unconfigured=False):
+              conditional_columns=(), optional_if_unconfigured=False,
+              email_redirect_metric=False):
     retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
@@ -26,6 +27,7 @@ def _retailer(name, *aliases, exclude_redirect=False,
         'unsupported_columns': tuple(unsupported_columns),
         'conditional_columns': tuple(conditional_columns),
         'optional_if_unconfigured': bool(optional_if_unconfigured),
+        'email_redirect_metric': bool(email_redirect_metric),
     }
     if include_unassigned is not None:
         retailer['include_unassigned'] = bool(include_unassigned)
@@ -82,7 +84,7 @@ _SEG_THREE_RETAILERS = (
 )
 _SEG_LDY_RETAILERS = _SEG_THREE_RETAILERS[:2]
 _SIEL_RETAILERS = (
-    _retailer('Amazon'),
+    _retailer('Amazon', email_redirect_metric=True),
     _retailer('Flipkart'),
 )
 def _tse_retailers(product):
@@ -214,6 +216,10 @@ def _validate_registry():
             if retailer.get('optional_if_unconfigured') not in {True, False}:
                 raise ValueError(
                     f"Unsafe optional retailer policy: {source['key']}"
+                )
+            if retailer.get('email_redirect_metric') not in {True, False}:
+                raise ValueError(
+                    f"Unsafe email redirect policy: {source['key']}"
                 )
             for identifier in (
                     *retailer.get('unsupported_columns', ()),

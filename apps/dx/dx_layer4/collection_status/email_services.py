@@ -234,8 +234,15 @@ def _column_metrics(source, retailer, column):
     return ('COUNT(*)', _count_when(missing), '')
 
 
+def _has_redirect_metric(retailer):
+    return bool(
+        retailer.get('exclude_redirect')
+        or retailer.get('email_redirect_metric')
+    )
+
+
 def _empty_retailer(retailer):
-    return {
+    result = {
         'retailer': retailer['name'],
         'aliases': list(retailer['aliases']),
         'total_count': 0,
@@ -249,16 +256,25 @@ def _empty_retailer(retailer):
             for column in retailer['columns']
         ],
     }
+    if _has_redirect_metric(retailer):
+        result['redirect_true_count'] = 0
+    return result
 
 
-def _query_redirect_count(cursor, source, retailer, target_date):
-    if not retailer.get('exclude_redirect'):
+def _query_redirect_count(cursor, source, retailer, target_date, batch_id):
+    if not _has_redirect_metric(retailer):
         return 0
     scope = _source_scope(source, retailer, include_excluded=True)
     params = _retailer_params(retailer) + _date_params(source, target_date)
+    batch_clause = ''
+    if source.get('latest_batch', True):
+        batch_clause = (
+            f" AND source.{source['batch_column']} IS NOT DISTINCT FROM %s"
+        )
+        params.append(batch_id)
     cursor.execute(
         f"SELECT COUNT(*) FROM {source['table_name']} source "
-        f"WHERE {scope} AND source.redirect IS TRUE",
+        f"WHERE {scope}{batch_clause} AND source.redirect IS TRUE",
         params,
     )
     row = cursor.fetchone()
@@ -349,7 +365,7 @@ def _query_retailer(cursor, source, retailer, target_date):
         columns.append(item)
 
     redirect_true_count = _query_redirect_count(
-        cursor, source, retailer, target_date,
+        cursor, source, retailer, target_date, batch_id,
     )
     has_data = total_count > 0 or any(
         column['total_count'] > 0 for column in columns
@@ -365,7 +381,7 @@ def _query_retailer(cursor, source, retailer, target_date):
         'has_data': has_data,
         'columns': columns,
     }
-    if retailer.get('exclude_redirect'):
+    if _has_redirect_metric(retailer):
         result['redirect_true_count'] = redirect_true_count
     return result
 
