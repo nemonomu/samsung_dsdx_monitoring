@@ -97,7 +97,7 @@ def _backup_error_response(result, default_error):
 
 
 def backup_retail_data(request):
-    """SEA TV와 TSE TV/REF/LDY 통합 백업 API.
+    """SEA/SIEL/TSE TV/REF/LDY 통합 백업 API.
 
     GET: 백업 대상 건수 조회
     POST: 백업 실행
@@ -116,6 +116,9 @@ def backup_retail_data(request):
                 'tv_count': result['tv_count'],
                 'sea_ref_count': result['sea_ref_count'],
                 'sea_ldy_count': result['sea_ldy_count'],
+                'siel_tv_count': result['siel_tv_count'],
+                'siel_ref_count': result['siel_ref_count'],
+                'siel_ldy_count': result['siel_ldy_count'],
                 'tse_tv_count': result['tse_tv_count'],
                 'tse_ref_count': result['tse_ref_count'],
                 'tse_ldy_count': result['tse_ldy_count'],
@@ -138,6 +141,9 @@ def backup_retail_data(request):
                 'tv_count': result['tv']['count'],
                 'sea_ref_count': result['sea_ref']['count'],
                 'sea_ldy_count': result['sea_ldy']['count'],
+                'siel_tv_count': result['siel_tv']['count'],
+                'siel_ref_count': result['siel_ref']['count'],
+                'siel_ldy_count': result['siel_ldy']['count'],
                 'tse_tv_count': result['tse_tv']['count'],
                 'tse_ref_count': result['tse_ref']['count'],
                 'tse_ldy_count': result['tse_ldy']['count'],
@@ -146,6 +152,9 @@ def backup_retail_data(request):
                 f"백업 완료 - SEA TV: {counts['tv_count']}건, "
                 f"SEA REF: {counts['sea_ref_count']}건, "
                 f"SEA LDY: {counts['sea_ldy_count']}건, "
+                f"SIEL TV: {counts['siel_tv_count']}건, "
+                f"SIEL REF: {counts['siel_ref_count']}건, "
+                f"SIEL LDY: {counts['siel_ldy_count']}건, "
                 f"TSE TV: {counts['tse_tv_count']}건, "
                 f"TSE REF: {counts['tse_ref_count']}건, "
                 f"TSE LDY: {counts['tse_ldy_count']}건"

@@ -48,12 +48,36 @@ SEA_RETAIL_SOURCES = {
     },
 }
 
+SIEL_SOURCE_CONFIG = {
+    'siel_tv': {
+        'source_key': 'siel_tv', 'category': 'TV',
+        'table_name': 'dx_siel.dx_siel_tv_retail_com',
+        'backup_table_name': 'dx_siel.dx_siel_tv_retail_com_backup',
+        'date_column': 'crawl_datetime',
+    },
+    'siel_ref': {
+        'source_key': 'siel_ref', 'category': 'REF',
+        'table_name': 'dx_siel.dx_siel_ref_retail_com',
+        'backup_table_name': 'dx_siel.dx_siel_ref_retail_com_backup',
+        'date_column': 'crawl_datetime',
+    },
+    'siel_ldy': {
+        'source_key': 'siel_ldy', 'category': 'LDY',
+        'table_name': 'dx_siel.dx_siel_ldy_retail_com',
+        'backup_table_name': 'dx_siel.dx_siel_ldy_retail_com_backup',
+        'date_column': 'crawl_datetime',
+    },
+}
+
 
 def backup_date_payload():
     source_dates = {
         'sea_tv': '2026-08-10',
         'sea_ref': '2026-08-10',
         'sea_ldy': '2026-08-10',
+        'siel_tv': '2026-08-11',
+        'siel_ref': '2026-08-11',
+        'siel_ldy': '2026-08-11',
         'tse_tv': '2026-08-11',
         'tse_ref': '2026-08-11',
         'tse_ldy': '2026-08-11',
@@ -156,12 +180,17 @@ def load_backup(connection, errors=None):
                 'apps.common.sea_retail',
                 SEA_RETAIL_SOURCES=SEA_RETAIL_SOURCES,
             ),
+            'apps.common.siel_retail': module_stub(
+                'apps.common.siel_retail',
+                SIEL_BUSINESS_TIMEZONE='Asia/Seoul',
+                SIEL_SOURCE_CONFIG=SIEL_SOURCE_CONFIG,
+            ),
         },
     )
 
 
 class BackupTests(unittest.TestCase):
-    def test_pending_count_includes_sea_and_all_tse_sources(self):
+    def test_pending_count_includes_sea_siel_and_tse_sources(self):
         cursor = BackupCursor(pending={
             'tv_retail_com_backup_all': 5,
             'public.ref_retail_com_backup': 6,
@@ -169,6 +198,9 @@ class BackupTests(unittest.TestCase):
             'dx_tse_tv_retail_com_backup': 4,
             'dx_tse_ref_retail_com_backup': 3,
             'dx_tse_ldy_retail_com_backup': 2,
+            'dx_siel_tv_retail_com_backup': 8,
+            'dx_siel_ref_retail_com_backup': 9,
+            'dx_siel_ldy_retail_com_backup': 10,
         })
         connection = BackupConnection(cursor)
         backup = load_backup(connection)
@@ -178,21 +210,25 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(result['tv_count'], 5)
         self.assertEqual(result['sea_ref_count'], 6)
         self.assertEqual(result['sea_ldy_count'], 7)
+        self.assertEqual(result['siel_tv_count'], 8)
+        self.assertEqual(result['siel_ref_count'], 9)
+        self.assertEqual(result['siel_ldy_count'], 10)
         self.assertEqual(result['tse_tv_count'], 4)
         self.assertEqual(result['tse_ref_count'], 3)
         self.assertEqual(result['tse_ldy_count'], 2)
-        self.assertEqual(result['total_count'], 27)
+        self.assertEqual(result['total_count'], 54)
         self.assertEqual(result['inspection_date'], '2026-08-11')
         self.assertEqual(result['source_dates']['sea_tv'], '2026-08-10')
         self.assertEqual(result['source_dates']['sea_ref'], '2026-08-10')
         self.assertEqual(result['source_dates']['sea_ldy'], '2026-08-10')
+        self.assertEqual(result['source_dates']['siel_tv'], '2026-08-11')
         self.assertEqual(result['source_dates']['tse_tv'], '2026-08-11')
         count_calls = [
             (sql, params)
             for sql, params in cursor.calls
             if 'SELECT COUNT(*)' in sql
         ]
-        self.assertEqual(len(count_calls), 6)
+        self.assertEqual(len(count_calls), 9)
         self.assertIn(
             'FROM public.tv_retail_com a',
             count_calls[0][0],
@@ -209,7 +245,14 @@ class BackupTests(unittest.TestCase):
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
-            for sql, _ in count_calls[3:]
+            for sql, _ in count_calls[3:6]
+        ))
+        self.assertIn(
+            'FROM dx_siel.dx_siel_tv_retail_com a', count_calls[6][0],
+        )
+        self.assertTrue(all(
+            "AT TIME ZONE 'Asia/Seoul'" in sql
+            for sql, _ in count_calls[6:]
         ))
         self.assertTrue(all(
             'batch_id' not in sql and 'page_type' not in sql
@@ -217,7 +260,9 @@ class BackupTests(unittest.TestCase):
         ))
         self.assertEqual(
             [params for _, params in count_calls],
-            [('2026-08-10',)] * 3 + [('2026-08-11',)] * 3,
+            [('2026-08-10',)] * 3 +
+            [('2026-08-11',)] * 3 +
+            [('2026-08-11', '2026-08-11')] * 3,
         )
         self.assertTrue(cursor.closed)
         self.assertTrue(connection.closed)
@@ -252,6 +297,9 @@ class BackupTests(unittest.TestCase):
             'dx_tse_tv_retail_com_backup': [20],
             'dx_tse_ref_retail_com_backup': [],
             'dx_tse_ldy_retail_com_backup': [30, 31, 32],
+            'dx_siel_tv_retail_com_backup': [40],
+            'dx_siel_ref_retail_com_backup': [50, 51],
+            'dx_siel_ldy_retail_com_backup': [],
         })
         connection = BackupConnection(cursor)
         backup = load_backup(connection)
@@ -262,6 +310,9 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(result['tv']['count'], 2)
         self.assertEqual(result['sea_ref']['count'], 2)
         self.assertEqual(result['sea_ldy']['count'], 1)
+        self.assertEqual(result['siel_tv']['count'], 1)
+        self.assertEqual(result['siel_ref']['count'], 2)
+        self.assertEqual(result['siel_ldy']['count'], 0)
         self.assertEqual(result['tse_tv']['count'], 1)
         self.assertEqual(result['tse_ref']['count'], 0)
         self.assertEqual(result['tse_ldy']['count'], 3)
@@ -272,7 +323,7 @@ class BackupTests(unittest.TestCase):
             if sql.startswith('INSERT INTO')
             and 'monitoring_backup_log' not in sql
         ]
-        self.assertEqual(len(insert_calls), 6)
+        self.assertEqual(len(insert_calls), 9)
         self.assertTrue(all(
             'ON CONFLICT DO NOTHING' in sql
             for sql, _ in insert_calls
@@ -280,23 +331,29 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(all('RETURNING id' in sql for sql, _ in insert_calls))
         self.assertEqual(
             [params for _, params in insert_calls],
-            [('2026-08-10',)] * 3 + [('2026-08-11',)] * 3,
+            [('2026-08-10',)] * 3 +
+            [('2026-08-11',)] * 3 +
+            [('2026-08-11', '2026-08-11')] * 3,
         )
         log_calls = [
             params for sql, params in cursor.calls
             if 'INSERT INTO monitoring_backup_log' in sql
         ]
-        self.assertEqual(len(log_calls), 5)
+        self.assertEqual(len(log_calls), 7)
         self.assertEqual(
             [params[0] for params in log_calls],
-            ['tv', 'sea_ref', 'sea_ldy', 'tse_tv', 'tse_ldy'],
+            [
+                'tv', 'sea_ref', 'sea_ldy', 'tse_tv', 'tse_ldy',
+                'siel_tv', 'siel_ref',
+            ],
         )
         self.assertEqual(
             [params[2] for params in log_calls],
-            ['2026-08-10'] * 3 + ['2026-08-11'] * 2,
+            ['2026-08-10'] * 3 + ['2026-08-11'] * 4,
         )
         self.assertEqual(result['inspection_date'], '2026-08-11')
         self.assertEqual(result['tv']['source_date'], '2026-08-10')
+        self.assertEqual(result['siel_tv']['source_date'], '2026-08-11')
         self.assertEqual(result['tse_tv']['source_date'], '2026-08-11')
         self.assertTrue(cursor.closed)
         self.assertTrue(connection.closed)
@@ -336,6 +393,9 @@ class BackupTests(unittest.TestCase):
             'tv_count': 0,
             'sea_ref_count': 0,
             'sea_ldy_count': 0,
+            'siel_tv_count': 0,
+            'siel_ref_count': 0,
+            'siel_ldy_count': 0,
             'hhp_count': 0,
             'tse_tv_count': 0,
             'tse_ref_count': 0,
@@ -351,6 +411,7 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(result['has_backup'])
         self.assertEqual(result['sea_ref_count'], 0)
         self.assertEqual(result['sea_ldy_count'], 0)
+        self.assertEqual(result['siel_tv_count'], 0)
         self.assertEqual(result['inspection_date'], '2026-08-11')
         self.assertEqual(result['source_dates']['sea_tv'], '2026-08-10')
         self.assertEqual([], cursor.calls)
@@ -364,11 +425,14 @@ class BackupTests(unittest.TestCase):
             'tv_count': 1,
             'sea_ref_count': 5,
             'sea_ldy_count': 6,
+            'siel_tv_count': 7,
+            'siel_ref_count': 8,
+            'siel_ldy_count': 9,
             'hhp_count': 0,
             'tse_tv_count': 2,
             'tse_ref_count': 3,
             'tse_ldy_count': 4,
-            'total_count': 21,
+            'total_count': 45,
             **backup_date_payload(),
         }
 
@@ -376,10 +440,13 @@ class BackupTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertTrue(result['has_backup'])
-        self.assertEqual(result['pending_count'], 21)
+        self.assertEqual(result['pending_count'], 45)
         self.assertEqual(result['tv_count'], 1)
         self.assertEqual(result['sea_ref_count'], 5)
         self.assertEqual(result['sea_ldy_count'], 6)
+        self.assertEqual(result['siel_tv_count'], 7)
+        self.assertEqual(result['siel_ref_count'], 8)
+        self.assertEqual(result['siel_ldy_count'], 9)
         self.assertEqual(result['tse_tv_count'], 2)
         self.assertEqual(result['tse_ref_count'], 3)
         self.assertEqual(result['tse_ldy_count'], 4)

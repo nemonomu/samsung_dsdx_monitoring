@@ -1,4 +1,4 @@
-"""SEA/TSE Retail 데이터 백업 유틸리티."""
+"""SEA/SIEL/TSE Retail 데이터 백업 유틸리티."""
 
 from datetime import datetime
 from collections.abc import Mapping
@@ -9,6 +9,10 @@ from apps.common.inspection_dates import (
 )
 from apps.common.response import log_error
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.siel_retail import (
+    SIEL_BUSINESS_TIMEZONE,
+    SIEL_SOURCE_CONFIG,
+)
 
 
 def _sea_backup_source(product_key):
@@ -23,6 +27,21 @@ def _sea_backup_source(product_key):
         'backup_table': source['backup_table'],
         'date_column': f"a.{source['date_column']}",
         'date_mode': source['date_mode'],
+    }
+
+
+def _siel_backup_source(source_key):
+    source = SIEL_SOURCE_CONFIG[source_key]
+    return {
+        'key': source['source_key'],
+        'source_key': source['source_key'],
+        'country': 'SIEL',
+        'category': f"SIEL {source['category']}",
+        'product_line': source['source_key'],
+        'source_table': source['table_name'],
+        'backup_table': source['backup_table_name'],
+        'date_column': f"a.{source['date_column']}",
+        'date_mode': 'siel_kst_timestamp',
     }
 
 
@@ -63,6 +82,9 @@ _BACKUP_SOURCES = tuple(
         'date_column': 'a.crawl_datetime',
         'date_mode': 'text_prefix',
     },
+) + tuple(
+    _siel_backup_source(source_key)
+    for source_key in ('siel_tv', 'siel_ref', 'siel_ldy')
 )
 _BACKUP_SOURCE_BY_KEY = {source['key']: source for source in _BACKUP_SOURCES}
 _INVALID_DATE_ERROR_CODE = 'invalid_inspection_date'
@@ -126,6 +148,17 @@ def _date_condition(date_column, target_date, mode='timestamp'):
         return f"AND LEFT(TRIM({date_column}), 10) = %s", (date_value,)
     if mode == 'timestamp':
         return f"AND DATE({date_column}::timestamp) = %s", (date_value,)
+    if mode == 'siel_kst_timestamp':
+        return f"""
+            AND {date_column} >= (
+                    %s::date::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                )
+            AND {date_column} < (
+                    (%s::date + 1)::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                )
+        """, (date_value, date_value)
     raise ValueError(f'허용되지 않은 백업 날짜 모드입니다: {mode}')
 
 
@@ -338,7 +371,7 @@ def get_backup_status(target_date):
 
 
 def backup_all_retail(username='', target_date=None):
-    """Back up all SEA/TSE retail sources for one inspection date."""
+    """Back up all SEA/SIEL/TSE retail sources for one inspection date."""
     try:
         date_mappings = _resolve_date_mappings(target_date)
     except MonitoringDateError as error:

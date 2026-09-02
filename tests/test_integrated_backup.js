@@ -53,15 +53,21 @@ async function testIntegratedBackupPromptAndPost() {
         tv_count: 1,
         sea_ref_count: 5,
         sea_ldy_count: 6,
+        siel_tv_count: 7,
+        siel_ref_count: 8,
+        siel_ldy_count: 9,
         tse_tv_count: 2,
         tse_ref_count: 3,
         tse_ldy_count: 4,
-        total_count: 21,
+        total_count: 45,
         inspection_date: '2026-08-11',
         source_dates: {
             sea_tv: '2026-08-10',
             sea_ref: '2026-08-10',
             sea_ldy: '2026-08-10',
+            siel_tv: '2026-08-11',
+            siel_ref: '2026-08-11',
+            siel_ldy: '2026-08-11',
             tse_tv: '2026-08-11',
             tse_ref: '2026-08-11',
             tse_ldy: '2026-08-11'
@@ -73,6 +79,9 @@ async function testIntegratedBackupPromptAndPost() {
         tv_count: 1,
         sea_ref_count: 5,
         sea_ldy_count: 6,
+        siel_tv_count: 7,
+        siel_ref_count: 8,
+        siel_ldy_count: 9,
         tse_tv_count: 2,
         tse_ref_count: 3,
         tse_ldy_count: 4
@@ -112,18 +121,23 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(confirms[0].includes('검수일  2026-08-11'));
     assert.ok(confirms[0].includes('SEA · D-1 데이터 · 2026-08-10'));
     assert.ok(confirms[0].includes('TV 1건  ·  REF 5건  ·  LDY 6건'));
+    assert.ok(confirms[0].includes('SIEL · D 데이터 · 2026-08-11'));
+    assert.ok(confirms[0].includes('TV 7건  ·  REF 8건  ·  LDY 9건'));
     assert.ok(confirms[0].includes('TSE · D 데이터 · 2026-08-11'));
     assert.ok(confirms[0].includes('TV 2건  ·  REF 3건  ·  LDY 4건'));
-    assert.ok(confirms[0].includes('총 21건'));
+    assert.ok(confirms[0].includes('총 45건'));
     const renderedText = elementText(confirmMessage);
     assert.ok(renderedText.includes('백업 대상 확인'));
     assert.ok(renderedText.includes('검수일'));
     assert.ok(renderedText.includes('2026-08-11'));
     assert.ok(renderedText.includes('SEA'));
     assert.ok(renderedText.includes('D-1'));
+    assert.ok(renderedText.includes('SIEL'));
     assert.ok(renderedText.includes('TSE'));
     assert.ok(renderedText.includes('총 백업 대상'));
-    assert.ok(renderedText.includes('21건'));
+    assert.ok(renderedText.includes('45건'));
+    assert.ok(renderedText.indexOf('SEA') < renderedText.indexOf('SIEL'));
+    assert.ok(renderedText.indexOf('SIEL') < renderedText.indexOf('TSE'));
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');
