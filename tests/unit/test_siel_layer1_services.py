@@ -133,6 +133,9 @@ class SielLayer1ServiceTests(unittest.TestCase):
         check = result['check']
 
         self.assertEqual('siel_retail', check['check_type'])
+        self.assertEqual(
+            'SIEL TV/REF/LDY 일일 수집 현황', check['description']
+        )
         self.assertEqual('2026-08-11', check['inspection_date'])
         self.assertEqual('2026-08-11', check['source_date'])
         self.assertEqual(0, check['offset_days'])

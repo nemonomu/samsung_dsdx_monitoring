@@ -159,7 +159,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     statuses = [category['status'] for category in categories]
     check = {
         'name': 'SIEL Retail',
-        'description': 'SIEL TV/REF/LDY 당일(D) 수집 현황',
+        'description': 'SIEL TV/REF/LDY 일일 수집 현황',
         'check_type': SIEL_CHECK_TYPE,
         'status': _worst_status(statuses),
         'phase': phase,
