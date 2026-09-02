@@ -62,6 +62,8 @@ const emailReportData = {
         source_date: '2026-07-28',
         offset_days: -1,
         total_count: 879,
+        main_count: 750,
+        bsr_count: 100,
         column_order: ['item'],
         retailers: [{
             retailer: 'Amazon',
@@ -84,6 +86,8 @@ const emailReportData = {
         source_date: '2026-07-28',
         offset_days: -1,
         total_count: 690,
+        main_count: 600,
+        bsr_count: 100,
         column_order: ['sku', 'bsr_rank', 'offer', 'ref_capacity', 'item'],
         retailers: [{
             retailer: 'Bestbuy',
@@ -123,6 +127,8 @@ const emailReportData = {
         source_date: '2026-07-28',
         offset_days: -1,
         total_count: 546,
+        main_count: 500,
+        bsr_count: 90,
         column_order: ['screen_size'],
         retailers: [{
             retailer: 'Magalu',
@@ -138,6 +144,8 @@ const emailReportData = {
         source_date: '2026-07-29',
         offset_days: 0,
         total_count: 935,
+        main_count: 900,
+        bsr_count: 100,
         column_order: ['screen_size'],
         retailers: []
     }, {
@@ -150,6 +158,8 @@ const emailReportData = {
         source_date: '2026-07-29',
         offset_days: 0,
         total_count: 602,
+        main_count: 600,
+        bsr_count: 100,
         column_order: ['screen_size'],
         retailers: []
     }, {
@@ -162,6 +172,8 @@ const emailReportData = {
         source_date: '2026-07-29',
         offset_days: 0,
         total_count: 287,
+        main_count: 250,
+        bsr_count: 80,
         column_order: ['ldy_capacity'],
         retailers: [{
             retailer: 'Homepro',
@@ -303,7 +315,14 @@ async function run() {
     assert(!emailHtml.includes('예상건수'));
     assert(!emailHtml.includes('예상 건수'));
     assert(!emailHtml.includes('필터링 기준'));
-    assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4780</th></tr>'));
+    assert(emailHtml.includes(
+        '<tr><th colspan="4">합 계</th><th>4780</th><th>3600</th><th>570</th></tr>'
+    ));
+    assert(emailHtml.includes('>main_rank</span></th>'));
+    assert(emailHtml.includes('>bsr_rank</span></th>'));
+    assert(emailHtml.includes(
+        'main_rank/bsr_rank는 값이 존재하는 행 수이며'
+    ));
     assert(emailHtml.includes(
         'SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D)'
     ));
@@ -360,7 +379,7 @@ async function run() {
     );
     assert.strictEqual(
         (emailDailyTable.match(/border-top:2px solid #1f4e78;/g) || []).length,
-        15
+        21
     );
     const dividerRows = Array.from(
         emailDailyTable.matchAll(/<tr><td align="center" style="border-top:2px solid #1f4e78;">(\d+)<\/td>/g),

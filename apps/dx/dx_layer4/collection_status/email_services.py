@@ -240,6 +240,8 @@ def _empty_retailer(retailer):
         'aliases': list(retailer['aliases']),
         'total_count': 0,
         'collected_count': 0,
+        'main_count': 0,
+        'bsr_count': 0,
         'batch_id': '',
         'has_data': False,
         'columns': [
@@ -309,6 +311,10 @@ def _query_retailer(cursor, source, retailer, target_date):
     select_parts = [total_expr]
     for _column, denominator, missing_count, _remark in metric_specs:
         select_parts.extend((denominator, missing_count))
+    select_parts.extend((
+        'COUNT(source.main_rank)',
+        'COUNT(source.bsr_rank)',
+    ))
 
     batch_clause = ''
     query_params = list(base_params)
@@ -325,6 +331,9 @@ def _query_retailer(cursor, source, retailer, target_date):
     )
     row = cursor.fetchone()
     total_count = int((row[0] if row else 0) or 0)
+    rank_index = 1 + len(metric_specs) * 2
+    main_count = int((row[rank_index] if row else 0) or 0)
+    bsr_count = int((row[rank_index + 1] if row else 0) or 0)
     columns = []
     for index, (column, _denominator, _missing_count, remark) in enumerate(
             metric_specs):
@@ -350,6 +359,8 @@ def _query_retailer(cursor, source, retailer, target_date):
         'aliases': list(retailer['aliases']),
         'total_count': total_count,
         'collected_count': total_count,
+        'main_count': main_count,
+        'bsr_count': bsr_count,
         'batch_id': '' if batch_id is None else str(batch_id),
         'has_data': has_data,
         'columns': columns,
@@ -392,6 +403,8 @@ def _query_source(source, target_date):
         'offset_days': date_contract['offset_days'],
         'total_count': sum(row['total_count'] for row in retailers),
         'collected_count': sum(row['collected_count'] for row in retailers),
+        'main_count': sum(row['main_count'] for row in retailers),
+        'bsr_count': sum(row['bsr_count'] for row in retailers),
         'column_order': column_order,
         'retailers': retailers,
     }

@@ -435,7 +435,10 @@
                 inspection_date: source.inspection_date || emailData.inspection_date || emailData.date || '',
                 source_date: source.source_date || '',
                 offset_days: source.offset_days,
-                actual: typeof source.total_count === 'number' ? source.total_count : 0
+                actual: typeof source.total_count === 'number' ? source.total_count : 0,
+                main_count: typeof source.main_count === 'number' ? source.main_count : 0,
+                bsr_count: typeof source.bsr_count === 'number' ? source.bsr_count : 0,
+                has_rank_counts: true
             });
         });
 
@@ -654,8 +657,14 @@
         var container = document.getElementById('cs-email-container');
         var dailyRows = buildEmailDailyRows(dailyData, emailData);
         var totalActual = 0;
+        var totalMainRank = 0;
+        var totalBsrRank = 0;
         dailyRows.forEach(function(r) {
             totalActual += r.actual;
+            if (r.has_rank_counts) {
+                totalMainRank += r.main_count;
+                totalBsrRank += r.bsr_count;
+            }
         });
 
         var dateDisplay = date.replace(/-/g, '.');
@@ -691,6 +700,8 @@
         html += '<b>&nbsp;기준일: ' + dateDisplay + '</b><br><br>';
         html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
         html += '<th>No</th><th>카테고리</th><th>수집 항목</th><th>테이블명</th><th>일일수집건수</th>';
+        html += '<th>MAIN<br><span style="font-size:10px;font-weight:400;">main_rank</span></th>';
+        html += '<th>BSR<br><span style="font-size:10px;font-weight:400;">bsr_rank</span></th>';
         html += '</tr>';
         dailyRows.forEach(function(r, rowIndex) {
             var isGroupStart = rowIndex > 0
@@ -708,11 +719,18 @@
                     + L4.escapeHtml(r.table_name) + '</td>';
             }
             html += '<td align="center"' + groupDivider + '>' + L4.formatNumber(r.actual) + '</td>';
+            html += '<td align="center"' + groupDivider + '>'
+                + (r.has_rank_counts ? L4.formatNumber(r.main_count) : '-') + '</td>';
+            html += '<td align="center"' + groupDivider + '>'
+                + (r.has_rank_counts ? L4.formatNumber(r.bsr_count) : '-') + '</td>';
             html += '</tr>';
         });
         html += '<tr><th colspan="4">합 계</th>';
-        html += '<th>' + L4.formatNumber(totalActual) + '</th></tr>';
+        html += '<th>' + L4.formatNumber(totalActual) + '</th>';
+        html += '<th>' + L4.formatNumber(totalMainRank) + '</th>';
+        html += '<th>' + L4.formatNumber(totalBsrRank) + '</th></tr>';
         html += '</table>';
+        html += '<div class="ew">※ main_rank/bsr_rank는 값이 존재하는 행 수이며, 동일 행 중복으로 합계가 일일수집건수와 다를 수 있습니다.</div>';
 
         html += '<br><br>';
 

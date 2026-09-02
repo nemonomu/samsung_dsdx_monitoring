@@ -69,6 +69,17 @@ class EmailRegistryTests(unittest.TestCase):
         registry = load_registry()
 
         self.assertEqual(15, len(registry.EMAIL_REPORT_SOURCES))
+        self.assertEqual(
+            {
+                (country, product)
+                for country in ('SEA', 'SEDA', 'SEG', 'SIEL', 'TSE')
+                for product in ('TV', 'REF', 'LDY')
+            },
+            {
+                (source['country'], source['product'])
+                for source in registry.EMAIL_REPORT_SOURCES
+            },
+        )
         self.assertFalse(any(
             name.endswith('_COLUMNS') for name in vars(registry)
         ))
@@ -160,7 +171,7 @@ class EmailReportDataTests(unittest.TestCase):
                 ('ignored', 'another-retailer'),
             ]},
             {'fetchone': ('a_20260811_000011',)},
-            {'fetchone': (287, 287, 0, 287, 2, 287, 5)},
+            {'fetchone': (287, 287, 0, 287, 2, 287, 5, 280, 90)},
         ])
         service = load_service(cursor)
 
@@ -174,6 +185,8 @@ class EmailReportDataTests(unittest.TestCase):
             row['column_order'], ['item', 'sku', 'final_sku_price'],
         )
         self.assertEqual(row['total_count'], 287)
+        self.assertEqual(row['main_count'], 280)
+        self.assertEqual(row['bsr_count'], 90)
         self.assertEqual(row['inspection_date'], '2026-08-11')
         self.assertEqual(row['source_date'], '2026-08-11')
         self.assertEqual(row['offset_days'], 0)
@@ -204,6 +217,8 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(count_sql.count("IN ('main', 'bsr')"), 7)
         self.assertIn('BTRIM(CAST(source.final_sku_price AS TEXT))', count_sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM %s', count_sql)
+        self.assertIn('COUNT(source.main_rank)', count_sql)
+        self.assertIn('COUNT(source.bsr_rank)', count_sql)
         self.assertEqual(
             latest_params, ['amazon', '2026-08-11', '2026-08-11'],
         )
@@ -245,7 +260,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [('sku', 'Amazon', False)]},
             {'fetchone': ('batch-ref',)},
-            {'fetchone': (1, 1, 0, 1, 0)},
+            {'fetchone': (1, 1, 0, 1, 0, 1, 0)},
         ])
         service = load_service(cursor)
 
@@ -265,7 +280,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [('bsr_rank', 'Amazon')]},
             {'fetchone': ('a_20260811_000011',)},
-            {'fetchone': (370, 370, 1, 83, 4)},
+            {'fetchone': (370, 370, 1, 83, 4, 300, 83)},
         ])
         service = load_service(cursor)
 
@@ -282,6 +297,8 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(metric['total_count'], 83)
         self.assertEqual(metric['null_count'], 4)
         self.assertEqual(metric['remark'], 'BSR 페이지 실제 수집 건수')
+        self.assertEqual(result['sources'][0]['main_count'], 300)
+        self.assertEqual(result['sources'][0]['bsr_count'], 83)
         aggregate_sql = cursor.calls[2][0]
         self.assertIn("IN ('main', 'bsr')", aggregate_sql)
         self.assertIn("= 'bsr'", aggregate_sql)
@@ -302,6 +319,8 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertTrue(result['complete'])
         self.assertFalse(retailer['has_data'])
         self.assertEqual(retailer['total_count'], 0)
+        self.assertEqual(retailer['main_count'], 0)
+        self.assertEqual(retailer['bsr_count'], 0)
         self.assertEqual(len(cursor.calls), 2)
         self.assertIn(
             'LEFT(BTRIM(CAST(source.crawl_datetime AS TEXT)), 10)',
@@ -329,7 +348,7 @@ class EmailReportDataTests(unittest.TestCase):
                 ('original_sku_price', 'amazon'),
                 ('bsr_rank', 'amazon'),
             ]},
-            {'fetchone': (350, 350, 0, 350, 7, 87, 4)},
+            {'fetchone': (350, 350, 0, 350, 7, 87, 4, 300, 87)},
             {'fetchone': (2,)},
         ])
         service = load_service(cursor)
@@ -343,6 +362,8 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(retailer['columns'][0]['column'], 'item')
         self.assertEqual(retailer['columns'][2]['total_count'], 87)
         self.assertEqual(retailer['columns'][2]['null_count'], 4)
+        self.assertEqual(retailer['main_count'], 300)
+        self.assertEqual(retailer['bsr_count'], 87)
         self.assertEqual(retailer['redirect_true_count'], 2)
         aggregate_sql, aggregate_params = cursor.calls[1]
         self.assertIn('FROM public.tv_retail_com source', aggregate_sql)
@@ -385,7 +406,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [('sku', 'homepro')]},
             {'fetchone': ('homepro_20260811',)},
-            {'fetchone': (11, 11, 0, 11, 0)},
+            {'fetchone': (11, 11, 0, 11, 0, 10, 3)},
         ])
         service = load_service(cursor)
 
@@ -414,9 +435,9 @@ class EmailReportDataTests(unittest.TestCase):
                 ('sku', 'lazada', False),
             ]},
             {'fetchone': ('homepro_20260814',)},
-            {'fetchone': (300, 300, 0, 300, 0)},
+            {'fetchone': (300, 300, 0, 300, 0, 290, 100)},
             {'fetchone': ('l20260814_094943',)},
-            {'fetchone': (45, 45, 0, 45, 0)},
+            {'fetchone': (45, 45, 0, 45, 0, 40, 10)},
         ])
         service = load_service(cursor)
 
@@ -427,6 +448,8 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertTrue(result['complete'])
         configured = result['sources'][0]
         self.assertEqual(configured['total_count'], 345)
+        self.assertEqual(configured['main_count'], 330)
+        self.assertEqual(configured['bsr_count'], 110)
         self.assertEqual(
             [retailer['retailer'] for retailer in configured['retailers']],
             ['Homepro', 'Lazada'],
@@ -631,7 +654,7 @@ class EmailReportDataTests(unittest.TestCase):
                 ('product_url', 'homepro', True),
             ]},
             {'fetchone': ('homepro_20260811',)},
-            {'fetchone': (11, 11, 0, 11, 1, 11, 2, 11, 3)},
+            {'fetchone': (11, 11, 0, 11, 1, 11, 2, 11, 3, 10, 4)},
         ])
         service = load_service(cursor)
 
