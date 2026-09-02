@@ -650,57 +650,26 @@
         return html + '</table>';
     }
 
-    function buildEmailRankSummary(sources) {
-        var grouped = {};
-        (sources || []).forEach(function(source) {
-            var country = String(source.country || '').toUpperCase();
-            var product = String(source.product || '').toUpperCase();
-            if (!country || EMAIL_PRODUCT_ORDER[product] === undefined) return;
-            if (!grouped[country]) grouped[country] = {};
-            grouped[country][product] = source;
-        });
+    function buildEmailRetailerRankTable(retailers) {
+        if (!retailers || retailers.length === 0) return '';
 
-        var countries = Object.keys(grouped).sort(function(left, right) {
-            var leftOrder = EMAIL_COUNTRY_ORDER[left];
-            var rightOrder = EMAIL_COUNTRY_ORDER[right];
-            if (leftOrder === undefined) leftOrder = 99;
-            if (rightOrder === undefined) rightOrder = 99;
-            return leftOrder - rightOrder || left.localeCompare(right);
-        });
-        if (countries.length === 0) return '';
-
-        var products = ['TV', 'REF', 'LDY'];
-        var html = '<div class="et">main_rank / bsr_rank 수집 현황</div>';
-        html += '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
-        html += '<th rowspan="2">국가</th>';
-        products.forEach(function(product) {
-            html += '<th colspan="2">' + product + '</th>';
-        });
-        html += '</tr><tr>';
-        products.forEach(function() {
-            html += '<th>main_rank</th><th>bsr_rank</th>';
+        var html = '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
+        html += '<th>구분</th>';
+        retailers.forEach(function(retailer) {
+            html += '<th>' + L4.escapeHtml(retailer.retailer) + '</th>';
         });
         html += '</tr>';
-        countries.forEach(function(country) {
-            html += '<tr><th>' + L4.escapeHtml(country) + '</th>';
-            products.forEach(function(product) {
-                var source = grouped[country][product];
-                if (!source) {
-                    html += '<td>-</td><td>-</td>';
-                    return;
-                }
-                var mainCount = typeof source.main_count === 'number'
-                    ? source.main_count : 0;
-                var bsrCount = typeof source.bsr_count === 'number'
-                    ? source.bsr_count : 0;
-                html += '<td>' + L4.formatNumber(mainCount) + '</td>';
-                html += '<td>' + L4.formatNumber(bsrCount) + '</td>';
+        ['main_rank', 'bsr_rank'].forEach(function(rankColumn) {
+            var countKey = rankColumn === 'main_rank' ? 'main_count' : 'bsr_count';
+            html += '<tr><th>' + rankColumn + '</th>';
+            retailers.forEach(function(retailer) {
+                var count = typeof retailer[countKey] === 'number'
+                    ? retailer[countKey] : 0;
+                html += '<td>' + L4.formatNumber(count) + '</td>';
             });
             html += '</tr>';
         });
-        html += '</table>';
-        html += '<div class="ew">※ main_rank/bsr_rank는 값이 존재하는 행 수이며, 동일 행에 함께 존재할 수 있습니다.</div>';
-        return html;
+        return html + '</table>';
     }
 
     function renderEmailReport(dailyData, emailData, date) {
@@ -771,7 +740,6 @@
 
         // 2. R.com 수집 항목 Missing Value 현황
         html += '<b>2. R.com 수집 항목 Missing Value 현황</b><br>';
-        html += buildEmailRankSummary(emailData.sources || []);
         (emailData.sources || []).forEach(function(source) {
             var missingSource = prepareEmailMissingSource(source);
             var label = [source.country, String(source.product || '').toUpperCase()].filter(function(value) {
@@ -780,9 +748,11 @@
             label += ' · 데이터일 ' + formatEmailDataDate(
                 source.source_date, source.offset_days
             );
+            html += '<div class="et">' + L4.escapeHtml(label) + '</div>';
+            html += buildEmailRetailerRankTable(source.retailers || []);
             html += buildEmailNullTable(
                 missingSource.retailers,
-                L4.escapeHtml(label),
+                '',
                 missingSource.columnOrder
             );
         });

@@ -68,13 +68,24 @@ const emailReportData = {
         retailers: [{
             retailer: 'Amazon',
             total_count: 248,
+            main_count: 220,
+            bsr_count: 80,
             redirect_true_count: 2,
             columns: [{ column: 'item', total_count: 248, null_count: 0 }]
         }, {
             retailer: 'Bestbuy',
             total_count: 315,
+            main_count: 300,
+            bsr_count: 20,
             redirect_true_count: 0,
             columns: [{ column: 'item', total_count: 315, null_count: 0 }]
+        }, {
+            retailer: 'Walmart',
+            total_count: 316,
+            main_count: 230,
+            bsr_count: 0,
+            redirect_true_count: 0,
+            columns: [{ column: 'item', total_count: 316, null_count: 0 }]
         }]
     }, {
         key: 'sea_ref',
@@ -93,6 +104,8 @@ const emailReportData = {
             retailer: 'Bestbuy',
             total_count: 390,
             collected_count: 390,
+            main_count: 300,
+            bsr_count: 100,
             has_data: true,
             columns: [
                 { column: 'sku', total_count: 390, null_count: 0 },
@@ -109,6 +122,8 @@ const emailReportData = {
             retailer: 'Lowes',
             total_count: 300,
             collected_count: 300,
+            main_count: 300,
+            bsr_count: 0,
             has_data: true,
             columns: [
                 { column: 'sku', total_count: 300, null_count: 1 },
@@ -132,6 +147,8 @@ const emailReportData = {
         column_order: ['screen_size'],
         retailers: [{
             retailer: 'Magalu',
+            main_count: 200,
+            bsr_count: 38,
             columns: [{ column: 'screen_size', total_count: 238, null_count: 3 }]
         }]
     }, {
@@ -177,6 +194,8 @@ const emailReportData = {
         column_order: ['ldy_capacity'],
         retailers: [{
             retailer: 'Homepro',
+            main_count: 250,
+            bsr_count: 80,
             columns: [{ column: 'ldy_capacity', total_count: 287, null_count: 6 }]
         }]
     }],
@@ -317,9 +336,6 @@ async function run() {
     assert(!emailHtml.includes('필터링 기준'));
     assert(emailHtml.includes('<tr><th colspan="4">합 계</th><th>4780</th></tr>'));
     assert(emailHtml.includes(
-        'main_rank/bsr_rank는 값이 존재하는 행 수이며'
-    ));
-    assert(emailHtml.includes(
         'SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D)'
     ));
     assert(!emailHtml.includes('거래선 TV 제품 정보 / 감성점수'));
@@ -401,23 +417,19 @@ async function run() {
     assert(emailHtml.includes(
         'TSE - LDY · 데이터일 2026.07.29 (D)'
     ));
-    const rankSummary = emailHtml.match(
-        /<div class="et">main_rank \/ bsr_rank 수집 현황<\/div>(<table[\s\S]*?<\/table>)/
+    const seaTvSection = emailHtml.match(
+        /<div class="et">SEA - TV[^<]*<\/div>(<table[\s\S]*?<\/table>)/
     );
-    assert(rankSummary);
-    assert(rankSummary[1].includes(
-        '<th colspan="2">TV</th><th colspan="2">REF</th><th colspan="2">LDY</th>'
+    assert(seaTvSection);
+    assert(seaTvSection[1].includes(
+        '<th>구분</th><th>Amazon</th><th>Bestbuy</th><th>Walmart</th>'
     ));
-    assert(rankSummary[1].includes(
-        '<tr><th>SEA</th><td>750</td><td>100</td><td>600</td><td>100</td><td>-</td><td>-</td></tr>'
+    assert(seaTvSection[1].includes(
+        '<tr><th>main_rank</th><td>220</td><td>300</td><td>230</td></tr>'
     ));
-    assert(rankSummary[1].includes(
-        '<tr><th>TSE</th><td>-</td><td>-</td><td>-</td><td>-</td><td>250</td><td>80</td></tr>'
+    assert(seaTvSection[1].includes(
+        '<tr><th>bsr_rank</th><td>80</td><td>20</td><td>0</td></tr>'
     ));
-    assert(
-        emailHtml.indexOf('main_rank / bsr_rank 수집 현황')
-        < emailHtml.indexOf('SEA - TV · 데이터일')
-    );
     assert(!emailDailyTable.includes('국가 공통'));
     assert(!emailDailyTable.includes('한 번만 표시'));
     assert(!emailDailyTable.includes('public.tv_retail_com'));
@@ -450,9 +462,24 @@ async function run() {
     assert(emailHtml.includes('Amazon redirect=TRUE 건수'));
     assert(emailHtml.includes('>2</td>'));
     assert(emailHtml.indexOf('>sku</td>') < emailHtml.indexOf('>offer</td>'));
-    const seaRefTable = emailHtml.match(
-        /<div class="et">SEA - REF[^<]*<\/div>(<table[\s\S]*?<\/table>)/
-    )[1];
+    const seaRefStart = emailHtml.indexOf('<div class="et">SEA - REF');
+    const seaRefEnd = emailHtml.indexOf('<div class="et">SEDA - TV', seaRefStart);
+    const seaRefTables = Array.from(
+        emailHtml.slice(seaRefStart, seaRefEnd).matchAll(/<table[\s\S]*?<\/table>/g),
+        match => match[0]
+    );
+    assert.strictEqual(seaRefTables.length, 2);
+    const seaRefRankTable = seaRefTables[0];
+    const seaRefTable = seaRefTables[1];
+    assert(seaRefRankTable.includes(
+        '<th>구분</th><th>Bestbuy</th><th>Lowes</th>'
+    ));
+    assert(seaRefRankTable.includes(
+        '<tr><th>main_rank</th><td>300</td><td>300</td></tr>'
+    ));
+    assert(seaRefRankTable.includes(
+        '<tr><th>bsr_rank</th><td>100</td><td>0</td></tr>'
+    ));
     assert(seaRefTable.indexOf('>item</td>') < seaRefTable.indexOf('>sku</td>'));
     assert(seaRefTable.indexOf('>sku</td>') < seaRefTable.indexOf('>offer</td>'));
     assert(seaRefTable.indexOf('>offer</td>') < seaRefTable.indexOf('>ref_capacity</td>'));
@@ -483,6 +510,8 @@ async function run() {
     lotussLdy.retailers = [{
         retailer: 'Homepro',
         total_count: 287,
+        main_count: 211,
+        bsr_count: 80,
         columns: [
             { column: 'count_of_reviews', total_count: 287, null_count: 0 },
             { column: 'star_rating', total_count: 287, null_count: 0 },
@@ -496,6 +525,8 @@ async function run() {
     }, {
         retailer: 'Lotuss',
         total_count: 39,
+        main_count: 39,
+        bsr_count: 0,
         columns: [
             { column: 'ldy_loading_type', total_count: 39, null_count: 20 },
             { column: 'ldy_capacity', total_count: 39, null_count: 0 }
@@ -510,9 +541,21 @@ async function run() {
     lotussEmail.L4._sectionHandler.collection_status();
     await flushPromises();
     const lotussHtml = lotussEmail.elements['cs-email-container'].innerHTML;
-    const lotussTable = lotussHtml.match(
-        /<div class="et">TSE - LDY[^<]*<\/div>(<table[\s\S]*?<\/table>)/
-    )[1];
+    const lotussStart = lotussHtml.indexOf('<div class="et">TSE - LDY');
+    const lotussEnd = lotussHtml.indexOf('<br>감사합니다.', lotussStart);
+    const lotussTables = Array.from(
+        lotussHtml.slice(lotussStart, lotussEnd).matchAll(/<table[\s\S]*?<\/table>/g),
+        match => match[0]
+    );
+    assert.strictEqual(lotussTables.length, 2);
+    const lotussRankTable = lotussTables[0];
+    const lotussTable = lotussTables[1];
+    assert(lotussRankTable.includes(
+        '<th>구분</th><th>Homepro</th><th>Lotuss</th>'
+    ));
+    assert(lotussRankTable.includes(
+        '<tr><th>main_rank</th><td>211</td><td>39</td></tr>'
+    ));
     assert(lotussTable.indexOf('>Homepro</th>') < lotussTable.indexOf('>Lotuss</th>'));
     ['count_of_reviews', 'star_rating', 'count_of_star_ratings',
         'original_sku_price', 'savings'].forEach(function(columnName) {
