@@ -80,7 +80,7 @@ _SEDA_RETAILERS = (
 _SEG_THREE_RETAILERS = (
     _retailer('MediaMarkt', 'Mediamarkt'),
     _retailer('OTTO'),
-    _retailer('Amazon', 'Amazon.de'),
+    _retailer('Amazon', 'Amazon.de', email_redirect_metric=True),
 )
 _SEG_LDY_RETAILERS = _SEG_THREE_RETAILERS[:2]
 _SIEL_RETAILERS = (

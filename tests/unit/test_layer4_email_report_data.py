@@ -177,6 +177,26 @@ class EmailRegistryTests(unittest.TestCase):
             self.assertTrue(retailers['Amazon']['email_redirect_metric'])
             self.assertFalse(retailers['Flipkart']['email_redirect_metric'])
 
+        seg_sources = {
+            source['product']: source
+            for source in registry.EMAIL_REPORT_SOURCES
+            if source['country'] == 'SEG'
+        }
+        for product in ('TV', 'REF'):
+            retailers = {
+                retailer['name']: retailer
+                for retailer in seg_sources[product]['retailers']
+            }
+            self.assertTrue(retailers['Amazon']['email_redirect_metric'])
+            self.assertEqual(retailers['Amazon']['aliases'], ('Amazon', 'Amazon.de'))
+        self.assertNotIn(
+            'Amazon',
+            {
+                retailer['name']
+                for retailer in seg_sources['LDY']['retailers']
+            },
+        )
+
 
 class EmailReportDataTests(unittest.TestCase):
     def test_db_columns_latest_batch_and_whitespace_missing_counts(self):
