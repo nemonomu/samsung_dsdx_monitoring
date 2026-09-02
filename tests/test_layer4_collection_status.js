@@ -421,6 +421,10 @@ async function run() {
         /<div class="et">SEA - TV[^<]*<\/div>(<table[\s\S]*?<\/table>)/
     );
     assert(seaTvSection);
+    assert(seaTvSection[1].includes('style="table-layout:fixed;"'));
+    assert(seaTvSection[1].includes(
+        '<colgroup><col style="width:100px;"><col><col><col></colgroup>'
+    ));
     assert(seaTvSection[1].includes(
         '<th>구분</th><th>Amazon</th><th>Bestbuy</th><th>Walmart</th>'
     ));
@@ -471,6 +475,9 @@ async function run() {
     assert.strictEqual(seaRefTables.length, 2);
     const seaRefRankTable = seaRefTables[0];
     const seaRefTable = seaRefTables[1];
+    assert(seaRefRankTable.includes(
+        '<colgroup><col style="width:100px;"><col><col></colgroup>'
+    ));
     assert(seaRefRankTable.includes(
         '<th>구분</th><th>Bestbuy</th><th>Lowes</th>'
     ));

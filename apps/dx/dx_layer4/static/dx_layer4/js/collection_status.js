@@ -653,7 +653,10 @@
     function buildEmailRetailerRankTable(retailers) {
         if (!retailers || retailers.length === 0) return '';
 
-        var html = '<table class="e" border="1" cellpadding="6" cellspacing="0"><tr>';
+        var html = '<table class="e" border="1" cellpadding="6" cellspacing="0" style="table-layout:fixed;">';
+        html += '<colgroup><col style="width:100px;">';
+        retailers.forEach(function() { html += '<col>'; });
+        html += '</colgroup><tr>';
         html += '<th>구분</th>';
         retailers.forEach(function(retailer) {
             html += '<th>' + L4.escapeHtml(retailer.retailer) + '</th>';
