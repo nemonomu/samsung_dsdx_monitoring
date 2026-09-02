@@ -927,6 +927,26 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
     }
 
 
+def _detail_row_source_date(row, date_column):
+    return str(row.get(date_column) or '').strip()[:10]
+
+
+def _detail_row_item_key(row):
+    retailer = str(row.get('account_name') or '').strip().casefold()
+    item = str(row.get('item') or '').strip()
+    if not retailer or not item:
+        return None
+    return retailer, item
+
+
+def _detail_row_sort_key(row, date_column):
+    retailer = str(row.get('account_name') or '').strip().casefold()
+    item = str(row.get('item') or '').strip().casefold()
+    source_date = _detail_row_source_date(row, date_column)
+    row_id = str(row.get('id') or '')
+    return retailer, item, source_date, row_id.zfill(20)
+
+
 def get_sea_cross_field_rule_detail(
         cursor, inspection_date, product_line, rule_id, days=1):
     from_date = inspection_date - timedelta(days=max(1, int(days)) - 1)
@@ -940,9 +960,30 @@ def get_sea_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    error_details = selected['error_details']
-    review_details = selected['review_details']
-    anomalies = error_details + review_details
+    all_findings = selected['error_details'] + selected['review_details']
+    target_source_date = result['source_date']
+    target_findings = [
+        row for row in all_findings
+        if _detail_row_source_date(row, result['date_col'])
+        == target_source_date
+    ]
+    target_item_keys = {
+        item_key for item_key in (
+            _detail_row_item_key(row) for row in target_findings
+        ) if item_key is not None
+    }
+    anomalies = []
+    for row in all_findings:
+        row_source_date = _detail_row_source_date(row, result['date_col'])
+        is_target = row_source_date == target_source_date
+        if not is_target and _detail_row_item_key(row) not in target_item_keys:
+            continue
+        detail = dict(row)
+        detail['row_role'] = 'target' if is_target else 'comparison_history'
+        anomalies.append(detail)
+    anomalies.sort(key=lambda row: _detail_row_sort_key(
+        row, result['date_col'],
+    ))
     retailers = sorted({
         str(row.get('account_name') or 'Unknown').strip().title()
         for row in anomalies
@@ -980,7 +1021,7 @@ def get_sea_cross_field_rule_detail(
             normal_reviews.setdefault(f'{record_id}_{column}', payload)
 
     retailer_summary = {}
-    for row in anomalies:
+    for row in target_findings:
         retailer = str(row.get('account_name') or 'Unknown').strip().title()
         summary = retailer_summary.setdefault(retailer, {
             'count': 0,
@@ -1002,7 +1043,7 @@ def get_sea_cross_field_rule_detail(
             summary['items'].append(item)
 
     retailer_pairs = {retailer: [] for retailer in retailer_summary}
-    for row in anomalies:
+    for row in target_findings:
         retailer = str(row.get('account_name') or 'Unknown').strip().title()
         retailer_pairs.setdefault(retailer, []).append((
             retailer,
@@ -1017,6 +1058,12 @@ def get_sea_cross_field_rule_detail(
         )
         for retailer in retailer_summary
     }
+    review_type_summary = {}
+    for summary in retailer_summary.values():
+        for issue_type, count in summary['review_type_summary'].items():
+            review_type_summary[issue_type] = (
+                review_type_summary.get(issue_type, 0) + count
+            )
 
     return {
         'found': True,
@@ -1040,7 +1087,7 @@ def get_sea_cross_field_rule_detail(
             item['count'] + item['review_count']
             for item in retailer_summary.values()
         ),
-        'review_type_summary': selected['review_type_summary'],
+        'review_type_summary': review_type_summary,
         'retailer_summary': retailer_summary,
         'anomalies': anomalies,
         'select_fields': selected.get('select_fields') or '',

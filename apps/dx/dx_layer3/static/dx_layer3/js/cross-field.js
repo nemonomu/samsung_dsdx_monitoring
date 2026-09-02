@@ -114,7 +114,9 @@ function showRetailerDetail(retailer) {
     const normalReviews = inline ? (window.crossfieldNormalReviews || {}) : {};
 
     // 동적 컬럼
-    const excludeKeys = ['id', 'item', 'account_name', 'page_type', 'finding_level'];
+    const excludeKeys = [
+        'id', 'item', 'account_name', 'page_type', 'finding_level', 'row_role'
+    ];
     let dynamicKeys = [];
     if (rows.length > 0) {
         Object.keys(rows[0]).forEach(key => {
@@ -319,6 +321,7 @@ function showRetailerDetail(retailer) {
         r._rowId = row.id;
         r._rowDate = (row[dateCol] || '').substring(0, 10);
         r._findingLevel = row.finding_level || 'anomaly';
+        r._rowRole = row.row_role || '';
         return r;
     });
 
@@ -489,17 +492,26 @@ function _cfRenderPage(page) {
     pageData.forEach(function(r, i) { r._no = start + i + 1; });
 
     var visibleCols = st._visibleCols || st.allColumns;
+    var targetDate = window.crossfieldSourceDate
+        || window.crossfieldDate || '';
 
-    // item 기준 rowspan 계산: 첫 행 = span 수, 나머지 행 = 0 (td 생략)
+    // item과 행 역할 기준 rowspan: 비교 이력과 수정 대상의 셀은 합치지 않음
     var itemSpanMap = {};
     var hasItemCol = visibleCols.some(function(c) { return c.key === 'item'; });
     if (hasItemCol) {
         var si = 0;
         while (si < pageData.length) {
             var itemVal = pageData[si].item || '-';
+            var itemRole = pageData[si]._rowRole
+                || (pageData[si]._rowDate === targetDate
+                    ? 'target' : 'comparison_history');
             var spanCount = 1;
             for (var sj = si + 1; sj < pageData.length; sj++) {
-                if ((pageData[sj].item || '-') === itemVal) spanCount++;
+                var nextRole = pageData[sj]._rowRole
+                    || (pageData[sj]._rowDate === targetDate
+                        ? 'target' : 'comparison_history');
+                if ((pageData[sj].item || '-') === itemVal
+                        && nextRole === itemRole) spanCount++;
                 else break;
             }
             itemSpanMap[si] = spanCount;
@@ -511,13 +523,13 @@ function _cfRenderPage(page) {
     }
 
     // renderBody로 tr을 직접 생성 (td에 data-editable, cell-normal 등 속성 부여)
-    var targetDate = window.crossfieldSourceDate
-        || window.crossfieldDate || '';
     var _cfPageIdx = 0;
     st.table.renderBody(pageData, function(row) {
         var rowIdx = _cfPageIdx++;
         var rowId = row._rowId;
-        var isTargetDate = row._rowDate === targetDate;
+        var rowRole = row._rowRole
+            || (row._rowDate === targetDate ? 'target' : 'comparison_history');
+        var isTargetDate = rowRole === 'target';
         var tr = '<tr class="' + (isTargetDate ? 'cf-target-date-row' : 'cf-history-date-row') + '">';
         visibleCols.forEach(function(c) {
             // item 컬럼 rowspan 처리

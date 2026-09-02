@@ -381,6 +381,51 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
             'https://example.com/a-1', result['anomalies'][0]['product_url'],
         )
 
+    def test_detail_keeps_only_target_items_and_groups_their_history(self):
+        rows = [
+            _bestbuy_row(
+                id=31, item='B-PAST',
+                crawl_strdatetime='2026-08-30 18:00:06',
+                count_of_reviews='3', count_of_star_ratings='2',
+            ),
+            _bestbuy_row(
+                id=32, item='A-TARGET',
+                crawl_strdatetime='2026-08-30 18:00:06',
+                count_of_reviews='3', count_of_star_ratings='2',
+            ),
+            _bestbuy_row(
+                id=33, item='A-TARGET',
+                crawl_strdatetime='2026-08-31 18:00:06',
+                count_of_reviews='4', count_of_star_ratings='3',
+            ),
+            _bestbuy_row(
+                id=34, item='A-TARGET',
+                crawl_strdatetime='2026-09-01 18:00:06',
+                count_of_reviews='5', count_of_star_ratings='4',
+            ),
+        ]
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'review_count_match')]},
+            {'fetchall': rows},
+            {'fetchall': []},
+        ])
+
+        result = sea_services.get_sea_cross_field_rule_detail(
+            cursor, date(2026, 9, 2), 'sea_ref', 1, days=3,
+        )
+
+        self.assertEqual([32, 33, 34], [
+            row['id'] for row in result['anomalies']
+        ])
+        self.assertEqual(
+            ['comparison_history', 'comparison_history', 'target'],
+            [row['row_role'] for row in result['anomalies']],
+        )
+        self.assertEqual(1, result['total_anomalies'])
+        self.assertEqual(1, result['total_findings'])
+        self.assertEqual(['A-TARGET'], result['retailer_summary']['Bestbuy']['items'])
+        self.assertNotIn('B-PAST', result['queries']['Bestbuy'])
+
 
 if __name__ == '__main__':
     unittest.main()

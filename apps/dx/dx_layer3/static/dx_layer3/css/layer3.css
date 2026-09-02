@@ -889,8 +889,9 @@
     white-space: nowrap;
 }
 
-.cf-target-date-row {
-    background: #f8fffc;
+.cf-target-date-row,
+.cf-target-date-row > td {
+    background: #ecfdf5;
 }
 
 .cf-history-date-row {
