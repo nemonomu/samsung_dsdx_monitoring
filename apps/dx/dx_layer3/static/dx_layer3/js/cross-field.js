@@ -556,9 +556,12 @@ function _cfRenderPage(page) {
             }
             if (c.key === 'crawl_datetime' || c.key === 'crawl_strdatetime') {
                 var dataDate = displayVal === '-' ? '-' : displayVal.substring(0, 10);
-                var dateBadge = isTargetDate
-                    ? '<span class="cf-date-badge target">수정 대상</span>'
-                    : '<span class="cf-date-badge history">비교 이력</span>';
+                var dateBadge = '';
+                if (isTargetDate) {
+                    dateBadge = '<span class="cf-date-badge target">수정 대상</span>';
+                } else if (rowRole === 'comparison_history') {
+                    dateBadge = '<span class="cf-date-badge history">비교 이력</span>';
+                }
                 tr += '<td class="cf-data-date-cell"><span>' + esc(dataDate) + '</span>' + dateBadge + '</td>';
                 return;
             }

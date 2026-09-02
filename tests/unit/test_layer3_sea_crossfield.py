@@ -381,7 +381,7 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
             'https://example.com/a-1', result['anomalies'][0]['product_url'],
         )
 
-    def test_detail_keeps_only_target_items_and_groups_their_history(self):
+    def test_detail_distinguishes_target_history_from_other_past_findings(self):
         rows = [
             _bestbuy_row(
                 id=31, item='B-PAST',
@@ -414,17 +414,23 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
             cursor, date(2026, 9, 2), 'sea_ref', 1, days=3,
         )
 
-        self.assertEqual([32, 33, 34], [
+        self.assertEqual([32, 33, 34, 31], [
             row['id'] for row in result['anomalies']
         ])
         self.assertEqual(
-            ['comparison_history', 'comparison_history', 'target'],
+            [
+                'comparison_history', 'comparison_history',
+                'target', 'past_finding',
+            ],
             [row['row_role'] for row in result['anomalies']],
         )
         self.assertEqual(1, result['total_anomalies'])
         self.assertEqual(1, result['total_findings'])
-        self.assertEqual(['A-TARGET'], result['retailer_summary']['Bestbuy']['items'])
-        self.assertNotIn('B-PAST', result['queries']['Bestbuy'])
+        self.assertEqual(
+            ['A-TARGET', 'B-PAST'],
+            result['retailer_summary']['Bestbuy']['items'],
+        )
+        self.assertIn('B-PAST', result['queries']['Bestbuy'])
 
 
 if __name__ == '__main__':

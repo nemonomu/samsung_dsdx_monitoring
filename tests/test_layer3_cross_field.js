@@ -283,6 +283,8 @@ assert(source.includes("r._findingLevel = row.finding_level || 'anomaly'"));
 assert(source.includes("r._rowRole = row.row_role || ''"));
 assert(source.includes("&& nextRole === itemRole"));
 assert(source.includes("var isTargetDate = rowRole === 'target'"));
+assert(source.includes("else if (rowRole === 'comparison_history')"));
+assert(!source.includes('과거 확인 항목'));
 assert(layer3Css.includes('.cf-target-date-row > td'));
 assert(layer3Css.includes('background: #ecfdf5'));
 assert(source.includes("if (urlKey) defaultVisibleSet.add('product_url')"));

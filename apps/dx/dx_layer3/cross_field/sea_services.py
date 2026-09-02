@@ -976,10 +976,13 @@ def get_sea_cross_field_rule_detail(
     for row in all_findings:
         row_source_date = _detail_row_source_date(row, result['date_col'])
         is_target = row_source_date == target_source_date
-        if not is_target and _detail_row_item_key(row) not in target_item_keys:
-            continue
         detail = dict(row)
-        detail['row_role'] = 'target' if is_target else 'comparison_history'
+        if is_target:
+            detail['row_role'] = 'target'
+        elif _detail_row_item_key(row) in target_item_keys:
+            detail['row_role'] = 'comparison_history'
+        else:
+            detail['row_role'] = 'past_finding'
         anomalies.append(detail)
     anomalies.sort(key=lambda row: _detail_row_sort_key(
         row, result['date_col'],
@@ -1021,7 +1024,7 @@ def get_sea_cross_field_rule_detail(
             normal_reviews.setdefault(f'{record_id}_{column}', payload)
 
     retailer_summary = {}
-    for row in target_findings:
+    for row in anomalies:
         retailer = str(row.get('account_name') or 'Unknown').strip().title()
         summary = retailer_summary.setdefault(retailer, {
             'count': 0,
@@ -1029,6 +1032,11 @@ def get_sea_cross_field_rule_detail(
             'items': [],
             'review_type_summary': {},
         })
+        item = str(row.get('item') or '')
+        if item and item not in summary['items']:
+            summary['items'].append(item)
+        if row.get('row_role') != 'target':
+            continue
         if str(row.get('id')) not in normal_record_ids:
             if row.get('finding_level') == 'review_needed':
                 summary['review_count'] += 1
@@ -1038,12 +1046,9 @@ def get_sea_cross_field_rule_detail(
                 )
             else:
                 summary['count'] += 1
-        item = str(row.get('item') or '')
-        if item and item not in summary['items']:
-            summary['items'].append(item)
 
     retailer_pairs = {retailer: [] for retailer in retailer_summary}
-    for row in target_findings:
+    for row in anomalies:
         retailer = str(row.get('account_name') or 'Unknown').strip().title()
         retailer_pairs.setdefault(retailer, []).append((
             retailer,
