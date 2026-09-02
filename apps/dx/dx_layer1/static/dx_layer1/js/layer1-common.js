@@ -151,6 +151,7 @@ function onSubitemClick(groupKey, itemName) {
     var urls = {
         'SEA Retail': '/dx/layer1/retail/',
         'Retail': '/dx/layer1/retail/',
+        'SIEL Retail': '/dx/layer1/',
         'TSE Retail': '/dx/layer1/',
         'Retail 감성분석': '/dx/layer1/sentiment/',
         'YouTube': '/dx/layer1/youtube/',
@@ -341,12 +342,17 @@ function flattenCheckToDetails(sectionType, check) {
                     expected_count: 0, actual_count: cat.comment_count || 0, rate: 0, status: cat.status });
             });
             break;
+        case 'siel_retail':
         case 'tse_retail':
             (check.categories || []).forEach(function(cat) {
                 (cat.retailers || []).forEach(function(ret) {
                     details.push({
                         category: cat.category || cat.name,
-                        time_slot: check.collection_window || 'KST 09:00~11:00',
+                        time_slot: check.collection_window || (
+                            sectionType === 'siel_retail'
+                                ? 'KST 09:00 완료 기준'
+                                : 'KST 09:00~11:00'
+                        ),
                         retailer: ret.retailer,
                         item_name: ret.batch_id || '',
                         expected_count: ret.expected || 0,
@@ -488,7 +494,8 @@ function getCheckBadgeHtml(sectionType) {
     if (currentStatsData && currentStatsData.checks) {
         check = currentStatsData.checks.find(function(c) { return c.check_type === sectionType; });
     }
-    var isRetailSection = sectionType === 'retail' || sectionType === 'tse_retail';
+    var isRetailSection = sectionType === 'retail' ||
+        sectionType === 'siel_retail' || sectionType === 'tse_retail';
     var isFullRate = check && check.rate >= 100 && !isRetailSection;
 
     if (!currentCheckStatus || !currentCheckStatus.sections) {

@@ -94,6 +94,30 @@ class Layer1CheckServiceTests(unittest.TestCase):
         connection.commit.assert_called_once_with()
         connection.rollback.assert_not_called()
 
+    def test_siel_completion_is_allowed_below_100_percent(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (0,)},
+            {},
+            {'fetchone': (42,)},
+            {},
+            {},
+            {},
+        ])
+        connection = Mock()
+        section = self._tse_section()
+        section['section'] = 'siel_retail'
+
+        result = self.service.save_check(
+            cursor, connection, '2026-08-12', 1, 2,
+            [section], 'tester',
+        )
+
+        self.assertIn('siel_retail', self.service.ALL_SECTIONS)
+        self.assertTrue(result['success'])
+        self.assertEqual('siel_retail', cursor.calls[1][1][-1])
+        connection.commit.assert_called_once_with()
+        connection.rollback.assert_not_called()
+
     def test_non_retail_section_still_requires_full_completion(self):
         cursor = ScriptedCursor([{'fetchone': (0,)}])
         connection = Mock()

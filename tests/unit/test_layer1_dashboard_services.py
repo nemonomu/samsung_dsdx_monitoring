@@ -62,6 +62,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'retail': 'retail_services',
             'sentiment': 'sentiment_services',
             'youtube': 'youtube_services',
+            'siel_retail': 'siel_retail_services',
             'tse_retail': 'tse_retail_services',
             'market_trend': 'market_trend_services',
             'market_demand': 'market_demand_services',
@@ -182,6 +183,85 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'RELEASE SAVEPOINT layer1_tse_retail_monitoring',
         ], [sql for sql, _params in cursor.calls])
 
+    def test_siel_exception_rolls_back_and_preserves_tv(self):
+        cursor = RecordingCursor()
+        retail_service = StatsService({
+            'check': {
+                'name': 'SEA Retail',
+                'check_type': 'retail',
+                'status': 'OK',
+            },
+            'failed_items': [],
+        })
+
+        @contextmanager
+        def connection():
+            yield object(), cursor
+
+        self.service.dx_connection = connection
+        original_services = self.service._get_active_services
+        self.service._get_active_services = lambda _target: (
+            [
+                (
+                    'siel_retail',
+                    StatsService(error=RuntimeError('siel query failed')),
+                ),
+                ('retail', retail_service),
+            ],
+            {'siel_retail', 'retail'},
+            {'siel_retail', 'retail'},
+        )
+        try:
+            result = self.service.get_dashboard_stats(date(2026, 8, 11))
+        finally:
+            self.service._get_active_services = original_services
+
+        self.assertNotIn('error', result)
+        self.assertEqual(['retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual('SIEL Retail', result['failed_items'][0]['source'])
+        self.assertEqual([
+            'SAVEPOINT layer1_siel_retail_monitoring',
+            'ROLLBACK TO SAVEPOINT layer1_siel_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_siel_retail_monitoring',
+        ], [sql for sql, _params in cursor.calls])
+
+    def test_siel_service_receives_explicit_kst_clock(self):
+        cursor = RecordingCursor()
+        siel_service = StatsService({
+            'check': {
+                'name': 'SIEL Retail',
+                'check_type': 'siel_retail',
+                'status': 'COLLECTING',
+            },
+            'failed_items': [],
+        })
+        expected_now = datetime(
+            2026, 8, 11, 8, 59,
+            tzinfo=timezone(timedelta(hours=9)),
+        )
+
+        @contextmanager
+        def connection():
+            yield object(), cursor
+
+        self.service.dx_connection = connection
+        original_services = self.service._get_active_services
+        self.service._get_active_services = lambda _target: (
+            [('siel_retail', siel_service)],
+            {'siel_retail'},
+            {'siel_retail'},
+        )
+        original_clock = self.service._get_siel_kst_now
+        self.service._get_siel_kst_now = lambda: expected_now
+        try:
+            self.service.get_dashboard_stats(date(2026, 8, 11))
+        finally:
+            self.service._get_siel_kst_now = original_clock
+            self.service._get_active_services = original_services
+
+        self.assertIs(expected_now, siel_service.calls[0][0][2])
+        self.assertEqual(timedelta(hours=9), expected_now.utcoffset())
+
     def test_tse_service_receives_explicit_kst_clock(self):
         cursor = RecordingCursor()
         tse_service = StatsService({
@@ -245,6 +325,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             {'check_type': 'youtube'},
             {'check_type': 'sentiment'},
             {'check_type': 'retail'},
+            {'check_type': 'siel_retail'},
             {'check_type': 'tse_retail'},
             {'check_type': 'macro_rpi'},
         ]
@@ -253,7 +334,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                'retail', 'tse_retail', 'youtube',
+                'retail', 'siel_retail', 'tse_retail', 'youtube',
                 'macro_cpi', 'sentiment', 'macro_rpi',
             ],
             [check['check_type'] for check in ordered],
@@ -263,7 +344,9 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             [
                 check['check_type']
                 for check in ordered
-                if check['check_type'] not in {'retail', 'tse_retail', 'youtube'}
+                if check['check_type'] not in {
+                    'retail', 'siel_retail', 'tse_retail', 'youtube'
+                }
             ],
         )
 
