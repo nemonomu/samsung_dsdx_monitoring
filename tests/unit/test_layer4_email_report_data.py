@@ -91,12 +91,32 @@ class EmailRegistryTests(unittest.TestCase):
             for retailer in configured_source['retailers']:
                 self.assertNotIn('columns', retailer)
                 self.assertNotIn('expected_count', retailer)
+                self.assertIn('email_include_skipped_columns', retailer)
                 self.assertTrue(retailer['aliases'])
 
         sea_tv = registry.EMAIL_REPORT_SOURCES[0]
         self.assertEqual('tv', sea_tv['product_line'])
         self.assertEqual('batch', sea_tv['date_mode'])
         self.assertFalse(sea_tv['latest_batch'])
+        sea_tv_retailers = {
+            retailer['name']: retailer
+            for retailer in sea_tv['retailers']
+        }
+        self.assertEqual(
+            sea_tv_retailers['Amazon']['email_include_skipped_columns'],
+            ('sku_popularity',),
+        )
+        self.assertEqual(
+            sea_tv_retailers['Bestbuy']['email_include_skipped_columns'],
+            ('promotion_position', 'promotion_type', 'trend_rank'),
+        )
+        self.assertEqual(
+            sea_tv_retailers['Walmart']['email_include_skipped_columns'],
+            (
+                'sku_popularity', 'number_of_ppl_purchased_yesterday',
+                'number_of_ppl_added_to_carts',
+            ),
+        )
         self.assertEqual(
             [
                 'public.tv_retail_com',
@@ -199,6 +219,53 @@ class EmailRegistryTests(unittest.TestCase):
 
 
 class EmailReportDataTests(unittest.TestCase):
+    def test_sea_tv_includes_only_retailer_specific_email_columns(self):
+        registry = load_registry()
+        sea_tv = next(
+            configured_source
+            for configured_source in registry.EMAIL_REPORT_SOURCES
+            if configured_source['key'] == 'sea_tv'
+        )
+        cursor = ScriptedCursor([{'fetchall': [
+            ('sku_popularity', 'amazon', True),
+            ('promotion_type', 'amazon', True),
+            ('promotion_position', 'bestbuy', True),
+            ('promotion_type', 'bestbuy', True),
+            ('trend_rank', 'bestbuy', True),
+            ('sku_popularity', 'bestbuy', True),
+            ('sku_popularity', 'walmart', True),
+            ('number_of_ppl_purchased_yesterday', 'walmart', True),
+            ('number_of_ppl_added_to_carts', 'walmart', True),
+            ('trend_rank', 'walmart', True),
+        ]}])
+        service = load_service(cursor)
+
+        configured = service._configured_retailers(cursor, sea_tv)
+        retailer_columns = {
+            retailer['name']: retailer['columns']
+            for retailer in configured
+        }
+
+        self.assertEqual(
+            retailer_columns['Amazon'],
+            ('item', 'sku_popularity'),
+        )
+        self.assertEqual(
+            retailer_columns['Bestbuy'],
+            (
+                'item', 'promotion_position', 'promotion_type',
+                'trend_rank',
+            ),
+        )
+        self.assertEqual(
+            retailer_columns['Walmart'],
+            (
+                'item', 'sku_popularity',
+                'number_of_ppl_purchased_yesterday',
+                'number_of_ppl_added_to_carts',
+            ),
+        )
+
     def test_db_columns_latest_batch_and_whitespace_missing_counts(self):
         cursor = ScriptedCursor([
             {'fetchall': [

@@ -106,7 +106,7 @@ def _configured_retailers(cursor, source):
         [_normalize_name(source['product_line'])],
     )
     rows = cursor.fetchall()
-    email_include_skipped = set(
+    source_email_include_skipped = set(
         source.get('email_include_skipped_columns', ())
     )
 
@@ -116,6 +116,9 @@ def _configured_retailers(cursor, source):
             _normalize_name(alias) for alias in retailer['aliases']
         }
         unsupported_columns = set(retailer.get('unsupported_columns', ()))
+        email_include_skipped = source_email_include_skipped | set(
+            retailer.get('email_include_skipped_columns', ())
+        )
         columns = []
         matched_row_count = 0
         for row in rows:

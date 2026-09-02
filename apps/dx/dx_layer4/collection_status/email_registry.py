@@ -19,7 +19,8 @@ _TABLE_IDENTIFIER = re.compile(
 def _retailer(name, *aliases, exclude_redirect=False,
               include_unassigned=None, unsupported_columns=(),
               conditional_columns=(), optional_if_unconfigured=False,
-              email_redirect_metric=False):
+              email_redirect_metric=False,
+              email_include_skipped_columns=()):
     retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
@@ -28,6 +29,9 @@ def _retailer(name, *aliases, exclude_redirect=False,
         'conditional_columns': tuple(conditional_columns),
         'optional_if_unconfigured': bool(optional_if_unconfigured),
         'email_redirect_metric': bool(email_redirect_metric),
+        'email_include_skipped_columns': tuple(
+            email_include_skipped_columns
+        ),
     }
     if include_unassigned is not None:
         retailer['include_unassigned'] = bool(include_unassigned)
@@ -65,9 +69,23 @@ def _source(key, country, product, table_name, date_column, date_mode,
 
 
 _SEA_TV_RETAILERS = (
-    _retailer('Amazon', exclude_redirect=True),
-    _retailer('Bestbuy', 'BestBuy'),
-    _retailer('Walmart'),
+    _retailer(
+        'Amazon', exclude_redirect=True,
+        email_include_skipped_columns=('sku_popularity',),
+    ),
+    _retailer(
+        'Bestbuy', 'BestBuy',
+        email_include_skipped_columns=(
+            'promotion_position', 'promotion_type', 'trend_rank',
+        ),
+    ),
+    _retailer(
+        'Walmart',
+        email_include_skipped_columns=(
+            'sku_popularity', 'number_of_ppl_purchased_yesterday',
+            'number_of_ppl_added_to_carts',
+        ),
+    ),
 )
 _SEA_APPLIANCE_RETAILERS = (
     _retailer('Bestbuy', 'BestBuy'),
@@ -223,7 +241,8 @@ def _validate_registry():
                 )
             for identifier in (
                     *retailer.get('unsupported_columns', ()),
-                    *retailer.get('conditional_columns', ())):
+                    *retailer.get('conditional_columns', ()),
+                    *retailer.get('email_include_skipped_columns', ())):
                 if not _IDENTIFIER.fullmatch(identifier):
                     raise ValueError(
                         f"Unsafe retailer column: {source['key']}"

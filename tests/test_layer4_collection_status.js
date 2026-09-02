@@ -64,28 +64,54 @@ const emailReportData = {
         total_count: 879,
         main_count: 750,
         bsr_count: 100,
-        column_order: ['item'],
+        column_order: [
+            'item', 'sku_popularity', 'promotion_position',
+            'promotion_type', 'trend_rank',
+            'number_of_ppl_purchased_yesterday',
+            'number_of_ppl_added_to_carts'
+        ],
         retailers: [{
             retailer: 'Amazon',
             total_count: 248,
             main_count: 220,
             bsr_count: 80,
             redirect_true_count: 2,
-            columns: [{ column: 'item', total_count: 248, null_count: 0 }]
+            columns: [
+                { column: 'item', total_count: 248, null_count: 0 },
+                { column: 'sku_popularity', total_count: 248, null_count: 3 }
+            ]
         }, {
             retailer: 'Bestbuy',
             total_count: 315,
             main_count: 300,
             bsr_count: 20,
             redirect_true_count: 0,
-            columns: [{ column: 'item', total_count: 315, null_count: 0 }]
+            columns: [
+                { column: 'item', total_count: 315, null_count: 0 },
+                { column: 'promotion_position', total_count: 16, null_count: 0 },
+                { column: 'promotion_type', total_count: 16, null_count: 1 },
+                { column: 'trend_rank', total_count: 10, null_count: 0 }
+            ]
         }, {
             retailer: 'Walmart',
             total_count: 316,
             main_count: 230,
             bsr_count: 0,
             redirect_true_count: 0,
-            columns: [{ column: 'item', total_count: 316, null_count: 0 }]
+            columns: [
+                { column: 'item', total_count: 316, null_count: 0 },
+                { column: 'sku_popularity', total_count: 316, null_count: 4 },
+                {
+                    column: 'number_of_ppl_purchased_yesterday',
+                    total_count: 316,
+                    null_count: 5
+                },
+                {
+                    column: 'number_of_ppl_added_to_carts',
+                    total_count: 316,
+                    null_count: 6
+                }
+            ]
         }]
     }, {
         key: 'sea_ref',
@@ -417,23 +443,66 @@ async function run() {
     assert(emailHtml.includes(
         'TSE - LDY · 데이터일 2026.07.29 (D)'
     ));
-    const seaTvSection = emailHtml.match(
-        /<div class="et">SEA - TV[^<]*<\/div>(<table[\s\S]*?<\/table>)/
+    const seaTvStart = emailHtml.indexOf('<div class="et">SEA - TV');
+    const seaTvEnd = emailHtml.indexOf('<div class="et">SEA - REF', seaTvStart);
+    const seaTvTables = Array.from(
+        emailHtml.slice(seaTvStart, seaTvEnd).matchAll(/<table[\s\S]*?<\/table>/g),
+        match => match[0]
     );
-    assert(seaTvSection);
-    assert(seaTvSection[1].includes('style="table-layout:fixed;"'));
-    assert(seaTvSection[1].includes(
+    assert.strictEqual(seaTvTables.length, 2);
+    const seaTvRankTable = seaTvTables[0];
+    const seaTvMissingTable = seaTvTables[1];
+    assert(seaTvRankTable.includes('style="table-layout:fixed;"'));
+    assert(seaTvRankTable.includes(
         '<colgroup><col style="width:100px;"><col><col><col></colgroup>'
     ));
-    assert(seaTvSection[1].includes(
+    assert(seaTvRankTable.includes(
         '<th>구분</th><th>Amazon</th><th>Bestbuy</th><th>Walmart</th>'
     ));
-    assert(seaTvSection[1].includes(
+    assert(seaTvRankTable.includes(
         '<tr><th>main_rank</th><td>220</td><td>300</td><td>230</td></tr>'
     ));
-    assert(seaTvSection[1].includes(
+    assert(seaTvRankTable.includes(
         '<tr><th>bsr_rank</th><td>80</td><td>20</td><td>0</td></tr>'
     ));
+    function seaTvMissingRow(columnName) {
+        const row = seaTvMissingTable.match(
+            new RegExp('<tr><td[^>]*>' + columnName + '<\\/td>([\\s\\S]*?)<\\/tr>')
+        );
+        assert(row);
+        return row[1];
+    }
+    const skuPopularityRow = seaTvMissingRow('sku_popularity');
+    assert(skuPopularityRow.includes(
+        '<td align="center">248</td><td align="center">3</td>'
+    ));
+    assert(skuPopularityRow.includes(
+        '<td align="center">316</td><td align="center">4</td>'
+    ));
+    assert.strictEqual((skuPopularityRow.match(/>-<\/td>/g) || []).length, 2);
+    [
+        ['promotion_position', 16, 0],
+        ['promotion_type', 16, 1],
+        ['trend_rank', 10, 0]
+    ].forEach(function(expected) {
+        const row = seaTvMissingRow(expected[0]);
+        assert(row.includes(
+            '<td align="center">' + expected[1] + '</td>'
+            + '<td align="center">' + expected[2] + '</td>'
+        ));
+        assert.strictEqual((row.match(/>-<\/td>/g) || []).length, 4);
+    });
+    [
+        ['number_of_ppl_purchased_yesterday', 5],
+        ['number_of_ppl_added_to_carts', 6]
+    ].forEach(function(expected) {
+        const row = seaTvMissingRow(expected[0]);
+        assert(row.includes(
+            '<td align="center">316</td>'
+            + '<td align="center">' + expected[1] + '</td>'
+        ));
+        assert.strictEqual((row.match(/>-<\/td>/g) || []).length, 4);
+    });
     assert(!emailDailyTable.includes('국가 공통'));
     assert(!emailDailyTable.includes('한 번만 표시'));
     assert(!emailDailyTable.includes('public.tv_retail_com'));
