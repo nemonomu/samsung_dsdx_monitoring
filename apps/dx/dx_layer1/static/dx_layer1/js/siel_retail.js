@@ -96,15 +96,12 @@ function renderSielRetailCheck(check, checkIdx) {
     var categoriesHtml = categories.map(function(cat, catIdx) {
         return renderSielCategory(cat, checkIdx, catIdx);
     }).join('');
-    var dateLabel = '검수일 ' + esc(check.inspection_date || '-') +
-        ' · 데이터일 ' + esc(check.source_date || '-') + ' (D)';
 
     return '<div class="check-item">' +
         '<div class="check-main" onclick="toggleTimeSlots(this, ' + checkIdx + ')">' +
             '<div class="check-info">' +
                 '<div class="check-name"><span class="toggle-icon">▶</span>' + esc(check.name || 'SIEL Retail') + '</div>' +
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +
-                '<div class="check-description">' + dateLabel + '</div>' +
             '</div>' +
             '<div class="check-stats">' +
                 '<div class="check-stat">' +

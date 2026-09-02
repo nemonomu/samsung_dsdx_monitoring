@@ -76,11 +76,11 @@ const checkHtml = context.renderSielRetailCheck({
     categories: [],
 }, 1);
 
-assert(checkHtml.includes('검수일 2026-08-11 · 데이터일 2026-08-11 (D)'));
+assert(!checkHtml.includes('검수일 2026-08-11 · 데이터일 2026-08-11 (D)'));
 assert(checkHtml.includes('<div class="value">1,817</div>'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
 assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=7"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=1"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=2"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 
 const commonContext = {

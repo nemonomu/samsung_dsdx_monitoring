@@ -239,7 +239,7 @@ function categoryFromSummary(key) {
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
     assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=13"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=13"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=6"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=7"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
