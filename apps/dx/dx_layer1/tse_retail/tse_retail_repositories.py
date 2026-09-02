@@ -32,12 +32,8 @@ def get_latest_batch_counts(cursor, product_line, target_date):
         SELECT latest.account_name,
                latest.batch_id,
                COUNT(rows.id) AS actual_count,
-               COUNT(rows.id) FILTER (
-                   WHERE rows.main_rank IS NOT NULL
-               ) AS main_count,
-               COUNT(rows.id) FILTER (
-                   WHERE rows.bsr_rank IS NOT NULL
-               ) AS bsr_count
+               COUNT(rows.main_rank) AS main_count,
+               COUNT(rows.bsr_rank) AS bsr_count
         FROM latest_batches latest
         JOIN dated_rows rows
           ON LOWER(TRIM(rows.account_name)) = latest.retailer_key
@@ -102,17 +98,13 @@ def get_previous_main_counts(
         ),
         daily_counts AS (
             SELECT latest.collection_date,
-                   COUNT(rows.id) FILTER (
-                       WHERE rows.main_rank IS NOT NULL
-                   ) AS main_count
+                   COUNT(rows.main_rank) AS main_count
             FROM latest_batches latest
             JOIN retailer_rows rows
               ON rows.collection_date = latest.collection_date
              AND rows.batch_id IS NOT DISTINCT FROM latest.batch_id
             GROUP BY latest.collection_date
-            HAVING COUNT(rows.id) FILTER (
-                WHERE rows.main_rank IS NOT NULL
-            ) > 0
+            HAVING COUNT(rows.main_rank) > 0
             ORDER BY latest.collection_date DESC
             LIMIT %s
         )
