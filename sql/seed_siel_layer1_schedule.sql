@@ -16,7 +16,7 @@ DECLARE
     physical_count integer;
     exact_count integer;
 BEGIN
-    SELECT COUNT(DISTINCT (schedule.category, schedule.retailer))
+    SELECT COUNT(*)
     INTO physical_count
     FROM public.monitoring_collection_schedule
     WHERE check_type = 'siel_retail';
@@ -148,7 +148,7 @@ BEGIN
             ('LDY', 'Amazon',   'dx_siel.dx_siel_ldy_retail_com'),
             ('LDY', 'Flipkart', 'dx_siel.dx_siel_ldy_retail_com')
     )
-    SELECT COUNT(*)
+    SELECT COUNT(DISTINCT (schedule.category, schedule.retailer))
     INTO exact_count
     FROM public.monitoring_collection_schedule schedule
     JOIN expected

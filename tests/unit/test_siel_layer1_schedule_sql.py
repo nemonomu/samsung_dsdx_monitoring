@@ -31,6 +31,14 @@ class SielLayer1ScheduleSqlTests(unittest.TestCase):
             self.assertEqual(3, self.sql.count(row))
 
     def test_script_asserts_exact_policy_before_and_after_insert(self):
+        physical_query = """SELECT COUNT(*)
+    INTO physical_count
+    FROM public.monitoring_collection_schedule
+    WHERE check_type = 'siel_retail';"""
+        invalid_physical_query = """SELECT COUNT(DISTINCT (schedule.category, schedule.retailer))
+    INTO physical_count"""
+        self.assertEqual(2, self.sql.count(physical_query))
+        self.assertNotIn(invalid_physical_query, self.sql)
         self.assertEqual(
             2,
             self.sql.count(
