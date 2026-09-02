@@ -7,6 +7,21 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_columns import get_missing_exclude_conditions
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import validate_exclude_condition
+from apps.dx.dx_layer3.field_missing import sea_services
+
+
+def is_sea_field_missing_product_line(product_line):
+    return sea_services.is_sea_product_line(product_line)
+
+
+def get_field_missing_validation_columns(product_line):
+    return sea_services.get_validation_columns(product_line)
+
+
+def get_field_missing_retailers(product_line):
+    if sea_services.is_sea_product_line(product_line):
+        return sea_services.get_retailers(product_line)
+    return ['Amazon', 'Bestbuy', 'Walmart']
 
 
 def get_field_missing_excluded_columns(product_line):
@@ -20,6 +35,9 @@ def resolve_field_missing_date_contract(inspection_date, product_line):
     """Resolve the inspection date without changing non-SEA placeholders."""
     if (product_line or '').lower() == 'tv':
         return resolve_monitoring_date(inspection_date, 'SEA', 'sea_tv')
+    if sea_services.is_sea_product_line(product_line):
+        source_key = sea_services.get_source_key(product_line)
+        return resolve_monitoring_date(inspection_date, 'SEA', source_key)
     value = inspection_date.isoformat()
     return {
         'inspection_date': value,
@@ -39,6 +57,12 @@ def field_missing_detection(
     - 직전에는 값이 있었는데 데이터일에 NULL/빈값인 필드 탐지
     Returns: dict
     """
+    if sea_services.is_sea_product_line(product_line):
+        return sea_services.field_missing_detection(
+            cursor, target_date, product_line, retailer,
+            inspection_date=inspection_date,
+        )
+
     if product_line != 'tv':
         return {
             'date': str(target_date),
@@ -207,6 +231,12 @@ def field_missing_detail_all(cursor, target_date, product_line, retailer, displa
     offset/limit 파라미터로 데이터 분할 조회
     Returns: dict
     """
+    if sea_services.is_sea_product_line(product_line):
+        return sea_services.field_missing_detail_all(
+            cursor, target_date, product_line, retailer, display_fields,
+            offset, limit,
+        )
+
     if product_line != 'tv':
         return {
             'status': 'success',
@@ -313,6 +343,12 @@ def field_missing_detail_problem(cursor, target_date, product_line, retailer, co
     무한 스크롤: offset, limit 파라미터 지원
     Returns: dict (empty result dict if no columns to check)
     """
+    if sea_services.is_sea_product_line(product_line):
+        return sea_services.field_missing_detail_problem(
+            cursor, target_date, product_line, retailer, columns_to_check,
+            offset, limit,
+        )
+
     if product_line != 'tv':
         return {
             'status': 'success',
@@ -440,6 +476,13 @@ def field_missing_detail_by_field(cursor, target_date, product_line, retailer, f
     - 직전 2일에 값이 있었는데 데이터일에 없는 item들의 N일치 전체 데이터
     Returns: dict (empty result dict if no missing items)
     """
+    if sea_services.is_sea_product_line(product_line):
+        return sea_services.field_missing_detail_by_field(
+            cursor, target_date, product_line, retailer, field, days,
+            columns_info, display_fields, related_columns, editable_cols,
+            inspection_date=inspection_date,
+        )
+
     if product_line != 'tv':
         return {
             'status': 'success',

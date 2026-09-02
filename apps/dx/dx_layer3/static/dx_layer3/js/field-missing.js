@@ -11,12 +11,22 @@ function toggleFieldMissing() {
     }
 }
 
-// 현재 선택된 제품군 (TV/HHP)
+const fieldMissingRetailers = {
+    tv: ['Amazon', 'Bestbuy', 'Walmart'],
+    sea_ref: ['Bestbuy', 'Lowes'],
+    sea_ldy: ['Bestbuy', 'Lowes']
+};
+
+function fieldMissingProductLabel(productLine) {
+    return { tv: 'TV', sea_ref: 'REF', sea_ldy: 'LDY' }[productLine] || String(productLine || '').toUpperCase();
+}
+
+// 현재 선택된 SEA 제품군
 let currentFieldMissingPL = 'tv';
 
 // 탭 전환
 function switchFieldMissingTab(pl) {
-    if (pl !== 'tv') {
+    if (!fieldMissingRetailers[pl]) {
         pl = 'tv';
     }
     currentFieldMissingPL = pl;
@@ -30,10 +40,15 @@ function switchFieldMissingTab(pl) {
     });
 
     // 배지 ID 업데이트 및 리테일러 이름 업데이트
-    const retailers = ['Amazon', 'Bestbuy', 'Walmart'];
-    const plLabel = pl.toUpperCase();
-    retailers.forEach(retailer => {
-        const badgeEl = document.querySelector(`[data-retailer="${retailer}"] .retailer-badge`);
+    const retailers = fieldMissingRetailers[pl];
+    const plLabel = fieldMissingProductLabel(pl);
+    document.querySelectorAll('.field-missing-retailer-card').forEach(card => {
+        const retailer = card.dataset.retailer;
+        const isVisible = retailers.includes(retailer);
+        card.style.display = isVisible ? '' : 'none';
+        if (!isVisible) return;
+
+        const badgeEl = card.querySelector('.retailer-badge');
         if (badgeEl) badgeEl.id = `badge-${pl}-${retailer}`;
 
         // 리테일러 이름 업데이트 (TV_Amazon, HHP_Bestbuy 등)
@@ -51,7 +66,7 @@ let retailerMissingCache = {};
 // 모든 리테일러 데이터 로드
 async function loadAllRetailersMissing() {
     const date = getSelectedDate();
-    const retailers = ['Amazon', 'Bestbuy', 'Walmart'];
+    const retailers = fieldMissingRetailers[currentFieldMissingPL] || [];
     let totalMissing = 0;
     let totalFields = 0;
 
@@ -145,7 +160,7 @@ function viewMissingSummary(retailer, dateOverride = null) {
         return;
     }
 
-    AppModal.setTitle('detail', `${currentFieldMissingPL.toUpperCase()} - ${retailer} 필드별 누락 요약`);
+    AppModal.setTitle('detail', `${fieldMissingProductLabel(currentFieldMissingPL)} - ${retailer} 필드별 누락 요약`);
     AppModal.open('detail');
 
     // 날짜가 변경된 경우 API 재호출
@@ -290,7 +305,7 @@ async function viewMissingSummaryInline(retailer, date) {
     } else {
         // 로딩 표시 후 API 호출
         var loadingHtml = '<div class="detail-view-wrapper" style="padding:40px;text-align:center;">데이터를 불러오는 중...</div>';
-        ViewStack.push(loadingHtml, currentFieldMissingPL.toUpperCase() + ' - ' + retailer + ' 필드별 누락 요약');
+        ViewStack.push(loadingHtml, fieldMissingProductLabel(currentFieldMissingPL) + ' - ' + retailer + ' 필드별 누락 요약');
         try {
             var data = await fetchAPI('/layer3/api/field-missing/?date=' + (date || getSelectedDate()) + '&type=' + currentFieldMissingPL + '&retailer=' + retailer);
             var missingFields = data.missing_fields || [];
@@ -312,7 +327,7 @@ async function viewMissingSummaryInline(retailer, date) {
 }
 
 function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retailer, sourceDate) {
-    var plUpper = currentFieldMissingPL.toUpperCase();
+    var plUpper = fieldMissingProductLabel(currentFieldMissingPL);
     var totalMissing = summary.total_missing_cases || 0;
 
     var titleText = plUpper + ' - ' + retailer + ' 필드별 누락 요약 (' + totalMissing + '건)';
@@ -357,7 +372,7 @@ function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retaile
 
 // 필드별 누락 상세 보기 (3일치 데이터)
 async function viewFieldMissingDetail(retailer, field, date) {
-    AppModal.setTitle('detail', `${currentFieldMissingPL.toUpperCase()} - ${retailer} - ${field} 누락 상세`);
+    AppModal.setTitle('detail', `${fieldMissingProductLabel(currentFieldMissingPL)} - ${retailer} - ${field} 누락 상세`);
     AppModal.setBody('detail', '<p style="text-align: center; padding: 40px;">데이터를 불러오는 중...</p>');
 
     try {
@@ -409,8 +424,8 @@ function renderFieldMissingDetail(data, retailer, field) {
         const itemListDisplay = uniqueItems.join(', ');
         const inClause = uniqueItems.map(item => `'${item}'`).join(', ');
         const productLine = currentFieldMissingPL || 'tv';
-        const tableName = productLine === 'hhp' ? 'hhp_retail_com' : 'tv_retail_com';
-        const dateColumn = productLine === 'hhp' ? 'crawl_strdatetime' : 'crawl_datetime';
+        const tableName = data.table_name || (productLine === 'hhp' ? 'hhp_retail_com' : 'tv_retail_com');
+        const dateColumn = data.date_column || (productLine === 'tv' ? 'crawl_datetime' : 'crawl_strdatetime');
         const queryDate = data.date || '';
 
         // API에서 반환한 컬럼 목록 사용 (필수 + 현재필드 + 관련필드)
@@ -561,7 +576,7 @@ async function viewMissingItems(retailer) {
         fields: []
     };
 
-    AppModal.setTitle('detail', `${currentFieldMissingPL.toUpperCase()} - ${retailer} 필드 누락 항목`);
+    AppModal.setTitle('detail', `${fieldMissingProductLabel(currentFieldMissingPL)} - ${retailer} 필드 누락 항목`);
     AppModal.setBody('detail', '<p>데이터를 불러오는 중...</p>');
     AppModal.open('detail');
 
@@ -674,9 +689,12 @@ function renderMissingItemsModalInitial(data) {
 function getMissingItemRow(row) {
     const todayStyle = row.today_has_value ? 'color: #059669;' : 'color: #dc2626; font-weight: 600;';
     const todayValue = row.today_has_value ? (row.today_value || '-') : '❌ 없음';
+    const newBadge = row.finding_type === 'new'
+        ? ' <span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;">신규</span>'
+        : '';
 
     return `<tr>
-        <td>${esc(row.item || '-')}</td>
+        <td>${esc(row.item || '-')}${newBadge}</td>
         <td>${esc(row.account_name || '-')}</td>
         <td style="font-weight: 500;">${esc(row.field_name || '-')}</td>
         <td>${esc(row.d1_value || '-')}</td>
@@ -745,7 +763,7 @@ async function view3DaysData(retailer) {
         loadedCount: 0
     };
 
-    AppModal.setTitle('detail', `${currentFieldMissingPL.toUpperCase()} - ${retailer} 3일치 데이터`);
+    AppModal.setTitle('detail', `${fieldMissingProductLabel(currentFieldMissingPL)} - ${retailer} 3일치 데이터`);
     AppModal.setBody('detail', '<p>데이터를 불러오는 중...</p>');
     AppModal.open('detail');
 
@@ -1310,12 +1328,12 @@ async function showFieldMissingDetailInline(retailer, fieldName) {
 
 function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days) {
     var tableName = data.table_name || (productLine === 'tv' ? 'tv_retail_com' : 'hhp_retail_com');
-    var dateCol = productLine === 'tv' ? 'crawl_datetime' : 'crawl_strdatetime';
+    var dateCol = data.date_column || (productLine === 'tv' ? 'crawl_datetime' : 'crawl_strdatetime');
     var editableCols = new Set(data.editable_columns || []);
     var normalReviews = data.normal_reviews || {};
     var columns = data.columns || [];
     var rawRows = data.data || [];
-    var plDisplay = (productLine || 'tv').toUpperCase();
+    var plDisplay = fieldMissingProductLabel(productLine || 'tv');
     var inspectionDate = data.inspection_date || date;
     var sourceDate = data.source_date || data.date || date;
     var _wn = ['일','월','화','수','목','금','토'][new Date(inspectionDate).getDay()];
@@ -1352,6 +1370,7 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
         });
         r._rowId = row.id;
         r._rowDate = (row[dateCol] || '').substring(0, 10);
+        r._findingType = row.finding_type || '';
         return r;
     });
 
@@ -1501,6 +1520,7 @@ window.reloadFmDays = function() {
                 });
                 r._rowId = row.id;
                 r._rowDate = (row[dateCol] || '').substring(0, 10);
+                r._findingType = row.finding_type || '';
                 return r;
             });
 
@@ -1637,7 +1657,10 @@ function _fmRenderPage(page) {
                 var spanAttr = span ? ' rowspan="' + span + '"' : '';
                 var val = row[c.key];
                 var displayVal = val !== null && val !== undefined ? String(val) : '-';
-                tr += '<td' + spanAttr + ' style="vertical-align:middle;">' + esc(displayVal) + '</td>';
+                var findingBadge = row._findingType === 'new'
+                    ? ' <span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;background:#dcfce7;color:#15803d;font-size:11px;font-weight:700;">신규</span>'
+                    : '';
+                tr += '<td' + spanAttr + ' style="vertical-align:middle;">' + esc(displayVal) + findingBadge + '</td>';
                 return;
             }
 

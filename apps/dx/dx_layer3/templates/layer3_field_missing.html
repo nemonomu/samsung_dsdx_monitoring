@@ -26,9 +26,11 @@
     </div>
     <div class="category-content show" id="field-missing-content">
         <div class="field-missing-date-scope" id="field-missing-date-scope"></div>
-        <!-- TV / HHP 탭 -->
+        <!-- SEA 제품군 탭 -->
         <div class="field-missing-tabs">
             <button class="field-missing-tab active" data-pl="tv" onclick="switchFieldMissingTab('tv')">TV</button>
+            <button class="field-missing-tab" data-pl="sea_ref" onclick="switchFieldMissingTab('sea_ref')">REF</button>
+            <button class="field-missing-tab" data-pl="sea_ldy" onclick="switchFieldMissingTab('sea_ldy')">LDY</button>
         </div>
         <!-- 리테일러 카드들 -->
         <div class="field-missing-retailers" id="field-missing-retailers">
@@ -62,6 +64,16 @@
                     <button class="btn-view-3days" onclick="view3DaysData('Walmart')">3일치 보기</button>
                 </div>
             </div>
+            <div class="field-missing-retailer-card" data-retailer="Lowes" style="display: none;">
+                <div class="retailer-card-header">
+                    <span class="retailer-name" id="retailer-name-Lowes">REF_Lowes</span>
+                    <span class="retailer-badge" id="badge-sea_ref-Lowes">-</span>
+                </div>
+                <div class="retailer-card-actions">
+                    <button class="btn-view-summary" onclick="viewMissingSummary('Lowes')">누락분 보기</button>
+                    <button class="btn-view-3days" onclick="view3DaysData('Lowes')">3일치 보기</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -69,5 +81,5 @@
 
 {% block layer3_js %}
 <script src="{% static 'dx_layer3/js/common.js' %}?v=20260901-6"></script>
-<script src="{% static 'dx_layer3/js/field-missing.js' %}?v=3"></script>
+<script src="{% static 'dx_layer3/js/field-missing.js' %}?v=4"></script>
 {% endblock %}

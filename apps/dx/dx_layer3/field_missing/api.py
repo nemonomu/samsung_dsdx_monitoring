@@ -11,6 +11,32 @@ from . import services
 from .services import get_field_missing_excluded_columns
 
 
+def _validation_columns(product_line, retailer):
+    fixed = services.get_field_missing_validation_columns(product_line)
+    if fixed:
+        return fixed
+    from apps.common.retail_columns import get_retail_columns_for_retailer
+    return get_retail_columns_for_retailer(product_line, retailer)
+
+
+def _columns_with_related(product_line, retailer):
+    from apps.common.retail_columns import get_retail_columns_with_related
+    configured = get_retail_columns_with_related(product_line, retailer)
+    fixed = services.get_field_missing_validation_columns(product_line)
+    if not fixed:
+        return configured
+    configured_by_name = {
+        column['column_name']: column for column in configured
+    }
+    return [
+        configured_by_name.get(column, {
+            'column_name': column,
+            'related_columns': '',
+        })
+        for column in fixed
+    ]
+
+
 def _resolve_request_dates(date_str, product_line):
     inspection_date = (
         datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -48,10 +74,9 @@ def field_missing_detection(request):
     )
 
     # DB에서 리테일러별 수집 필드 로드 (skip_missing_check=TRUE인 필드 제외)
-    from apps.common.retail_columns import get_retail_columns_for_retailer
     retail_columns = {}
-    for ret in ['Amazon', 'Bestbuy', 'Walmart']:
-        cols = get_retail_columns_for_retailer(product_line, ret)
+    for ret in services.get_field_missing_retailers(product_line):
+        cols = _validation_columns(product_line, ret)
         if cols:
             retail_columns[ret] = cols
 
@@ -89,8 +114,13 @@ def field_missing_detail_all(request):
     )
 
     # DB에서 리테일러별 수집 필드 로드
-    from apps.common.retail_columns import get_retailer_columns
-    retail_columns = get_retailer_columns(product_line, retailer)
+    if services.is_sea_field_missing_product_line(product_line):
+        retail_columns = services.get_field_missing_validation_columns(
+            product_line
+        )
+    else:
+        from apps.common.retail_columns import get_retailer_columns
+        retail_columns = get_retailer_columns(product_line, retailer)
 
     # 표시할 필드 선택 (긴 텍스트 필드 제외)
     exclude_cols = ['calendar_week', 'detailed_review_content', 'summarized_review_content']
@@ -131,8 +161,13 @@ def field_missing_detail_problem(request):
     )
 
     # DB에서 리테일러별 수집 필드 로드
-    from apps.common.retail_columns import get_retailer_columns
-    retail_columns = get_retailer_columns(product_line, retailer)
+    if services.is_sea_field_missing_product_line(product_line):
+        retail_columns = services.get_field_missing_validation_columns(
+            product_line
+        )
+    else:
+        from apps.common.retail_columns import get_retailer_columns
+        retail_columns = get_retailer_columns(product_line, retailer)
 
     # 기본 필드 제외
     exclude_cols = ['id', 'item', 'account_name', 'page_type', 'crawl_datetime', 'crawl_strdatetime', 'calendar_week', 'product_url']
@@ -191,8 +226,7 @@ def field_missing_detail_by_field(request):
         return JsonResponse({'status': 'error', 'message': 'field 파라미터가 필요합니다.'})
 
     # DB에서 리테일러별 수집 필드 및 related_columns 로드
-    from apps.common.retail_columns import get_retail_columns_with_related
-    columns_info = get_retail_columns_with_related(product_line, retailer)
+    columns_info = _columns_with_related(product_line, retailer)
     display_fields = [c['column_name'] for c in columns_info]
     related_columns = []
     for c in columns_info:

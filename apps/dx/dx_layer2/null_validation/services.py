@@ -84,8 +84,7 @@ SEA_NULL_COLUMNS = {
     'ref': (
         'item', 'product_url', 'account_name', 'country',
         'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
-        'ref_capacity', 'ref_refrigerator_type', 'retailer_sku_name',
-        'sku', 'star_rating',
+        'ref_capacity', 'retailer_sku_name', 'sku', 'star_rating',
     ),
     'ldy': (
         'item', 'product_url', 'account_name', 'country',
