@@ -603,7 +603,7 @@ function renderDXTableDetail(vType, table) {
                         총 ${totalCount.toLocaleString()}건 중 형식 오류 레코드
                     </div>
                     <div class="retailer-actions">
-                        <button class="btn-rule" onclick="event.stopPropagation(); openRuleModal('${tableName}', '${retailer.retailer}')">검증규칙</button>
+                        <button class="btn-rule" onclick="event.stopPropagation(); openRuleModal('${tableCode}', '${retailer.retailer}')">검증규칙</button>
                         ${hasIssue ? `<button class="btn-detail" onclick="event.stopPropagation(); openDetailModal('format', '${tableName}', '${retailer.retailer}', ${issueCount})">상세보기</button>` : ''}
                     </div>
                 </div>

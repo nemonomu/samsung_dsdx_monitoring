@@ -1591,15 +1591,25 @@ async function openRuleModal(tableName, retailer) {
 
     const tableNameMap = {
         'TV Retail': 'tv_retail_com',
+        'tv_retail': 'tv_retail_com',
         'HHP Retail': 'hhp_retail_com',
+        'hhp_retail': 'hhp_retail_com',
         'SEA REF': 'ref_retail_com',
+        'sea_ref_retail': 'ref_retail_com',
         'SEA LDY': 'ldy_retail_com',
+        'sea_ldy_retail': 'ldy_retail_com',
         'SIEL TV': 'siel_tv',
+        'siel_tv_retail': 'siel_tv',
         'SIEL REF': 'siel_ref',
+        'siel_ref_retail': 'siel_ref',
         'SIEL LDY': 'siel_ldy',
+        'siel_ldy_retail': 'siel_ldy',
         'TSE TV': 'tse_tv',
+        'tse_tv_retail': 'tse_tv',
         'TSE REF': 'tse_ref',
+        'tse_ref_retail': 'tse_ref',
         'TSE LDY': 'tse_ldy',
+        'tse_ldy_retail': 'tse_ldy',
         'YouTube': 'youtube_videos',
         'Market': 'market_trend'
     };
@@ -1611,13 +1621,13 @@ async function openRuleModal(tableName, retailer) {
         'Forecast': 'openai_forecast_results'
     };
 
-    let dbTableName = tableNameMap[tableName] || 'tv_retail_com';
+    let dbTableName = tableNameMap[tableName] || tableName;
     if (tableName === 'Market' && marketRetailerMap[retailer]) {
         dbTableName = marketRetailerMap[retailer];
     }
 
     try {
-        const response = await fetch(`/dx/layer2/api/format-rules/?table=${dbTableName}&retailer=${retailer}`);
+        const response = await fetch(`/dx/layer2/api/format-rules/?table=${encodeURIComponent(dbTableName)}&retailer=${encodeURIComponent(retailer)}`);
         const data = await response.json();
         const rules = data.rules || [];
 

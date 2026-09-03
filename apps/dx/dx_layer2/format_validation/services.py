@@ -398,7 +398,8 @@ _SIEL_FLIPKART_SCREEN_SIZE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SIEL_REF_CAPACITY_PATTERN = re.compile(
-    r'^\d+(?:\.\d+)?\s*(?:l|liters?|litres?)$', re.IGNORECASE
+    r'^\d+(?:\.\d+)?\s*(?:l|liters?|litres?|cubic\s+feet?)$',
+    re.IGNORECASE,
 )
 _SIEL_AMAZON_LDY_CAPACITY_PATTERN = re.compile(
     r'^\d+(?:\.\d+)?\s*(?:kg|g|l)$', re.IGNORECASE
@@ -407,7 +408,8 @@ _SIEL_FLIPKART_LDY_CAPACITY_PATTERN = re.compile(
     r'^\d+(?:\.\d+)?\s*kg$', re.IGNORECASE
 )
 _SIEL_AMAZON_ENERGY_PATTERN = re.compile(
-    r'^\d+(?:\.\d+)?\s+(?:Watts|Kilowatt Hours)(?: Per Year)?$',
+    r'^\d+(?:\.\d+)?\s+(?:Watts|Kilowatts|Kilowatt Hours)'
+    r'(?: Per Year)?$',
     re.IGNORECASE,
 )
 _SIEL_FLIPKART_ENERGY_PATTERN = re.compile(
@@ -458,7 +460,7 @@ SIEL_FORMAT_RULE_DETAILS = {
         'field': 'estimated_annual_electricity_use',
         'description': '리테일러별 전력·연간 전력량 형식',
         'pattern': (
-            'Amazon: 164.25 Kilowatt Hours / '
+            'Amazon: 164.25 Kilowatt Hours, 141 Kilowatts / '
             'Flipkart: 100 W, 0.5 W (Standby)'
         ),
     },
@@ -469,8 +471,8 @@ SIEL_FORMAT_RULE_DETAILS = {
     },
     'ref_capacity': {
         'field': 'ref_capacity',
-        'description': '숫자와 L/Liter/Litre 단위',
-        'pattern': '192 L, 300 Liters',
+        'description': '숫자와 L/Liter/Litre 또는 cubic foot/feet 단위',
+        'pattern': '192 L, 300 Liters, 3.3 cubic feet',
     },
     'ref_refrigerator_type': {
         'field': 'ref_refrigerator_type',
@@ -1478,7 +1480,8 @@ def evaluate_siel_format_row(row, source_key, retailer):
         )
     ):
         errors['ref_capacity'] = (
-            '숫자와 L/Liter/Litre 단위 용량 형식이 아닙니다.'
+            '숫자와 L/Liter/Litre 또는 cubic foot/feet 단위 '
+            '용량 형식이 아닙니다.'
         )
 
     refrigerator_type = row.get('ref_refrigerator_type')

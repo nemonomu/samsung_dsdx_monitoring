@@ -113,7 +113,20 @@ class SIELFormatValidationTests(unittest.TestCase):
         self.assertIn('screen_size', fields)
         self.assertFalse({
             'star_rating', 'sku', 'retailer_sku_name',
+            'rank_1', 'rank_2', 'main_rank', 'bsr_rank',
         } & fields)
+
+    def test_flipkart_rules_are_present_without_sea_rank_fields(self):
+        for source_key in ('siel_tv', 'siel_ref', 'siel_ldy'):
+            with self.subTest(source_key=source_key):
+                result = self.service.get_format_rules(
+                    None, source_key, 'Flipkart'
+                )
+                fields = {rule['field'] for rule in result['rules']}
+                self.assertTrue(fields)
+                self.assertFalse({
+                    'rank_1', 'rank_2', 'main_rank', 'bsr_rank',
+                } & fields)
 
     def test_amazon_price_statuses_are_valid_but_bad_rupee_is_not(self):
         for price in (
@@ -168,7 +181,13 @@ class SIELFormatValidationTests(unittest.TestCase):
 
     def test_capacity_rules_follow_confirmed_siel_units(self):
         amazon_ref = self.service.evaluate_siel_format_row(
+            {'ref_capacity': '3.3 cubic feet'}, 'siel_ref', 'Amazon'
+        )
+        amazon_ref_csv = self.service.evaluate_siel_format_row(
             {'ref_capacity': '4.4 cubic feet'}, 'siel_ref', 'Amazon'
+        )
+        amazon_ref_invalid = self.service.evaluate_siel_format_row(
+            {'ref_capacity': 'Standard'}, 'siel_ref', 'Amazon'
         )
         flipkart_ref = self.service.evaluate_siel_format_row(
             {'ref_capacity': '192 L'}, 'siel_ref', 'Flipkart'
@@ -177,9 +196,18 @@ class SIELFormatValidationTests(unittest.TestCase):
             {'ldy_capacity': '800 g'}, 'siel_ldy', 'Amazon'
         )
 
-        self.assertIn('ref_capacity', amazon_ref)
+        self.assertNotIn('ref_capacity', amazon_ref)
+        self.assertNotIn('ref_capacity', amazon_ref_csv)
+        self.assertIn('ref_capacity', amazon_ref_invalid)
         self.assertNotIn('ref_capacity', flipkart_ref)
         self.assertNotIn('ldy_capacity', amazon_ldy)
+
+    def test_amazon_kilowatts_value_from_csv_is_valid(self):
+        errors = self.service.evaluate_siel_format_row(
+            {'estimated_annual_electricity_use': '141 Kilowatts'},
+            'siel_tv', 'Amazon',
+        )
+        self.assertNotIn('estimated_annual_electricity_use', errors)
 
     def test_counts_energy_and_year_validate_shape_only(self):
         errors = self.service.evaluate_siel_format_row(
