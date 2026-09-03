@@ -3,7 +3,8 @@ anomaly_validation 서비스 — 중복 검증 비즈니스 로직
 cursor + params 를 받아 plain dict 를 반환한다.
 """
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from apps.common.retail_columns import (
     get_editable_columns, get_duplicate_key_columns,
@@ -34,6 +35,15 @@ except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
 
+try:
+    from apps.common.siel_retail import (
+        SIEL_BUSINESS_TIMEZONE,
+        SIEL_SOURCE_CONFIG,
+    )
+except (ImportError, AttributeError):
+    SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
+    SIEL_SOURCE_CONFIG = {}
+
 
 SEA_DUPLICATE_SECTION_BY_PRODUCT = {
     'ref': 'sea_ref_retail',
@@ -42,6 +52,14 @@ SEA_DUPLICATE_SECTION_BY_PRODUCT = {
 SEA_DUPLICATE_PRODUCT_BY_SECTION = {
     section_code: product_key
     for product_key, section_code in SEA_DUPLICATE_SECTION_BY_PRODUCT.items()
+}
+SIEL_DUPLICATE_SECTION_BY_SOURCE = {
+    source_key: f'{source_key}_retail'
+    for source_key in SIEL_SOURCE_CONFIG
+}
+SIEL_DUPLICATE_SOURCE_BY_SECTION = {
+    section_code: source_key
+    for source_key, section_code in SIEL_DUPLICATE_SECTION_BY_SOURCE.items()
 }
 
 
@@ -53,6 +71,10 @@ VALID_TABLES_ANOMALY = {
     section_code
     for product_key, section_code in SEA_DUPLICATE_SECTION_BY_PRODUCT.items()
     if SEA_RETAIL_SOURCES.get(product_key)
+} | {
+    section_code
+    for source_key, section_code in SIEL_DUPLICATE_SECTION_BY_SOURCE.items()
+    if SIEL_SOURCE_CONFIG.get(source_key)
 } | {
     source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 }
@@ -379,6 +401,274 @@ def _append_sea_anomaly_stats(cursor, target_date, validation):
     return total_issues
 
 
+def _siel_duplicate_source_key(table):
+    value = str(table or '').strip().lower()
+    if value in SIEL_SOURCE_CONFIG:
+        return value
+    if value in SIEL_DUPLICATE_SOURCE_BY_SECTION:
+        return SIEL_DUPLICATE_SOURCE_BY_SECTION[value]
+    for source_key, source in SIEL_SOURCE_CONFIG.items():
+        table_name = str(source.get('table_name') or '').strip().lower()
+        if value in {table_name, table_name.split('.')[-1]}:
+            return source_key
+    return None
+
+
+def _resolve_siel_duplicate_retailer(source, retailer):
+    retailer_key = str(retailer or '').strip().casefold()
+    for configured in source.get('retailers', ()):
+        if retailer_key == str(configured).strip().casefold():
+            return configured
+    return None
+
+
+def _fetch_siel_duplicate_rows(
+        cursor, source_date, source, retailer_value):
+    """Fetch one retailer's KST-day latest MAIN-anchored SIEL batch."""
+    canonical_table = source['table_name']
+    date_column = source['date_column']
+    select_columns = [
+        'id', 'batch_id', 'country', 'account_name', 'page_type', 'item',
+        'sku', 'retailer_sku_name', 'final_sku_price', date_column,
+        'product_url',
+    ]
+    cursor.execute(f"""
+        WITH latest_batch AS (
+            SELECT source.batch_id
+            FROM {canonical_table} source
+            WHERE source.{date_column} >= (
+                    %s::date::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND source.{date_column} < (
+                    (%s::date + 1)::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
+                  LOWER(BTRIM(CAST(%s AS TEXT)))
+              AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'
+              AND {get_tv_validation_condition('source')}
+            ORDER BY source.id DESC
+            LIMIT 1
+        )
+        SELECT {', '.join('source.' + column for column in select_columns)}
+        FROM {canonical_table} source
+        CROSS JOIN latest_batch
+        WHERE source.{date_column} >= (
+                %s::date::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND source.{date_column} < (
+                (%s::date + 1)::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
+              LOWER(BTRIM(CAST(%s AS TEXT)))
+          AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
+              IN ('main', 'bsr')
+          AND {get_tv_validation_condition('source')}
+        ORDER BY UPPER(BTRIM(CAST(source.page_type AS TEXT))),
+                 source.item, source.id
+    """, (
+        str(source_date), str(source_date), retailer_value,
+        str(source_date), str(source_date), retailer_value,
+    ))
+    return [
+        dict(zip(select_columns, row))
+        for row in cursor.fetchall()
+    ]
+
+
+def _serialize_siel_duplicate_row(row):
+    result = {}
+    for key, value in row.items():
+        if key == 'crawl_datetime' and isinstance(value, datetime):
+            if value.tzinfo is not None:
+                value = value.astimezone(ZoneInfo(SIEL_BUSINESS_TIMEZONE))
+            result[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            result[key] = (
+                str(value) if value is not None and key != 'id' else value
+            )
+    return result
+
+
+def build_siel_duplicate_groups(rows):
+    """Group SIEL page_type+item duplicates and mapping conflicts."""
+    grouped = {}
+    for row in rows:
+        page_type_key = _duplicate_key(row.get('page_type'))
+        item_key = _duplicate_key(row.get('item'))
+        if not page_type_key or not item_key:
+            continue
+        grouped.setdefault((page_type_key, item_key), []).append(row)
+
+    groups = []
+    for duplicate_rows in grouped.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        first = duplicate_rows[0]
+        sku_values = {
+            _duplicate_key(row.get('sku')) or '' for row in duplicate_rows
+        }
+        name_values = {
+            _duplicate_key(row.get('retailer_sku_name')) or ''
+            for row in duplicate_rows
+        }
+        is_mapping_conflict = len(sku_values) > 1 or len(name_values) > 1
+        duplicate_type = (
+            '상품 매핑 충돌' if is_mapping_conflict else '완전 중복'
+        )
+        page_type = _duplicate_text(first.get('page_type')).upper()
+        item = _duplicate_text(first.get('item'))
+        groups.append({
+            'duplicate_type': duplicate_type,
+            'page_type': page_type,
+            'item': item,
+            'retailer_sku_name': ', '.join(sorted({
+                _duplicate_text(row.get('retailer_sku_name'))
+                for row in duplicate_rows
+                if _duplicate_text(row.get('retailer_sku_name'))
+            })),
+            'dup_count': len(duplicate_rows),
+            'reason': (
+                f'{page_type}의 동일 item에 서로 다른 SKU/상품명이 '
+                f'{len(duplicate_rows)}건 연결됨'
+                if is_mapping_conflict else
+                f'{page_type}의 동일 item이 최신 배치에 '
+                f'{len(duplicate_rows)}건 수집됨'
+            ),
+            'records': [
+                _serialize_siel_duplicate_row(row)
+                for row in duplicate_rows
+            ],
+        })
+    groups.sort(key=lambda group: (
+        group['page_type'], group['item'], group['duplicate_type']
+    ))
+    return groups
+
+
+def _get_siel_anomaly_detail(
+        cursor, target_date, table, retailer, page, page_size):
+    source_key = _siel_duplicate_source_key(table)
+    source = SIEL_SOURCE_CONFIG.get(source_key)
+    retailer_value = (
+        _resolve_siel_duplicate_retailer(source, retailer)
+        if source else None
+    )
+    if not source or not retailer_value or not resolve_monitoring_date:
+        return {
+            'date': str(target_date), 'table': table, 'retailer': retailer,
+            'select_cols': {'group': [], 'record': []},
+            'editable_cols': [], 'actual_table': '', 'readonly': True,
+            'results': {
+                'duplicates': [], 'total_groups': 0, 'page': page,
+                'page_size': page_size, 'total_pages': 0,
+            },
+        }
+
+    date_mapping = resolve_monitoring_date(
+        target_date, 'SIEL', source['source_key']
+    )
+    source_date = date.fromisoformat(date_mapping['source_date'])
+    rows = _fetch_siel_duplicate_rows(
+        cursor, source_date, source, retailer_value
+    )
+    groups = build_siel_duplicate_groups(rows)
+    total_groups = len(groups)
+    total_pages = (
+        (total_groups + page_size - 1) // page_size if total_groups else 0
+    )
+    offset = (page - 1) * page_size
+    return {
+        'date': date_mapping['inspection_date'],
+        'inspection_date': date_mapping['inspection_date'],
+        'source_date': date_mapping['source_date'],
+        'offset_days': date_mapping['offset_days'],
+        'date_column': source['date_column'],
+        'business_timezone': SIEL_BUSINESS_TIMEZONE,
+        'table': table,
+        'retailer': retailer_value,
+        'select_cols': {
+            'group': [
+                'duplicate_type', 'page_type', 'item',
+                'retailer_sku_name', 'dup_count', 'reason',
+            ],
+            'record': [
+                'id', 'sku', 'retailer_sku_name', 'final_sku_price',
+                source['date_column'], 'product_url',
+            ],
+        },
+        'editable_cols': [],
+        'actual_table': source['table_name'],
+        'readonly': True,
+        'readonly_message': (
+            'SIEL 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.'
+        ),
+        'results': {
+            'duplicates': groups[offset:offset + page_size],
+            'total_groups': total_groups,
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+        },
+    }
+
+
+def _append_siel_anomaly_stats(cursor, target_date, validation):
+    if not resolve_monitoring_date or not SIEL_SOURCE_CONFIG:
+        return 0
+    savepoint = 'layer2_siel_duplicate_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    total_issues = 0
+    try:
+        for source_key, source in SIEL_SOURCE_CONFIG.items():
+            date_mapping = resolve_monitoring_date(
+                target_date, 'SIEL', source['source_key']
+            )
+            source_date = date.fromisoformat(date_mapping['source_date'])
+            retailer_rows = []
+            table_records = 0
+            table_issues = 0
+            for retailer_value in source.get('retailers', ()):
+                rows = _fetch_siel_duplicate_rows(
+                    cursor, source_date, source, retailer_value
+                )
+                duplicate_count = len(build_siel_duplicate_groups(rows))
+                retailer_rows.append({
+                    'retailer': retailer_value,
+                    'total': len(rows),
+                    'duplicate_groups': duplicate_count,
+                    'duplicate_keys': ['page_type + item'],
+                    'status': get_status(duplicate_count),
+                })
+                table_records += len(rows)
+                table_issues += duplicate_count
+            validation['tables'].append({
+                'table': SIEL_DUPLICATE_SECTION_BY_SOURCE[source_key],
+                'table_name': f"SIEL {source['category']}",
+                'total_records': table_records,
+                'total_issues': table_issues,
+                'duplicate_groups': table_issues,
+                'duplicate_keys': ['page_type + item'],
+                'status': get_status(table_issues),
+                'retailers': retailer_rows,
+                'inspection_date': date_mapping['inspection_date'],
+                'source_date': date_mapping['source_date'],
+                'offset_days': date_mapping['offset_days'],
+            })
+            total_issues += table_issues
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        print(f'[WARN] layer2_siel_duplicate_stats: {exc}')
+        return 0
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return total_issues
+
+
 def _tse_duplicate_product_line(table):
     value = str(table or '').strip().lower()
     for product_line, source in TSE_SOURCE_CONFIG.items():
@@ -699,6 +989,10 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
     """중복 검증 상세 조회 — plain dict 반환"""
     if _sea_duplicate_product_key(table):
         return _get_sea_anomaly_detail(
+            cursor, target_date, table, retailer, page, page_size
+        )
+    if _siel_duplicate_source_key(table):
+        return _get_siel_anomaly_detail(
             cursor, target_date, table, retailer, page, page_size
         )
     if _tse_duplicate_product_line(table):
@@ -1667,6 +1961,10 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
         total_anomaly_issues += market_total_dup
 
     total_anomaly_issues += _append_sea_anomaly_stats(
+        cursor, target_date, anomaly_validation
+    )
+
+    total_anomaly_issues += _append_siel_anomaly_stats(
         cursor, target_date, anomaly_validation
     )
 

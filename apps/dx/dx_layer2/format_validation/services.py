@@ -2,8 +2,9 @@
 형식 검증 서비스 — 순수 비즈니스 로직 (DB 커넥션/HTTP 무관)
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import re
+from zoneinfo import ZoneInfo
 
 from apps.common.retail_columns import (
     validate_field,
@@ -52,6 +53,15 @@ except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
 
+try:
+    from apps.common.siel_retail import (
+        SIEL_BUSINESS_TIMEZONE,
+        SIEL_SOURCE_CONFIG,
+    )
+except (ImportError, AttributeError):
+    SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
+    SIEL_SOURCE_CONFIG = {}
+
 
 SEA_FORMAT_SECTION_BY_PRODUCT = {
     'ref': 'sea_ref_retail',
@@ -72,6 +82,47 @@ SEA_FORMAT_EXTRA_FIELDS = {
     'ldy': ('ldy_capacity', 'ldy_loading_type'),
 }
 
+SIEL_FORMAT_SECTION_BY_SOURCE = {
+    source_key: f'{source_key}_retail'
+    for source_key in SIEL_SOURCE_CONFIG
+}
+SIEL_FORMAT_SOURCE_BY_SECTION = {
+    section_code: source_key
+    for source_key, section_code in SIEL_FORMAT_SECTION_BY_SOURCE.items()
+}
+SIEL_FORMAT_FIELDS = {
+    'siel_tv': {
+        'amazon': (
+            'final_sku_price', 'count_of_star_ratings', 'screen_size',
+            'estimated_annual_electricity_use', 'model_year',
+        ),
+        'flipkart': (
+            'final_sku_price', 'count_of_reviews',
+            'count_of_star_ratings', 'screen_size',
+            'estimated_annual_electricity_use', 'model_year',
+        ),
+    },
+    'siel_ref': {
+        'amazon': (
+            'final_sku_price', 'count_of_star_ratings', 'ref_capacity',
+        ),
+        'flipkart': (
+            'final_sku_price', 'count_of_reviews',
+            'count_of_star_ratings', 'ref_capacity',
+            'ref_refrigerator_type',
+        ),
+    },
+    'siel_ldy': {
+        'amazon': (
+            'final_sku_price', 'count_of_star_ratings', 'ldy_capacity',
+        ),
+        'flipkart': (
+            'final_sku_price', 'count_of_reviews',
+            'count_of_star_ratings', 'ldy_capacity',
+        ),
+    },
+}
+
 
 def _sea_format_section_codes():
     return {
@@ -89,18 +140,26 @@ def _sea_format_rule_tables():
     }
 
 
+def _siel_format_section_codes():
+    return {
+        section_code
+        for source_key, section_code in SIEL_FORMAT_SECTION_BY_SOURCE.items()
+        if SIEL_SOURCE_CONFIG.get(source_key)
+    }
+
+
 # table 파라미터 화이트리스트
 VALID_TABLES_FORMAT = {
     'tv_retail',
     'market',
-} | _sea_format_section_codes() | {
+} | _sea_format_section_codes() | _siel_format_section_codes() | {
     source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
-} | _sea_format_rule_tables() | set(TSE_SOURCE_CONFIG)
+} | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG)
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
 
 
@@ -318,6 +377,112 @@ _TSE_LAZADA_REF_TYPE_VALUES = frozenset({
     'freezer', 'multi door', 'side-by-side', 'french door',
     'freezer-on-bottom (bottom mount)',
 })
+
+
+_SIEL_MONEY_PATTERN = re.compile(
+    r'^₹(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{1,2})?$'
+)
+_SIEL_COUNT_PATTERN = re.compile(
+    r'^(?:0|[1-9]\d{0,2}|[1-9]\d{0,2}(?:,\d{3})+)$'
+)
+_SIEL_AMAZON_PRICE_STATUS_VALUES = frozenset({
+    'Currently unavailable.',
+    'No featured offers available',
+})
+_SIEL_AMAZON_SCREEN_SIZE_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s+inch(?:es)?$', re.IGNORECASE
+)
+_SIEL_FLIPKART_SCREEN_SIZE_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*cm\s*\('
+    r'\d+(?:\.\d+)?\s*inch(?:es)?\)$',
+    re.IGNORECASE,
+)
+_SIEL_REF_CAPACITY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*(?:l|liters?|litres?)$', re.IGNORECASE
+)
+_SIEL_AMAZON_LDY_CAPACITY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*(?:kg|g|l)$', re.IGNORECASE
+)
+_SIEL_FLIPKART_LDY_CAPACITY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*kg$', re.IGNORECASE
+)
+_SIEL_AMAZON_ENERGY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s+(?:Watts|Kilowatt Hours)(?: Per Year)?$',
+    re.IGNORECASE,
+)
+_SIEL_FLIPKART_ENERGY_PATTERN = re.compile(
+    r'^\d+(?:\.\d+)?\s*W'
+    r'(?:,\s*\d+(?:\.\d+)?\s*W)?'
+    r'(?:\s*\(Standby\))?$',
+    re.IGNORECASE,
+)
+_SIEL_MODEL_YEAR_PATTERN = re.compile(r'^20\d{2}$')
+_SIEL_FLIPKART_REF_TYPE_VALUES = frozenset({
+    'bottom freezer',
+    'bottom freezer refrigerator',
+    'bottom mount',
+    'compact',
+    'compact refrigerator',
+    'drawer refrigerator',
+    'french door refrigerator',
+    'multi-door refrigerator',
+    'side by side',
+    'side by side refrigerator',
+    'top freezer',
+    'top freezer refrigerator',
+    'top mount',
+})
+
+SIEL_FORMAT_RULE_DETAILS = {
+    'final_sku_price': {
+        'field': 'final_sku_price',
+        'description': '인도 루피 금액 형식',
+        'pattern': '₹10,999',
+    },
+    'count_of_reviews': {
+        'field': 'count_of_reviews',
+        'description': '0 이상의 정수와 올바른 천 단위 쉼표',
+        'pattern': '0, 128, 1,234',
+    },
+    'count_of_star_ratings': {
+        'field': 'count_of_star_ratings',
+        'description': '0 이상의 정수와 올바른 천 단위 쉼표',
+        'pattern': '0, 128, 1,234',
+    },
+    'screen_size': {
+        'field': 'screen_size',
+        'description': '리테일러별 화면 크기 형식',
+        'pattern': 'Amazon: 43 Inches / Flipkart: 109 cm (43 inch)',
+    },
+    'estimated_annual_electricity_use': {
+        'field': 'estimated_annual_electricity_use',
+        'description': '리테일러별 전력·연간 전력량 형식',
+        'pattern': (
+            'Amazon: 164.25 Kilowatt Hours / '
+            'Flipkart: 100 W, 0.5 W (Standby)'
+        ),
+    },
+    'model_year': {
+        'field': 'model_year',
+        'description': '20으로 시작하는 4자리 연도',
+        'pattern': '2025, 2026',
+    },
+    'ref_capacity': {
+        'field': 'ref_capacity',
+        'description': '숫자와 L/Liter/Litre 단위',
+        'pattern': '192 L, 300 Liters',
+    },
+    'ref_refrigerator_type': {
+        'field': 'ref_refrigerator_type',
+        'description': 'Flipkart 냉장고 타입 표준값',
+        'pattern': 'Top Mount, Side by Side, Multi-Door Refrigerator 등',
+    },
+    'ldy_capacity': {
+        'field': 'ldy_capacity',
+        'description': '리테일러별 세탁 용량 형식',
+        'pattern': 'Amazon: 8 kg, 800 g, 11 L / Flipkart: 8 kg',
+    },
+}
 
 
 def _has_tse_format_value(value):
@@ -1200,6 +1365,410 @@ def _append_tse_format_stats(cursor, target_date, validation):
     return total_issues
 
 
+def _siel_format_source_key(table):
+    value = str(table or '').strip().lower()
+    if value in SIEL_SOURCE_CONFIG:
+        return value
+    if value in SIEL_FORMAT_SOURCE_BY_SECTION:
+        return SIEL_FORMAT_SOURCE_BY_SECTION[value]
+    for source_key, source in SIEL_SOURCE_CONFIG.items():
+        table_name = str(source.get('table_name') or '').strip().lower()
+        if value in {table_name, table_name.split('.')[-1]}:
+            return source_key
+    return None
+
+
+def _resolve_siel_format_retailer(source, retailer):
+    retailer_key = str(retailer or '').strip().casefold()
+    for configured in source.get('retailers', ()):
+        if retailer_key == str(configured).strip().casefold():
+            return configured
+    return None
+
+
+def _get_siel_format_fields(source_key, retailer):
+    retailer_key = str(retailer or '').strip().casefold()
+    return tuple(
+        SIEL_FORMAT_FIELDS.get(source_key, {}).get(retailer_key, ())
+    )
+
+
+def _has_siel_format_value(value):
+    return value is not None and str(value).strip() != ''
+
+
+def evaluate_siel_format_row(row, source_key, retailer):
+    """Return SIEL-only syntax errors without Layer3 cross-field rules."""
+    source = SIEL_SOURCE_CONFIG.get(source_key)
+    retailer_value = (
+        _resolve_siel_format_retailer(source, retailer) if source else None
+    )
+    if not source or not retailer_value:
+        return {}
+
+    fields = set(_get_siel_format_fields(source_key, retailer_value))
+    retailer_key = retailer_value.casefold()
+    errors = {}
+
+    final_price = row.get('final_sku_price')
+    if 'final_sku_price' in fields and _has_siel_format_value(final_price):
+        normalized = str(final_price).strip()
+        allowed_status = (
+            retailer_key == 'amazon'
+            and normalized in _SIEL_AMAZON_PRICE_STATUS_VALUES
+        )
+        if not allowed_status and not _SIEL_MONEY_PATTERN.fullmatch(normalized):
+            errors['final_sku_price'] = (
+                '₹10,999 인도 루피 금액 형식이 아닙니다.'
+            )
+
+    for field in ('count_of_reviews', 'count_of_star_ratings'):
+        value = row.get(field)
+        if (
+            field in fields
+            and _has_siel_format_value(value)
+            and not _SIEL_COUNT_PATTERN.fullmatch(str(value).strip())
+        ):
+            errors[field] = (
+                '0 이상의 정수와 올바른 천 단위 쉼표 형식이 아닙니다.'
+            )
+
+    screen_size = row.get('screen_size')
+    if 'screen_size' in fields and _has_siel_format_value(screen_size):
+        pattern = (
+            _SIEL_AMAZON_SCREEN_SIZE_PATTERN
+            if retailer_key == 'amazon'
+            else _SIEL_FLIPKART_SCREEN_SIZE_PATTERN
+        )
+        if not pattern.fullmatch(str(screen_size).strip()):
+            errors['screen_size'] = (
+                'Amazon은 43 Inches, Flipkart는 '
+                '109 cm (43 inch) 형식이어야 합니다.'
+            )
+
+    energy = row.get('estimated_annual_electricity_use')
+    if (
+        'estimated_annual_electricity_use' in fields
+        and _has_siel_format_value(energy)
+    ):
+        pattern = (
+            _SIEL_AMAZON_ENERGY_PATTERN
+            if retailer_key == 'amazon'
+            else _SIEL_FLIPKART_ENERGY_PATTERN
+        )
+        if not pattern.fullmatch(str(energy).strip()):
+            errors['estimated_annual_electricity_use'] = (
+                'SIEL 리테일러별 전력·연간 전력량 형식이 아닙니다.'
+            )
+
+    model_year = row.get('model_year')
+    if (
+        'model_year' in fields
+        and _has_siel_format_value(model_year)
+        and not _SIEL_MODEL_YEAR_PATTERN.fullmatch(str(model_year).strip())
+    ):
+        errors['model_year'] = '20으로 시작하는 4자리 연도가 아닙니다.'
+
+    ref_capacity = row.get('ref_capacity')
+    if (
+        'ref_capacity' in fields
+        and _has_siel_format_value(ref_capacity)
+        and not _SIEL_REF_CAPACITY_PATTERN.fullmatch(
+            str(ref_capacity).strip()
+        )
+    ):
+        errors['ref_capacity'] = (
+            '숫자와 L/Liter/Litre 단위 용량 형식이 아닙니다.'
+        )
+
+    refrigerator_type = row.get('ref_refrigerator_type')
+    if (
+        'ref_refrigerator_type' in fields
+        and _has_siel_format_value(refrigerator_type)
+        and str(refrigerator_type).strip().casefold()
+        not in _SIEL_FLIPKART_REF_TYPE_VALUES
+    ):
+        errors['ref_refrigerator_type'] = (
+            'CSV에서 확인된 Flipkart 냉장고 타입 표준값이 아닙니다.'
+        )
+
+    ldy_capacity = row.get('ldy_capacity')
+    if 'ldy_capacity' in fields and _has_siel_format_value(ldy_capacity):
+        pattern = (
+            _SIEL_AMAZON_LDY_CAPACITY_PATTERN
+            if retailer_key == 'amazon'
+            else _SIEL_FLIPKART_LDY_CAPACITY_PATTERN
+        )
+        if not pattern.fullmatch(str(ldy_capacity).strip()):
+            errors['ldy_capacity'] = (
+                'SIEL 리테일러별 세탁 용량 형식이 아닙니다.'
+            )
+
+    return errors
+
+
+def _fetch_siel_format_rows(
+        cursor, start_date, end_date, source, retailer_value):
+    """Fetch each KST day's latest MAIN-anchored SIEL batch."""
+    canonical_table = source['table_name']
+    date_column = source['date_column']
+    source_key = source['source_key']
+    format_fields = _get_siel_format_fields(source_key, retailer_value)
+    select_columns = list(dict.fromkeys((
+        'id', 'batch_id', 'country', 'product', 'account_name', 'page_type',
+        'item', 'sku', 'retailer_sku_name', *format_fields,
+        date_column, 'product_url',
+    )))
+    local_date = (
+        f"(source.{date_column} AT TIME ZONE "
+        f"'{SIEL_BUSINESS_TIMEZONE}')::date"
+    )
+    cursor.execute(f"""
+        WITH latest_batches AS (
+            SELECT DISTINCT ON ({local_date})
+                   {local_date} AS source_date,
+                   source.batch_id,
+                   source.id
+            FROM {canonical_table} source
+            WHERE source.{date_column} >= (
+                    %s::date::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND source.{date_column} < (
+                    (%s::date + 1)::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
+                  LOWER(BTRIM(CAST(%s AS TEXT)))
+              AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'
+              AND {get_tv_validation_condition('source')}
+            ORDER BY {local_date}, source.id DESC
+        )
+        SELECT {', '.join('source.' + column for column in select_columns)}
+        FROM {canonical_table} source
+        JOIN latest_batches latest
+          ON {local_date} = latest.source_date
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE source.{date_column} >= (
+                %s::date::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND source.{date_column} < (
+                (%s::date + 1)::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
+              LOWER(BTRIM(CAST(%s AS TEXT)))
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
+              IN ('main', 'bsr')
+          AND {get_tv_validation_condition('source')}
+        ORDER BY source.item, {local_date}, source.id
+    """, (
+        str(start_date), str(end_date), retailer_value,
+        str(start_date), str(end_date), retailer_value,
+    ))
+    return [
+        dict(zip(select_columns, row))
+        for row in cursor.fetchall()
+    ]
+
+
+def _serialize_siel_format_value(key, value):
+    if key == 'crawl_datetime' and isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(ZoneInfo(SIEL_BUSINESS_TIMEZONE))
+        return value.strftime('%Y-%m-%d %H:%M:%S')
+    return str(value) if value is not None and key != 'id' else value
+
+
+def _format_siel_record(row, source_key, retailer):
+    record = {
+        key: _serialize_siel_format_value(key, value)
+        for key, value in row.items()
+    }
+    error_map = evaluate_siel_format_row(row, source_key, retailer)
+    record['error_fields'] = list(error_map)
+    record['error_details'] = {
+        field: {'rule': 'SIEL 형식 검증', 'reason': reason}
+        for field, reason in error_map.items()
+    }
+    return record
+
+
+def _load_siel_format_normal_reviews(
+        cursor, canonical_table, inspection_date, retailer_value):
+    cursor.execute("""
+        SELECT record_id, column_name, memo, created_id, created_at, reason
+        FROM monitoring_corrections
+        WHERE table_name = %s AND crawl_date = %s
+          AND correction_type = 'format_check' AND status = 'normal'
+          AND LOWER(retailer) = LOWER(%s)
+    """, (canonical_table, str(inspection_date), retailer_value))
+    reviews = {}
+    for row in cursor.fetchall():
+        reviews[f'{row[0]}_{row[1]}'] = {
+            'memo': row[2],
+            'created_id': row[3],
+            'created_at': (
+                row[4].strftime('%Y-%m-%d %H:%M:%S')
+                if hasattr(row[4], 'strftime') else str(row[4] or '') or None
+            ),
+            'reason': row[5],
+        }
+    return reviews
+
+
+def _get_siel_format_detail(cursor, target_date, table, retailer, days):
+    source_key = _siel_format_source_key(table)
+    source = SIEL_SOURCE_CONFIG.get(source_key)
+    retailer_value = (
+        _resolve_siel_format_retailer(source, retailer) if source else None
+    )
+    if not source or not retailer_value or not resolve_monitoring_date:
+        return {
+            'date': str(target_date), 'table': table, 'retailer': retailer,
+            'column_names': [], 'editable_cols': [], 'actual_table': '',
+            'normal_reviews': {}, 'results': [], 'field_counts': {},
+            'total_format_count': 0,
+        }
+
+    date_mapping = resolve_monitoring_date(
+        target_date, 'SIEL', source['source_key']
+    )
+    inspection_date = date_mapping['inspection_date']
+    source_date = date.fromisoformat(date_mapping['source_date'])
+    target_rows = _fetch_siel_format_rows(
+        cursor, source_date, source_date, source, retailer_value
+    )
+    normal_reviews = _load_siel_format_normal_reviews(
+        cursor, source['table_name'], inspection_date, retailer_value
+    )
+
+    target_records = []
+    for row in target_rows:
+        record = _format_siel_record(row, source_key, retailer_value)
+        record['error_fields'] = [
+            field for field in record['error_fields']
+            if f"{record['id']}_{field}" not in normal_reviews
+        ]
+        if record['error_fields']:
+            target_records.append(record)
+
+    history_days = min(max(int(days or 1), 1), 30)
+    results = target_records
+    if history_days > 1 and target_records:
+        error_items = {
+            str(record.get('item') or '').strip().casefold()
+            for record in target_records
+            if str(record.get('item') or '').strip()
+        }
+        history_rows = _fetch_siel_format_rows(
+            cursor,
+            source_date - timedelta(days=history_days - 1),
+            source_date,
+            source,
+            retailer_value,
+        )
+        results = [
+            _format_siel_record(row, source_key, retailer_value)
+            for row in history_rows
+            if str(row.get('item') or '').strip().casefold() in error_items
+        ]
+
+    field_counts = {}
+    for record in target_records:
+        for field in record['error_fields']:
+            field_counts[field] = field_counts.get(field, 0) + 1
+
+    format_fields = _get_siel_format_fields(source_key, retailer_value)
+    date_column = source['date_column']
+    column_names = list(dict.fromkeys((
+        'id', date_column, 'item', 'account_name', 'country', 'page_type',
+        'sku', 'retailer_sku_name', *format_fields, 'product_url',
+    )))
+    return {
+        'date': inspection_date,
+        'inspection_date': inspection_date,
+        'source_date': source_date.isoformat(),
+        'editable_date': source_date.isoformat(),
+        'offset_days': date_mapping['offset_days'],
+        'table': table,
+        'retailer': retailer_value,
+        'column_names': column_names,
+        'select_cols': column_names,
+        'editable_cols': [],
+        'actual_table': source['table_name'],
+        'normal_reviews': normal_reviews,
+        'results': results,
+        'field_counts': field_counts,
+        'total_format_count': sum(field_counts.values()),
+        'supports_day_history': True,
+        'history_days': history_days,
+        'date_column': date_column,
+        'latest_batch_only': history_days == 1,
+        'business_timezone': SIEL_BUSINESS_TIMEZONE,
+    }
+
+
+def _append_siel_format_stats(cursor, target_date, validation):
+    if not resolve_monitoring_date or not SIEL_SOURCE_CONFIG:
+        return 0
+    savepoint = 'layer2_siel_format_stats'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    total_issues = 0
+    try:
+        for source_key, source in SIEL_SOURCE_CONFIG.items():
+            date_mapping = resolve_monitoring_date(
+                target_date, 'SIEL', source['source_key']
+            )
+            source_date = date.fromisoformat(date_mapping['source_date'])
+            retailer_rows = []
+            table_checked = 0
+            table_issues = 0
+            for retailer_value in source.get('retailers', ()):
+                rows = _fetch_siel_format_rows(
+                    cursor, source_date, source_date, source, retailer_value
+                )
+                normal_reviews = _load_siel_format_normal_reviews(
+                    cursor, source['table_name'],
+                    date_mapping['inspection_date'], retailer_value,
+                )
+                issue_count = 0
+                for row in rows:
+                    for field in evaluate_siel_format_row(
+                            row, source_key, retailer_value):
+                        if f"{row['id']}_{field}" not in normal_reviews:
+                            issue_count += 1
+                retailer_rows.append({
+                    'retailer': retailer_value,
+                    'total': len(rows),
+                    'issue_count': issue_count,
+                    'status': get_status(issue_count),
+                })
+                table_checked += len(rows)
+                table_issues += issue_count
+
+            validation['tables'].append({
+                'table': SIEL_FORMAT_SECTION_BY_SOURCE[source_key],
+                'table_name': f"SIEL {source['category']}",
+                'total_checked': table_checked,
+                'total_issues': table_issues,
+                'status': get_status(table_issues),
+                'retailers': retailer_rows,
+                'inspection_date': date_mapping['inspection_date'],
+                'source_date': date_mapping['source_date'],
+                'offset_days': date_mapping['offset_days'],
+            })
+            total_issues += table_issues
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        print(f'[WARN] layer2_siel_format_stats: {exc}')
+        return 0
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return total_issues
+
+
 # ── thin wrappers ──────────────────────────────────────────
 
 def validate_tv_field(field_name, value, account_name='Amazon'):
@@ -1221,6 +1790,10 @@ def get_format_detail(cursor, target_date, table, retailer, days):
     """
     if _sea_format_product_key(table):
         return _get_sea_format_detail(
+            cursor, target_date, table, retailer, days
+        )
+    if _siel_format_source_key(table):
+        return _get_siel_format_detail(
             cursor, target_date, table, retailer, days
         )
     if _tse_format_product_line(table):
@@ -1808,6 +2381,25 @@ def _get_tse_static_format_rules(product_line, retailer):
     ]
 
 
+def _get_siel_static_format_rules(source_key, retailer):
+    fields = _get_siel_format_fields(source_key, retailer)
+    rules = [
+        dict(SIEL_FORMAT_RULE_DETAILS[field])
+        for field in fields
+        if field in SIEL_FORMAT_RULE_DETAILS
+    ]
+    retailer_key = str(retailer or '').strip().casefold()
+    if retailer_key == 'amazon':
+        for rule in rules:
+            if rule['field'] == 'final_sku_price':
+                rule['description'] = '인도 루피 금액 또는 Amazon 가격 상태'
+                rule['pattern'] = (
+                    '₹10,999 / Currently unavailable. / '
+                    'No featured offers available'
+                )
+    return rules
+
+
 def get_format_rules(cursor, table_name, retailer):
     """
     형식검증 규칙 조회.
@@ -1816,6 +2408,10 @@ def get_format_rules(cursor, table_name, retailer):
     if table_name in TSE_SOURCE_CONFIG:
         return {
             'rules': _get_tse_static_format_rules(table_name, retailer)
+        }
+    if table_name in SIEL_SOURCE_CONFIG:
+        return {
+            'rules': _get_siel_static_format_rules(table_name, retailer)
         }
 
     tbl_rules = dx_table('monitoring_format_rules')
@@ -2293,6 +2889,10 @@ def get_format_stats(cursor, target_date):
         print(f'[WARN] layer_stats market_format: {e}')
 
     total_format_issues += _append_sea_format_stats(
+        cursor, target_date, format_validation
+    )
+
+    total_format_issues += _append_siel_format_stats(
         cursor, target_date, format_validation
     )
 

@@ -34,7 +34,9 @@ function getDefaultNullHistoryDays(tableParam) {
 }
 
 function getDefaultFormatHistoryDays(tableParam) {
-    return SEA_TSE_NULL_HISTORY_TABLES.has(String(tableParam || '').toLowerCase())
+    const tableCode = String(tableParam || '').toLowerCase();
+    return (SEA_TSE_NULL_HISTORY_TABLES.has(tableCode)
+        || SIEL_NULL_HISTORY_TABLES.has(tableCode))
         ? 3
         : 1;
 }

@@ -14,10 +14,13 @@ from .services import (
 )
 
 
-SEA_TSE_DEFAULT_HISTORY_TABLES = frozenset({
+RETAIL_DEFAULT_HISTORY_TABLES = frozenset({
     'tv_retail',
     'sea_ref_retail',
     'sea_ldy_retail',
+    'siel_tv_retail',
+    'siel_ref_retail',
+    'siel_ldy_retail',
     'tse_tv_retail',
     'tse_ref_retail',
     'tse_ldy_retail',
@@ -34,7 +37,7 @@ def format_detail(request):
         return JsonResponse({'error': '잘못된 테이블 파라미터'}, status=400)
     retailer = request.GET.get('retailer')
     default_days = (
-        3 if table in SEA_TSE_DEFAULT_HISTORY_TABLES else 1
+        3 if table in RETAIL_DEFAULT_HISTORY_TABLES else 1
     )
     try:
         days = max(1, int(request.GET.get('days', default_days)))

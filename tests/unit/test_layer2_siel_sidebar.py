@@ -37,7 +37,7 @@ class Layer2SielSidebarTests(unittest.TestCase):
             stubs=cls.stubs,
         )
 
-    def test_siel_parent_and_children_exist_only_in_null_sidebar(self):
+    def test_siel_parent_and_children_exist_in_all_layer2_sidebars(self):
         with patch.dict('sys.modules', self.stubs):
             groups = self.context.build_sidebar_groups(
                 'null_validation', focus='siel_ref_retail'
@@ -62,15 +62,16 @@ class Layer2SielSidebarTests(unittest.TestCase):
             ],
         )
         for group in groups[1:3]:
-            self.assertNotIn(
-                'SIEL Retail', [item['name'] for item in group['items']]
+            siel_parent = next(
+                item for item in group['items']
+                if item['name'] == 'SIEL Retail'
             )
-            self.assertFalse(any(
-                item['name'].startswith('SIEL ')
-                for item in group['items']
-            ))
+            self.assertEqual(
+                ['TV', 'REF', 'LDY'],
+                [child['label'] for child in siel_parent['children']],
+            )
 
-    def test_legacy_sidebar_items_exclude_siel_from_format_and_duplicate(self):
+    def test_legacy_sidebar_items_include_siel_for_all_validation_types(self):
         with patch.dict('sys.modules', self.stubs):
             items = self.context.get_sidebar_items()
 
@@ -84,9 +85,16 @@ class Layer2SielSidebarTests(unittest.TestCase):
             },
         )
         for key in ('format', 'anomaly'):
-            self.assertFalse(any(
-                item['key'].startswith('siel_') for item in items[key]
-            ))
+            self.assertEqual(
+                {
+                    'siel_tv_retail', 'siel_ref_retail',
+                    'siel_ldy_retail',
+                },
+                {
+                    item['key'] for item in items[key]
+                    if item['key'].startswith('siel_')
+                },
+            )
 
 
 if __name__ == '__main__':

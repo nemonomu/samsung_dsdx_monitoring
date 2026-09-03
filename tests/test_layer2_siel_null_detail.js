@@ -103,7 +103,7 @@ vm.runInContext(nullSource, nullSandbox);
 assert.strictEqual(nullSandbox.getDefaultNullHistoryDays('siel_tv_retail'), 3);
 assert.strictEqual(nullSandbox.getDefaultNullHistoryDays('siel_ref_retail'), 3);
 assert.strictEqual(nullSandbox.getDefaultNullHistoryDays('siel_ldy_retail'), 3);
-assert.strictEqual(nullSandbox.getDefaultFormatHistoryDays('siel_tv_retail'), 1);
+assert.strictEqual(nullSandbox.getDefaultFormatHistoryDays('siel_tv_retail'), 3);
 
 vm.runInContext(`
     modalState.tableParam = 'siel_ref_retail';

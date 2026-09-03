@@ -123,13 +123,10 @@ def get_sidebar_items():
             config.items(), key=lambda item: _legacy_display_order(item[0])
         )
     ]
-    non_siel_items = [
-        item for item in items if item['key'] not in SIEL_RETAIL_CATEGORIES
-    ]
     return {
         'null': items,
-        'format': non_siel_items,
-        'anomaly': non_siel_items,
+        'format': items,
+        'anomaly': items,
     }
 
 
@@ -188,9 +185,7 @@ def build_sidebar_groups(section, focus=''):
                 })
                 continue
             if category in SIEL_RETAIL_CATEGORIES:
-                # This step exposes SIEL only under NULL validation. Format and
-                # duplicate rules are intentionally not configured yet.
-                if sec != 'null_validation' or siel_added:
+                if siel_added:
                     continue
                 siel_added = True
                 siel_children = []

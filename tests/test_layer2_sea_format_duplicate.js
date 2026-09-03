@@ -26,7 +26,7 @@ assert(nullUi.includes('function getDefaultFormatHistoryDays(tableParam)'));
 assert(nullUi.includes('? 3'));
 
 assert(format.includes("const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam)"));
-assert(format.includes('(isTseRetail || isSeaRetail)'));
+assert(format.includes('(isTseRetail || isSeaRetail || isSielRetail)'));
 assert(format.includes('editableDate: data.editable_date || data.source_date || date'));
 
 assert(dashboard.includes('buildLayer2NullGroups(vType.tables, vType)'));

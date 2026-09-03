@@ -151,6 +151,24 @@ const DETAIL_COLUMNS = {
             { key: 'product_url', label: 'URL', width: 80 },
         ]
     },
+    dup_siel_retail: {
+        group: [
+            { key: '_no', label: 'No', width: 50, align: 'center' },
+            { key: 'duplicate_type', label: '중복 유형', width: 130 },
+            { key: 'page_type', label: 'Page Type', width: 100 },
+            { key: 'item', label: 'Item', width: 150 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 240 },
+            { key: 'reason', label: '중복사유', width: 260 },
+        ],
+        detail: [
+            { key: 'id', label: 'ID', width: 80 },
+            { key: 'sku', label: 'SKU', width: 140 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 220 },
+            { key: 'final_sku_price', label: '판매가', width: 110 },
+            { key: 'crawl_datetime', label: 'crawl_datetime', width: 190 },
+            { key: 'product_url', label: 'URL', width: 80 },
+        ]
+    },
 };
 
 const RETAIL_SOURCE_DATE_COLUMNS = new Set([
@@ -192,6 +210,9 @@ function getColumnConfig(type, tableParam) {
         if (/^sea_(ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_sea_retail;
         }
+        if (/^siel_(tv|ref|ldy)_retail$/.test(tableParam)) {
+            return DETAIL_COLUMNS.dup_siel_retail;
+        }
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_tse_retail;
         }
@@ -206,6 +227,11 @@ function getColumnConfig(type, tableParam) {
 
 function isTseDuplicateTable(tableParam) {
     return /^tse_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
+}
+
+function isReadOnlyDuplicateTable(tableParam) {
+    return isTseDuplicateTable(tableParam)
+        || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
 }
 
 function getAllColumns(config) {
@@ -526,7 +552,7 @@ function renderDetailWithTable(options) {
     _buildDetailTable();
 
     // 중복 검증: 액션 버튼바
-    if (isRowspan && type === 'duplicate' && !isTseDuplicateTable(tableParam)) {
+    if (isRowspan && type === 'duplicate' && !isReadOnlyDuplicateTable(tableParam)) {
         _renderDupActionBar();
     }
 
@@ -578,7 +604,7 @@ function _buildDetailTable() {
     // No 컬럼을 항상 맨 앞에 추가 (컬럼 선택과 무관)
     var isDuplicate = detailViewState.type === 'duplicate';
     var ctColumns = [];
-    if (isDuplicate && !isTseDuplicateTable(detailViewState.tableParam)) {
+    if (isDuplicate && !isReadOnlyDuplicateTable(detailViewState.tableParam)) {
         ctColumns.push({ key: '_chk', label: '', width: 40, sortable: false, align: 'center' });
     }
     ctColumns.push({ key: '_no', label: 'No', width: 50, sortable: false, align: 'center' });
@@ -639,7 +665,7 @@ function _buildDetailTable() {
         }
     });
     detailViewState.table.render();
-    if (isDuplicate && !isTseDuplicateTable(detailViewState.tableParam)) {
+    if (isDuplicate && !isReadOnlyDuplicateTable(detailViewState.tableParam)) {
         _injectDupCheckboxHeader();
     }
 
@@ -1341,7 +1367,7 @@ function detailRenderPage(page) {
         if (isRowspan) {
             var tr = '<tr>';
             // 중복 검증: 체크박스 (매 행, rowspan 없음)
-            if (isDup && !isTseDuplicateTable(tableParam)) {
+            if (isDup && !isReadOnlyDuplicateTable(tableParam)) {
                 tr += '<td style="text-align:center"><input type="checkbox" class="dup-check" data-id="' + row.id + '"' +
                       (row._isGroupLast ? ' data-group-last="1"' : '') + '></td>';
             }
@@ -1568,6 +1594,9 @@ async function openRuleModal(tableName, retailer) {
         'HHP Retail': 'hhp_retail_com',
         'SEA REF': 'ref_retail_com',
         'SEA LDY': 'ldy_retail_com',
+        'SIEL TV': 'siel_tv',
+        'SIEL REF': 'siel_ref',
+        'SIEL LDY': 'siel_ldy',
         'TSE TV': 'tse_tv',
         'TSE REF': 'tse_ref',
         'TSE LDY': 'tse_ldy',

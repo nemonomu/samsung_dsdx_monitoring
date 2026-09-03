@@ -15,7 +15,8 @@ assert(common.includes('dup_tse_retail'));
 assert(common.includes("'TSE TV': 'tse_tv'"));
 assert(common.includes("'TSE REF': 'tse_ref'"));
 assert(common.includes("'TSE LDY': 'tse_ldy'"));
-assert(common.includes('!isTseDuplicateTable(detailViewState.tableParam)'));
+assert(common.includes('!isReadOnlyDuplicateTable(detailViewState.tableParam)'));
+assert(common.includes('return isTseDuplicateTable(tableParam)'));
 
 assert(format.includes("const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam)"));
 assert(format.includes("'retailer_sku_name'"));

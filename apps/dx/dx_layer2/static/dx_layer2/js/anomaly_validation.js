@@ -139,7 +139,10 @@ function renderDetailTable(type, data, tableParam) {
     if (data.readonly) {
         var readOnlyBar = document.getElementById('detail-action-bar');
         if (readOnlyBar) {
-            readOnlyBar.innerHTML = '<div style="padding:8px 12px;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;font-size:12px;">TSE 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.</div>';
+            var readOnlyMessage = data.readonly_message
+                || 'TSE 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.';
+            readOnlyBar.innerHTML = '<div style="padding:8px 12px;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;font-size:12px;">'
+                + readOnlyMessage + '</div>';
         }
     }
 

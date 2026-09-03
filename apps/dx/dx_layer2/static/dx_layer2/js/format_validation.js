@@ -50,8 +50,9 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const date = data.date || getSelectedDate();
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
-        || isSeaRetail || isTseRetail;
+        || isSeaRetail || isSielRetail || isTseRetail;
     const currentDays = modalState.days
         || (typeof getDefaultFormatHistoryDays === 'function'
             ? getDefaultFormatHistoryDays(tableParam) : 1);
@@ -94,7 +95,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     var selectCols = [];
     if (isRetail && columnNames.length > 0) {
         var retailDateColumn = data.date_column || 'crawl_datetime';
-        var defaultKeys = (isTseRetail || isSeaRetail)
+        var defaultKeys = (isTseRetail || isSeaRetail || isSielRetail)
             ? ['id', 'item', 'retailer_sku_name', retailDateColumn, fieldName, 'product_url']
             : ['id', 'item', retailDateColumn, fieldName, 'product_url'];
         var _seen = {};
@@ -130,7 +131,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 <input type="date" id="fmt-modal-date" value="${date}"
                     onchange="reloadFormatData(this.value)">
             </div>
-            ${(isTseRetail || isSeaRetail) ? `<div class="modal-date-picker">
+            ${(isTseRetail || isSeaRetail || isSielRetail) ? `<div class="modal-date-picker">
                 <label>일수:</label>
                 <input type="number" id="fmt-modal-days" value="${currentDays}" min="1" max="30"
                     style="width:58px;" onkeydown="if(event.key==='Enter')reloadFormatDays()">
