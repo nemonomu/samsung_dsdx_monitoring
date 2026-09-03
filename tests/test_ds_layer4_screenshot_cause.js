@@ -8,6 +8,14 @@ const indexSource = fs.readFileSync(
 const screenshotSource = fs.readFileSync(
     'apps/ds/ds_layer4/static/ds_layer4/js/screenshot.js', 'utf8'
 );
+const screenshotCss = fs.readFileSync(
+    'apps/ds/ds_layer4/static/ds_layer4/css/index.css', 'utf8'
+);
+
+assert.ok(screenshotCss.includes(
+    'grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);'
+));
+assert.ok(screenshotCss.includes('min-width: 220px;'));
 
 function fakeClassList() {
     const values = new Set();

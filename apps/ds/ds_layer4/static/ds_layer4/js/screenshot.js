@@ -29,6 +29,8 @@ function getScreenshotCauseValue() {
 
 function updateScreenshotCauseDirty() {
     const saveBtn = document.getElementById('screenshotCauseSaveBtn');
+    const customInput = document.getElementById('screenshotCustomCause');
+    if (customInput) customInput.title = String(customInput.value || '').trim();
     screenshotCauseDirty = getScreenshotCauseValue() !== screenshotCauseBaseline;
     if (saveBtn) saveBtn.disabled = !screenshotCauseDirty || screenshotCauseSaving;
 }
@@ -37,6 +39,7 @@ function handleScreenshotCauseChange() {
     const select = document.getElementById('screenshotCauseSelect');
     const customInput = document.getElementById('screenshotCustomCause');
     const isCustom = select.value === SCREENSHOT_CUSTOM_CAUSE;
+    select.title = isCustom ? '기타(직접 입력)' : select.value;
     customInput.hidden = !isCustom;
     if (isCustom) customInput.focus();
     updateScreenshotCauseDirty();
@@ -91,15 +94,20 @@ function renderScreenshotCauseEditor(anomalyId) {
 
     if (currentCause && options.includes(currentCause)) {
         select.value = currentCause;
+        select.title = currentCause;
         customInput.value = '';
         customInput.hidden = true;
     } else if (currentCause) {
         select.value = SCREENSHOT_CUSTOM_CAUSE;
+        select.title = '기타(직접 입력)';
         customInput.value = currentCause;
+        customInput.title = currentCause;
         customInput.hidden = false;
     } else {
         select.value = '';
+        select.title = '원인 선택';
         customInput.value = '';
+        customInput.title = '';
         customInput.hidden = true;
     }
     saveBtn.disabled = true;
