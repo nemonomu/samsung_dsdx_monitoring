@@ -106,7 +106,12 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             columns.push({ key: k, label: k === 'product_url' ? 'URL' : k, width: k === 'id' ? 80 : 120 });
         });
         columns.push(reasonCol);
-        selectCols = columnNames;
+        // 국가/리테일러/페이지는 상세 제목과 선택한 카드에서 이미
+        // 확인되므로 모든 리테일 형식 검증 표와 컬럼 선택에서 제외한다.
+        var contextOnlyKeys = new Set(['country', 'account_name', 'page_type']);
+        selectCols = columnNames.filter(function(key) {
+            return !contextOnlyKeys.has(key);
+        });
     } else if (columnNames.length > 0) {
         columns = columnNames.map(function(col) {
             return { key: col, label: col === 'product_url' ? 'URL' : col, width: col === 'id' ? 80 : 120 };

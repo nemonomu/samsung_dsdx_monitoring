@@ -33,6 +33,10 @@ assert(format.includes(
     'const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam)'
 ));
 assert(format.includes('(isTseRetail || isSeaRetail || isSielRetail)'));
+assert(format.includes(
+    "new Set(['country', 'account_name', 'page_type'])"
+));
+assert(format.includes('selectCols = columnNames.filter'));
 
 assert(anomaly.includes('data.readonly_message'));
 assert(dashboard.includes(
