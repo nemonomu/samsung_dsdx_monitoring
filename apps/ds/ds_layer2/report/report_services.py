@@ -9,6 +9,7 @@ from apps.ds.ds_layer2.stats.stats_repositories import (
     fetch_quality_counts, fetch_quality_counts_by_time_range
 )
 from . import report_repositories
+from .anomaly_causes import carry_forward_causes
 from apps.ds.ds_layer4.report.report_services import get_file_info_for_date
 
 def get_retailer_stats(cursor, retailer, target_date, include_file_info=False):
@@ -57,7 +58,15 @@ def save_retailer(crawl_date, retailer, anomalies, memo, user_id):
             target_date = datetime.strptime(crawl_date, '%Y-%m-%d').date()
             stats = get_retailer_stats(cursor, retailer, target_date, include_file_info=False)
             if not stats: return {'success': False, 'error': f'{retailer} 타겟을 찾을 수 없습니다.'}
-            
+
+            if anomalies:
+                previous_anomalies = report_repositories.fetch_previous_anomalies_with_causes(
+                    cursor,
+                    target_date - timedelta(days=1),
+                    stats['retailer_id'],
+                )
+                anomalies = carry_forward_causes(anomalies, previous_anomalies)
+
             report_daily_id, anomaly_ids = report_repositories.db_save_retailer_transaction(crawl_date, stats['retailer_id'], stats, anomalies, memo, user_id, now, cursor, conn)
             return {'success': True, 'message': f'{retailer} 저장 완료', 'report_daily_id': report_daily_id, 'anomaly_count': len(anomaly_ids), 'anomaly_ids': anomaly_ids}
     except Exception as e:

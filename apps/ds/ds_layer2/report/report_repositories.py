@@ -30,6 +30,38 @@ def fetch_target_info(cursor, retailer):
     cursor.execute("SELECT retailer_id, table_name, country, mall_name FROM ssd_crawl_db.ds_monitoring_targets WHERE retailer = %s AND is_active = 1", (retailer,))
     return cursor.fetchone()
 
+
+def fetch_previous_anomalies_with_causes(cursor, crawl_date, retailer_id):
+    """Return prior-day anomalies whose saved cause is still selectable."""
+    cursor.execute("""
+        SELECT a.retailersku, a.title, a.retailprice, a.ships_from,
+               a.sold_by, a.imageurl, a.cause
+        FROM ssd_crawl_db.ds_monitoring_report_anomaly a
+        INNER JOIN ssd_crawl_db.ds_monitoring_anomaly_causes_options o
+            ON o.retailer_id = a.retailer_id
+           AND o.option_name = a.cause
+           AND o.is_active = 1
+        WHERE a.crawl_date = %s
+          AND a.retailer_id = %s
+          AND a.is_del = 0
+          AND a.retailersku IS NOT NULL
+          AND TRIM(a.retailersku) != ''
+          AND a.cause IS NOT NULL
+          AND TRIM(a.cause) != ''
+    """, (crawl_date, retailer_id))
+    return [
+        {
+            'retailersku': row[0],
+            'title': row[1],
+            'retailprice': row[2],
+            'ships_from': row[3],
+            'sold_by': row[4],
+            'imageurl': row[5],
+            'cause': row[6],
+        }
+        for row in cursor.fetchall()
+    ]
+
 def db_save_retailer_transaction(crawl_date, retailer_id, stats, anomalies, memo, user_id, now, cursor, conn):
     cursor.execute("UPDATE ssd_crawl_db.ds_monitoring_report_daily SET is_del = 1, updated_at = %s, updated_id = %s WHERE crawl_date = %s AND retailer_id = %s AND is_del = 0", (now, user_id, crawl_date, retailer_id))
     cursor.execute("UPDATE ssd_crawl_db.ds_monitoring_report_anomaly SET is_del = 1, updated_at = %s, updated_id = %s WHERE crawl_date = %s AND retailer_id = %s AND is_del = 0", (now, user_id, crawl_date, retailer_id))
