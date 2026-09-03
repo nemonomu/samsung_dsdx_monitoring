@@ -5,11 +5,18 @@
 <div class="screenshot-modal" id="screenshotModal" onclick="closeScreenshotModal(event)">
     <div class="screenshot-modal-content" onclick="event.stopPropagation()" style="position: relative;">
         <div class="screenshot-modal-header">
-            <div>
+            <div class="screenshot-modal-heading">
                 <span class="screenshot-modal-title" id="screenshotTitle">스크린샷</span>
                 <span class="screenshot-counter" id="screenshotCounter"></span>
             </div>
-            <div>
+            <div class="screenshot-cause-editor" id="screenshotCauseEditor">
+                <label for="screenshotCauseSelect">원인</label>
+                <select id="screenshotCauseSelect" onchange="handleScreenshotCauseChange()"></select>
+                <input type="text" id="screenshotCustomCause" maxlength="255" placeholder="원인을 직접 입력" oninput="markScreenshotCauseEdited()" onkeydown="handleScreenshotCauseKeydown(event)" hidden>
+                <button type="button" id="screenshotCauseSaveBtn" onclick="saveScreenshotCause()" disabled>저장</button>
+                <span class="screenshot-cause-readonly" id="screenshotCauseReadonly" hidden></span>
+            </div>
+            <div class="screenshot-modal-actions">
                 <button class="screenshot-delete-btn" id="screenshotDeleteBtn" onclick="deleteScreenshot()" title="스크린샷 삭제" style="display:none;">🗑 삭제</button>
                 <button class="screenshot-modal-close" onclick="closeScreenshotModal()">&times;</button>
             </div>

@@ -4,6 +4,19 @@ DS Layer 2 Report Repository: 현황 저장/삭제 쿼리 전담
 from apps.common.db import ds_connection
 from apps.common.response import log_error
 
+
+_SYSTEM_CAUSE_MARKERS = {'crawler_null_capture'}
+
+
+def _resolved_cause(existing_cause, incoming_cause):
+    existing = str(existing_cause or '').strip()
+    incoming = str(incoming_cause or '').strip()
+
+    if existing and existing.casefold() not in _SYSTEM_CAUSE_MARKERS:
+        return existing
+    return incoming
+
+
 def fetch_retailer_save_status(target_date):
     try:
         with ds_connection() as (conn, cursor):
@@ -29,6 +42,39 @@ def fetch_retailer_save_status(target_date):
 def fetch_target_info(cursor, retailer):
     cursor.execute("SELECT retailer_id, table_name, country, mall_name FROM ssd_crawl_db.ds_monitoring_targets WHERE retailer = %s AND is_active = 1", (retailer,))
     return cursor.fetchone()
+
+
+def fetch_previous_anomalies_with_causes(cursor, crawl_date, retailer_id):
+    """Return prior-day anomalies whose saved cause is still selectable."""
+    cursor.execute("""
+        SELECT a.retailersku, a.title, a.retailprice, a.ships_from,
+               a.sold_by, a.imageurl, a.cause
+        FROM ssd_crawl_db.ds_monitoring_report_anomaly a
+        LEFT JOIN ssd_crawl_db.ds_monitoring_anomaly_causes_options o
+            ON o.retailer_id = a.retailer_id
+           AND o.option_name = a.cause
+        WHERE a.crawl_date = %s
+          AND a.retailer_id = %s
+          AND a.is_del = 0
+          AND a.retailersku IS NOT NULL
+          AND TRIM(a.retailersku) != ''
+          AND a.cause IS NOT NULL
+          AND TRIM(a.cause) != ''
+          AND LOWER(TRIM(a.cause)) != 'crawler_null_capture'
+          AND (o.option_id IS NULL OR o.is_active = 1)
+    """, (crawl_date, retailer_id))
+    return [
+        {
+            'retailersku': row[0],
+            'title': row[1],
+            'retailprice': row[2],
+            'ships_from': row[3],
+            'sold_by': row[4],
+            'imageurl': row[5],
+            'cause': row[6],
+        }
+        for row in cursor.fetchall()
+    ]
 
 def db_save_retailer_transaction(crawl_date, retailer_id, stats, anomalies, memo, user_id, now, cursor, conn):
     cursor.execute("UPDATE ssd_crawl_db.ds_monitoring_report_daily SET is_del = 1, updated_at = %s, updated_id = %s WHERE crawl_date = %s AND retailer_id = %s AND is_del = 0", (now, user_id, crawl_date, retailer_id))
@@ -62,11 +108,12 @@ def db_save_retailer_transaction(crawl_date, retailer_id, stats, anomalies, memo
         sku = anomaly.get('retailersku', '')
         old = old_anomaly_map.pop(sku, None) if sku else None
         if old:
+            cause = _resolved_cause(old['cause'], anomaly.get('cause'))
             cursor.execute("""
                 UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
-                SET is_del = 0, country_code = %s, title = %s, retailprice = %s, ships_from = %s, sold_by = %s, imageurl = %s, producturl = %s, updated_at = %s, updated_id = %s
+                SET is_del = 0, country_code = %s, title = %s, retailprice = %s, ships_from = %s, sold_by = %s, imageurl = %s, producturl = %s, cause = %s, updated_at = %s, updated_id = %s
                 WHERE id = %s
-            """, (anomaly.get('country_code', ''), anomaly.get('title', ''), anomaly.get('retailprice'), anomaly.get('ships_from', ''), anomaly.get('sold_by', ''), anomaly.get('imageurl', ''), anomaly.get('producturl', ''), now, user_id, old['id']))
+            """, (anomaly.get('country_code', ''), anomaly.get('title', ''), anomaly.get('retailprice'), anomaly.get('ships_from', ''), anomaly.get('sold_by', ''), anomaly.get('imageurl', ''), anomaly.get('producturl', ''), cause, now, user_id, old['id']))
             anomaly_ids.append(old['id'])
         else:
             cursor.execute("""

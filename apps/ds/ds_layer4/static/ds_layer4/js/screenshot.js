@@ -7,6 +7,184 @@
 let currentScreenshotAnomalyId = null;
 let screenshotList = []; // { fileId, anomalyId, retailer } 리스트
 let screenshotIndex = -1;
+let screenshotCauseEdited = false;
+let screenshotCauseSaving = false;
+const SCREENSHOT_CUSTOM_CAUSE = '__custom__';
+
+function getScreenshotAnomaly(anomalyId) {
+    if (!reportData || !reportData.anomalies) return null;
+    return reportData.anomalies.find(a => a.id === anomalyId) || null;
+}
+
+function getScreenshotCauseValue() {
+    const select = document.getElementById('screenshotCauseSelect');
+    const customInput = document.getElementById('screenshotCustomCause');
+    if (!select) return '';
+    if (select.value === SCREENSHOT_CUSTOM_CAUSE) {
+        return String(customInput.value || '').trim();
+    }
+    return normalizeReportCause(select.value);
+}
+
+function syncScreenshotCauseSaveButton() {
+    const saveBtn = document.getElementById('screenshotCauseSaveBtn');
+    if (saveBtn) saveBtn.disabled = !screenshotCauseEdited || screenshotCauseSaving;
+}
+
+function markScreenshotCauseEdited() {
+    const customInput = document.getElementById('screenshotCustomCause');
+    if (customInput) customInput.title = String(customInput.value || '').trim();
+    screenshotCauseEdited = true;
+    syncScreenshotCauseSaveButton();
+}
+
+function handleScreenshotCauseChange() {
+    const select = document.getElementById('screenshotCauseSelect');
+    const customInput = document.getElementById('screenshotCustomCause');
+    const isCustom = select.value === SCREENSHOT_CUSTOM_CAUSE;
+    select.title = isCustom ? '기타(직접 입력)' : select.value;
+    customInput.hidden = !isCustom;
+    if (isCustom) customInput.focus();
+    markScreenshotCauseEdited();
+}
+
+function handleScreenshotCauseKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        saveScreenshotCause();
+    }
+}
+
+function renderScreenshotCauseEditor(anomalyId) {
+    const editor = document.getElementById('screenshotCauseEditor');
+    const select = document.getElementById('screenshotCauseSelect');
+    const customInput = document.getElementById('screenshotCustomCause');
+    const saveBtn = document.getElementById('screenshotCauseSaveBtn');
+    const readonly = document.getElementById('screenshotCauseReadonly');
+    const anomaly = getScreenshotAnomaly(anomalyId);
+
+    if (!anomaly) {
+        editor.style.display = 'none';
+        return;
+    }
+
+    editor.style.display = 'flex';
+    const currentCause = normalizeReportCause(anomaly.cause);
+    const options = causeOptions[anomaly.retailer] || [];
+    screenshotCauseEdited = false;
+    screenshotCauseSaving = false;
+
+    if (isClosed) {
+        select.hidden = true;
+        customInput.hidden = true;
+        saveBtn.hidden = true;
+        readonly.hidden = false;
+        readonly.textContent = currentCause || '원인 미입력';
+        readonly.title = currentCause;
+        readonly.classList.toggle('empty', !currentCause);
+        return;
+    }
+
+    select.hidden = false;
+    select.disabled = false;
+    customInput.disabled = false;
+    saveBtn.hidden = false;
+    readonly.hidden = true;
+    select.innerHTML = '<option value="">선택</option>'
+        + options.map(option => `<option value="${esc(option)}">${esc(option)}</option>`).join('')
+        + `<option value="${SCREENSHOT_CUSTOM_CAUSE}">기타(직접 입력)</option>`;
+
+    if (currentCause && options.includes(currentCause)) {
+        select.value = currentCause;
+        select.title = currentCause;
+        customInput.value = '';
+        customInput.hidden = true;
+    } else if (currentCause) {
+        select.value = SCREENSHOT_CUSTOM_CAUSE;
+        select.title = '기타(직접 입력)';
+        customInput.value = currentCause;
+        customInput.title = currentCause;
+        customInput.hidden = false;
+    } else {
+        select.value = '';
+        select.title = '원인 선택';
+        customInput.value = '';
+        customInput.title = '';
+        customInput.hidden = true;
+    }
+    saveBtn.disabled = true;
+    saveBtn.textContent = '저장';
+}
+
+function refreshCauseAfterScreenshotSave(anomaly, previousCause) {
+    if (!previousCause && anomaly.cause) {
+        reportData.filled_cause = (reportData.filled_cause || 0) + 1;
+    }
+    updateSummary(reportData);
+    renderReportTable(reportData);
+}
+
+async function saveScreenshotCause() {
+    if (isClosed || screenshotCauseSaving || !currentScreenshotAnomalyId) return;
+
+    const cause = getScreenshotCauseValue();
+    if (!cause) {
+        showToast('원인을 선택하거나 직접 입력해 주세요.', 'warning');
+        const select = document.getElementById('screenshotCauseSelect');
+        const customInput = document.getElementById('screenshotCustomCause');
+        (select.value === SCREENSHOT_CUSTOM_CAUSE ? customInput : select).focus();
+        return;
+    }
+
+    const anomaly = getScreenshotAnomaly(currentScreenshotAnomalyId);
+    if (!anomaly) return;
+
+    const saveBtn = document.getElementById('screenshotCauseSaveBtn');
+    const select = document.getElementById('screenshotCauseSelect');
+    const customInput = document.getElementById('screenshotCustomCause');
+    const deleteBtn = document.getElementById('screenshotDeleteBtn');
+    const previousCause = normalizeReportCause(anomaly.cause);
+    screenshotCauseSaving = true;
+    saveBtn.disabled = true;
+    saveBtn.textContent = '저장 중...';
+    select.disabled = true;
+    customInput.disabled = true;
+    deleteBtn.disabled = true;
+
+    try {
+        const response = await fetch('/ds/layer4/api/update/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({
+                anomaly_id: anomaly.id,
+                cause: cause,
+                user_id: currentUserId
+            })
+        });
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || '원인 저장 실패');
+        }
+
+        anomaly.cause = cause;
+        screenshotCauseEdited = false;
+        refreshCauseAfterScreenshotSave(anomaly, previousCause);
+        renderScreenshotCauseEditor(anomaly.id);
+        showToast('원인이 저장되었습니다.', 'success');
+    } catch (error) {
+        showToast(error.message || '원인 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+        screenshotCauseSaving = false;
+        saveBtn.textContent = '저장';
+        select.disabled = false;
+        customInput.disabled = false;
+        deleteBtn.disabled = false;
+        syncScreenshotCauseSaveButton();
+    }
+}
 
 // 같은 리테일러의 스크린샷 목록 구성
 function buildScreenshotList(anomalyId) {
@@ -47,9 +225,13 @@ function updateScreenshotNav() {
     }
 }
 
-function navigateScreenshot(direction) {
+async function navigateScreenshot(direction) {
     const newIndex = screenshotIndex + direction;
     if (newIndex < 0 || newIndex >= screenshotList.length) return;
+    if (screenshotCauseSaving) {
+        showToast('원인을 저장하고 있습니다. 잠시만 기다려 주세요.', 'info');
+        return;
+    }
     screenshotIndex = newIndex;
     const item = screenshotList[screenshotIndex];
     currentScreenshotAnomalyId = item.anomalyId;
@@ -75,6 +257,7 @@ async function loadScreenshotImage(fileId, anomalyId) {
 
     deleteBtn.style.display = (!isClosed && anomalyId) ? 'inline-block' : 'none';
     body.innerHTML = '<div class="screenshot-loading">로딩 중...</div>';
+    renderScreenshotCauseEditor(anomalyId);
 
     try {
         const response = await fetch(`/ds/layer4/api/screenshot/?file_id=${fileId}`);
@@ -82,6 +265,7 @@ async function loadScreenshotImage(fileId, anomalyId) {
 
         if (data.success) {
             title.textContent = data.file_name || '스크린샷';
+            title.title = data.file_name || '스크린샷';
             body.innerHTML = `<img src="${safeUrl(data.url)}" alt="스크린샷" style="max-width:100%; max-height:80vh;">`;
         } else {
             body.innerHTML = `<div class="screenshot-loading" style="color: #dc2626;">이미지를 불러올 수 없습니다: ${esc(data.error)}</div>`;
@@ -94,6 +278,10 @@ async function loadScreenshotImage(fileId, anomalyId) {
 
 function deleteScreenshot() {
     if (!currentScreenshotAnomalyId) return;
+    if (screenshotCauseSaving) {
+        showToast('원인을 저장하고 있습니다. 잠시만 기다려 주세요.', 'info');
+        return;
+    }
 
     var existing = document.getElementById('screenshotConfirmOverlay');
     if (existing) existing.remove();
@@ -126,7 +314,7 @@ function deleteScreenshot() {
             const data = await response.json();
 
             if (data.success) {
-                closeScreenshotModal();
+                hideScreenshotModal();
                 showToast('스크린샷이 삭제되었습니다.', 'success');
                 loadReportList();
             } else {
@@ -138,9 +326,18 @@ function deleteScreenshot() {
     };
 }
 
-function closeScreenshotModal(event) {
-    if (event && event.target !== event.currentTarget) return;
+function hideScreenshotModal() {
     document.getElementById('screenshotModal').classList.remove('show');
+    screenshotCauseEdited = false;
+}
+
+async function closeScreenshotModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    if (screenshotCauseSaving) {
+        showToast('원인을 저장하고 있습니다. 잠시만 기다려 주세요.', 'info');
+        return;
+    }
+    hideScreenshotModal();
 }
 
 // 스크린샷 수동 업로드
@@ -413,16 +610,27 @@ async function captureScreenshot(retailer) {
 }
 
 // ESC / 좌우 화살표 키
-document.addEventListener('keydown', function(e) {
+document.addEventListener('keydown', async function(e) {
     const screenshotModal = document.getElementById('screenshotModal');
     if (screenshotModal.classList.contains('show')) {
-        if (e.key === 'ArrowLeft') { navigateScreenshot(-1); return; }
-        if (e.key === 'ArrowRight') { navigateScreenshot(1); return; }
+        const tagName = String(e.target && e.target.tagName || '').toLowerCase();
+        const isEditing = ['input', 'select', 'textarea'].includes(tagName);
+        if (!isEditing && e.key === 'ArrowLeft') {
+            e.preventDefault();
+            await navigateScreenshot(-1);
+            return;
+        }
+        if (!isEditing && e.key === 'ArrowRight') {
+            e.preventDefault();
+            await navigateScreenshot(1);
+            return;
+        }
     }
     if (e.key === 'Escape') {
         const detailModal = document.getElementById('detailModalOverlay');
         if (screenshotModal.classList.contains('show')) {
-            screenshotModal.classList.remove('show');
+            await closeScreenshotModal();
+            return;
         }
         if (detailModal.classList.contains('show')) {
             detailModal.classList.remove('show');

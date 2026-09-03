@@ -22,7 +22,7 @@ async function fetchFinalBatchInfo(retailer, date) {
 
 // 리테일러의 이상치 데이터 조회 (최종 배치만, 중복 제거)
 async function fetchAnomalies(tableName, date, country, startTime, endTime) {
-    const errorTypes = ['title_null', 'imageurl_null', 'price_zero', 'partial_null'];
+    const errorTypes = ['title_null', 'imageurl_null', 'imageurl_invalid', 'price_zero', 'partial_null'];
     const anomalyMap = new Map(); // producturl을 키로 사용하여 중복 제거
 
     for (const errorType of errorTypes) {
@@ -105,7 +105,10 @@ async function saveRetailer(retailer, event) {
 
     // 저장 확인 팝업
     const fileNames = fileMatches.map(f => f.files[0]?.name).filter(Boolean).join('\n');
-    const errorCount = (retailerData.null_union || 0) + (retailerData.price_zero || 0) + (retailerData.partial_null || 0);
+    const errorCount = (retailerData.null_union || 0)
+        + (retailerData.imageurl_invalid || 0)
+        + (retailerData.price_zero || 0)
+        + (retailerData.partial_null || 0);
     let confirmMsg = errorCount > 0
         ? `${retailer} 이상치 데이터 ${errorCount}건을 저장하시겠습니까?`
         : `${retailer} 현황을 저장하시겠습니까?`;
