@@ -3,6 +3,10 @@
 
     var currentPage = 1;
     var pageSize = 20;
+    var productsByCountry = {
+        SEA: ['TV'],
+        SIEL: ['TV', 'REF', 'LDY']
+    };
 
     function escapeHtml(value) {
         return String(value == null ? '' : value)
@@ -27,6 +31,31 @@
         loadData(1);
     }
 
+    function selectedScope() {
+        return {
+            country: document.getElementById('redirectCountry').value,
+            product: document.getElementById('redirectProduct').value
+        };
+    }
+
+    function syncProductOptions() {
+        var country = document.getElementById('redirectCountry').value;
+        var productSelect = document.getElementById('redirectProduct');
+        var previous = productSelect.value;
+        var products = productsByCountry[country] || [];
+
+        productSelect.innerHTML = '';
+        products.forEach(function(product) {
+            var option = document.createElement('option');
+            option.value = product;
+            option.textContent = product;
+            productSelect.appendChild(option);
+        });
+        if (products.indexOf(previous) !== -1) productSelect.value = previous;
+        document.getElementById('redirectScopeTitle').textContent =
+            country + ' ' + productSelect.value;
+    }
+
     function displayValue(value) {
         if (value === null || value === undefined || value === '') return '-';
         if (value === true) return 'TRUE';
@@ -41,7 +70,9 @@
         var columns = data.columns || [];
         var items = data.items || [];
 
-        summary.innerHTML = data.date + ' / Amazon redirect=TRUE / 총 <strong>'
+        summary.innerHTML = escapeHtml(data.country) + ' '
+            + escapeHtml(data.product) + ' / ' + escapeHtml(data.date)
+            + ' / Amazon redirect=TRUE / 총 <strong>'
             + Number(data.total || 0).toLocaleString() + '</strong>건';
 
         if (!items.length) {
@@ -97,12 +128,17 @@
         var input = document.getElementById('redirectDate');
         if (!input.value) return;
         currentPage = page;
+        var scope = selectedScope();
+        document.getElementById('redirectScopeTitle').textContent =
+            scope.country + ' ' + scope.product;
 
         document.getElementById('redirectSummary').textContent = '조회 중...';
         document.getElementById('redirectTable').innerHTML = '';
 
         var params = new URLSearchParams({
             date: input.value,
+            country: scope.country,
+            product: scope.product,
             page: currentPage,
             page_size: pageSize
         });
@@ -125,6 +161,15 @@
         var initial = new Date();
         initial.setDate(initial.getDate() - 1);
         document.getElementById('redirectDate').value = dateText(initial);
+        syncProductOptions();
+
+        document.getElementById('redirectCountry').addEventListener('change', function() {
+            syncProductOptions();
+            loadData(1);
+        });
+        document.getElementById('redirectProduct').addEventListener('change', function() {
+            loadData(1);
+        });
 
         document.getElementById('redirectSearch').addEventListener('click', function() {
             loadData(1);

@@ -115,6 +115,13 @@ def db_rows():
 
 
 def common_stubs():
+    def redirect_condition(alias=None):
+        prefix = f'{alias}.' if alias else ''
+        return (
+            f"NOT ({prefix}account_name = 'Amazon' "
+            f"AND {prefix}redirect IS TRUE)"
+        )
+
     return {
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
@@ -132,7 +139,7 @@ def common_stubs():
         ),
         'apps.common.retail_validation': module_stub(
             'apps.common.retail_validation',
-            get_tv_validation_condition=lambda *_args: 'TRUE',
+            get_tv_validation_condition=redirect_condition,
         ),
         'apps.common.monitoring_exclusions': module_stub(
             'apps.common.monitoring_exclusions',
@@ -304,6 +311,10 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
         count_sql, count_params = cursor.calls[1]
         self.assertIn('batch_id IS NOT DISTINCT FROM %s', count_sql)
         self.assertIn("IN ('main', 'bsr')", count_sql)
+        self.assertIn(
+            "NOT (account_name = 'Amazon' AND redirect IS TRUE)",
+            count_sql,
+        )
         self.assertNotIn("INTERVAL '3 days'", count_sql)
         self.assertEqual(
             [
@@ -395,6 +406,11 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
             'source.batch_id IS NOT DISTINCT FROM latest.batch_id',
             history_sql,
         )
+        self.assertIn(
+            "NOT (source.account_name = 'Amazon' "
+            "AND source.redirect IS TRUE)",
+            history_sql,
+        )
         self.assertEqual(
             [
                 '2026-08-30', '2026-08-31', 'Flipkart', 'Flipkart',
@@ -442,6 +458,11 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
         scope_sql, scope_params = cursor.calls[0]
         self.assertIn('WITH latest_main_batches AS', scope_sql)
         self.assertIn("AT TIME ZONE 'Asia/Seoul'", scope_sql)
+        self.assertIn(
+            "NOT (source.account_name = 'Amazon' "
+            "AND source.redirect IS TRUE)",
+            scope_sql,
+        )
         self.assertEqual(
             (
                 '2026-08-31', '2026-08-31', 'amazon', 'flipkart', 77,

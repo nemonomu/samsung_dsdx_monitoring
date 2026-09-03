@@ -25,6 +25,7 @@
 
 .redirect-card,
 .redirect-card input,
+.redirect-card select,
 .redirect-card button,
 .redirect-card table {
     font-family: inherit;
@@ -67,13 +68,19 @@
     font-weight: 700;
 }
 
-.redirect-filter input {
+.redirect-filter input,
+.redirect-filter select {
     height: 38px;
     padding: 0 10px;
     border: 1px solid var(--border-color);
     border-radius: 6px;
+    background: #fff;
     color: #0f172a;
     font-size: 13px;
+}
+
+.redirect-filter select {
+    min-width: 92px;
 }
 
 .redirect-btn {

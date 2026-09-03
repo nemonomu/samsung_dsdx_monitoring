@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'dx_data/css/item_master.css' %}">
-<link rel="stylesheet" href="{% static 'dx_data/css/redirect_data.css' %}?v=4">
+<link rel="stylesheet" href="{% static 'dx_data/css/redirect_data.css' %}?v=5">
 {% endblock %}
 
 {% block content %}
@@ -45,11 +45,20 @@
 
         <div class="white-card-frame redirect-card">
             <div class="redirect-card-header">
-                <span class="redirect-tab">TV</span>
+                <span class="redirect-tab" id="redirectScopeTitle">SEA TV</span>
             </div>
 
             <div class="redirect-filter-panel">
                 <div class="redirect-filter">
+                    <label for="redirectCountry">국가</label>
+                    <select id="redirectCountry">
+                        <option value="SEA">SEA</option>
+                        <option value="SIEL">SIEL</option>
+                    </select>
+                    <label for="redirectProduct">제품군</label>
+                    <select id="redirectProduct">
+                        <option value="TV">TV</option>
+                    </select>
                     <label for="redirectDate">조회 날짜</label>
                     <input type="date" id="redirectDate">
                     <button type="button" class="redirect-btn primary" id="redirectSearch">조회</button>
@@ -69,5 +78,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'dx_data/js/redirect_data.js' %}"></script>
+<script src="{% static 'dx_data/js/redirect_data.js' %}?v=20260903-1"></script>
 {% endblock %}

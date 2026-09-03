@@ -11,6 +11,8 @@ from .redirect_data_services import get_amazon_redirect_list
 
 def redirect_data_list(request):
     date_text = request.GET.get('date', '')
+    country = request.GET.get('country', 'SEA')
+    product = request.GET.get('product', 'TV')
     try:
         target_date = date.fromisoformat(date_text)
         page = max(1, int(request.GET.get('page', 1)))
@@ -20,7 +22,12 @@ def redirect_data_list(request):
 
     try:
         return JsonResponse(
-            get_amazon_redirect_list(target_date, page, page_size)
+            get_amazon_redirect_list(
+                target_date, page, page_size,
+                country=country, product=product,
+            )
         )
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
     except Exception as exc:
         return safe_error(exc, 'db')

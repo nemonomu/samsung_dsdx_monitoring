@@ -257,6 +257,7 @@ def _build_siel_null_scope(source, source_date, retailer, batch_id):
                 LOWER(BTRIM(CAST(%s AS TEXT)))
             AND batch_id IS NOT DISTINCT FROM %s
             AND LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr')
+            AND {get_tv_validation_condition()}
         """,
         [*params, retailer, batch_id],
     )
@@ -302,6 +303,7 @@ def _build_siel_null_history_query(
         WHERE LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
               LOWER(BTRIM(CAST(%s AS TEXT)))
           AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          AND {get_tv_validation_condition('source')}
           AND source.item IN ({placeholders})
         ORDER BY source.item, source.{date_column}, source.id
     """
@@ -357,6 +359,7 @@ def _build_siel_latest_batch_record_query(source, column_name):
                 '{SIEL_BUSINESS_TIMEZONE}'
               )
           AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          AND {get_tv_validation_condition('source')}
     """
     return query, [retailer.lower() for retailer in retailers]
 
