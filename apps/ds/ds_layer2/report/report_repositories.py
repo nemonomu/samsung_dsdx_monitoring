@@ -50,10 +50,9 @@ def fetch_previous_anomalies_with_causes(cursor, crawl_date, retailer_id):
         SELECT a.retailersku, a.title, a.retailprice, a.ships_from,
                a.sold_by, a.imageurl, a.cause
         FROM ssd_crawl_db.ds_monitoring_report_anomaly a
-        INNER JOIN ssd_crawl_db.ds_monitoring_anomaly_causes_options o
+        LEFT JOIN ssd_crawl_db.ds_monitoring_anomaly_causes_options o
             ON o.retailer_id = a.retailer_id
            AND o.option_name = a.cause
-           AND o.is_active = 1
         WHERE a.crawl_date = %s
           AND a.retailer_id = %s
           AND a.is_del = 0
@@ -61,6 +60,8 @@ def fetch_previous_anomalies_with_causes(cursor, crawl_date, retailer_id):
           AND TRIM(a.retailersku) != ''
           AND a.cause IS NOT NULL
           AND TRIM(a.cause) != ''
+          AND LOWER(TRIM(a.cause)) != 'crawler_null_capture'
+          AND (o.option_id IS NULL OR o.is_active = 1)
     """, (crawl_date, retailer_id))
     return [
         {

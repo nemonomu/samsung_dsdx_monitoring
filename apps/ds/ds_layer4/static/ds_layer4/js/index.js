@@ -9,14 +9,26 @@ let isClosed = false;
 let currentReportView = 'status'; // 'status' or 'detail'
 let expandedRetailers = new Set(); // 펼쳐진 아코디언 리테일러 추적
 let causeOptions = {}; // 리테일러별 원인 옵션
+const INTERNAL_CAUSE_MARKERS = new Set(['crawler_null_capture']);
+
+function normalizeReportCause(value) {
+    const cause = String(value || '').trim();
+    return INTERNAL_CAUSE_MARKERS.has(cause.toLowerCase()) ? '' : cause;
+}
 
 // 리테일러별 원인 옵션 드롭다운 HTML 생성
 function getCauseOptionsHtml(retailer, selectedValue) {
     const options = causeOptions[retailer] || [];
+    const selected = normalizeReportCause(selectedValue);
     let html = '<option value="">선택</option>';
     options.forEach(opt => {
-        html += `<option value="${opt}" ${selectedValue === opt ? 'selected' : ''}>${opt}</option>`;
+        const safeOption = esc(opt);
+        html += `<option value="${safeOption}" ${selected === opt ? 'selected' : ''}>${safeOption}</option>`;
     });
+    if (selected && !options.includes(selected)) {
+        const safeSelected = esc(selected);
+        html += `<option value="${safeSelected}" selected>기타: ${safeSelected}</option>`;
+    }
     return html;
 }
 

@@ -141,8 +141,11 @@ class PreviousAnomalyRepositoryTests(unittest.TestCase):
 
         sql, params = cursor.calls[0]
         self.assertEqual((date(2026, 9, 2), 17), params)
+        self.assertIn('LEFT JOIN', sql)
         self.assertIn('o.is_active = 1', sql)
+        self.assertIn('o.option_id IS NULL', sql)
         self.assertIn('a.is_del = 0', sql)
+        self.assertIn("LOWER(TRIM(a.cause)) != 'crawler_null_capture'", sql)
         self.assertEqual('원인 A', result[0]['cause'])
 
     def test_crawler_marker_is_replaced_by_carried_cause(self):
@@ -282,6 +285,34 @@ class SaveRetailerCarryForwardTests(unittest.TestCase):
         previous_fetch.assert_called_once_with(cursor, date(2026, 9, 2), 17)
         saved_anomalies = save_transaction.call_args.args[3]
         self.assertEqual('상품페이지 내 항목 부재', saved_anomalies[0]['cause'])
+
+
+class Layer4CauseDisplayTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.repository = load_module(
+            'apps/ds/ds_layer4/report/report_repositories.py',
+            'ds_layer4_report_cause_display_under_test',
+            stubs={
+                'apps.common.db': module_stub(
+                    'apps.common.db', ds_connection=None,
+                ),
+                'apps.common.targets': module_stub(
+                    'apps.common.targets', load_monitoring_targets=lambda: [],
+                ),
+            },
+        )
+
+    def test_internal_capture_marker_is_not_a_user_cause(self):
+        self.assertEqual(
+            '', self.repository._user_cause('crawler_null_capture')
+        )
+
+    def test_custom_user_cause_remains_visible(self):
+        self.assertEqual(
+            '직접 작성한 원인',
+            self.repository._user_cause(' 직접 작성한 원인 '),
+        )
 
 
 if __name__ == '__main__':

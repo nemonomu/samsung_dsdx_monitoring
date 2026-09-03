@@ -5,6 +5,17 @@ from datetime import datetime, timedelta, date
 from apps.common.db import ds_connection
 from apps.common.targets import load_monitoring_targets
 
+
+_SYSTEM_CAUSE_MARKERS = {'crawler_null_capture'}
+
+
+def _user_cause(value):
+    cause = str(value or '').strip()
+    if cause.casefold() in _SYSTEM_CAUSE_MARKERS:
+        return ''
+    return cause
+
+
 def get_monitoring_targets():
     return load_monitoring_targets()
 
@@ -335,11 +346,12 @@ def get_report_list_db(target_date, retailer_filter, view_mode):
             anomaly_rows = cursor.fetchall()
 
             for row in anomaly_rows:
+                cause = _user_cause(row[11])
                 anomalies.append({
                     'id': row[0], 'retailer': row[1], 'country_code': row[2], 'title': row[3],
                     'retailprice': row[4], 'ships_from': row[5], 'sold_by': row[6],
                     'imageurl': row[7], 'producturl': row[8], 'retailersku': row[9] or '',
-                    'screenshot_id': row[10], 'cause': row[11], 'memo': row[12],
+                    'screenshot_id': row[10], 'cause': cause, 'memo': row[12],
                     'created_at': row[13].strftime('%Y-%m-%d %H:%M:%S') if row[13] else None,
                     'created_id': row[14], 'updated_at': row[15].strftime('%Y-%m-%d %H:%M:%S') if row[15] else None,
                     'updated_id': row[16]
@@ -373,7 +385,7 @@ def get_report_list_db(target_date, retailer_filter, view_mode):
         cause_summary = {}
         for row in cause_summary_rows:
             retailer = row[0]
-            cause = row[1] or ''
+            cause = _user_cause(row[1])
             if not cause: continue
             if retailer not in cause_summary:
                 cause_summary[retailer] = {}
@@ -381,7 +393,9 @@ def get_report_list_db(target_date, retailer_filter, view_mode):
 
         summary_query = """
             SELECT COUNT(*) as total,
-                   SUM(CASE WHEN a.cause IS NOT NULL AND a.cause != '' THEN 1 ELSE 0 END) as filled_cause,
+                   SUM(CASE WHEN a.cause IS NOT NULL AND TRIM(a.cause) != ''
+                                 AND LOWER(TRIM(a.cause)) != 'crawler_null_capture'
+                            THEN 1 ELSE 0 END) as filled_cause,
                    SUM(CASE WHEN a.memo IS NOT NULL AND a.memo != '' THEN 1 ELSE 0 END) as filled_memo
             FROM ssd_crawl_db.ds_monitoring_report_anomaly a
             WHERE a.crawl_date = %s AND a.is_del = 0
