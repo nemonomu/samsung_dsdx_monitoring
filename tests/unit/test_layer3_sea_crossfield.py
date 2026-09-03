@@ -268,9 +268,24 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
         self.assertEqual(1, result['total_anomalies'])
         query = result['rule_summary'][0]['query']
         self.assertNotIn('DELETE FROM must_not_execute', query)
-        self.assertIn('source.product_url', query)
-        self.assertIn('ranked_batches', query)
-        self.assertIn("'2026-08-30'", query)
+        self.assertIn('    product_url', query)
+        self.assertNotIn('WITH main_batches AS', query)
+        self.assertNotIn('    batch_id', query)
+        self.assertIn(
+            "LEFT(TRIM(crawl_strdatetime), 10) >= TO_CHAR(",
+            query,
+        )
+        self.assertIn(
+            "CURRENT_DATE - INTERVAL '3 days', 'YYYY-MM-DD'",
+            query,
+        )
+        self.assertIn(
+            "LEFT(TRIM(crawl_strdatetime), 10) "
+            "< TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')",
+            query,
+        )
+        self.assertIn("TRIM(account_name) ILIKE 'Bestbuy'", query)
+        self.assertIn("item IN ('A-1')", query)
 
     def test_lowes_review_candidates_are_separate_from_anomalies(self):
         rows = [

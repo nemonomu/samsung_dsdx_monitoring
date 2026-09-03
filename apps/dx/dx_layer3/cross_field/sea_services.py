@@ -756,23 +756,20 @@ def _display_sql_literal(value):
 def build_sea_display_query(
         inspection_date, product_line, rule, days=1, retailer=None,
         retailers=None, retailer_item_pairs=None):
-    """Build copy-only SQL with the same D-1/latest-anchor scope."""
+    """Build a compact copy-only SEA D-1 item-history query."""
     key = normalize_sea_product_line(product_line)
     source = _source_for_product_line(key)
     day_count = min(30, max(1, int(days)))
-    start_inspection = inspection_date - timedelta(days=day_count - 1)
-    start_source = _date_contract(start_inspection, source)['source_date']
-    end_source = _date_contract(inspection_date, source)['source_date']
     date_column = source['date_column']
 
     select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SEA_RULE_SPECS[rule['rule_key']]
-    for field_group in (*spec['display_fields'], date_column, 'batch_id', 'product_url'):
+    for field_group in (*spec['display_fields'], date_column, 'product_url'):
         for column in str(field_group or '').split('|'):
             column = column.strip()
             if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
                 select_columns.append(column)
-    select_sql = ',\n'.join(f'    source.{column}' for column in select_columns)
+    select_sql = ',\n'.join(f'    {column}' for column in select_columns)
 
     pair_values = sorted({
         (
@@ -792,60 +789,67 @@ def build_sea_display_query(
 
     filters = []
     if pair_values:
-        pair_clauses = []
+        pair_groups = OrderedDict()
         for pair_retailer, item in pair_values:
-            item_scope = (
-                "(source.item IS NULL OR TRIM(CAST(source.item AS TEXT)) = '')"
-                if item is None else f'source.item = {_display_sql_literal(item)}'
+            pair_groups.setdefault(pair_retailer, []).append(item)
+        pair_clauses = []
+        for pair_retailer, pair_items in pair_groups.items():
+            item_values = sorted({
+                item for item in pair_items if item is not None
+            })
+            item_clauses = []
+            if item_values:
+                literals = ', '.join(
+                    _display_sql_literal(item) for item in item_values
+                )
+                item_clauses.append(f'item IN ({literals})')
+            if any(item is None for item in pair_items):
+                item_clauses.append(
+                    "(item IS NULL OR TRIM(item) = '')"
+                )
+            item_scope = ' OR '.join(item_clauses)
+            retailer_scope = (
+                f"TRIM(account_name) ILIKE "
+                f"{_display_sql_literal(pair_retailer)}"
             )
-            pair_clauses.append(
-                '(LOWER(TRIM(source.account_name)) = LOWER(TRIM('
-                f'{_display_sql_literal(pair_retailer)})) AND {item_scope})'
+            pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
+        if len(pair_clauses) == 1:
+            pair_retailer, pair_items = next(iter(pair_groups.items()))
+            filters.append(
+                f'TRIM(account_name) ILIKE '
+                f'{_display_sql_literal(pair_retailer)}'
             )
-        filters.append('(\n      ' + '\n   OR '.join(pair_clauses) + '\n  )')
+            item_values = sorted({
+                item for item in pair_items if item is not None
+            })
+            if item_values:
+                filters.append('item IN (' + ', '.join(
+                    _display_sql_literal(item) for item in item_values
+                ) + ')')
+            if any(item is None for item in pair_items):
+                filters.append("(item IS NULL OR TRIM(item) = '')")
+        else:
+            filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
-        literals = ', '.join(
-            f'LOWER(TRIM({_display_sql_literal(value)}))'
+        retailer_clauses = [
+            f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
             for value in retailer_values
-        )
-        filters.append(f'LOWER(TRIM(source.account_name)) IN ({literals})')
+        ]
+        filters.append('(' + ' OR '.join(retailer_clauses) + ')')
 
     scope_sql = ''
     if filters:
         scope_sql = '\n  AND ' + '\n  AND '.join(filters)
 
-    return f"""WITH main_batches AS (
-    SELECT
-        LEFT(TRIM(CAST({date_column} AS TEXT)), 10) AS source_date,
-        account_name,
-        batch_id,
-        MAX(id) AS max_id
-    FROM {source['table_name']}
-    WHERE LEFT(TRIM(CAST({date_column} AS TEXT)), 10)
-              BETWEEN {_display_sql_literal(start_source)}
-                  AND {_display_sql_literal(end_source)}
-      AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'
-    GROUP BY LEFT(TRIM(CAST({date_column} AS TEXT)), 10),
-             account_name, batch_id
-), ranked_batches AS (
-    SELECT source_date, account_name, batch_id,
-           ROW_NUMBER() OVER (
-               PARTITION BY source_date, LOWER(TRIM(account_name))
-               ORDER BY max_id DESC
-           ) AS batch_rank
-    FROM main_batches
-)
-SELECT
+    date_expression = f'LEFT(TRIM({date_column}), 10)'
+    return f"""SELECT
 {select_sql}
-FROM {source['table_name']} source
-JOIN ranked_batches anchor
-  ON anchor.source_date =
-     LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)
- AND LOWER(TRIM(anchor.account_name)) = LOWER(TRIM(source.account_name))
- AND anchor.batch_id = source.batch_id
- AND anchor.batch_rank = 1
-WHERE UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR'){scope_sql}
-ORDER BY source.item, source.{date_column};"""
+FROM {source['table_name']}
+WHERE {date_expression} >= TO_CHAR(
+          CURRENT_DATE - INTERVAL '{day_count} days', 'YYYY-MM-DD'
+      )
+  AND {date_expression} < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD'){scope_sql}
+ORDER BY item, {date_column}, id;"""
 
 
 def get_sea_cross_field_summary(cursor, inspection_date, product_line):
@@ -899,6 +903,7 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
             'review_type_summary': rule['review_type_summary'],
             'query': build_sea_display_query(
                 inspection_date, result['product_line'], rule,
+                days=3,
                 retailers=[] if pairs else scoped_retailers,
                 retailer_item_pairs=pairs,
             ),

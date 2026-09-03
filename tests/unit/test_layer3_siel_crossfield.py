@@ -261,7 +261,18 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertEqual(2, len(result['rule_summary']))
         for rule in result['rule_summary']:
             self.assertNotIn('DELETE FROM must_not_execute', rule['query'])
-            self.assertIn('WITH main_batches AS', rule['query'])
+            self.assertNotIn('WITH main_batches AS', rule['query'])
+            self.assertNotIn('    batch_id', rule['query'])
+            self.assertIn(
+                "crawl_datetime >= CURRENT_DATE "
+                "- INTERVAL '2 days'",
+                rule['query'],
+            )
+            self.assertIn(
+                "crawl_datetime < CURRENT_DATE + INTERVAL '1 day'",
+                rule['query'],
+            )
+            self.assertNotIn('AT TIME ZONE', rule['query'])
 
     def test_detail_marks_same_day_target_and_previous_day_history(self):
         rule = _rule(1, 'review_gt_star_count', 'Flipkart')
@@ -291,7 +302,12 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
             [row['row_role'] for row in result['anomalies']],
         )
         self.assertEqual(1, result['total_anomalies'])
-        self.assertIn("'2026-09-01'::date", result['query'])
+        self.assertIn(
+            "crawl_datetime >= CURRENT_DATE - INTERVAL '2 days'",
+            result['query'],
+        )
+        self.assertIn('    count_of_reviews', result['query'])
+        self.assertIn('    count_of_star_ratings', result['query'])
 
 
 class SielCrossfieldSeedTests(unittest.TestCase):

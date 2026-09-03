@@ -425,10 +425,8 @@ def build_tse_display_query(
     rule_key = rule.get('rule_key') or _resolve_rule_key(rule)
     spec = TSE_RULE_SPECS.get(rule_key, {})
     day_count = min(30, max(1, int(days)))
-    start_date = target_date - timedelta(days=day_count - 1)
-
     select_columns = [
-        'id', 'item', 'sku', 'retailer_sku_name', 'final_sku_price',
+        'id', 'item', 'sku', 'retailer_sku_name',
     ]
     field_groups = tuple(spec.get('display_fields') or (
         spec.get('field1'), spec.get('field2'), 'crawl_datetime',
@@ -479,35 +477,59 @@ def build_tse_display_query(
 
     scope_filters = []
     if pair_values:
-        pair_clauses = []
+        pair_groups = OrderedDict()
         for pair_retailer, pair_item in pair_values:
-            retailer_literal = _display_sql_literal(pair_retailer)
-            item_scope = (
-                "(item IS NULL OR TRIM(CAST(item AS TEXT)) = '')"
-                if pair_item is None
-                else f'item = {_display_sql_literal(pair_item)}'
-            )
+            pair_groups.setdefault(pair_retailer, []).append(pair_item)
+        pair_clauses = []
+        for pair_retailer, pair_items in pair_groups.items():
+            item_values = sorted({
+                item for item in pair_items if item is not None
+            })
+            item_clauses = []
+            if item_values:
+                literals = ', '.join(
+                    _display_sql_literal(item) for item in item_values
+                )
+                item_clauses.append(f'item IN ({literals})')
+            if any(item is None for item in pair_items):
+                item_clauses.append("(item IS NULL OR TRIM(item) = '')")
+            item_scope = ' OR '.join(item_clauses)
             pair_clauses.append(
-                '(LOWER(TRIM(account_name)) = '
-                f'LOWER(TRIM({retailer_literal})) AND {item_scope})'
+                f'(TRIM(account_name) ILIKE '
+                f'{_display_sql_literal(pair_retailer)} AND ({item_scope}))'
             )
-        scope_filters.append(
-            '(\n      ' + '\n   OR '.join(pair_clauses) + '\n  )'
-        )
+        if len(pair_clauses) == 1:
+            pair_retailer, pair_items = next(iter(pair_groups.items()))
+            scope_filters.append(
+                f'TRIM(account_name) ILIKE '
+                f'{_display_sql_literal(pair_retailer)}'
+            )
+            item_values = sorted({
+                item for item in pair_items if item is not None
+            })
+            if item_values:
+                scope_filters.append('item IN (' + ', '.join(
+                    _display_sql_literal(item) for item in item_values
+                ) + ')')
+            if any(item is None for item in pair_items):
+                scope_filters.append("(item IS NULL OR TRIM(item) = '')")
+        else:
+            scope_filters.append(
+                '(\n    ' + '\n OR '.join(pair_clauses) + '\n  )'
+            )
     else:
         if len(retailer_values) == 1:
             retailer_literal = _display_sql_literal(retailer_values[0])
             scope_filters.append(
-                'LOWER(TRIM(account_name)) = '
-                f'LOWER(TRIM({retailer_literal}))'
+                f'TRIM(account_name) ILIKE {retailer_literal}'
             )
         elif retailer_values:
-            retailer_literals = ', '.join(
-                f'LOWER(TRIM({_display_sql_literal(value)}))'
+            retailer_clauses = [
+                f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
                 for value in retailer_values
-            )
+            ]
             scope_filters.append(
-                f'LOWER(TRIM(account_name)) IN ({retailer_literals})'
+                '(' + ' OR '.join(retailer_clauses) + ')'
             )
 
         item_values = sorted({
@@ -520,13 +542,15 @@ def build_tse_display_query(
             )
             scope_filters.append(f'item IN (\n{item_literals}\n  )')
 
-    start_literal = _display_sql_literal(start_date)
-    end_literal = _display_sql_literal(target_date + timedelta(days=1))
     country_literal = _display_sql_literal(TSE_COUNTRY)
     where_filters = [f'country = {country_literal}', *scope_filters]
+    start_offset = day_count - 1
     where_filters.extend((
-        f'DATE(crawl_datetime::timestamp) >= DATE {start_literal}',
-        f'DATE(crawl_datetime::timestamp) <= DATE {end_literal}',
+        'LEFT(TRIM(crawl_datetime), 10) >= TO_CHAR(\n'
+        f"      CURRENT_DATE - INTERVAL '{start_offset} days', "
+        "'YYYY-MM-DD'\n  )",
+        "LEFT(TRIM(crawl_datetime), 10) < TO_CHAR(\n"
+        "      CURRENT_DATE + INTERVAL '1 day', 'YYYY-MM-DD'\n  )",
     ))
     where_sql = '\n  AND '.join(where_filters)
 
@@ -778,6 +802,7 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
             'error_count': rule['error_count'],
             'query': build_tse_display_query(
                 target_date, result['product_line'], rule,
+                days=3,
                 retailers=[] if scoped_pairs else scoped_retailers,
                 retailer_item_pairs=scoped_pairs,
             ),

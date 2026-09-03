@@ -23,17 +23,51 @@ function backToCrossfieldSummary() {
     }
 }
 
-function _cfBuildTseDisplayQueryBox(query, retailerSafe, days) {
+function _cfBuildDisplayQueryBox(query, retailerSafe, days) {
     if (!query) return '';
-    const queryId = `cf-tse-display-query-${retailerSafe}`;
+    const queryId = `cf-display-query-${retailerSafe}`;
     return `
         <div class="query-box">
             <div class="query-box-header">
-                <span class="query-box-title">${days}일 수정용 조회 SQL</span>
+                <span class="query-box-title">${days}일치 Item 조회 SQL</span>
                 <button class="btn-copy" onclick="copyQueryToClipboard(document.getElementById('${queryId}'), true)">복사</button>
             </div>
             <pre id="${queryId}" class="query-content">${esc(query)}</pre>
         </div>`;
+}
+
+function _cfSqlLiteral(value) {
+    return "'" + String(value == null ? '' : value).replace(/'/g, "''") + "'";
+}
+
+function _cfBuildSeaTvItemQuery(
+    tableName, dateCol, retailer, items, selectFieldsRaw, days
+) {
+    const itemValues = [...new Set((items || [])
+        .filter(value => value != null && String(value) !== '')
+        .map(value => String(value)))];
+    if (itemValues.length === 0) return '';
+
+    const selectColumns = ['id', 'item', 'sku', 'retailer_sku_name'];
+    String(selectFieldsRaw || '').split('|').forEach(field => {
+        const column = field.trim();
+        if (column && !selectColumns.includes(column)) selectColumns.push(column);
+    });
+    [dateCol, 'product_url'].forEach(column => {
+        if (column && !selectColumns.includes(column)) selectColumns.push(column);
+    });
+    const selectSql = selectColumns.map(column => '    ' + column).join(',\n');
+    const itemSql = itemValues.map(_cfSqlLiteral).join(', ');
+    const dayCount = Math.min(30, Math.max(1, parseInt(days) || 3));
+
+    return `SELECT
+${selectSql}
+FROM ${tableName}
+WHERE TRIM(account_name) ILIKE ${_cfSqlLiteral(retailer)}
+  AND item IN (${itemSql})
+  AND ${dateCol} >= CURRENT_DATE - INTERVAL '${dayCount} days'
+  AND ${dateCol} < CURRENT_DATE
+ORDER BY item, ${dateCol}, id;`;
 }
 
 function _cfOrderReviewDetailKeys(keys) {
@@ -138,10 +172,19 @@ function showRetailerDetail(retailer) {
     const itemListDisplay = listValues.join(', ');
     const displayDays = window.crossfieldDays
         || getDefaultCrossfieldHistoryDays(productLine);
-    const tseDisplayQuery = (window.crossfieldDisplayQueries || {})[retailer]
+    const canonicalDisplayQuery = (window.crossfieldDisplayQueries || {})[retailer]
         || window.crossfieldDisplayQuery || '';
-    const tseQueryBox = isCanonicalProductLine
-        ? _cfBuildTseDisplayQueryBox(tseDisplayQuery, retailerSafe, displayDays)
+    const seaTvDisplayQuery = productLineDisplay === 'TV'
+        ? _cfBuildSeaTvItemQuery(
+            tableName, dateCol, retailer, items,
+            window.crossfieldSelectFields || '', displayDays
+        )
+        : '';
+    const displayQuery = isCanonicalProductLine
+        ? canonicalDisplayQuery
+        : seaTvDisplayQuery;
+    const displayQueryBox = displayQuery
+        ? _cfBuildDisplayQueryBox(displayQuery, retailerSafe, displayDays)
         : '';
     var itemQueryHtml = '';
     if (inline) {
@@ -159,12 +202,12 @@ function showRetailerDetail(retailer) {
                     <div id="item-list-${retailerSafe}" class="item-copy-content">${esc(itemListDisplay)}</div>
                 </div>
             </div>`;
-        if (tseQueryBox) {
-            itemQueryHtml += `<div class="query-section">${tseQueryBox}</div>`;
+        if (displayQueryBox) {
+            itemQueryHtml += `<div class="query-section">${displayQueryBox}</div>`;
         }
     } else {
         // 모달: Item 목록 + 3일치 쿼리 (원본 모달 로직)
-        if (isCanonicalProductLine) {
+        if (isCanonicalProductLine || seaTvDisplayQuery) {
             const itemListBox = listValues.length > 0 ? `
                 <div class="item-list-box">
                     <div class="query-box-header">
@@ -173,8 +216,8 @@ function showRetailerDetail(retailer) {
                     </div>
                     <div id="item-list-${retailerSafe}" class="item-list-content">${esc(itemListDisplay)}</div>
                 </div>` : '';
-            if (tseQueryBox) {
-                itemQueryHtml = `<div class="query-section">${itemListBox}${tseQueryBox}</div>`;
+            if (displayQueryBox) {
+                itemQueryHtml = `<div class="query-section">${itemListBox}${displayQueryBox}</div>`;
             }
         } else {
         const inClause = items.map(item => "'" + item + "'").join(', ');
@@ -807,13 +850,23 @@ async function reloadCfDays() {
 
                 var displayQuery = (window.crossfieldDisplayQueries || {})[currentRetailer]
                     || window.crossfieldDisplayQuery || '';
-                var queryEl = document.getElementById('cf-tse-display-query-' + retailerSafe);
+                if (!displayQuery && productLine === 'tv') {
+                    displayQuery = _cfBuildSeaTvItemQuery(
+                        window.crossfieldTableName || 'tv_retail_com',
+                        window.crossfieldDateCol || 'crawl_datetime',
+                        currentRetailer,
+                        items,
+                        window.crossfieldSelectFields || '',
+                        days
+                    );
+                }
+                var queryEl = document.getElementById('cf-display-query-' + retailerSafe);
                 if (queryEl && displayQuery) {
                     queryEl.textContent = displayQuery;
                     var queryTitle = queryEl.parentElement
                         ? queryEl.parentElement.querySelector('.query-box-title')
                         : null;
-                    if (queryTitle) queryTitle.textContent = days + '일치 최신 배치 조회 SQL';
+                    if (queryTitle) queryTitle.textContent = days + '일치 Item 조회 SQL';
                 }
 
                 _cfRebuildTable();

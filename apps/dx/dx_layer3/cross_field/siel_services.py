@@ -727,31 +727,22 @@ def _display_sql_literal(value):
 def build_siel_display_query(
         inspection_date, product_line, rule, days=1, retailer=None,
         retailers=None, retailer_item_pairs=None):
-    """Build copy-only SQL with the exact SIEL date and batch contract."""
+    """Build a compact copy-only SIEL item-history query."""
     key = normalize_siel_product_line(product_line)
     source = get_siel_source(key)
     day_count = min(30, max(1, int(days)))
-    start_inspection = inspection_date - timedelta(days=day_count - 1)
-    start_source = _date_contract(start_inspection, source)['source_date']
-    end_source = _date_contract(inspection_date, source)['source_date']
     date_column = source['date_column']
-    local_date = (
-        f"(source.{date_column} AT TIME ZONE "
-        f"'{SIEL_BUSINESS_TIMEZONE}')::date"
-    )
 
     select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SIEL_RULE_SPECS[rule['rule_key']]
     for field_group in (
-        *spec['display_fields'], date_column, 'batch_id', 'product_url'
+        *spec['display_fields'], date_column, 'product_url'
     ):
         for column in str(field_group or '').split('|'):
             column = column.strip()
             if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
                 select_columns.append(column)
-    select_sql = ',\n'.join(
-        f'    source.{column}' for column in select_columns
-    )
+    select_sql = ',\n'.join(f'    {column}' for column in select_columns)
 
     pair_values = sorted({
         (
@@ -773,88 +764,65 @@ def build_siel_display_query(
 
     filters = []
     if pair_values:
-        pair_clauses = []
+        pair_groups = OrderedDict()
         for pair_retailer, item in pair_values:
-            item_scope = (
-                "(source.item IS NULL OR "
-                "BTRIM(CAST(source.item AS TEXT)) = '')"
-                if item is None
-                else f'source.item = {_display_sql_literal(item)}'
+            pair_groups.setdefault(pair_retailer, []).append(item)
+        pair_clauses = []
+        for pair_retailer, pair_items in pair_groups.items():
+            item_values = sorted({
+                item for item in pair_items if item is not None
+            })
+            item_clauses = []
+            if item_values:
+                literals = ', '.join(
+                    _display_sql_literal(item) for item in item_values
+                )
+                item_clauses.append(f'item IN ({literals})')
+            if any(item is None for item in pair_items):
+                item_clauses.append(
+                    "(item IS NULL OR TRIM(item) = '')"
+                )
+            item_scope = ' OR '.join(item_clauses)
+            retailer_scope = (
+                f"TRIM(account_name) ILIKE "
+                f"{_display_sql_literal(pair_retailer)}"
             )
-            pair_clauses.append(
-                '(LOWER(BTRIM(CAST(source.account_name AS TEXT))) = '
-                'LOWER(BTRIM(CAST('
-                f'{_display_sql_literal(pair_retailer)} AS TEXT))) '
-                f'AND {item_scope})'
+            pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
+        if len(pair_clauses) == 1:
+            pair_retailer, pair_items = next(iter(pair_groups.items()))
+            filters.append(
+                f'TRIM(account_name) ILIKE '
+                f'{_display_sql_literal(pair_retailer)}'
             )
-        filters.append('(\n      ' + '\n   OR '.join(pair_clauses) + '\n  )')
+            item_values = sorted({
+                item for item in pair_items if item is not None
+            })
+            if item_values:
+                filters.append('item IN (' + ', '.join(
+                    _display_sql_literal(item) for item in item_values
+                ) + ')')
+            if any(item is None for item in pair_items):
+                filters.append("(item IS NULL OR TRIM(item) = '')")
+        else:
+            filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
-        literals = ', '.join(
-            'LOWER(BTRIM(CAST('
-            f'{_display_sql_literal(value)} AS TEXT)))'
+        retailer_clauses = [
+            f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
             for value in retailer_values
-        )
-        filters.append(
-            'LOWER(BTRIM(CAST(source.account_name AS TEXT))) '
-            f'IN ({literals})'
-        )
+        ]
+        filters.append('(' + ' OR '.join(retailer_clauses) + ')')
 
     scope_sql = ''
     if filters:
         scope_sql = '\n  AND ' + '\n  AND '.join(filters)
 
-    start_literal = _display_sql_literal(start_source)
-    end_literal = _display_sql_literal(end_source)
-    validation_scope = get_tv_validation_condition('source')
-    return f"""WITH main_batches AS (
-    SELECT
-        {local_date} AS source_date,
-        source.account_name,
-        source.batch_id,
-        MAX(source.id) AS max_id
-    FROM {source['table_name']} source
-    WHERE source.{date_column} >= (
-              {start_literal}::date::timestamp AT TIME ZONE
-              '{SIEL_BUSINESS_TIMEZONE}'
-          )
-      AND source.{date_column} < (
-              ({end_literal}::date + 1)::timestamp AT TIME ZONE
-              '{SIEL_BUSINESS_TIMEZONE}'
-          )
-      AND LOWER(BTRIM(CAST(source.account_name AS TEXT)))
-          IN ('amazon', 'flipkart')
-      AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'
-      AND {validation_scope}
-    GROUP BY {local_date}, source.account_name, source.batch_id
-), ranked_batches AS (
-    SELECT source_date, account_name, batch_id,
-           ROW_NUMBER() OVER (
-               PARTITION BY source_date,
-                            LOWER(BTRIM(CAST(account_name AS TEXT)))
-               ORDER BY max_id DESC
-           ) AS batch_rank
-    FROM main_batches
-)
-SELECT
+    start_offset = day_count - 1
+    return f"""SELECT
 {select_sql}
-FROM {source['table_name']} source
-JOIN ranked_batches latest
-  ON latest.source_date = {local_date}
- AND LOWER(BTRIM(CAST(latest.account_name AS TEXT))) =
-     LOWER(BTRIM(CAST(source.account_name AS TEXT)))
- AND latest.batch_id IS NOT DISTINCT FROM source.batch_id
- AND latest.batch_rank = 1
-WHERE source.{date_column} >= (
-          {start_literal}::date::timestamp AT TIME ZONE
-          '{SIEL_BUSINESS_TIMEZONE}'
-      )
-  AND source.{date_column} < (
-          ({end_literal}::date + 1)::timestamp AT TIME ZONE
-          '{SIEL_BUSINESS_TIMEZONE}'
-      )
-  AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
-  AND {validation_scope}{scope_sql}
-ORDER BY source.item, {local_date}, source.id;"""
+FROM {source['table_name']}
+WHERE {date_column} >= CURRENT_DATE - INTERVAL '{start_offset} days'
+  AND {date_column} < CURRENT_DATE + INTERVAL '1 day'{scope_sql}
+ORDER BY item, {date_column}, id;"""
 
 
 def get_siel_cross_field_summary(cursor, inspection_date, product_line):
@@ -896,6 +864,7 @@ def get_siel_cross_field_summary(cursor, inspection_date, product_line):
             'error_count': rule['error_count'],
             'query': build_siel_display_query(
                 inspection_date, result['product_line'], rule,
+                days=3,
                 retailers=[] if pairs else scoped_retailers,
                 retailer_item_pairs=pairs,
             ),

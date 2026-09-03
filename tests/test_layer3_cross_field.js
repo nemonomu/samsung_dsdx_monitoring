@@ -232,14 +232,14 @@ function testTseCorrectionQueryRendersInInlineAndModalDetail() {
     inlineHtml = '';
     sandbox.isCrossFieldInline = () => true;
     sandbox.showRetailerDetail('Homepro');
-    assert(inlineHtml.includes('3일 수정용 조회 SQL'));
-    assert(inlineHtml.includes('cf-tse-display-query-Homepro'));
+    assert(inlineHtml.includes('3일치 Item 조회 SQL'));
+    assert(inlineHtml.includes('cf-display-query-Homepro'));
     assert(inlineHtml.includes('&lt;unsafe&gt;'));
     assert(!inlineHtml.includes('<unsafe>'));
 
     sandbox.isCrossFieldInline = () => false;
     sandbox.showRetailerDetail('Homepro');
-    assert(modal.body.includes('3일 수정용 조회 SQL'));
+    assert(modal.body.includes('3일치 Item 조회 SQL'));
     assert(modal.body.includes('&lt;unsafe&gt;'));
     assert(modal.body.includes('id="item-list-Homepro"'));
 
@@ -271,6 +271,58 @@ function testSeaCorrectionQueryUsesInspectionAndSourceDates() {
 }
 
 testSeaCorrectionQueryUsesInspectionAndSourceDates();
+
+function testSeaTvUsesCompactCurrentDateItemQuery() {
+    sandbox.window.crossfieldRetailerData = {
+        Amazon: {
+            rows: [{
+                id: 9,
+                item: "TV'ITEM",
+                sku: 'SKU-9',
+                retailer_sku_name: 'Example TV',
+                account_name: 'Amazon',
+                final_sku_price: '$900',
+                original_sku_price: '$1,000',
+                savings: '$100',
+                crawl_datetime: '2026-09-02T08:00:00+09:00',
+                product_url: 'https://example.com/tv',
+            }],
+        },
+    };
+    sandbox.window.crossfieldRetailerSummary = {
+        Amazon: { count: 1, items: ["TV'ITEM"] },
+    };
+    sandbox.window.crossfieldProductLine = 'TV';
+    sandbox.window.crossfieldTableName = 'public.tv_retail_com';
+    sandbox.window.crossfieldDateCol = 'crawl_datetime';
+    sandbox.window.crossfieldRuleName = '가격 검증';
+    sandbox.window.crossfieldSelectFields =
+        'final_sku_price|original_sku_price|savings';
+    sandbox.window.crossfieldDisplayQuery = '';
+    sandbox.window.crossfieldDisplayQueries = {};
+    sandbox.window.crossfieldDays = 3;
+    sandbox.window.crossfieldEditableCols = new Set();
+    sandbox.window.crossfieldNormalReviews = {};
+    sandbox.window.crossfieldRetailerColumns = {};
+
+    inlineHtml = '';
+    sandbox.isCrossFieldInline = () => true;
+    sandbox.showRetailerDetail('Amazon');
+
+    assert(inlineHtml.includes('3일치 Item 조회 SQL'));
+    assert(inlineHtml.includes('FROM public.tv_retail_com'));
+    assert(inlineHtml.includes('final_sku_price'));
+    assert(inlineHtml.includes('original_sku_price'));
+    assert(inlineHtml.includes('savings'));
+    assert(inlineHtml.includes("item IN (&#039;TV&#039;&#039;ITEM&#039;)"));
+    assert(inlineHtml.includes(
+        "crawl_datetime &gt;= CURRENT_DATE - INTERVAL &#039;3 days&#039;"
+    ));
+    assert(inlineHtml.includes('crawl_datetime &lt; CURRENT_DATE'));
+    assert(!inlineHtml.includes('WITH main_batches'));
+}
+
+testSeaTvUsesCompactCurrentDateItemQuery();
 assert(commonSource.includes('window.crossfieldDisplayQuery = data.query ||'));
 assert(commonSource.includes('window.crossfieldDisplayQueries = data.queries ||'));
 assert(commonSource.includes("? (rule.query || '쿼리 없음')"));
@@ -304,6 +356,7 @@ assert(source.includes('window.crossfieldSourceDate'));
 assert(source.includes("/^(SEA_|SIEL_|TSE_)/.test(productLineDisplay)"));
 assert(source.includes('Shift+클릭으로 범위 선택'));
 assert(source.includes("showToast(successCount + '건 확인 처리 완료'"));
+assert(source.includes("days + '일치 Item 조회 SQL'"));
 
 function makeReviewCell(rowId, col) {
     const classes = new Set();
