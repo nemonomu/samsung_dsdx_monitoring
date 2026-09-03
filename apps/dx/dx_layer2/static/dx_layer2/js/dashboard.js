@@ -2,17 +2,23 @@
 const LAYER2_TABLE_DISPLAY_NAMES = {
     tv_retail: 'SEA TV',
     sea_ref_retail: 'SEA REF',
-    sea_ldy_retail: 'SEA LDY'
+    sea_ldy_retail: 'SEA LDY',
+    siel_tv_retail: 'SIEL TV',
+    siel_ref_retail: 'SIEL REF',
+    siel_ldy_retail: 'SIEL LDY'
 };
 
 const LAYER2_TABLE_DISPLAY_ORDER = {
     tv_retail: 0,
     sea_ref_retail: 1,
     sea_ldy_retail: 2,
-    tse_tv_retail: 3,
-    tse_ref_retail: 4,
-    tse_ldy_retail: 5,
-    youtube: 6
+    siel_tv_retail: 3,
+    siel_ref_retail: 4,
+    siel_ldy_retail: 5,
+    tse_tv_retail: 6,
+    tse_ref_retail: 7,
+    tse_ldy_retail: 8,
+    youtube: 9
 };
 
 const LAYER2_NULL_TABLE_GROUPS = [
@@ -21,6 +27,12 @@ const LAYER2_NULL_TABLE_GROUPS = [
         name: 'SEA Retail',
         description: 'SEA TV/REF/LDY NULL 검증',
         tableCodes: ['tv_retail', 'sea_ref_retail', 'sea_ldy_retail']
+    },
+    {
+        key: 'siel',
+        name: 'SIEL Retail',
+        description: 'SIEL TV/REF/LDY NULL 검증',
+        tableCodes: ['siel_tv_retail', 'siel_ref_retail', 'siel_ldy_retail']
     },
     {
         key: 'tse',

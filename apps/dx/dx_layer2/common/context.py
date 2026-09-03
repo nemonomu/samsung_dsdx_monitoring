@@ -58,11 +58,35 @@ SEA_RETAIL_CATEGORIES = {
     child['detail_code'] for child in SEA_RETAIL_SIDEBAR_CHILDREN
 }
 
+SIEL_RETAIL_SIDEBAR_CHILDREN = (
+    {
+        'name': 'SIEL TV',
+        'label': 'TV',
+        'detail_code': 'siel_tv_retail',
+    },
+    {
+        'name': 'SIEL REF',
+        'label': 'REF',
+        'detail_code': 'siel_ref_retail',
+    },
+    {
+        'name': 'SIEL LDY',
+        'label': 'LDY',
+        'detail_code': 'siel_ldy_retail',
+    },
+)
+SIEL_RETAIL_CATEGORIES = {
+    child['detail_code'] for child in SIEL_RETAIL_SIDEBAR_CHILDREN
+}
+
 
 DISPLAY_NAME_OVERRIDES = {
     'tv_retail': 'SEA TV',
     'sea_ref_retail': 'SEA REF',
     'sea_ldy_retail': 'SEA LDY',
+    'siel_tv_retail': 'SIEL TV',
+    'siel_ref_retail': 'SIEL REF',
+    'siel_ldy_retail': 'SIEL LDY',
 }
 
 
@@ -76,8 +100,11 @@ def _legacy_display_order(category):
         'tv_retail': 0,
         'sea_ref_retail': 1,
         'sea_ldy_retail': 2,
-        'youtube': 2,
-    }.get(category, 3)
+        'siel_tv_retail': 3,
+        'siel_ref_retail': 4,
+        'siel_ldy_retail': 5,
+        'youtube': 6,
+    }.get(category, 7)
 
 
 
@@ -96,7 +123,14 @@ def get_sidebar_items():
             config.items(), key=lambda item: _legacy_display_order(item[0])
         )
     ]
-    return {'null': items, 'format': items, 'anomaly': items}
+    non_siel_items = [
+        item for item in items if item['key'] not in SIEL_RETAIL_CATEGORIES
+    ]
+    return {
+        'null': items,
+        'format': non_siel_items,
+        'anomaly': non_siel_items,
+    }
 
 
 def build_sidebar_groups(section, focus=''):
@@ -109,6 +143,7 @@ def build_sidebar_groups(section, focus=''):
     def make_items(sec):
         items = []
         sea_added = False
+        siel_added = False
         for category, info in sorted(
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
@@ -150,6 +185,37 @@ def build_sidebar_groups(section, focus=''):
                         child['active'] for child in sea_children
                     ),
                     'children': sea_children,
+                })
+                continue
+            if category in SIEL_RETAIL_CATEGORIES:
+                # This step exposes SIEL only under NULL validation. Format and
+                # duplicate rules are intentionally not configured yet.
+                if sec != 'null_validation' or siel_added:
+                    continue
+                siel_added = True
+                siel_children = []
+                for child in SIEL_RETAIL_SIDEBAR_CHILDREN:
+                    detail_code = child['detail_code']
+                    child_info = config.get(detail_code)
+                    if child_info is None:
+                        continue
+                    child_item = dict(child)
+                    child_item['active'] = (
+                        section == sec
+                        and focus in (
+                            child['name'],
+                            _get_display_name(detail_code, child_info),
+                            child_info['display_name'],
+                            detail_code,
+                        )
+                    )
+                    siel_children.append(child_item)
+                items.append({
+                    'name': 'SIEL Retail',
+                    'active': any(
+                        child['active'] for child in siel_children
+                    ),
+                    'children': siel_children,
                 })
                 continue
             items.append({

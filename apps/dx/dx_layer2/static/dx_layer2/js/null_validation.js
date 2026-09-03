@@ -19,9 +19,16 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
     'tse_ref_retail',
     'tse_ldy_retail'
 ]);
+const SIEL_NULL_HISTORY_TABLES = new Set([
+    'siel_tv_retail',
+    'siel_ref_retail',
+    'siel_ldy_retail'
+]);
 
 function getDefaultNullHistoryDays(tableParam) {
-    return SEA_TSE_NULL_HISTORY_TABLES.has(String(tableParam || '').toLowerCase())
+    const tableCode = String(tableParam || '').toLowerCase();
+    return (SEA_TSE_NULL_HISTORY_TABLES.has(tableCode)
+        || SIEL_NULL_HISTORY_TABLES.has(tableCode))
         ? 3
         : 1;
 }
@@ -190,6 +197,9 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEA TV' ? 'tv_retail' :
                        tableName === 'SEA REF' ? 'sea_ref_retail' :
                        tableName === 'SEA LDY' ? 'sea_ldy_retail' :
+                       tableName === 'SIEL TV' ? 'siel_tv_retail' :
+                       tableName === 'SIEL REF' ? 'siel_ref_retail' :
+                       tableName === 'SIEL LDY' ? 'siel_ldy_retail' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :
                        tableName === 'TSE TV' ? 'tse_tv_retail' :
@@ -364,12 +374,14 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSeaTv = tableParam === 'tv_retail';
     const isSeaAppliance = /^sea_(ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = isSeaTv || isSeaAppliance;
+    const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || tableParam === 'youtube';
-    const isRetail = isLegacyRetail || isSeaRetail;
+    const isRetail = isLegacyRetail || isSeaRetail || isSielRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
         || (isSeaAppliance && data.supports_day_history === true)
+        || (isSielRetail && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
     const defaultDays = getDefaultNullHistoryDays(tableParam);
     const currentDays = supportsDayHistory
@@ -379,7 +391,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         )
         : 1;
     if (supportsDayHistory) modalState.days = currentDays;
-    const sourceScope = isSeaDMinusOneSource && data.source_date
+    const sourceScope = (isSeaDMinusOneSource || isSielRetail) && data.source_date
         ? ` | 검수일 ${data.inspection_date || date} · 데이터일 ${data.source_date}`
         : '';
 
@@ -421,7 +433,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
-            ${(isSeaRetail || isTseRetail) ? daysInputHtml : ''}
+            ${(isSeaRetail || isSielRetail || isTseRetail) ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL 오류 (${records.length}건)</h4>`;
     }
@@ -491,10 +503,17 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 const seaHistoryQuery = isSeaAppliance
                     ? seaApplianceHistoryQuery
                     : seaTvHistoryQuery;
-                const query3Days = isSeaRetail
+                const sielLocalDate = `(${dateColumn} AT TIME ZONE 'Asia/Seoul')::date`;
+                const sielSourceLocalDate = `(source.${dateColumn} AT TIME ZONE 'Asia/Seoul')::date`;
+                const sielHistoryQuery = currentDays > 1
+                    ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (${sielLocalDate})\n         ${sielLocalDate} AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE ${dateColumn} >= ('${historyStartDate}'::date::timestamp AT TIME ZONE 'Asia/Seoul')\n    AND ${dateColumn} < (('${sourceDate}'::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')\n    AND LOWER(BTRIM(CAST(account_name AS TEXT))) = LOWER(BTRIM('${retailerName}'))\n    AND LOWER(BTRIM(CAST(page_type AS TEXT))) = 'main'\n  ORDER BY ${sielLocalDate}, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON ${sielSourceLocalDate} = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(BTRIM('${retailerName}'))\n  AND source.item IN (${inClause})\n  AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')\nORDER BY source.item, source.${dateColumn} ASC;`
+                    : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE LOWER(BTRIM(CAST(account_name AS TEXT))) = LOWER(BTRIM('${retailerName}'))\n  AND item IN (${inClause})\n  AND ${dateColumn} >= ('${sourceDate}'::date::timestamp AT TIME ZONE 'Asia/Seoul')\n  AND ${dateColumn} < (('${sourceDate}'::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')\n  AND batch_id IS NOT DISTINCT FROM '${batchId}'\n  AND LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr')\nORDER BY item, ${dateColumn} ASC;`;
+                const query3Days = isSielRetail
+                    ? sielHistoryQuery
+                    : isSeaRetail
                     ? seaHistoryQuery
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
-                const queryLabel = isSeaRetail
+                const queryLabel = (isSeaRetail || isSielRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">
@@ -561,7 +580,8 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         editableCols: data.editable_cols || [],
         actualTable: data.actual_table || '',
         crawlDate: date,
-        editableDate: isSeaRetail ? (data.source_date || date) : date,
+        editableDate: (isSeaRetail || isSielRetail)
+            ? (data.source_date || date) : date,
         dateColumn: data.date_column || '',
         normalReviews: data.normal_reviews || {},
         enableModalColumnSelector: isTseRetail

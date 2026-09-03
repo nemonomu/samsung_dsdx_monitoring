@@ -1002,11 +1002,14 @@ function _showNullReviewBar(cells) {
     btn.className = 'btn-null-normal';
     btn.textContent = cells.length > 1 ? cells.length + '건 확인' : '확인';
     btn.addEventListener('click', function() {
+        var requiresMemo = /^dx_siel\.dx_siel_(tv|ref|ldy)_retail_com$/
+            .test(String(detailViewState.actualTable || '').toLowerCase());
         _showReviewDialog(function(reason, memo) {
             _submitNullReviews(cells, 'normal', memo, reason);
         }, {
             title: cells.length > 1 ? cells.length + '건 일괄 확인' : '확인',
-            defaultReason: cells.length > 1 ? '해당값정상 확인' : ''
+            defaultReason: cells.length > 1 ? '해당값정상 확인' : '',
+            requireMemo: requiresMemo
         });
     });
     bar.appendChild(info);
@@ -1025,12 +1028,17 @@ function _showReviewDialog(callback, options) {
     options = options || {};
     var overlay = document.createElement('div');
     overlay.className = 'memo-dialog-overlay';
+    var memoRequired = options.requireMemo === true;
     overlay.innerHTML = '<div class="memo-dialog">'
         + '<div class="memo-dialog-title">' + esc(options.title || '확인') + '</div>'
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">이유 <span style="color:#dc2626;">*</span></label>'
         + '<select class="memo-dialog-select" id="review-reason-select"><option value="">불러오는 중...</option></select></div>'
-        + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모</label>'
-        + '<textarea class="memo-dialog-input" placeholder="메모 입력 (선택사항)" rows="3"></textarea></div>'
+        + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모'
+        + (memoRequired ? ' <span style="color:#dc2626;">*</span>' : '')
+        + '</label>'
+        + '<textarea class="memo-dialog-input" placeholder="'
+        + (memoRequired ? '확인 메모 입력 (필수)' : '메모 입력 (선택사항)')
+        + '" rows="3"></textarea></div>'
         + '<div class="memo-dialog-buttons">'
         + '<button class="memo-dialog-cancel">취소</button>'
         + '<button class="memo-dialog-confirm">확인</button>'
@@ -1083,6 +1091,7 @@ function _showReviewDialog(callback, options) {
         var reason = reasonHidden ? '' : (selEl ? selEl.value : '');
         var memo = textarea.value.trim();
         if (!reasonHidden && !reason) { showToast('이유를 선택해주세요', 'error'); return; }
+        if (memoRequired && !memo) { showToast('확인 메모를 입력해주세요', 'error'); return; }
         closeDlg();
         callback(reason, memo);
     });

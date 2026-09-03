@@ -20,6 +20,15 @@ except (ImportError, AttributeError):
     SEA_RETAIL_SOURCES = {}
 
 try:
+    from apps.common.siel_retail import (
+        SIEL_BUSINESS_TIMEZONE,
+        SIEL_SOURCE_CONFIG,
+    )
+except (ImportError, AttributeError):
+    SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
+    SIEL_SOURCE_CONFIG = {}
+
+try:
     from apps.common.retail_columns import load_tse_retail_columns
     from apps.common.tse_retail import (
         TSE_SOURCE_CONFIG,
@@ -93,6 +102,52 @@ SEA_NULL_COLUMNS = {
     ),
 }
 
+SIEL_NULL_CATEGORY_BY_SOURCE_KEY = {
+    'siel_tv': 'siel_tv_retail',
+    'siel_ref': 'siel_ref_retail',
+    'siel_ldy': 'siel_ldy_retail',
+}
+SIEL_NULL_SOURCE_KEY_BY_CATEGORY = {
+    category: source_key
+    for source_key, category in SIEL_NULL_CATEGORY_BY_SOURCE_KEY.items()
+}
+SIEL_NULL_COLUMNS = {
+    'siel_tv': {
+        'amazon': (
+            'count_of_star_ratings', 'final_sku_price',
+            'retailer_sku_name', 'screen_size', 'sku', 'star_rating',
+        ),
+        'flipkart': (
+            'count_of_reviews', 'count_of_star_ratings',
+            'estimated_annual_electricity_use', 'final_sku_price',
+            'model_year', 'retailer_sku_name', 'screen_size', 'sku',
+            'star_rating',
+        ),
+    },
+    'siel_ref': {
+        'amazon': (
+            'count_of_star_ratings', 'final_sku_price',
+            'retailer_sku_name', 'sku', 'star_rating',
+        ),
+        'flipkart': (
+            'count_of_reviews', 'count_of_star_ratings',
+            'final_sku_price', 'ref_capacity', 'ref_refrigerator_type',
+            'retailer_sku_name', 'sku', 'star_rating',
+        ),
+    },
+    'siel_ldy': {
+        'amazon': (
+            'count_of_star_ratings', 'final_sku_price',
+            'retailer_sku_name', 'sku', 'star_rating',
+        ),
+        'flipkart': (
+            'count_of_reviews', 'count_of_star_ratings',
+            'final_sku_price', 'ldy_capacity', 'retailer_sku_name', 'sku',
+            'star_rating',
+        ),
+    },
+}
+
 
 def _table_basename(table_name):
     return str(table_name or '').strip().lower().split('.')[-1]
@@ -113,6 +168,197 @@ def _get_sea_null_source_for_category(category):
         return SEA_RETAIL_SOURCES.get('tv')
     product = SEA_NULL_PRODUCT_BY_CATEGORY.get(str(category or '').lower())
     return SEA_RETAIL_SOURCES.get(product) if product else None
+
+
+def _get_siel_null_source_for_table(table_name):
+    """Return the fixed SIEL source matching one physical table."""
+    basename = _table_basename(table_name)
+    for source in SIEL_SOURCE_CONFIG.values():
+        if _table_basename(source.get('table_name')) == basename:
+            return source
+    return None
+
+
+def _get_siel_null_source_for_category(category):
+    source_key = SIEL_NULL_SOURCE_KEY_BY_CATEGORY.get(
+        str(category or '').lower()
+    )
+    return SIEL_SOURCE_CONFIG.get(source_key) if source_key else None
+
+
+def _get_siel_null_retailer(source, *values):
+    text = ' '.join(str(value or '').lower() for value in values)
+    for retailer in source.get('retailers', ()):
+        if retailer.lower() in text:
+            return retailer
+    return None
+
+
+def _get_siel_allowed_columns(source, retailer=None):
+    source_key = source.get('source_key') if source else None
+    columns_by_retailer = SIEL_NULL_COLUMNS.get(source_key, {})
+    if retailer:
+        return set(columns_by_retailer.get(str(retailer).lower(), ()))
+    return {
+        column
+        for columns in columns_by_retailer.values()
+        for column in columns
+    }
+
+
+def _resolve_siel_null_date(target_date, source):
+    if not resolve_monitoring_date:
+        return None
+    return resolve_monitoring_date(
+        target_date, 'SIEL', source['source_key']
+    )
+
+
+def _siel_date_bounds(source, source_date, alias=''):
+    prefix = f'{alias}.' if alias else ''
+    date_column = source['date_column']
+    return (
+        f"""
+            {prefix}{date_column} >= (
+                %s::date::timestamp AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}'
+            )
+            AND {prefix}{date_column} < (
+                (%s::date + 1)::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+            )
+        """,
+        [source_date, source_date],
+    )
+
+
+def _get_siel_null_anchor_batch(cursor, source, source_date, retailer):
+    """Return whether a latest MAIN anchor exists and its batch id."""
+    date_where, params = _siel_date_bounds(source, source_date, 'anchor')
+    cursor.execute(f"""
+        SELECT anchor.batch_id
+        FROM {source['table_name']} anchor
+        WHERE {date_where}
+          AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
+              LOWER(BTRIM(CAST(%s AS TEXT)))
+          AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+        ORDER BY anchor.id DESC
+        LIMIT 1
+    """, [*params, retailer])
+    row = cursor.fetchone()
+    return (row is not None), (row[0] if row else None)
+
+
+def _build_siel_null_scope(source, source_date, retailer, batch_id):
+    date_where, params = _siel_date_bounds(source, source_date)
+    return (
+        f"""
+            {date_where}
+            AND LOWER(BTRIM(CAST(account_name AS TEXT))) =
+                LOWER(BTRIM(CAST(%s AS TEXT)))
+            AND batch_id IS NOT DISTINCT FROM %s
+            AND LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr')
+        """,
+        [*params, retailer, batch_id],
+    )
+
+
+def _build_siel_null_history_query(
+    source, start_source_date, end_source_date, retailer, error_items,
+):
+    placeholders = ', '.join(['%s'] * len(error_items))
+    table_name = source['table_name']
+    date_column = source['date_column']
+    local_date = (
+        f"({date_column} AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}')::date"
+    )
+    source_local_date = (
+        f"(source.{date_column} AT TIME ZONE "
+        f"'{SIEL_BUSINESS_TIMEZONE}')::date"
+    )
+    query = f"""
+        WITH latest_batches AS (
+            SELECT DISTINCT ON ({local_date})
+                   {local_date} AS source_date,
+                   batch_id
+            FROM {table_name}
+            WHERE {date_column} >= (
+                    %s::date::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND {date_column} < (
+                    (%s::date + 1)::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND LOWER(BTRIM(CAST(account_name AS TEXT))) =
+                  LOWER(BTRIM(CAST(%s AS TEXT)))
+              AND LOWER(BTRIM(CAST(page_type AS TEXT))) = 'main'
+            ORDER BY {local_date}, id DESC
+        )
+        SELECT source.*
+        FROM {table_name} source
+        JOIN latest_batches latest
+          ON {source_local_date} = latest.source_date
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
+              LOWER(BTRIM(CAST(%s AS TEXT)))
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          AND source.item IN ({placeholders})
+        ORDER BY source.item, source.{date_column}, source.id
+    """
+    return query, [
+        str(start_source_date), str(end_source_date), retailer, retailer,
+        *error_items,
+    ]
+
+
+def _build_siel_latest_batch_record_query(source, column_name):
+    """Select one SIEL record only when it belongs to the day's latest batch."""
+    retailers = tuple(source.get('retailers') or ())
+    if not retailers:
+        return None, []
+    placeholders = ', '.join(['%s'] * len(retailers))
+    table_name = source['table_name']
+    date_column = source['date_column']
+    query = f"""
+        WITH latest_main_batches AS (
+            SELECT DISTINCT ON (
+                       LOWER(BTRIM(CAST(anchor.account_name AS TEXT)))
+                   )
+                   LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) AS retailer_key,
+                   anchor.batch_id
+            FROM {table_name} anchor
+            WHERE anchor.{date_column} >= (
+                    %s::date::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND anchor.{date_column} < (
+                    (%s::date + 1)::timestamp AT TIME ZONE
+                    '{SIEL_BUSINESS_TIMEZONE}'
+                  )
+              AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT)))
+                  IN ({placeholders})
+              AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+            ORDER BY LOWER(BTRIM(CAST(anchor.account_name AS TEXT))),
+                     anchor.id DESC
+        )
+        SELECT source.{column_name}, source.account_name, source.item
+        FROM {table_name} source
+        JOIN latest_main_batches latest
+          ON LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
+             latest.retailer_key
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE source.id = %s
+          AND source.{date_column} >= (
+                %s::date::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND source.{date_column} < (
+                (%s::date + 1)::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+    """
+    return query, [retailer.lower() for retailer in retailers]
 
 
 def _get_sea_null_retailer(source, *values):
@@ -352,7 +598,9 @@ def load_null_check_config():
             category = row.get('category', '')
             table_name = row.get('table_name', '')
             sea_source = _get_sea_null_source_for_table(table_name)
+            siel_source = _get_siel_null_source_for_table(table_name)
             sea_retailer = None
+            siel_retailer = None
             if sea_source:
                 product = sea_source['product_key']
                 check_column = row['check_column']
@@ -368,6 +616,23 @@ def load_null_check_config():
                     continue
                 category = SEA_NULL_CATEGORY_BY_PRODUCT[product]
                 table_name = sea_source['table_name']
+            elif siel_source:
+                source_key = siel_source['source_key']
+                check_column = row['check_column']
+                siel_retailer = _get_siel_null_retailer(
+                    siel_source,
+                    row.get('group_display_name'),
+                    row.get('check_name'),
+                )
+                if (
+                    siel_retailer is None
+                    or check_column not in _get_siel_allowed_columns(
+                        siel_source, siel_retailer
+                    )
+                ):
+                    continue
+                category = SIEL_NULL_CATEGORY_BY_SOURCE_KEY[source_key]
+                table_name = siel_source['table_name']
 
             if (
                 category in EXCLUDED_RETAIL_CATEGORIES
@@ -378,24 +643,42 @@ def load_null_check_config():
             ):
                 continue
             check_name = (
-                sea_retailer.lower() if sea_retailer else row['check_name']
+                sea_retailer.lower() if sea_retailer
+                else siel_retailer.lower() if siel_retailer
+                else row['check_name']
             )
             check_column = row['check_column']
             display_columns = row.get('display_columns', '') or ''
             query_columns = row.get('query_columns', '') or ''
 
+            if siel_source:
+                display_column_list = [
+                    col.strip() for col in display_columns.split('|')
+                    if col.strip() and col.strip() != 'batch_id'
+                ]
+                if 'product_url' not in display_column_list:
+                    display_column_list.append('product_url')
+            else:
+                display_column_list = [
+                    col.strip() for col in display_columns.split('|')
+                    if col.strip()
+                ]
+
             if category not in result:
                 result[category] = {
                     'display_name': (
                         f"SEA {sea_source['category']}"
-                        if sea_source else row.get('cat_display_name', '')
+                        if sea_source
+                        else f"SIEL {siel_source['category']}"
+                        if siel_source
+                        else row.get('cat_display_name', '')
                     ),
                     'display_order': (
                         1 if sea_source and sea_source['product_key'] == 'ref'
                         else 2 if sea_source else row.get('display_order', 0)
                     ),
                     'has_retailer': (
-                        True if sea_source
+                        True if sea_source or siel_source
                         else row.get('has_retailer', False)
                     ),
                     'checks': {}
@@ -405,21 +688,30 @@ def load_null_check_config():
                 result[category]['checks'][check_name] = {
                     'display_name': (
                         sea_retailer
-                        if sea_source else row.get('group_display_name', '')
+                        if sea_source
+                        else siel_retailer
+                        if siel_source
+                        else row.get('group_display_name', '')
                     ),
                     'table_name': table_name,
                     'date_column': (
                         sea_source['date_column']
-                        if sea_source else row.get('date_column', '')
+                        if sea_source
+                        else siel_source['date_column']
+                        if siel_source
+                        else row.get('date_column', '')
                     ),
                     'columns': {}
                 }
 
             result[category]['checks'][check_name]['columns'][check_column] = {
                 'check_type': row.get('check_type', 'both'),
-                'display_columns': [col.strip() for col in display_columns.split('|') if col.strip()],
+                'display_columns': display_column_list,
                 'query_columns': [col.strip() for col in query_columns.split('|') if col.strip()],
-                'query_days': int(row.get('query_days', 0) or 0)
+                # SIEL history is comparison-only and never suppresses old NULLs.
+                'query_days': (
+                    0 if siel_source else int(row.get('query_days', 0) or 0)
+                )
             }
 
         db_load_succeeded = True
@@ -1767,14 +2059,19 @@ def get_null_stats(cursor, target_date, include_youtube=True):
         cat_total_issues = 0
         all_cat_fields = []
         sea_source = _get_sea_null_source_for_category(category)
+        siel_source = _get_siel_null_source_for_category(category)
         sea_date = (
             _resolve_sea_null_date(target_date, sea_source)
             if sea_source else None
         )
+        siel_date = (
+            _resolve_siel_null_date(target_date, siel_source)
+            if siel_source else None
+        )
         monitoring_date = (
             _resolve_youtube_null_date(target_date)
             if str(category).lower() == 'youtube'
-            else sea_date
+            else sea_date or siel_date
         )
 
         for check_name, check_info in cat_info['checks'].items():
@@ -1785,7 +2082,18 @@ def get_null_stats(cursor, target_date, include_youtube=True):
             retailer_name = check_info['display_name']
             anchor_batch_id = None
 
-            if (
+            if siel_source and siel_date:
+                has_anchor, anchor_batch_id = _get_siel_null_anchor_batch(
+                    cursor, siel_source, siel_date['source_date'], retailer_name
+                )
+                if has_anchor:
+                    date_where, params = _build_siel_null_scope(
+                        siel_source, siel_date['source_date'], retailer_name,
+                        anchor_batch_id,
+                    )
+                else:
+                    date_where, params = 'FALSE', []
+            elif (
                 sea_source and sea_date
                 and sea_source.get('latest_main_batch')
             ):
@@ -1957,17 +2265,24 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     actual_table = category_config['table_name']
     date_col = category_config.get('date_column', 'created_at')
     sea_source = _get_sea_null_source_for_table(actual_table)
+    siel_source = _get_siel_null_source_for_table(actual_table)
     if category == 'tv_retail':
         sea_source = SEA_RETAIL_SOURCES.get('tv')
     if sea_source and sea_source.get('latest_main_batch'):
         actual_table = sea_source['table_name']
+    if siel_source:
+        actual_table = siel_source['table_name']
     sea_date = (
         _resolve_sea_null_date(target_date, sea_source)
         if sea_source else None
     )
+    siel_date = (
+        _resolve_siel_null_date(target_date, siel_source)
+        if siel_source else None
+    )
     monitoring_date = (
         _resolve_youtube_null_date(target_date)
-        if category == 'youtube' else sea_date
+        if category == 'youtube' else sea_date or siel_date
     )
     detail_target_date = target_date
     if monitoring_date and not (
@@ -1990,7 +2305,25 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     where_cond = _build_null_sql_condition(column, check_type)
 
     # 쿼리 생성 — 전체 컬럼 조회 (프론트 컬럼 선택 지원)
-    if (
+    if siel_source and siel_date and retailer:
+        has_anchor, anchor_batch_id = _get_siel_null_anchor_batch(
+            cursor, siel_source, siel_date['source_date'], retailer
+        )
+        if has_anchor:
+            detail_where, params = _build_siel_null_scope(
+                siel_source, siel_date['source_date'], retailer,
+                anchor_batch_id,
+            )
+        else:
+            detail_where, params = 'FALSE', []
+        query = f"""
+            SELECT *
+            FROM {actual_table}
+            WHERE {detail_where}
+              AND {where_cond}
+            ORDER BY id
+        """
+    elif (
         sea_source and sea_date and retailer
         and sea_source.get('latest_main_batch')
     ):
@@ -2066,7 +2399,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     is_expanded = False
     id_idx = col_index['id']
     latest_anchor_scope = bool(
-        sea_source and sea_source.get('latest_main_batch')
+        siel_source or (sea_source and sea_source.get('latest_main_batch'))
     )
     if has_retailer and days > 1 and rows:
         item_idx = select_cols.index('item') if 'item' in select_cols else None
@@ -2075,7 +2408,20 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             error_items = list(set(r[item_idx] for r in rows if r[item_idx] and r[id_idx] not in normal_set))
             if error_items:
                 placeholders = ', '.join(['%s'] * len(error_items))
-                if latest_anchor_scope and sea_date:
+                if siel_source and siel_date:
+                    end_source_date = datetime.strptime(
+                        siel_date['source_date'], '%Y-%m-%d'
+                    ).date()
+                    start_source_date = end_source_date - timedelta(
+                        days=days - 1
+                    )
+                    expand_query, expand_params = (
+                        _build_siel_null_history_query(
+                            siel_source, start_source_date, end_source_date,
+                            retailer, error_items,
+                        )
+                    )
+                elif latest_anchor_scope and sea_date:
                     end_source_date = datetime.strptime(
                         sea_date['source_date'], '%Y-%m-%d'
                     ).date()
@@ -2174,7 +2520,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     all_retail_cols = []
     editable_cols = []
     if has_retailer and retailer:
-        if latest_anchor_scope:
+        if siel_source:
+            all_retail_cols = list(select_cols)
+            editable_cols = []
+        elif latest_anchor_scope:
             all_retail_cols = list(select_cols)
             editable_cols = get_editable_columns(
                 sea_source.get('product_line', sea_source['source_key']),
@@ -2208,6 +2557,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             'supports_day_history': supports_day_history,
             'history_days': days if supports_day_history else 1,
         })
+        if siel_source:
+            response['business_timezone'] = SIEL_BUSINESS_TIMEZONE
     return response
 
 
@@ -2217,7 +2568,9 @@ VALID_TABLES_UPDATE = ({
     'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_country_collection_runs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
-} | set(TSE_TABLE_TO_PRODUCT_LINE)) - DISABLED_SOURCE_TABLES
+} | set(TSE_TABLE_TO_PRODUCT_LINE) | {
+    source['table_name'] for source in SIEL_SOURCE_CONFIG.values()
+}) - DISABLED_SOURCE_TABLES
 
 
 def save_null_review(cursor, conn, table_name, record_id, column_name, status, memo, reason, crawl_date, correction_type, username):
@@ -2240,11 +2593,20 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '허용되지 않는 테이블', 'status_code': 400}
 
     sea_source = _get_sea_null_source_for_table(table_name)
+    siel_source = _get_siel_null_source_for_table(table_name)
     if (
         sea_source
         and column_name not in SEA_NULL_COLUMNS[sea_source['product_key']]
     ):
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+
+    if siel_source:
+        if correction_type_value != 'null_check':
+            return {'error': 'SIEL은 NULL 검수만 지원합니다', 'status_code': 400}
+        if column_name not in _get_siel_allowed_columns(siel_source):
+            return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+        if not str(memo or '').strip():
+            return {'error': 'SIEL 심각 항목 확인 메모는 필수입니다', 'status_code': 400}
 
     runtime = _get_tse_runtime()
     tse_product_line = None
@@ -2281,6 +2643,20 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
               AND {country_scope}
               AND LEFT(TRIM(source.crawl_datetime), 10) = %s
         """, (record_id, TSE_COUNTRY, str(crawl_date)))
+    elif siel_source:
+        siel_date = _resolve_siel_null_date(crawl_date, siel_source)
+        if not siel_date:
+            return {'error': 'SIEL 날짜 설정 조회 실패', 'status_code': 500}
+        scope_query, retailer_params = _build_siel_latest_batch_record_query(
+            siel_source, column_name
+        )
+        if not scope_query:
+            return {'error': 'SIEL 리테일러 설정 조회 실패', 'status_code': 500}
+        cursor.execute(scope_query, (
+            siel_date['source_date'], siel_date['source_date'],
+            *retailer_params, record_id,
+            siel_date['source_date'], siel_date['source_date'],
+        ))
     elif sea_source:
         sea_date = _resolve_sea_null_date(crawl_date, sea_source)
         if not sea_date:
@@ -2334,6 +2710,12 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         )
         if column_name not in configured_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+
+    if (
+        siel_source
+        and column_name not in _get_siel_allowed_columns(siel_source, retailer)
+    ):
+        return {'error': '허용되지 않는 리테일러별 컬럼', 'status_code': 400}
 
     # 중복 정상처리 체크
     cursor.execute("""
