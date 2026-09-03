@@ -149,6 +149,9 @@ assert.ok(itemQueryHtml.includes('WITH latest_batches AS'));
 assert.ok(itemQueryHtml.includes("AT TIME ZONE 'Asia/Seoul'"));
 assert.ok(itemQueryHtml.includes("IN ('main', 'bsr')"));
 assert.ok(itemQueryHtml.includes('source.batch_id IS NOT DISTINCT FROM latest.batch_id'));
+assert.ok(itemQueryHtml.includes(
+    "NOT (source.account_name = 'Amazon' AND source.redirect IS TRUE)"
+));
 assert.ok(!itemQueryHtml.includes("INTERVAL '2 days'"));
 assert.strictEqual(tableOptions.actualTable, 'dx_siel.dx_siel_ref_retail_com');
 assert.strictEqual(tableOptions.crawlDate, '2026-08-31');

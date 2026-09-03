@@ -1,6 +1,6 @@
 import re
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -417,6 +417,42 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
                 'item-1',
             ],
             history_params,
+        )
+
+    def test_detail_displays_siel_timestamptz_as_kst_not_utc_date(self):
+        config = minimal_config('siel_tv', 'Amazon', 'sku')
+        description = [
+            ('id',), ('account_name',), ('page_type',), ('item',),
+            ('sku',), ('crawl_datetime',), ('batch_id',), ('product_url',),
+        ]
+        cursor = ScriptedCursor([
+            {'fetchone': ('a_20260902_160000',)},
+            {
+                'description': description,
+                'fetchall': [(
+                    91, 'Amazon', 'main', 'item-9', None,
+                    datetime(2026, 9, 2, 16, 10, tzinfo=timezone.utc),
+                    'a_20260902_160000', 'https://p/9',
+                )],
+            },
+            {'fetchall': []},
+        ])
+
+        with patch.object(
+            self.service, 'load_null_check_config', return_value=config
+        ):
+            result = self.service.get_null_detail(
+                cursor, date(2026, 9, 3), 'siel_tv_retail',
+                'Amazon', 1, 'sku',
+            )
+
+        self.assertEqual('2026-09-03', result['source_date'])
+        self.assertEqual(
+            '2026-09-03 01:10:00',
+            result['results'][0]['crawl_datetime'],
+        )
+        self.assertEqual(
+            'a_20260902_160000', result['results'][0]['batch_id']
         )
 
     def test_review_requires_memo_and_rechecks_retailer_column_matrix(self):

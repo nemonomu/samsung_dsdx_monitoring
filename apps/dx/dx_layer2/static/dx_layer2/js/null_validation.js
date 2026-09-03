@@ -508,8 +508,16 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 const sielHistoryQuery = currentDays > 1
                     ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (${sielLocalDate})\n         ${sielLocalDate} AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE ${dateColumn} >= ('${historyStartDate}'::date::timestamp AT TIME ZONE 'Asia/Seoul')\n    AND ${dateColumn} < (('${sourceDate}'::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')\n    AND LOWER(BTRIM(CAST(account_name AS TEXT))) = LOWER(BTRIM('${retailerName}'))\n    AND LOWER(BTRIM(CAST(page_type AS TEXT))) = 'main'\n  ORDER BY ${sielLocalDate}, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON ${sielSourceLocalDate} = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(BTRIM('${retailerName}'))\n  AND source.item IN (${inClause})\n  AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')\nORDER BY source.item, source.${dateColumn} ASC;`
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE LOWER(BTRIM(CAST(account_name AS TEXT))) = LOWER(BTRIM('${retailerName}'))\n  AND item IN (${inClause})\n  AND ${dateColumn} >= ('${sourceDate}'::date::timestamp AT TIME ZONE 'Asia/Seoul')\n  AND ${dateColumn} < (('${sourceDate}'::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')\n  AND batch_id IS NOT DISTINCT FROM '${batchId}'\n  AND LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr')\nORDER BY item, ${dateColumn} ASC;`;
+                const sielRedirectScope = currentDays > 1
+                    ? "  AND NOT (source.account_name = 'Amazon' AND source.redirect IS TRUE)\n"
+                    : "  AND NOT (account_name = 'Amazon' AND redirect IS TRUE)\n";
+                const scopedSielHistoryQuery = sielHistoryQuery.replace(
+                    currentDays > 1 ? 'ORDER BY source.item' : 'ORDER BY item',
+                    sielRedirectScope
+                        + (currentDays > 1 ? 'ORDER BY source.item' : 'ORDER BY item')
+                );
                 const query3Days = isSielRetail
-                    ? sielHistoryQuery
+                    ? scopedSielHistoryQuery
                     : isSeaRetail
                     ? seaHistoryQuery
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;

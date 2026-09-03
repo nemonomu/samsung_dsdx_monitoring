@@ -5,6 +5,7 @@ NULL 검증 서비스 — 순수 비즈니스 로직 (DB cursor/conn을 받아 �
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from apps.common.db import execute_dx_query, dx_table
 from apps.common.response import log_error
 from apps.common.retail_columns import load_retail_columns, get_editable_columns
@@ -261,6 +262,12 @@ def _build_siel_null_scope(source, source_date, retailer, batch_id):
         """,
         [*params, retailer, batch_id],
     )
+
+
+def _format_detail_datetime(value, business_timezone=None):
+    if business_timezone and value.tzinfo is not None:
+        value = value.astimezone(ZoneInfo(business_timezone))
+    return value.strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _build_siel_null_history_query(
@@ -2503,7 +2510,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             if idx is not None:
                 val = row[idx]
                 if isinstance(val, datetime):
-                    record_data[col_name] = val.strftime('%Y-%m-%d %H:%M:%S')
+                    record_data[col_name] = _format_detail_datetime(
+                        val,
+                        SIEL_BUSINESS_TIMEZONE if siel_source else None,
+                    )
                 else:
                     record_data[col_name] = val
         record_data['null_fields'] = [column] if (col_idx is not None and _is_field_null(row[col_idx], check_type)) else []
