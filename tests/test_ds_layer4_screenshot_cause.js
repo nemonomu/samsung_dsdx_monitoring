@@ -19,11 +19,12 @@ assert.ok(screenshotCss.includes(
     'grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);'
 ));
 assert.ok(screenshotCss.includes('min-width: 220px;'));
+assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260903-2"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260903-3"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-2"
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-3"
 ));
 
 function fakeClassList() {

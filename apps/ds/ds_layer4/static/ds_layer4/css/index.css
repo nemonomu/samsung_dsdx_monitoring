@@ -744,6 +744,10 @@
     }
 
     /* 스크린샷 모달 */
+    #commonToast {
+        z-index: 10010 !important;
+    }
+
     .screenshot-modal {
         display: none;
         position: fixed;
