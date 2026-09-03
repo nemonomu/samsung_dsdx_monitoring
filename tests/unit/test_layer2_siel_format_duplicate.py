@@ -102,7 +102,7 @@ class SIELFormatValidationTests(unittest.TestCase):
             stubs=shared_stubs(),
         )
 
-    def test_siel_rules_are_static_and_exclude_layer3_rating_rules(self):
+    def test_siel_rules_include_common_fields_without_rank_fields(self):
         result = self.service.get_format_rules(
             None, 'siel_tv', 'Amazon'
         )
@@ -111,8 +111,13 @@ class SIELFormatValidationTests(unittest.TestCase):
         self.assertIn('siel_tv_retail', self.service.VALID_TABLES_FORMAT)
         self.assertIn('siel_tv', self.service.VALID_TABLES_RULES)
         self.assertIn('screen_size', fields)
+        self.assertTrue({
+            'account_name', 'calendar_week', 'country',
+            'detailed_review_content', 'original_sku_price', 'page_type',
+            'product', 'product_url', 'star_rating',
+        }.issubset(fields))
         self.assertFalse({
-            'star_rating', 'sku', 'retailer_sku_name',
+            'sku', 'retailer_sku_name',
             'rank_1', 'rank_2', 'main_rank', 'bsr_rank',
         } & fields)
 
@@ -151,8 +156,8 @@ class SIELFormatValidationTests(unittest.TestCase):
         )
         self.assertIn('final_sku_price', errors)
 
-    def test_rating_values_are_left_to_layer3(self):
-        for rating in ('No customer reviews', '5.5', 'unexpected text'):
+    def test_rating_shape_is_layer2_but_range_and_counts_stay_layer3(self):
+        for rating in ('No customer reviews', '5.5'):
             with self.subTest(rating=rating):
                 errors = self.service.evaluate_siel_format_row(
                     {
@@ -162,6 +167,57 @@ class SIELFormatValidationTests(unittest.TestCase):
                     'siel_tv', 'Amazon',
                 )
                 self.assertNotIn('star_rating', errors)
+
+        errors = self.service.evaluate_siel_format_row(
+            {'star_rating': 'unexpected text'}, 'siel_tv', 'Amazon'
+        )
+        self.assertIn('star_rating', errors)
+
+    def test_common_fields_follow_siel_csv_shapes(self):
+        amazon_valid = self.service.evaluate_siel_format_row({
+            'account_name': 'Amazon',
+            'calendar_week': 'w33',
+            'country': 'SIEL',
+            'detailed_review_content': 'review1 - Good picture',
+            'original_sku_price': '₹12,999',
+            'page_type': 'main',
+            'product': 'TV',
+            'product_url': 'https://www.amazon.in/dp/B0FNCLVRW5',
+            'star_rating': 'No customer reviews',
+        }, 'siel_tv', 'Amazon')
+        flipkart_valid = self.service.evaluate_siel_format_row({
+            'account_name': 'Flipkart',
+            'calendar_week': 'w28',
+            'country': 'SIEL',
+            'detailed_review_content': 'review1 - Clear display',
+            'original_sku_price': '₹89,999',
+            'page_type': 'bsr',
+            'product': 'TV',
+            'product_url': (
+                'https://www.flipkart.com/tv/p/itmf2fd16e9d1284'
+                '?pid=TVSHM58EGYMZKGF2'
+            ),
+            'star_rating': '4.3',
+        }, 'siel_tv', 'Flipkart')
+        self.assertEqual({}, amazon_valid)
+        self.assertEqual({}, flipkart_valid)
+
+        invalid = self.service.evaluate_siel_format_row({
+            'account_name': 'Other',
+            'calendar_week': 'W54',
+            'country': 'SEA',
+            'detailed_review_content': 'Good picture',
+            'original_sku_price': '12,999',
+            'page_type': 'search',
+            'product': 'REF',
+            'product_url': 'https://example.com/product',
+            'star_rating': 'great',
+        }, 'siel_tv', 'Amazon')
+        self.assertEqual({
+            'account_name', 'calendar_week', 'country',
+            'detailed_review_content', 'original_sku_price', 'page_type',
+            'product', 'product_url', 'star_rating',
+        }, set(invalid))
 
     def test_retailer_specific_screen_size_formats(self):
         amazon_valid = self.service.evaluate_siel_format_row(
@@ -228,11 +284,11 @@ class SIELFormatValidationTests(unittest.TestCase):
 
     def test_query_uses_kst_day_latest_main_batch_and_redirect_scope(self):
         row = (
-            1, 'a_20260902_203000', 'SIEL', 'tv', 'Amazon', 'main',
-            'B001', 'SKU-1', 'TV 1', '₹10,999', '10', '43 Inches',
-            '164.25 Kilowatt Hours', '2026',
+            1, 'a_20260902_203000', 'SIEL', 'TV', 'Amazon', 'main',
+            'B001', 'SKU-1', 'TV 1', 'w36', 'review1 - Good',
+            '₹12,999', 'https://www.amazon.in/dp/B0FNCLVRW5', '4.3',
+            '₹10,999', '10', '43 Inches', '164.25 Kilowatt Hours', '2026',
             datetime(2026, 9, 2, 23, 10, tzinfo=timezone.utc),
-            'https://example/1',
         )
         cursor = ScriptedCursor([{'fetchall': [row]}])
         result = self.service._fetch_siel_format_rows(
@@ -244,9 +300,14 @@ class SIELFormatValidationTests(unittest.TestCase):
         self.assertIn('WITH latest_batches AS', sql)
         self.assertIn("AT TIME ZONE 'Asia/Seoul'", sql)
         self.assertIn("= 'main'", sql)
-        self.assertIn("IN ('main', 'bsr')", sql)
+        self.assertNotIn("IN ('main', 'bsr')", sql)
+        self.assertEqual(
+            1,
+            sql.count('LOWER(BTRIM(CAST(source.account_name AS TEXT)))'),
+        )
         self.assertIn('source.batch_id IS NOT DISTINCT FROM latest.batch_id', sql)
         self.assertIn('source.redirect IS TRUE', sql)
+        self.assertEqual(5, len(params))
         self.assertEqual('2026-09-03', params[0])
         self.assertEqual('B001', result[0]['item'])
 
@@ -258,7 +319,7 @@ class SIELFormatValidationTests(unittest.TestCase):
             'crawl_datetime': datetime(
                 2026, 9, 2, 23, 10, tzinfo=timezone.utc
             ),
-            'product_url': 'https://example/1',
+            'product_url': 'https://www.amazon.in/dp/B0FNCLVRW5',
         }
         with patch.object(
             self.service, '_fetch_siel_format_rows', return_value=[row]

@@ -90,6 +90,11 @@ SIEL_FORMAT_SOURCE_BY_SECTION = {
     section_code: source_key
     for source_key, section_code in SIEL_FORMAT_SECTION_BY_SOURCE.items()
 }
+SIEL_FORMAT_COMMON_FIELDS = (
+    'account_name', 'calendar_week', 'country',
+    'detailed_review_content', 'original_sku_price', 'page_type',
+    'product', 'product_url', 'star_rating',
+)
 SIEL_FORMAT_FIELDS = {
     'siel_tv': {
         'amazon': (
@@ -385,10 +390,25 @@ _SIEL_MONEY_PATTERN = re.compile(
 _SIEL_COUNT_PATTERN = re.compile(
     r'^(?:0|[1-9]\d{0,2}|[1-9]\d{0,2}(?:,\d{3})+)$'
 )
+_SIEL_CALENDAR_WEEK_PATTERN = re.compile(
+    r'^w(?:[1-9]|[1-4]\d|5[0-3])$'
+)
+_SIEL_STAR_RATING_PATTERN = re.compile(r'^\d+(?:\.\d)?$')
 _SIEL_AMAZON_PRICE_STATUS_VALUES = frozenset({
     'Currently unavailable.',
     'No featured offers available',
 })
+_SIEL_AMAZON_STAR_STATUS_VALUES = frozenset({'No customer reviews'})
+_SIEL_PAGE_TYPE_VALUES = frozenset({'main', 'bsr'})
+_SIEL_AMAZON_PRODUCT_URL_PATTERN = re.compile(
+    r'^https://www\.amazon\.in/dp/[a-z0-9]{10}(?:[/?#][^\s]*)?$',
+    re.IGNORECASE,
+)
+_SIEL_FLIPKART_PRODUCT_URL_PATTERN = re.compile(
+    r'^https://www\.flipkart\.com/[^\s?#]+/p/[^\s/?#]+'
+    r'(?:\?[^\s#]*)?(?:#[^\s]*)?$',
+    re.IGNORECASE,
+)
 _SIEL_AMAZON_SCREEN_SIZE_PATTERN = re.compile(
     r'^\d+(?:\.\d+)?\s+inch(?:es)?$', re.IGNORECASE
 )
@@ -436,6 +456,51 @@ _SIEL_FLIPKART_REF_TYPE_VALUES = frozenset({
 })
 
 SIEL_FORMAT_RULE_DETAILS = {
+    'account_name': {
+        'field': 'account_name',
+        'description': '선택한 SIEL 리테일러명과 일치',
+        'pattern': 'Amazon 또는 Flipkart',
+    },
+    'calendar_week': {
+        'field': 'calendar_week',
+        'description': '소문자 w와 1~53 범위의 주차',
+        'pattern': 'w28, w33',
+    },
+    'country': {
+        'field': 'country',
+        'description': 'SIEL 국가 코드',
+        'pattern': 'SIEL',
+    },
+    'detailed_review_content': {
+        'field': 'detailed_review_content',
+        'description': '리뷰본문은 "review1 - "로 시작',
+        'pattern': 'review1 - ...',
+    },
+    'original_sku_price': {
+        'field': 'original_sku_price',
+        'description': '인도 루피 원가 형식',
+        'pattern': '₹10,999',
+    },
+    'page_type': {
+        'field': 'page_type',
+        'description': 'SIEL 수집 페이지 구분',
+        'pattern': 'main, bsr',
+    },
+    'product': {
+        'field': 'product',
+        'description': '선택한 SIEL 제품군과 일치',
+        'pattern': 'TV, REF, LDY',
+    },
+    'product_url': {
+        'field': 'product_url',
+        'description': '리테일러별 SIEL 상품 상세 URL',
+        'pattern': 'Amazon /dp/{ASIN}, Flipkart /p/{상품키}',
+    },
+    'star_rating': {
+        'field': 'star_rating',
+        'description': '숫자 평점 또는 허용된 평가 없음 문구',
+        'pattern': 'Amazon: 4.3, No customer reviews / Flipkart: 4.3',
+    },
     'final_sku_price': {
         'field': 'final_sku_price',
         'description': '인도 루피 금액 형식',
@@ -1390,9 +1455,13 @@ def _resolve_siel_format_retailer(source, retailer):
 
 def _get_siel_format_fields(source_key, retailer):
     retailer_key = str(retailer or '').strip().casefold()
-    return tuple(
-        SIEL_FORMAT_FIELDS.get(source_key, {}).get(retailer_key, ())
+    retailer_fields = SIEL_FORMAT_FIELDS.get(source_key, {}).get(
+        retailer_key, ()
     )
+    return tuple(dict.fromkeys((
+        *SIEL_FORMAT_COMMON_FIELDS,
+        *retailer_fields,
+    )))
 
 
 def _has_siel_format_value(value):
@@ -1411,6 +1480,96 @@ def evaluate_siel_format_row(row, source_key, retailer):
     fields = set(_get_siel_format_fields(source_key, retailer_value))
     retailer_key = retailer_value.casefold()
     errors = {}
+
+    account_name = row.get('account_name')
+    if (
+        'account_name' in fields
+        and _has_siel_format_value(account_name)
+        and str(account_name).strip() != retailer_value
+    ):
+        errors['account_name'] = '허용된 리테일러명이 아닙니다.'
+
+    calendar_week = row.get('calendar_week')
+    if (
+        'calendar_week' in fields
+        and _has_siel_format_value(calendar_week)
+        and not _SIEL_CALENDAR_WEEK_PATTERN.fullmatch(
+            str(calendar_week).strip()
+        )
+    ):
+        errors['calendar_week'] = 'w1~w53 형식의 주차가 아닙니다.'
+
+    country = row.get('country')
+    if (
+        'country' in fields
+        and _has_siel_format_value(country)
+        and str(country).strip() != 'SIEL'
+    ):
+        errors['country'] = '국가 코드가 SIEL이 아닙니다.'
+
+    review_content = row.get('detailed_review_content')
+    if (
+        'detailed_review_content' in fields
+        and _has_siel_format_value(review_content)
+        and not str(review_content).strip().startswith('review1 - ')
+    ):
+        errors['detailed_review_content'] = (
+            '리뷰본문은 "review1 - "로 시작해야 합니다.'
+        )
+
+    original_price = row.get('original_sku_price')
+    if (
+        'original_sku_price' in fields
+        and _has_siel_format_value(original_price)
+        and not _SIEL_MONEY_PATTERN.fullmatch(str(original_price).strip())
+    ):
+        errors['original_sku_price'] = (
+            '₹10,999 인도 루피 원가 형식이 아닙니다.'
+        )
+
+    page_type = row.get('page_type')
+    if (
+        'page_type' in fields
+        and _has_siel_format_value(page_type)
+        and str(page_type).strip() not in _SIEL_PAGE_TYPE_VALUES
+    ):
+        errors['page_type'] = 'page_type은 main 또는 bsr이어야 합니다.'
+
+    product = row.get('product')
+    expected_product = str(source.get('category') or '').strip()
+    if (
+        'product' in fields
+        and _has_siel_format_value(product)
+        and str(product).strip() != expected_product
+    ):
+        errors['product'] = f'product는 {expected_product}이어야 합니다.'
+
+    product_url = row.get('product_url')
+    if 'product_url' in fields and _has_siel_format_value(product_url):
+        url_pattern = (
+            _SIEL_AMAZON_PRODUCT_URL_PATTERN
+            if retailer_key == 'amazon'
+            else _SIEL_FLIPKART_PRODUCT_URL_PATTERN
+        )
+        if not url_pattern.fullmatch(str(product_url).strip()):
+            errors['product_url'] = (
+                'SIEL 리테일러별 상품 상세 URL 형식이 아닙니다.'
+            )
+
+    star_rating = row.get('star_rating')
+    if 'star_rating' in fields and _has_siel_format_value(star_rating):
+        normalized_rating = str(star_rating).strip()
+        allowed_status = (
+            retailer_key == 'amazon'
+            and normalized_rating in _SIEL_AMAZON_STAR_STATUS_VALUES
+        )
+        if (
+            not allowed_status
+            and not _SIEL_STAR_RATING_PATTERN.fullmatch(normalized_rating)
+        ):
+            errors['star_rating'] = (
+                '숫자 평점 또는 허용된 평가 없음 문구가 아닙니다.'
+            )
 
     final_price = row.get('final_sku_price')
     if 'final_sku_price' in fields and _has_siel_format_value(final_price):
@@ -1560,15 +1719,11 @@ def _fetch_siel_format_rows(
                 (%s::date + 1)::timestamp AT TIME ZONE
                 '{SIEL_BUSINESS_TIMEZONE}'
               )
-          AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) =
-              LOWER(BTRIM(CAST(%s AS TEXT)))
-          AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
-              IN ('main', 'bsr')
           AND {get_tv_validation_condition('source')}
         ORDER BY source.item, {local_date}, source.id
     """, (
         str(start_date), str(end_date), retailer_value,
-        str(start_date), str(end_date), retailer_value,
+        str(start_date), str(end_date),
     ))
     return [
         dict(zip(select_columns, row))
@@ -2392,8 +2547,25 @@ def _get_siel_static_format_rules(source_key, retailer):
         if field in SIEL_FORMAT_RULE_DETAILS
     ]
     retailer_key = str(retailer or '').strip().casefold()
-    if retailer_key == 'amazon':
-        for rule in rules:
+    source = SIEL_SOURCE_CONFIG.get(source_key, {})
+    retailer_value = _resolve_siel_format_retailer(source, retailer)
+    for rule in rules:
+        if rule['field'] == 'account_name' and retailer_value:
+            rule['pattern'] = retailer_value
+        elif rule['field'] == 'product':
+            rule['pattern'] = source.get('category', '')
+        elif rule['field'] == 'product_url':
+            rule['pattern'] = (
+                'https://www.amazon.in/dp/{ASIN}'
+                if retailer_key == 'amazon' else
+                'https://www.flipkart.com/{상품명}/p/{상품키}'
+            )
+        elif rule['field'] == 'star_rating':
+            rule['pattern'] = (
+                '4.3 / No customer reviews'
+                if retailer_key == 'amazon' else '4.3'
+            )
+        elif retailer_key == 'amazon':
             if rule['field'] == 'final_sku_price':
                 rule['description'] = '인도 루피 금액 또는 Amazon 가격 상태'
                 rule['pattern'] = (
