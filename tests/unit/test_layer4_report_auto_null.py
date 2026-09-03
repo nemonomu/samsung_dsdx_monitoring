@@ -1,6 +1,6 @@
 import unittest
 
-from tests.unit.support import load_module, module_stub
+from tests.unit.support import ScriptedCursor, load_module, module_stub
 
 
 class Layer4ReportAutoNullTests(unittest.TestCase):
@@ -53,6 +53,38 @@ class Layer4ReportAutoNullTests(unittest.TestCase):
         self.assertTrue(details[0]['auto_applied'])
         self.assertEqual('해당값정상 확인 (자동 적용)', details[0]['reason'])
         self.assertEqual('2026-08-23', details[0]['original_crawl_date'])
+
+    def test_legacy_sea_retailer_is_filled_from_source_record(self):
+        details = [
+            {
+                'table_name': 'public.ref_retail_com',
+                'record_id': 101,
+                'retailer': '',
+            },
+            {
+                'table_name': 'public.ldy_retail_com',
+                'record_id': 202,
+                'retailer': 'Retail',
+            },
+            {
+                'table_name': 'public.ref_retail_com',
+                'record_id': 303,
+                'retailer': 'Bestbuy',
+            },
+        ]
+        cursor = ScriptedCursor([
+            {'fetchall': [(101, 'Lowes')]},
+            {'fetchall': [(202, 'Bestbuy')]},
+        ])
+
+        self.service._fill_sea_retailer_names(cursor, details)
+
+        self.assertEqual('Lowes', details[0]['retailer'])
+        self.assertEqual('Bestbuy', details[1]['retailer'])
+        self.assertEqual('Bestbuy', details[2]['retailer'])
+        self.assertEqual(2, len(cursor.calls))
+        self.assertIn('FROM public.ref_retail_com', cursor.calls[0][0])
+        self.assertIn('FROM public.ldy_retail_com', cursor.calls[1][0])
 
 
 if __name__ == '__main__':

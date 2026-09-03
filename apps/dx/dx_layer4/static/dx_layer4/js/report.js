@@ -9,9 +9,20 @@
 
     // 리테일러 고정 정렬 순서
     var RETAILER_ORDER = [
-        'TV Amazon', 'TV Bestbuy', 'TV Walmart',
+        'AMAZON TV', 'BESTBUY TV', 'WALMART TV',
+        'BESTBUY REF', 'LOWES REF',
+        'BESTBUY LDY', 'LOWES LDY',
         'HOMEPRO TV', 'HOMEPRO REF', 'HOMEPRO LDY'
     ];
+
+    var SEA_TABLE_CATEGORY = {
+        'tv_retail_com': 'TV',
+        'public.tv_retail_com': 'TV',
+        'ref_retail_com': 'REF',
+        'public.ref_retail_com': 'REF',
+        'ldy_retail_com': 'LDY',
+        'public.ldy_retail_com': 'LDY'
+    };
 
     var TSE_TABLE_CATEGORY = {
         'dx_tse.dx_tse_tv_retail_com': 'TV',
@@ -24,6 +35,14 @@
         if (tseCategory) {
             var tseRetailer = String(retailer || 'TSE').trim().toUpperCase();
             return tseRetailer + ' ' + tseCategory;
+        }
+        var seaCategory = SEA_TABLE_CATEGORY[tableName];
+        if (seaCategory) {
+            var seaRetailer = String(retailer || '').trim();
+            if (!seaRetailer || seaRetailer.toLowerCase() === 'retail') {
+                return 'SEA ' + seaCategory;
+            }
+            return seaRetailer.toUpperCase() + ' ' + seaCategory;
         }
         var category = fallbackCategory || tableName;
         return retailer ? (category + ' ' + retailer) : category;
@@ -145,11 +164,9 @@
         section.appendChild(createDiv('report-section-title',
             '■ ' + sectionNo + '. ' + typeName + ' (' + total + '건)'));
 
-        var TABLE_CATEGORY = { 'tv_retail_com': 'TV' };
-
         var retailerData = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = TABLE_CATEGORY[tn] || tn;
+            var category = SEA_TABLE_CATEGORY[tn] || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
                 var retailerName = reportRetailerName(tn, d.retailer, category);
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, groups: {} };
@@ -261,11 +278,9 @@
         section.appendChild(createDiv('report-section-title',
             '■ ' + sectionNo + '. ' + typeName + ' (' + total + '건)'));
 
-        var TABLE_CATEGORY = { 'tv_retail_com': 'TV' };
-
         var retailerData = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = TABLE_CATEGORY[tn] || tn;
+            var category = SEA_TABLE_CATEGORY[tn] || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
                 var retailerName = reportRetailerName(tn, d.retailer, category);
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, items: [], action: '' };
@@ -313,11 +328,9 @@
         section.appendChild(createDiv('report-section-title',
             '■ ' + sectionNo + '. ' + typeName + ' (' + total + '건)'));
 
-        var TABLE_CATEGORY = { 'tv_retail_com': 'TV' };
-
         var ruleGroups = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = TABLE_CATEGORY[tn] || tn;
+            var category = SEA_TABLE_CATEGORY[tn] || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
                 var ruleKey = d.detail_code || d.rule_name || '규칙 ' + (d.rule_id || 0);
                 if (!ruleGroups[ruleKey]) ruleGroups[ruleKey] = { name: d.rule_name || ruleKey, items: [] };
@@ -472,7 +485,7 @@
                 var sectionStats = {};
                 Object.keys(tableGroups).forEach(function(tn) {
                     tableGroups[tn].forEach(function(d) {
-                        var sName = TSE_TABLE_CATEGORY[tn]
+                        var sName = TSE_TABLE_CATEGORY[tn] || SEA_TABLE_CATEGORY[tn]
                             ? reportRetailerName(tn, d.retailer, tn)
                             : (TABLE_SECTION[tn] || tn);
                         if (!sectionStats[sName]) sectionStats[sName] = { corrected: 0, normal: 0 };

@@ -5,6 +5,59 @@ Layer 4 보고서 Services — 보고서 데이터 조회
 from apps.common.db import dx_connection
 
 
+_SEA_REPORT_SOURCE_TABLES = {
+    'tv_retail_com': 'public.tv_retail_com',
+    'public.tv_retail_com': 'public.tv_retail_com',
+    'ref_retail_com': 'public.ref_retail_com',
+    'public.ref_retail_com': 'public.ref_retail_com',
+    'ldy_retail_com': 'public.ldy_retail_com',
+    'public.ldy_retail_com': 'public.ldy_retail_com',
+}
+_GENERIC_RETAILER_NAMES = frozenset({'', '-', 'retail', 'unknown'})
+
+
+def _needs_retailer_lookup(value):
+    return str(value or '').strip().casefold() in _GENERIC_RETAILER_NAMES
+
+
+def _fill_sea_retailer_names(cursor, details):
+    """Backfill legacy SEA correction rows that lack a retailer name."""
+    pending_by_table = {}
+    for detail in details:
+        table_name = str(detail.get('table_name') or '').strip().lower()
+        source_table = _SEA_REPORT_SOURCE_TABLES.get(table_name)
+        record_id = detail.get('record_id')
+        if (
+            source_table
+            and record_id is not None
+            and _needs_retailer_lookup(detail.get('retailer'))
+        ):
+            pending_by_table.setdefault(source_table, set()).add(record_id)
+
+    for source_table, record_ids in pending_by_table.items():
+        ordered_ids = sorted(record_ids, key=lambda value: str(value))
+        placeholders = ', '.join(['%s'] * len(ordered_ids))
+        cursor.execute(f"""
+            SELECT id, account_name
+            FROM {source_table}
+            WHERE id IN ({placeholders})
+        """, tuple(ordered_ids))
+        retailer_by_id = {
+            str(row[0]): str(row[1] or '').strip()
+            for row in cursor.fetchall()
+        }
+        for detail in details:
+            detail_table = str(
+                detail.get('table_name') or ''
+            ).strip().lower()
+            if _SEA_REPORT_SOURCE_TABLES.get(detail_table) != source_table:
+                continue
+            if not _needs_retailer_lookup(detail.get('retailer')):
+                continue
+            retailer = retailer_by_id.get(str(detail.get('record_id')), '')
+            detail['retailer'] = retailer
+
+
 def _merge_tse_auto_null_reviews(
         auto_reviews, type_summary, reason_summary, table_summary, details):
     """Merge virtual daily carry-forward records into the report payload."""
@@ -176,6 +229,8 @@ def get_report_data(target_date):
                 'rule_name': row[13] or '',
                 'detail_code': row[14] or '',
             })
+
+        _fill_sea_retailer_names(cursor, details)
 
         from apps.dx.dx_layer2.null_validation.services import (
             get_tse_auto_applied_null_reviews,

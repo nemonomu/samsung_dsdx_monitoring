@@ -32,16 +32,20 @@ const reportData = {
     missing_keywords: [],
     excluded_items: [],
     type_summary: {
-        null_check: { corrected: 2 },
+        null_check: { corrected: 4 },
         duplicate_check: { corrected: 1 },
         format_check: { normal: 1 },
-        cross_field: { corrected: 1 }
+        cross_field: { corrected: 2 }
     },
     grouped_details: {
         null_check: {
             'dx_tse.dx_tse_ldy_retail_com': [
                 { retailer: 'Homepro', status: 'corrected', column_name: 'sku', item: 'A' },
                 { retailer: 'Homepro', status: 'corrected', column_name: 'sku', item: 'B' }
+            ],
+            'public.ref_retail_com': [
+                { retailer: 'Bestbuy', status: 'corrected', column_name: 'sku', item: 'R1' },
+                { retailer: 'Lowes', status: 'corrected', column_name: 'sku', item: 'R2' }
             ]
         },
         duplicate_check: {
@@ -57,6 +61,9 @@ const reportData = {
         cross_field: {
             'dx_tse.dx_tse_tv_retail_com': [
                 { retailer: 'Homepro', status: 'corrected', item: 'E', detail_code: 'price', rule_name: '가격 일치' }
+            ],
+            'public.ldy_retail_com': [
+                { retailer: 'Lowes', status: 'corrected', item: 'L1', detail_code: 'price', rule_name: '가격 일치' }
             ]
         }
     }
@@ -104,8 +111,14 @@ setImmediate(() => {
     assert(html.includes('HOMEPRO TV'));
     assert(html.includes('HOMEPRO REF'));
     assert(html.includes('HOMEPRO LDY'));
+    assert(html.includes('BESTBUY REF'));
+    assert(html.includes('LOWES REF'));
+    assert(html.includes('LOWES LDY'));
     assert(!html.includes('dx_tse.dx_tse_tv_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ref_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ldy_retail_com'));
-    console.log('Layer 4 TSE report label tests passed');
+    assert(!html.includes('public.ref_retail_com'));
+    assert(!html.includes('public.ldy_retail_com'));
+    assert(!html.includes('>Retail 수정'));
+    console.log('Layer 4 retail report label tests passed');
 });
