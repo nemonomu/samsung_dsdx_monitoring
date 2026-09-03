@@ -342,7 +342,7 @@ async function loadData() {
                 currentData = data;
                 renderData(data);
                 loadAllRetailersMissing();
-                switchFieldMissingTab(focusParam.toLowerCase());
+                switchFieldMissingTab(detailCodeParam || focusParam.toLowerCase());
             } catch (error) {
                 console.error('Error:', error);
                 if (catContainer) catContainer.innerHTML = '<div class="loading">데이터 로드 실패</div>';

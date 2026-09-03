@@ -1744,6 +1744,7 @@ function _fmBindEditEvents() {
     if (!tableEl) return;
     if (tableEl._fmEditBound) return;
     tableEl._fmEditBound = true;
+    _fmClearReviewSelection();
 
     // 클릭: 셀 선택 / 정상처리 바
     tableEl.addEventListener('click', function(e) {
@@ -1760,18 +1761,52 @@ function _fmBindEditEvents() {
             var clickedCol = targetTd.getAttribute('data-col');
             if (clickedCol && clickedCol !== window._fmCurrentField) colMatch = false;
         }
-        if (td) {
+        if (td && !colMatch) {
+            _fmClearReviewSelection();
             td.classList.add('cell-selected');
             window._fmSelectedCell = td;
-            if (colMatch) _fmShowReviewBar(td, 'normal');
+        } else if (td && td.classList.contains('cell-pending')) {
+            _fmClearReviewSelection();
+            td.classList.add('cell-selected');
+            window._fmSelectedCell = td;
+        } else if (td) {
+            if (e.shiftKey && window._fmReviewAnchorCell) {
+                e.preventDefault();
+                var editableRange = _fmGetReviewRangeCells(
+                    tableEl, window._fmReviewAnchorCell, td
+                );
+                _fmSetReviewSelection(
+                    editableRange.length > 0 ? editableRange : [td],
+                    editableRange.length === 0
+                );
+            } else {
+                _fmSetReviewSelection([td], true);
+            }
+            window._fmSelectedCell = (
+                window._fmReviewSelectedCells.length === 1 ? td : null
+            );
+            _fmShowReviewBar(window._fmReviewSelectedCells, 'normal');
         } else if (normalTd) {
+            _fmClearReviewSelection();
             window._fmSelectedCell = null;
             // cell-normal은 무시 (정상처리 완료된 셀)
-        } else if (reviewTd) {
-            reviewTd.classList.add('cell-selected');
+        } else if (reviewTd && colMatch) {
+            if (e.shiftKey && window._fmReviewAnchorCell) {
+                e.preventDefault();
+                var reviewRange = _fmGetReviewRangeCells(
+                    tableEl, window._fmReviewAnchorCell, reviewTd
+                );
+                _fmSetReviewSelection(
+                    reviewRange.length > 0 ? reviewRange : [reviewTd],
+                    reviewRange.length === 0
+                );
+            } else {
+                _fmSetReviewSelection([reviewTd], true);
+            }
             window._fmSelectedCell = null;
-            if (colMatch) _fmShowReviewBar(reviewTd, 'normal');
+            _fmShowReviewBar(window._fmReviewSelectedCells, 'normal');
         } else {
+            _fmClearReviewSelection();
             window._fmSelectedCell = null;
         }
     });
@@ -1781,6 +1816,7 @@ function _fmBindEditEvents() {
         if (!e.target.closest('#fm-detail-table-area') && !e.target.closest('#fm-review-bar')) {
             var sel = tableEl.querySelector('.cell-selected');
             if (sel) sel.classList.remove('cell-selected');
+            _fmClearReviewSelection();
             window._fmSelectedCell = null;
             _fmHideReviewBar();
         }
@@ -1945,15 +1981,61 @@ function _fmShowMemoDialog(callback) {
     };
 }
 
+// 정상처리 셀 선택
+function _fmClearReviewSelection() {
+    (window._fmReviewSelectedCells || []).forEach(function(cell) {
+        if (cell && cell.classList) {
+            cell.classList.remove('cell-review-selected');
+        }
+    });
+    window._fmReviewSelectedCells = [];
+    window._fmReviewAnchorCell = null;
+}
+
+function _fmSetReviewSelection(cells, updateAnchor) {
+    (window._fmReviewSelectedCells || []).forEach(function(cell) {
+        if (cell && cell.classList) {
+            cell.classList.remove('cell-review-selected');
+        }
+    });
+    window._fmReviewSelectedCells = (cells || []).filter(Boolean).slice();
+    window._fmReviewSelectedCells.forEach(function(cell) {
+        cell.classList.remove('cell-selected');
+        cell.classList.add('cell-review-selected');
+    });
+    if (updateAnchor && window._fmReviewSelectedCells.length > 0) {
+        window._fmReviewAnchorCell = window._fmReviewSelectedCells[0];
+    }
+}
+
+function _fmGetReviewRangeCells(tableEl, anchorCell, targetCell) {
+    if (!anchorCell || !targetCell || !anchorCell.isConnected) return [];
+    if (anchorCell.dataset.col !== targetCell.dataset.col) return [];
+    var candidates = Array.from(
+        tableEl.querySelectorAll('tbody td[data-row-id][data-col]')
+    ).filter(function(cell) {
+        return cell.dataset.col === targetCell.dataset.col
+            && !cell.classList.contains('cell-normal')
+            && !cell.classList.contains('cell-pending');
+    });
+    var start = candidates.indexOf(anchorCell);
+    var end = candidates.indexOf(targetCell);
+    if (start < 0 || end < 0) return [];
+    return candidates.slice(Math.min(start, end), Math.max(start, end) + 1);
+}
+
 // 정상처리 바
-function _fmShowReviewBar(td, mode) {
+function _fmShowReviewBar(cells, mode) {
     _fmHideReviewBar();
     var bar = document.getElementById('fm-detail-action-bar');
     if (!bar) return;
     if (Object.keys(fmPendingEdits).length > 0) return;
-    var rowId = td.getAttribute('data-row-id');
-    var col = td.getAttribute('data-col');
-    if (!rowId) return;
+    cells = Array.isArray(cells) ? cells : [cells];
+    cells = cells.filter(Boolean);
+    if (cells.length === 0) return;
+    var rowId = cells[0].getAttribute('data-row-id');
+    var col = cells[0].getAttribute('data-col');
+    if (!rowId || !col) return;
 
     var reviewBar = document.getElementById('fm-review-bar');
     if (!reviewBar) {
@@ -1964,8 +2046,16 @@ function _fmShowReviewBar(td, mode) {
         bar.innerHTML = html;
         reviewBar = document.getElementById('fm-review-bar');
     }
-    reviewBar.querySelector('.null-review-info').textContent = col + ' (ID: ' + rowId + ')';
-    reviewBar.querySelector('.btn-null-normal').onclick = function() { _fmShowReviewDialog(rowId, col); };
+    reviewBar.querySelector('.null-review-info').textContent = cells.length > 1
+        ? col + ' ' + cells.length + '건 선택'
+        : col + ' (ID: ' + rowId + ') — Shift+클릭으로 범위 선택';
+    var reviewButton = reviewBar.querySelector('.btn-null-normal');
+    reviewButton.textContent = cells.length > 1 ? cells.length + '건 확인' : '확인';
+    reviewButton.onclick = function() {
+        _showReviewDialog('field_missing', function(reason, memo) {
+            _fmSubmitReviews(cells, 'normal', reason, memo);
+        });
+    };
     reviewBar.style.visibility = 'visible';
 }
 
@@ -1981,32 +2071,89 @@ window._fmShowReviewDialog = function(rowId, col) {
 };
 
 window._fmSubmitReview = function(rowId, col, status, reason, memo, normalKey) {
-    fetch('/dx/layer3/api/review/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-        body: JSON.stringify({
-            table_name: window._fmTableName,
-            record_id: parseInt(rowId),
-            column_name: col,
-            status: status,
-            reason: reason || '',
-            memo: memo || '',
-            crawl_date: window._fmDate,
-            retailer: window._fmCurrentRetailer || '',
-            correction_type: 'field_missing'
-        })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (!data.success) { showToast(data.error || '처리 실패', 'error'); return; }
-        var st = window._fmDetailState;
-        var nk = rowId + '_' + col;
-        st.normalReviews[nk] = { reason: reason, memo: memo, created_id: '' };
-        showToast('확인 처리 완료', 'success');
-        _fmHideReviewBar();
-        _fmRenderPage(st.pager ? st.pager.currentPage || 1 : 1);
-        setTimeout(function() { _fmBindEditEvents(); }, 100);
-    })
-    .catch(function(e) { console.error(e); showToast('처리 실패', 'error'); });
+    return _fmSubmitReviews([{
+        dataset: { rowId: String(rowId), col: col }
+    }], status, reason, memo);
 };
+
+function _fmSubmitReviews(cells, status, reason, memo) {
+    cells = (cells || []).filter(function(td) {
+        return td && td.dataset && td.dataset.rowId && td.dataset.col;
+    });
+    if (cells.length === 0) return Promise.resolve([]);
+
+    var button = document.querySelector('#fm-review-bar .btn-null-normal');
+    if (button) {
+        button.disabled = true;
+        button.textContent = '처리 중...';
+    }
+
+    var requests = cells.map(function(td) {
+        var rowId = td.dataset.rowId;
+        var col = td.dataset.col;
+        return fetch('/dx/layer3/api/review/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({
+                table_name: window._fmTableName,
+                record_id: parseInt(rowId),
+                column_name: col,
+                status: status,
+                reason: reason || '',
+                memo: memo || '',
+                crawl_date: window._fmDate,
+                retailer: window._fmCurrentRetailer || '',
+                correction_type: 'field_missing'
+            })
+        }).then(function(r) { return r.json(); })
+        .then(function(response) {
+            return { rowId: rowId, col: col, response: response };
+        }).catch(function() {
+            return {
+                rowId: rowId,
+                col: col,
+                response: { success: false, error: '네트워크 오류' }
+            };
+        });
+    });
+
+    return Promise.all(requests).then(function(results) {
+        var successCount = 0;
+        var failCount = 0;
+        var st = window._fmDetailState;
+        if (st && !st.normalReviews) st.normalReviews = {};
+        results.forEach(function(result) {
+            if (result.response.success) {
+                successCount++;
+                if (st) {
+                    var nk = result.rowId + '_' + result.col;
+                    st.normalReviews[nk] = {
+                        reason: reason,
+                        memo: memo,
+                        created_id: ''
+                    };
+                }
+            } else {
+                failCount++;
+            }
+        });
+        _fmHideReviewBar();
+        _fmClearReviewSelection();
+        window._fmSelectedCell = null;
+        if (successCount > 0) {
+            showToast(successCount + '건 확인 처리 완료', 'success');
+            if (st) {
+                _fmRenderPage(st.pager ? st.pager.currentPage || 1 : 1);
+                setTimeout(function() { _fmBindEditEvents(); }, 100);
+            }
+        }
+        if (failCount > 0) {
+            showToast(failCount + '건 처리 실패', 'error');
+        }
+        return results;
+    });
+}
 

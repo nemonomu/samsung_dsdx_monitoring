@@ -247,6 +247,31 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         self.assertTrue(tse_parent['active'])
         self.assertTrue(tse_parent['children'][0]['active'])
 
+    def test_field_missing_sidebar_groups_products_under_sea_parent(self):
+        context = self._load_context([])
+
+        field_missing_group = context._build_sidebar_groups(
+            'field_missing', focus='REF', detail_code='sea_ref'
+        )[3]
+        sea_parent = field_missing_group['items'][0]
+
+        self.assertEqual('SEA Retail', sea_parent['name'])
+        self.assertTrue(sea_parent['active'])
+        self.assertEqual(
+            [
+                ('TV', 'TV', 'tv', False),
+                ('REF', 'REF', 'sea_ref', True),
+                ('LDY', 'LDY', 'sea_ldy', False),
+            ],
+            [
+                (
+                    child['name'], child['label'],
+                    child['detail_code'], child['active'],
+                )
+                for child in sea_parent['children']
+            ],
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

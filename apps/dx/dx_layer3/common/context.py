@@ -150,7 +150,14 @@ def _get_sidebar_items():
         r['section_name'] for r in load_category_rules() if r.get('section_name')
     ))
 
-    sidebar['field_missing'] = ['TV', 'REF', 'LDY']
+    sidebar['field_missing'] = [{
+        'name': 'SEA Retail',
+        'children': [
+            {'name': 'TV', 'label': 'TV', 'detail_code': 'tv'},
+            {'name': 'REF', 'label': 'REF', 'detail_code': 'sea_ref'},
+            {'name': 'LDY', 'label': 'LDY', 'detail_code': 'sea_ldy'},
+        ],
+    }]
 
     return sidebar
 
@@ -195,6 +202,33 @@ def _build_sidebar_groups(section, focus='', detail_code=''):
             'active': any(child['active'] for child in children),
             'children': children,
         })
+
+    field_missing_items = []
+    for item in sidebar['field_missing']:
+        if not isinstance(item, dict) or not item.get('children'):
+            item_name = item.get('name', '') if isinstance(item, dict) else item
+            field_missing_items.append({
+                'name': item_name,
+                'active': section == 'field_missing' and focus == item_name,
+            })
+            continue
+
+        children = []
+        for child in item['children']:
+            child_item = dict(child)
+            child_item['active'] = (
+                section == 'field_missing'
+                and (
+                    focus == child['name']
+                    or detail_code == child['detail_code']
+                )
+            )
+            children.append(child_item)
+        field_missing_items.append({
+            'name': item['name'],
+            'active': any(child['active'] for child in children),
+            'children': children,
+        })
     return [
         {'key': 'time_series', 'icon': '📈', 'label': '시계열 이상치',
          'expanded': section == 'time_series', 'active': section == 'time_series',
@@ -207,7 +241,7 @@ def _build_sidebar_groups(section, focus='', detail_code=''):
          'items': [{'name': n, 'active': False} for n in sidebar['category_spec']]},
         {'key': 'field_missing', 'icon': '🔍', 'label': '필드 누락',
          'expanded': section == 'field_missing', 'active': section == 'field_missing',
-         'items': [{'name': n, 'active': False} for n in sidebar['field_missing']]},
+         'items': field_missing_items},
     ]
 
 
