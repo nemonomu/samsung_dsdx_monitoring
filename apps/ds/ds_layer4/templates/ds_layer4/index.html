@@ -4,7 +4,7 @@
 {% block title %}DS Layer 4 - 보고서 관리{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'ds_layer4/css/index.css' %}">
+<link rel="stylesheet" href="{% static 'ds_layer4/css/index.css' %}?v=20260903-2">
 <style>
     :root { --page-color: {{ layer.color }}; }
 </style>
@@ -20,8 +20,8 @@
 
 {% block extra_js %}
 <div id="app-data" data-user-id="{{ request.user.username|default:'anonymous'|escapejs }}" style="display:none;"></div>
-<script src="{% static 'ds_layer4/js/index.js' %}"></script>
-<script src="{% static 'ds_layer4/js/report.js' %}"></script>
-<script src="{% static 'ds_layer4/js/file-tab.js' %}"></script>
-<script src="{% static 'ds_layer4/js/screenshot.js' %}"></script>
+<script src="{% static 'ds_layer4/js/index.js' %}?v=20260903-2"></script>
+<script src="{% static 'ds_layer4/js/report.js' %}?v=20260903-2"></script>
+<script src="{% static 'ds_layer4/js/file-tab.js' %}?v=20260903-2"></script>
+<script src="{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-2"></script>
 {% endblock %}

@@ -11,11 +11,20 @@ const screenshotSource = fs.readFileSync(
 const screenshotCss = fs.readFileSync(
     'apps/ds/ds_layer4/static/ds_layer4/css/index.css', 'utf8'
 );
+const layer4Template = fs.readFileSync(
+    'apps/ds/ds_layer4/templates/ds_layer4/index.html', 'utf8'
+);
 
 assert.ok(screenshotCss.includes(
     'grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);'
 ));
 assert.ok(screenshotCss.includes('min-width: 220px;'));
+assert.ok(layer4Template.includes(
+    "{% static 'ds_layer4/css/index.css' %}?v=20260903-2"
+));
+assert.ok(layer4Template.includes(
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-2"
+));
 
 function fakeClassList() {
     const values = new Set();
