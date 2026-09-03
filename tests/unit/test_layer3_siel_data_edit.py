@@ -126,6 +126,40 @@ class SielLayer3DataEditTests(unittest.TestCase):
         self.assertIn('메모는 필수', result['error'])
         self.assertEqual(1, len(cursor.calls))
 
+    def test_siel_crossfield_confirmation_does_not_require_edit_config(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'Flipkart', 'F-1')},
+            {'fetchone': None},
+            {},
+        ])
+        conn = FakeConnection()
+
+        result = services.save_review(
+            cursor, conn, self.table_name, 20,
+            'count_of_star_ratings', 'normal', '수집원 확인 완료',
+            '정상 데이터', '2026-09-03', 'cross_field', 'tester', 72,
+        )
+
+        self.assertTrue(result['success'])
+        self.assertEqual(1, conn.commits)
+        history_params = cursor.calls[2][1]
+        self.assertEqual('수집원 확인 완료', history_params[11])
+        self.assertEqual(72, history_params[-1])
+
+    def test_siel_crossfield_confirmation_rejects_unrelated_column(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('A-1', 'Flipkart', 'F-1')},
+        ])
+
+        result = services.save_review(
+            cursor, FakeConnection(), self.table_name, 20,
+            'item', 'normal', '확인 완료', '정상 데이터',
+            '2026-09-03', 'cross_field', 'tester', 72,
+        )
+
+        self.assertEqual(403, result['status'])
+        self.assertIn('정상 확인할 수 없습니다', result['error'])
+
 
 if __name__ == '__main__':
     unittest.main()

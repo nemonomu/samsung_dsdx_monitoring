@@ -32,6 +32,12 @@ VALID_TABLES_UPDATE = {
 VALID_TABLES_UPDATE.update(TSE_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SIEL_TABLE_TO_PRODUCT_LINE)
 
+SIEL_CROSSFIELD_REVIEW_COLUMNS = frozenset({
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+    'detailed_review_content', 'final_sku_price', 'original_sku_price',
+    'savings', 'page_type', 'main_rank', 'bsr_rank',
+})
+
 
 def _is_tse_table(table_name):
     return table_name in TSE_TABLE_TO_PRODUCT_LINE
@@ -330,10 +336,28 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     retailer = row[1]
     item_value = str(row[2]) if row[2] else None
 
-    if _is_tse_table(table_name) or siel_context:
+    if _is_tse_table(table_name):
         editable_cols = get_editable_columns(product_line, retailer)
         if column_name not in editable_cols:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+
+    if siel_context:
+        is_crossfield_confirmation = (
+            status == 'normal' and correction_type == 'cross_field'
+        )
+        if is_crossfield_confirmation:
+            if column_name not in SIEL_CROSSFIELD_REVIEW_COLUMNS:
+                return {
+                    'error': f'{column_name} 컬럼은 정상 확인할 수 없습니다',
+                    'status': 403,
+                }
+        else:
+            editable_cols = get_editable_columns(product_line, retailer)
+            if column_name not in editable_cols:
+                return {
+                    'error': f'{column_name} 컬럼은 수정할 수 없습니다',
+                    'status': 403,
+                }
 
     if siel_context and status == 'normal' and not str(memo or '').strip():
         return {
