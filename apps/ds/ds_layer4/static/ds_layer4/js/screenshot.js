@@ -7,8 +7,7 @@
 let currentScreenshotAnomalyId = null;
 let screenshotList = []; // { fileId, anomalyId, retailer } 리스트
 let screenshotIndex = -1;
-let screenshotCauseBaseline = '';
-let screenshotCauseDirty = false;
+let screenshotCauseEdited = false;
 let screenshotCauseSaving = false;
 const SCREENSHOT_CUSTOM_CAUSE = '__custom__';
 
@@ -27,12 +26,16 @@ function getScreenshotCauseValue() {
     return normalizeReportCause(select.value);
 }
 
-function updateScreenshotCauseDirty() {
+function syncScreenshotCauseSaveButton() {
     const saveBtn = document.getElementById('screenshotCauseSaveBtn');
+    if (saveBtn) saveBtn.disabled = !screenshotCauseEdited || screenshotCauseSaving;
+}
+
+function markScreenshotCauseEdited() {
     const customInput = document.getElementById('screenshotCustomCause');
     if (customInput) customInput.title = String(customInput.value || '').trim();
-    screenshotCauseDirty = getScreenshotCauseValue() !== screenshotCauseBaseline;
-    if (saveBtn) saveBtn.disabled = !screenshotCauseDirty || screenshotCauseSaving;
+    screenshotCauseEdited = true;
+    syncScreenshotCauseSaveButton();
 }
 
 function handleScreenshotCauseChange() {
@@ -42,7 +45,7 @@ function handleScreenshotCauseChange() {
     select.title = isCustom ? '기타(직접 입력)' : select.value;
     customInput.hidden = !isCustom;
     if (isCustom) customInput.focus();
-    updateScreenshotCauseDirty();
+    markScreenshotCauseEdited();
 }
 
 function handleScreenshotCauseKeydown(event) {
@@ -68,8 +71,7 @@ function renderScreenshotCauseEditor(anomalyId) {
     editor.style.display = 'flex';
     const currentCause = normalizeReportCause(anomaly.cause);
     const options = causeOptions[anomaly.retailer] || [];
-    screenshotCauseBaseline = currentCause;
-    screenshotCauseDirty = false;
+    screenshotCauseEdited = false;
     screenshotCauseSaving = false;
 
     if (isClosed) {
@@ -112,19 +114,6 @@ function renderScreenshotCauseEditor(anomalyId) {
     }
     saveBtn.disabled = true;
     saveBtn.textContent = '저장';
-}
-
-async function confirmDiscardScreenshotCause() {
-    if (screenshotCauseSaving) {
-        showToast('원인을 저장하고 있습니다. 잠시만 기다려 주세요.', 'info');
-        return false;
-    }
-    if (!screenshotCauseDirty) return true;
-    return await showConfirm(
-        '수정한 원인이 저장되지 않았습니다. 변경사항을 버릴까요?',
-        'warning',
-        { okText: '버리기', cancelText: '계속 수정' }
-    );
 }
 
 function refreshCauseAfterScreenshotSave(anomaly, previousCause) {
@@ -181,8 +170,7 @@ async function saveScreenshotCause() {
         }
 
         anomaly.cause = cause;
-        screenshotCauseBaseline = cause;
-        screenshotCauseDirty = false;
+        screenshotCauseEdited = false;
         refreshCauseAfterScreenshotSave(anomaly, previousCause);
         renderScreenshotCauseEditor(anomaly.id);
         showToast('원인이 저장되었습니다.', 'success');
@@ -194,7 +182,7 @@ async function saveScreenshotCause() {
         select.disabled = false;
         customInput.disabled = false;
         deleteBtn.disabled = false;
-        updateScreenshotCauseDirty();
+        syncScreenshotCauseSaveButton();
     }
 }
 
@@ -240,7 +228,10 @@ function updateScreenshotNav() {
 async function navigateScreenshot(direction) {
     const newIndex = screenshotIndex + direction;
     if (newIndex < 0 || newIndex >= screenshotList.length) return;
-    if (!await confirmDiscardScreenshotCause()) return;
+    if (screenshotCauseSaving) {
+        showToast('원인을 저장하고 있습니다. 잠시만 기다려 주세요.', 'info');
+        return;
+    }
     screenshotIndex = newIndex;
     const item = screenshotList[screenshotIndex];
     currentScreenshotAnomalyId = item.anomalyId;
@@ -337,13 +328,15 @@ function deleteScreenshot() {
 
 function hideScreenshotModal() {
     document.getElementById('screenshotModal').classList.remove('show');
-    screenshotCauseBaseline = '';
-    screenshotCauseDirty = false;
+    screenshotCauseEdited = false;
 }
 
 async function closeScreenshotModal(event) {
     if (event && event.target !== event.currentTarget) return;
-    if (!await confirmDiscardScreenshotCause()) return;
+    if (screenshotCauseSaving) {
+        showToast('원인을 저장하고 있습니다. 잠시만 기다려 주세요.', 'info');
+        return;
+    }
     hideScreenshotModal();
 }
 

@@ -20,11 +20,12 @@ assert.ok(screenshotCss.includes(
 ));
 assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
+assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260903-3"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260903-4"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-3"
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-4"
 ));
 
 function fakeClassList() {
@@ -141,6 +142,13 @@ sandbox.renderScreenshotCauseEditor(101);
 assert.strictEqual(elements.screenshotCauseSelect.value, '상품페이지 내 항목 부재');
 assert.strictEqual(elements.screenshotCustomCause.hidden, true);
 assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, true);
+
+elements.screenshotCauseSelect.value = '크롤러 오류';
+sandbox.handleScreenshotCauseChange();
+assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
+elements.screenshotCauseSelect.value = '상품페이지 내 항목 부재';
+sandbox.handleScreenshotCauseChange();
+assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
 
 setReportData('직접 확인한 신규 원인');
 sandbox.renderScreenshotCauseEditor(101);

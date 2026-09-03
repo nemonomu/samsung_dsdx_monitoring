@@ -12,7 +12,7 @@
             <div class="screenshot-cause-editor" id="screenshotCauseEditor">
                 <label for="screenshotCauseSelect">원인</label>
                 <select id="screenshotCauseSelect" onchange="handleScreenshotCauseChange()"></select>
-                <input type="text" id="screenshotCustomCause" maxlength="255" placeholder="원인을 직접 입력" oninput="updateScreenshotCauseDirty()" onkeydown="handleScreenshotCauseKeydown(event)" hidden>
+                <input type="text" id="screenshotCustomCause" maxlength="255" placeholder="원인을 직접 입력" oninput="markScreenshotCauseEdited()" onkeydown="handleScreenshotCauseKeydown(event)" hidden>
                 <button type="button" id="screenshotCauseSaveBtn" onclick="saveScreenshotCause()" disabled>저장</button>
                 <span class="screenshot-cause-readonly" id="screenshotCauseReadonly" hidden></span>
             </div>
