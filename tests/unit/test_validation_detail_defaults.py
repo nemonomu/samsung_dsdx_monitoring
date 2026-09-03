@@ -119,6 +119,13 @@ class ValidationDetailDefaultTests(unittest.TestCase):
             },
             get_tse_cross_field_summary=lambda *_args: {},
         )
+        siel_services = module_stub(
+            'apps.dx.dx_layer3.cross_field.siel_services',
+            get_siel_cross_field_rule_detail=lambda *_args: {
+                'found': True,
+            },
+            get_siel_cross_field_summary=lambda *_args: {},
+        )
         stubs = common_stubs()
         stubs.update({
             'apps.common.inspection_dates': module_stub(
@@ -135,6 +142,7 @@ class ValidationDetailDefaultTests(unittest.TestCase):
             'apps.dx.dx_layer3.cross_field.sea_services': module_stub(
                 'apps.dx.dx_layer3.cross_field.sea_services'
             ),
+            'apps.dx.dx_layer3.cross_field.siel_services': siel_services,
             'apps.dx.dx_layer3.cross_field.tse_services': tse_services,
         })
         api = load_module(

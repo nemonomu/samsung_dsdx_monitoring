@@ -522,6 +522,7 @@ function renderData(data) {
             const hasRules = categoryName === '카테고리별 특성'
                 || crossfieldChecksWithRules.includes(check.name)
                 || /^SEA (REF|LDY) 논리적 일관성$/.test(check.name || '')
+                || /^SIEL (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
 
@@ -563,7 +564,7 @@ function renderData(data) {
         };
 
         if (categoryName === '크로스 필드 검증') {
-            const regionGroups = { sea: [], tse: [] };
+            const regionGroups = { sea: [], siel: [], tse: [] };
             const standaloneChecks = [];
             checks.forEach(check => {
                 const detailCode = String(check.detail_code || '').toLowerCase();
@@ -577,6 +578,8 @@ function renderData(data) {
                     )
                 ) {
                     regionGroups.sea.push(check);
+                } else if (/^siel_(tv|ref|ldy)$/.test(detailCode)) {
+                    regionGroups.siel.push(check);
                 } else if (/^tse_(tv|ref|ldy)$/.test(detailCode)) {
                     regionGroups.tse.push(check);
                 } else {
@@ -586,6 +589,7 @@ function renderData(data) {
 
             [
                 { key: 'sea', title: 'SEA Retail', description: 'SEA TV/REF/LDY 크로스필드 검증' },
+                { key: 'siel', title: 'SIEL Retail', description: 'SIEL TV/REF/LDY 크로스필드 검증' },
                 { key: 'tse', title: 'TSE Retail', description: 'TSE TV/REF/LDY 크로스필드 검증' },
             ].forEach(region => {
                 const groupChecks = regionGroups[region.key];
@@ -639,9 +643,9 @@ function renderData(data) {
                         <div class="crossfield-region-children" id="${groupId}">
                             ${groupChecks.map(check => {
                                 const detailCode = String(check.detail_code || '').toLowerCase();
-                                const label = detailCode === 'tv' || detailCode === 'tse_tv'
+                                const label = detailCode === 'tv' || detailCode === 'siel_tv' || detailCode === 'tse_tv'
                                     ? 'TV'
-                                    : (detailCode === 'sea_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
+                                    : (detailCode === 'sea_ref' || detailCode === 'siel_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
                                 return renderCheckItem(check, label);
                             }).join('')}
                         </div>
@@ -749,6 +753,9 @@ async function showDetail(category, checkName, detailCode) {
             if (detailCode === 'tv') type = 'tv';
             else if (detailCode === 'sea_ref' || checkName.includes('SEA REF')) type = 'sea_ref';
             else if (detailCode === 'sea_ldy' || checkName.includes('SEA LDY')) type = 'sea_ldy';
+            else if (detailCode === 'siel_tv' || checkName.includes('SIEL TV')) type = 'siel_tv';
+            else if (detailCode === 'siel_ref' || checkName.includes('SIEL REF')) type = 'siel_ref';
+            else if (detailCode === 'siel_ldy' || checkName.includes('SIEL LDY')) type = 'siel_ldy';
             else if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
             else if (detailCode === 'tse_ref' || checkName.includes('TSE REF')) type = 'tse_ref';
             else if (detailCode === 'tse_ldy' || checkName.includes('TSE LDY')) type = 'tse_ldy';
@@ -936,7 +943,7 @@ function renderCrossfieldReviewTypes(summary) {
 function renderCrossfieldSummaryContent(title, _category, data) {
     const inline = isCrossFieldInline();
     const ruleSummary = data.rule_summary || [];
-    const isCanonicalProductLine = /^(SEA_|TSE_)/.test(
+    const isCanonicalProductLine = /^(SEA_|SIEL_|TSE_)/.test(
         String(data.product_line || '').toUpperCase()
     );
 
@@ -1384,12 +1391,14 @@ function _showReviewDialog(checkType, callback) {
             var reasonOpts = '<option value="">-- 선택 --</option>';
             reasons.forEach(function(r) { reasonOpts += '<option value="' + esc(r) + '">' + esc(r) + '</option>'; });
             var hideReason = reasons.length === 0;
+            var memoRequired = checkType === 'cross_field'
+                && /^SIEL_/.test(String(window.crossfieldProductLine || '').toUpperCase());
             overlay.innerHTML = '<div class="memo-dialog">'
                 + '<div class="memo-dialog-title">확인</div>'
                 + '<div class="memo-dialog-field"' + (hideReason ? ' style="display:none"' : '') + '><label class="memo-dialog-label">이유 <span style="color:#dc2626;">*</span></label>'
                 + '<select class="memo-dialog-select" id="review-reason-select">' + reasonOpts + '</select></div>'
-                + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모</label>'
-                + '<textarea class="memo-dialog-input" id="review-memo" placeholder="메모 입력 (선택사항)" rows="3"></textarea></div>'
+                + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모' + (memoRequired ? ' <span style="color:#dc2626;">*</span>' : '') + '</label>'
+                + '<textarea class="memo-dialog-input" id="review-memo" placeholder="' + (memoRequired ? '확인 메모 입력 (필수)' : '메모 입력 (선택사항)') + '" rows="3"></textarea></div>'
                 + '<div class="memo-dialog-buttons">'
                 + '<button class="memo-dialog-cancel">취소</button>'
                 + '<button class="memo-dialog-confirm">확인</button>'
@@ -1406,6 +1415,7 @@ function _showReviewDialog(checkType, callback) {
                 var reason = hideReason ? '' : document.getElementById('review-reason-select').value;
                 var memo = document.getElementById('review-memo').value.trim();
                 if (!hideReason && !reason) { showToast('이유를 선택해주세요', 'warning'); return; }
+                if (memoRequired && !memo) { showToast('SIEL 확인 메모를 입력해주세요', 'warning'); return; }
                 closeDlg();
                 callback(reason, memo);
             };
@@ -1426,8 +1436,9 @@ async function showRulesModal(checkName) {
     // 크로스필드 규칙 체크 (Sentiment, 논리적 일관성)
     const crossfieldChecks = ['TV 논리적 일관성', 'HHP 논리적 일관성', 'TV Sentiment↔리뷰 일관성', 'HHP Sentiment↔리뷰 일관성'];
     const isSeaCrossfield = /^SEA (REF|LDY) 논리적 일관성$/.test(checkName || '');
+    const isSielCrossfield = /^SIEL (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
-    const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isTseCrossfield;
+    const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isSielCrossfield || isTseCrossfield;
 
     // checkName에서 category 추출
     let category = 'all';
@@ -1439,6 +1450,12 @@ async function showRulesModal(checkName) {
             category = 'sea_ref_retail';
         } else if (checkName.includes('SEA LDY')) {
             category = 'sea_ldy_retail';
+        } else if (checkName.includes('SIEL TV')) {
+            category = 'siel_tv_retail';
+        } else if (checkName.includes('SIEL REF')) {
+            category = 'siel_ref_retail';
+        } else if (checkName.includes('SIEL LDY')) {
+            category = 'siel_ldy_retail';
         } else if (checkName.includes('TSE TV')) {
             category = 'tse_tv_retail';
         } else if (checkName.includes('TSE REF')) {

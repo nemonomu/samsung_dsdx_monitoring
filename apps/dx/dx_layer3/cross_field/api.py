@@ -9,6 +9,7 @@ from apps.common.db import dx_connection
 from apps.common.response import safe_error, log_error
 from . import services
 from . import sea_services
+from . import siel_services
 from . import tse_services
 
 
@@ -21,6 +22,7 @@ def cross_field_detail(request):
     default_days = 3 if (
         product_line_key in {'tv', 'sea_tv'}
         or product_line_key.startswith('sea_')
+        or product_line_key.startswith('siel_')
         or product_line_key.startswith('tse_')
     ) else 1
     try:
@@ -38,6 +40,7 @@ def cross_field_detail(request):
         target_date = (datetime.now() - timedelta(days=1)).date()
 
     is_tse = product_line_key in ('tse_tv', 'tse_ref', 'tse_ldy')
+    is_siel = product_line_key in ('siel_tv', 'siel_ref', 'siel_ldy')
     is_sea = product_line_key in ('sea_ref', 'sea_ldy')
 
     # product_line을 section으로 변환
@@ -45,6 +48,22 @@ def cross_field_detail(request):
     section = section_map.get(product_line, f'{product_line}_retail')
 
     try:
+        if is_siel:
+            with dx_connection() as (conn, cursor):
+                if rule_id:
+                    result = siel_services.get_siel_cross_field_rule_detail(
+                        cursor, target_date, product_line, rule_id, days,
+                    )
+                else:
+                    result = siel_services.get_siel_cross_field_summary(
+                        cursor, target_date, product_line,
+                    )
+
+            if rule_id and not result.get('found'):
+                return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})
+            result.pop('found', None)
+            return JsonResponse(result)
+
         if is_tse:
             with dx_connection() as (conn, cursor):
                 if rule_id:

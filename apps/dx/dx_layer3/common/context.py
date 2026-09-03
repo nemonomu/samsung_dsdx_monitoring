@@ -7,6 +7,7 @@ from apps.dx.dx_layer3.dashboard.services import (
     load_crossfield_rules,
     load_category_rules,
 )
+from apps.common.siel_retail import SIEL_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 
 
@@ -54,6 +55,9 @@ def _get_sidebar_items():
     tse_section_codes = {
         source['section_code'] for source in TSE_SOURCE_CONFIG.values()
     }
+    siel_section_codes = {
+        source['section_code'] for source in SIEL_SOURCE_CONFIG.values()
+    }
     crossfield_items = []
     seen_crossfield_sections = set()
     sea_item_index = None
@@ -64,7 +68,11 @@ def _get_sidebar_items():
             if sea_item_index is None:
                 sea_item_index = len(crossfield_items)
             continue
-        if not section_name or section_code in tse_section_codes:
+        if (
+            not section_name
+            or section_code in siel_section_codes
+            or section_code in tse_section_codes
+        ):
             continue
 
         identity = section_code or section_name
@@ -91,6 +99,27 @@ def _get_sidebar_items():
             'children': sea_children,
         })
 
+    siel_children = []
+    for detail_code, source in SIEL_SOURCE_CONFIG.items():
+        if source['section_code'] not in active_sections:
+            continue
+        siel_children.append({
+            'name': source['display_name'],
+            'label': source['category'],
+            'detail_code': detail_code,
+        })
+    siel_item_index = None
+    if siel_children:
+        siel_item_index = (
+            sea_item_index + 1
+            if sea_item_index is not None
+            else len(crossfield_items)
+        )
+        crossfield_items.insert(siel_item_index, {
+            'name': 'SIEL Retail',
+            'children': siel_children,
+        })
+
     active_tse_sections = active_sections
     tse_children = []
     for detail_code, source in TSE_SOURCE_CONFIG.items():
@@ -107,7 +136,9 @@ def _get_sidebar_items():
             'children': tse_children,
         }
         insert_at = (
-            sea_item_index + 1
+            siel_item_index + 1
+            if siel_item_index is not None
+            else sea_item_index + 1
             if sea_item_index is not None
             else len(crossfield_items)
         )

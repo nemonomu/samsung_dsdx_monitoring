@@ -54,6 +54,9 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                     'apps.common.retail_validation',
                     get_tv_validation_condition=lambda: 'TRUE',
                 ),
+                'apps.common.siel_retail': module_stub(
+                    'apps.common.siel_retail', SIEL_SOURCE_CONFIG={}
+                ),
                 'apps.common.tse_retail': module_stub(
                     'apps.common.tse_retail', TSE_SOURCE_CONFIG={}
                 ),
@@ -67,6 +70,9 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 ),
                 'apps.dx.dx_layer3.cross_field.sea_services': module_stub(
                     'apps.dx.dx_layer3.cross_field.sea_services'
+                ),
+                'apps.dx.dx_layer3.cross_field.siel_services': module_stub(
+                    'apps.dx.dx_layer3.cross_field.siel_services'
                 ),
                 'apps.dx.dx_layer3.dashboard': package_stub(
                     'apps.dx.dx_layer3.dashboard'

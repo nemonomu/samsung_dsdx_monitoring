@@ -22,6 +22,24 @@ TSE_SOURCE_CONFIG = {
     },
 }
 
+SIEL_SOURCE_CONFIG = {
+    'siel_tv': {
+        'category': 'TV',
+        'section_code': 'siel_tv_retail',
+        'display_name': 'SIEL TV',
+    },
+    'siel_ref': {
+        'category': 'REF',
+        'section_code': 'siel_ref_retail',
+        'display_name': 'SIEL REF',
+    },
+    'siel_ldy': {
+        'category': 'LDY',
+        'section_code': 'siel_ldy_retail',
+        'display_name': 'SIEL LDY',
+    },
+}
+
 
 class Layer3TseSidebarContextTests(unittest.TestCase):
     def _load_context(self, crossfield_rules):
@@ -31,6 +49,10 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
             stubs={
                 'apps': package_stub('apps'),
                 'apps.common': package_stub('apps.common'),
+                'apps.common.siel_retail': module_stub(
+                    'apps.common.siel_retail',
+                    SIEL_SOURCE_CONFIG=SIEL_SOURCE_CONFIG,
+                ),
                 'apps.common.tse_retail': module_stub(
                     'apps.common.tse_retail',
                     TSE_SOURCE_CONFIG=TSE_SOURCE_CONFIG,
@@ -110,6 +132,40 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         self.assertEqual(
             [True, False],
             [child['active'] for child in tse_parent['children']],
+        )
+
+    def test_siel_rules_are_grouped_between_sea_and_tse(self):
+        context = self._load_context([
+            {'section_code': 'tv_retail', 'section_name': 'TV Retail'},
+            {'section_code': 'siel_tv_retail', 'section_name': 'SIEL TV'},
+            {'section_code': 'siel_ref_retail', 'section_name': 'SIEL REF'},
+            {'section_code': 'siel_ldy_retail', 'section_name': 'SIEL LDY'},
+            {'section_code': 'tse_tv_retail', 'section_name': 'TSE TV'},
+        ])
+
+        crossfield_group = context._build_sidebar_groups(
+            'cross_field', detail_code='siel_ref'
+        )[1]
+
+        self.assertEqual(
+            ['SEA Retail', 'SIEL Retail', 'TSE Retail'],
+            [item['name'] for item in crossfield_group['items']],
+        )
+        siel_parent = crossfield_group['items'][1]
+        self.assertTrue(siel_parent['active'])
+        self.assertEqual(
+            [
+                ('SIEL TV', 'TV', 'siel_tv', False),
+                ('SIEL REF', 'REF', 'siel_ref', True),
+                ('SIEL LDY', 'LDY', 'siel_ldy', False),
+            ],
+            [
+                (
+                    child['name'], child['label'],
+                    child['detail_code'], child['active'],
+                )
+                for child in siel_parent['children']
+            ],
         )
 
     def test_tse_parent_is_omitted_when_no_tse_rule_is_active(self):

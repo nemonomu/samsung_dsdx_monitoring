@@ -7,7 +7,14 @@ import re
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.siel_retail import (
+    SIEL_BUSINESS_TIMEZONE,
+    SIEL_TABLE_TO_PRODUCT_LINE,
+    get_siel_product_line_for_table,
+    get_siel_source,
+)
 from apps.common.tse_retail import (
     TSE_TABLE_TO_PRODUCT_LINE,
     get_tse_product_line_for_table,
@@ -23,10 +30,15 @@ VALID_TABLES_UPDATE = {
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } - DISABLED_SOURCE_TABLES
 VALID_TABLES_UPDATE.update(TSE_TABLE_TO_PRODUCT_LINE)
+VALID_TABLES_UPDATE.update(SIEL_TABLE_TO_PRODUCT_LINE)
 
 
 def _is_tse_table(table_name):
     return table_name in TSE_TABLE_TO_PRODUCT_LINE
+
+
+def _is_siel_table(table_name):
+    return table_name in SIEL_TABLE_TO_PRODUCT_LINE
 
 
 def _get_sea_edit_context(table_name):
@@ -39,9 +51,18 @@ def _get_sea_edit_context(table_name):
     return None
 
 
+def _get_siel_edit_context(table_name):
+    if not _is_siel_table(table_name):
+        return None
+    product_line = get_siel_product_line_for_table(table_name)
+    return get_siel_source(product_line)
+
+
 def _get_product_line(table_name):
     if _is_tse_table(table_name):
         return get_tse_product_line_for_table(table_name)
+    if _is_siel_table(table_name):
+        return get_siel_product_line_for_table(table_name)
     sea_context = _get_sea_edit_context(table_name)
     if sea_context:
         return sea_context['product_line']
@@ -74,6 +95,51 @@ def _select_sea_record(
           )
     """, (
         row_id, date_contract['source_date'], date_contract['source_date'],
+    ))
+
+
+def _select_siel_record(
+        cursor, source, select_columns, row_id, inspection_date):
+    date_contract = resolve_monitoring_date(
+        inspection_date, 'SIEL', source['source_key']
+    )
+    table_name = source['table_name']
+    date_column = source['date_column']
+    source_date = date_contract['source_date']
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {table_name} source
+        WHERE source.id = %s
+          AND source.{date_column} >= (
+                %s::date::timestamp AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND source.{date_column} < (
+                (%s::date + 1)::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
+              IN ('main', 'bsr')
+          AND {get_tv_validation_condition('source')}
+          AND source.batch_id IS NOT DISTINCT FROM (
+              SELECT anchor.batch_id
+              FROM {table_name} anchor
+              WHERE anchor.{date_column} >= (
+                        %s::date::timestamp AT TIME ZONE
+                        '{SIEL_BUSINESS_TIMEZONE}'
+                    )
+                AND anchor.{date_column} < (
+                        (%s::date + 1)::timestamp AT TIME ZONE
+                        '{SIEL_BUSINESS_TIMEZONE}'
+                    )
+                AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
+                    LOWER(BTRIM(CAST(source.account_name AS TEXT)))
+                AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+                AND {get_tv_validation_condition('anchor')}
+              ORDER BY anchor.id DESC
+              LIMIT 1
+          )
+    """, (
+        row_id, source_date, source_date, source_date, source_date,
     ))
 
 
@@ -126,8 +192,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         return invalid_target
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
+    siel_context = _get_siel_edit_context(table_name)
     if sea_context:
         table_name = sea_context['table_name']
+    elif siel_context:
+        table_name = siel_context['table_name']
 
     try:
         _validate_tse_column(table_name, column_name)
@@ -150,6 +219,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif sea_context:
         _select_sea_record(
             cursor, sea_context, select_columns, row_id, crawl_date
+        )
+    elif siel_context:
+        _select_siel_record(
+            cursor, siel_context, select_columns, row_id, crawl_date
         )
     else:
         cursor.execute(
@@ -216,8 +289,11 @@ def save_review(cursor, conn, table_name, record_id, column_name,
         return invalid_target
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
+    siel_context = _get_siel_edit_context(table_name)
     if sea_context:
         table_name = sea_context['table_name']
+    elif siel_context:
+        table_name = siel_context['table_name']
     try:
         _validate_tse_column(table_name, column_name)
     except ValueError as exc:
@@ -236,6 +312,11 @@ def save_review(cursor, conn, table_name, record_id, column_name,
             cursor, sea_context,
             f'{column_name}, account_name, item', record_id, crawl_date,
         )
+    elif siel_context:
+        _select_siel_record(
+            cursor, siel_context,
+            f'{column_name}, account_name, item', record_id, crawl_date,
+        )
     else:
         cursor.execute(
             f"SELECT {column_name}, account_name, item FROM {table_name} WHERE id = %s",
@@ -249,10 +330,16 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     retailer = row[1]
     item_value = str(row[2]) if row[2] else None
 
-    if _is_tse_table(table_name):
+    if _is_tse_table(table_name) or siel_context:
         editable_cols = get_editable_columns(product_line, retailer)
         if column_name not in editable_cols:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+
+    if siel_context and status == 'normal' and not str(memo or '').strip():
+        return {
+            'error': 'SIEL 크로스필드 확인 메모는 필수입니다',
+            'status': 400,
+        }
 
     # 중복 정상처리 체크
     cursor.execute("""

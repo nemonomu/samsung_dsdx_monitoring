@@ -78,7 +78,10 @@ assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=11'));
 assert(layer3Css.includes('.btn-crossfield-guide'));
 assert(layer3Css.includes('margin-left: auto'));
 assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));
+assert(commonSource.includes("{ key: 'siel', title: 'SIEL Retail'"));
 assert(commonSource.includes("{ key: 'tse', title: 'TSE Retail'"));
+assert(commonSource.includes("detailCode === 'siel_tv' || checkName.includes('SIEL TV')"));
+assert(commonSource.includes("category = 'siel_ref_retail'"));
 assert(commonSource.includes("toggleCrossfieldRegion('${groupId}', this)"));
 assert(layer3Css.includes('.crossfield-region-children.show'));
 
@@ -120,6 +123,9 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
             check('SEA Retail', 'tv', 10, 1),
             check('SEA REF 논리적 일관성', 'sea_ref', 20, 0, 4),
             check('SEA LDY 논리적 일관성', 'sea_ldy', 30, 2),
+            check('SIEL TV 논리적 일관성', 'siel_tv', 35, 0),
+            check('SIEL REF 논리적 일관성', 'siel_ref', 36, 1),
+            check('SIEL LDY 논리적 일관성', 'siel_ldy', 37, 0),
             check('TSE TV 논리적 일관성', 'tse_tv', 40, 0),
             check('TSE REF 논리적 일관성', 'tse_ref', 50, 0),
             check('TSE LDY 논리적 일관성', 'tse_ldy', 60, 0),
@@ -130,17 +136,22 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
 
     const html = container.innerHTML;
     assert(html.includes('crossfield-region-0-sea'));
+    assert(html.includes('crossfield-region-0-siel'));
     assert(html.includes('crossfield-region-0-tse'));
     assert(html.includes('SEA TV/REF/LDY 크로스필드 검증'));
+    assert(html.includes('SIEL TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('TSE TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('<div class="crossfield-region-name">SEA Retail</div>'));
+    assert(html.includes('<div class="crossfield-region-name">SIEL Retail</div>'));
     assert(html.includes('<div class="crossfield-region-name">TSE Retail</div>'));
     assert(html.includes('TV Sentiment↔리뷰 일관성'));
     assert(html.includes('확인 필요'));
     assert(html.includes('review-needed-value'));
     assert(html.indexOf('SEA Retail') < html.indexOf('TSE Retail'));
+    assert(html.indexOf('SEA Retail') < html.indexOf('SIEL Retail'));
+    assert(html.indexOf('SIEL Retail') < html.indexOf('TSE Retail'));
     assert(html.indexOf('TSE Retail') < html.indexOf('TV Sentiment↔리뷰 일관성'));
-    assert.strictEqual((html.match(/\bcrossfield-region-child\b/g) || []).length, 6);
+    assert.strictEqual((html.match(/\bcrossfield-region-child\b/g) || []).length, 9);
 }
 
 testCrossfieldRetailChecksRenderAsRegionAccordions();
@@ -290,7 +301,7 @@ assert(layer3Css.includes('background: #ecfdf5'));
 assert(source.includes("if (urlKey) defaultVisibleSet.add('product_url')"));
 assert(source.includes("r['product_url'] = renderProductUrl(row[urlKey])"));
 assert(source.includes('window.crossfieldSourceDate'));
-assert(source.includes("/^(SEA_|TSE_)/.test(productLineDisplay)"));
+assert(source.includes("/^(SEA_|SIEL_|TSE_)/.test(productLineDisplay)"));
 assert(source.includes('Shift+클릭으로 범위 선택'));
 assert(source.includes("showToast(successCount + '건 확인 처리 완료'"));
 
@@ -381,6 +392,7 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
 
     assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tv'), 3);
     assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('sea_ref'), 3);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('siel_tv'), 3);
     assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tse_ldy'), 3);
     assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('hhp'), 1);
     assert.ok(source.includes('pageSize: 100'));

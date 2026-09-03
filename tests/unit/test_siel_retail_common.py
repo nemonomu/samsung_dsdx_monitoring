@@ -3,10 +3,13 @@ from datetime import time
 
 from apps.common.siel_retail import (
     SIEL_SOURCE_CONFIG,
+    SIEL_TABLE_TO_PRODUCT_LINE,
     display_siel_retailer,
     get_siel_collection_phase,
     get_siel_count_status,
     get_siel_source,
+    get_siel_product_line_for_table,
+    resolve_siel_table,
 )
 
 
@@ -23,6 +26,22 @@ class SielRetailCommonTests(unittest.TestCase):
         self.assertEqual(
             ('Amazon', 'Flipkart'),
             get_siel_source('siel_ldy')['retailers'],
+        )
+        self.assertEqual(
+            'siel_tv',
+            SIEL_TABLE_TO_PRODUCT_LINE[
+                'dx_siel.dx_siel_tv_retail_com'
+            ],
+        )
+        self.assertEqual(
+            'dx_siel.dx_siel_ref_retail_com',
+            resolve_siel_table('siel_ref'),
+        )
+        self.assertEqual(
+            'siel_ldy',
+            get_siel_product_line_for_table(
+                'dx_siel.dx_siel_ldy_retail_com'
+            ),
         )
 
     def test_unknown_product_line_fails_closed(self):

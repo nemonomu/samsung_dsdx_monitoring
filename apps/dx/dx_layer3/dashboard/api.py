@@ -9,8 +9,13 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.siel_retail import SIEL_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
-from apps.dx.dx_layer3.cross_field import sea_services, tse_services
+from apps.dx.dx_layer3.cross_field import (
+    sea_services,
+    siel_services,
+    tse_services,
+)
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -368,6 +373,53 @@ def layer_stats(request):
                             if sea_review_needed
                             else 'OK'
                         ),
+                    })
+
+            # SIEL TV/REF/LDY는 검수일 당일(D), KST 날짜 기준으로
+            # 리테일러별 최신 MAIN anchor와 같은 MAIN+BSR 배치를 검증한다.
+            if run_crossfield:
+                siel_product_lines = (
+                    list(SIEL_SOURCE_CONFIG)
+                    if product_line == 'all'
+                    else [product_line]
+                    if product_line in SIEL_SOURCE_CONFIG
+                    else []
+                )
+                for siel_product_line in siel_product_lines:
+                    try:
+                        siel_result = (
+                            siel_services.get_siel_cross_field_summary(
+                                cursor, target_date, siel_product_line,
+                            )
+                        )
+                        if not siel_result.get('configured'):
+                            continue
+                        siel_total = siel_result['total_checked']
+                        siel_failed = siel_result['failed_records']
+                        siel_findings = siel_result['total_anomalies']
+                        siel_passed = siel_result.get(
+                            'passed_records',
+                            max(0, siel_total - siel_failed),
+                        )
+                    except Exception as e:
+                        log_error(e)
+                        continue
+
+                    total_checked += siel_total
+                    total_anomalies += siel_findings
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{siel_result['label']} 논리적 일관성",
+                        'detail_code': siel_product_line,
+                        'description': (
+                            '별점·별점 수, 리뷰·리뷰본문, 가격·할인율 '
+                            '논리 검증'
+                        ),
+                        'checked': siel_total,
+                        'passed': siel_passed,
+                        'failed': siel_failed,
+                        'finding_count': siel_findings,
+                        'status': get_status(siel_failed, siel_total),
                     })
 
             if False and run_crossfield and product_line in ['hhp', 'all']:
