@@ -4,6 +4,19 @@ DS Layer 2 Report Repository: 현황 저장/삭제 쿼리 전담
 from apps.common.db import ds_connection
 from apps.common.response import log_error
 
+
+_SYSTEM_CAUSE_MARKERS = {'crawler_null_capture'}
+
+
+def _resolved_cause(existing_cause, incoming_cause):
+    existing = str(existing_cause or '').strip()
+    incoming = str(incoming_cause or '').strip()
+
+    if existing and existing.casefold() not in _SYSTEM_CAUSE_MARKERS:
+        return existing
+    return incoming
+
+
 def fetch_retailer_save_status(target_date):
     try:
         with ds_connection() as (conn, cursor):
@@ -94,11 +107,12 @@ def db_save_retailer_transaction(crawl_date, retailer_id, stats, anomalies, memo
         sku = anomaly.get('retailersku', '')
         old = old_anomaly_map.pop(sku, None) if sku else None
         if old:
+            cause = _resolved_cause(old['cause'], anomaly.get('cause'))
             cursor.execute("""
                 UPDATE ssd_crawl_db.ds_monitoring_report_anomaly
-                SET is_del = 0, country_code = %s, title = %s, retailprice = %s, ships_from = %s, sold_by = %s, imageurl = %s, producturl = %s, updated_at = %s, updated_id = %s
+                SET is_del = 0, country_code = %s, title = %s, retailprice = %s, ships_from = %s, sold_by = %s, imageurl = %s, producturl = %s, cause = %s, updated_at = %s, updated_id = %s
                 WHERE id = %s
-            """, (anomaly.get('country_code', ''), anomaly.get('title', ''), anomaly.get('retailprice'), anomaly.get('ships_from', ''), anomaly.get('sold_by', ''), anomaly.get('imageurl', ''), anomaly.get('producturl', ''), now, user_id, old['id']))
+            """, (anomaly.get('country_code', ''), anomaly.get('title', ''), anomaly.get('retailprice'), anomaly.get('ships_from', ''), anomaly.get('sold_by', ''), anomaly.get('imageurl', ''), anomaly.get('producturl', ''), cause, now, user_id, old['id']))
             anomaly_ids.append(old['id'])
         else:
             cursor.execute("""

@@ -145,6 +145,79 @@ class PreviousAnomalyRepositoryTests(unittest.TestCase):
         self.assertIn('a.is_del = 0', sql)
         self.assertEqual('원인 A', result[0]['cause'])
 
+    def test_crawler_marker_is_replaced_by_carried_cause(self):
+        self.assertEqual(
+            '상품페이지 내 항목 부재',
+            self.repository._resolved_cause(
+                'crawler_null_capture', '상품페이지 내 항목 부재',
+            ),
+        )
+
+    def test_existing_user_cause_is_preserved(self):
+        self.assertEqual(
+            '오늘 확정 원인',
+            self.repository._resolved_cause(
+                '오늘 확정 원인', '전날 원인',
+            ),
+        )
+
+    def test_crawler_marker_without_match_becomes_blank(self):
+        self.assertEqual(
+            '',
+            self.repository._resolved_cause('crawler_null_capture', ''),
+        )
+
+    def test_existing_capture_row_receives_carried_cause_on_save(self):
+        cursor = ScriptedCursor([
+            {},
+            {},
+            {'fetchone': (31,)},
+            {},
+            {'fetchall': [(
+                34943, 'SKU-1', 40282, 'crawler_null_capture', '',
+            )]},
+            {},
+        ])
+
+        class Connection:
+            committed = False
+
+            def commit(self):
+                self.committed = True
+
+        connection = Connection()
+        stats = {
+            'expected_count': 1,
+            'final_batch_count': 1,
+            'total_count': 1,
+            'completion_rate': 100,
+            'rerun_count': 0,
+            'anomaly_total': 1,
+            'anomaly_title_null': 0,
+            'anomaly_image_null': 0,
+            'anomaly_partial_null': 1,
+            'anomaly_price_zero': 0,
+        }
+        current = anomaly(
+            country_code='JP',
+            producturl='https://example.com/product',
+            cause='상품페이지 내 항목 부재',
+        )
+
+        self.repository.db_save_retailer_transaction(
+            '2026-09-03', 17, stats, [current], '', 'tester',
+            '2026-09-03 10:30:00', cursor, connection,
+        )
+
+        anomaly_update = next(
+            (sql, params) for sql, params in cursor.calls
+            if 'UPDATE ssd_crawl_db.ds_monitoring_report_anomaly' in sql
+            and 'SET is_del = 0' in sql
+        )
+        self.assertIn('cause = %s', anomaly_update[0])
+        self.assertEqual('상품페이지 내 항목 부재', anomaly_update[1][7])
+        self.assertTrue(connection.committed)
+
 
 class SaveRetailerCarryForwardTests(unittest.TestCase):
     def test_save_uses_exact_previous_calendar_day(self):
