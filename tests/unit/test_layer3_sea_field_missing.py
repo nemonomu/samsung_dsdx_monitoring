@@ -396,7 +396,7 @@ class SeaFieldMissingDateTests(unittest.TestCase):
              for index in (29, 59, 89, 119)},
         )
 
-    def test_thirty_day_display_does_not_change_three_day_classification(self):
+    def test_thirty_day_history_prevents_existing_item_from_showing_as_new(self):
         target_date = date(2026, 8, 31)
         rows = [
             {
@@ -428,7 +428,11 @@ class SeaFieldMissingDateTests(unittest.TestCase):
         )
 
         self.assertEqual(1, result['today_null_count'])
-        self.assertEqual(1, result['new_item_count'])
+        self.assertEqual(0, result['new_item_count'])
+        self.assertEqual(
+            {'missing'},
+            {row['finding_type'] for row in result['data']},
+        )
         self.assertEqual(
             ['2026-08-10', '2026-08-31'],
             [row['crawl_strdatetime'] for row in result['data']],

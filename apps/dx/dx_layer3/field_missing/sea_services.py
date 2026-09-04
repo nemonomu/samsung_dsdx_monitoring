@@ -518,6 +518,15 @@ def field_missing_detail_by_field(
         finding['item']: finding['finding_type']
         for finding in stats['findings']
     }
+    previously_seen_items = {
+        str(row.get('item'))
+        for row in rows
+        if row.get('item') is not None
+        and _source_date(row, source['date_column']) < str(target_date)
+    }
+    for item_key, finding_type in list(finding_types.items()):
+        if finding_type == 'new' and item_key in previously_seen_items:
+            finding_types[item_key] = 'missing'
 
     detail_rows = []
     today_null_count = 0
