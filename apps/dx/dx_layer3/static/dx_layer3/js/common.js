@@ -83,15 +83,6 @@ function copyQueryToClipboard(element, preserveRaw) {
 let currentData = null;
 let layer3StatsRequestId = 0;
 
-function displayCountryFlagLabel(value) {
-    const text = value === null || value === undefined ? '' : String(value);
-    if (/^(🇺🇸|🇮🇳|🇹🇭)\s/.test(text)) return text;
-    if (/^SEA(?:\s|$)/.test(text)) return `🇺🇸 ${text}`;
-    if (/^SIEL(?:\s|$)/.test(text)) return `🇮🇳 ${text}`;
-    if (/^TSE(?:\s|$)/.test(text)) return `🇹🇭 ${text}`;
-    return text;
-}
-
 // 기존 API/규칙 식별자는 유지하고 화면 표시명만 통일한다.
 function getLayer3DisplayName(checkName, detailCode) {
     if (
@@ -543,7 +534,7 @@ function renderData(data) {
                 <div class="${rowClass}" ${rowAction}>
                     <div class="check-info">
                         <div class="check-name">
-                            ${esc(displayCountryFlagLabel(renderedDisplayName))}
+                            ${renderCountryFlagLabel(renderedDisplayName)}
                             ${check.threshold ? `<span class="threshold-badge">${esc(String(check.threshold))}</span>` : ''}
                             ${rulesBtn}
                         </div>
@@ -625,7 +616,7 @@ function renderData(data) {
                             <div class="crossfield-region-title">
                                 <span class="crossfield-region-arrow">▶</span>
                                 <div>
-                                    <div class="crossfield-region-name">${displayCountryFlagLabel(region.title)}</div>
+                                    <div class="crossfield-region-name">${renderCountryFlagLabel(region.title)}</div>
                                     <div class="check-description">${region.description}</div>
                                 </div>
                             </div>
@@ -732,7 +723,7 @@ async function showDetail(category, checkName, detailCode) {
     }
 
     let apiUrl = '';
-    let title = displayCountryFlagLabel(getLayer3DisplayName(checkName, detailCode));
+    let title = getLayer3DisplayName(checkName, detailCode);
 
     // API URL 결정
     if (category === '시계열 이상치') {
@@ -1438,7 +1429,7 @@ function _showReviewDialog(checkType, callback) {
 }
 
 async function showRulesModal(checkName) {
-    AppModal.setTitle('detail', displayCountryFlagLabel(getLayer3DisplayName(checkName, '')) + ' - 검증 규칙');
+    AppModal.setTitle('detail', getLayer3DisplayName(checkName, '') + ' - 검증 규칙');
     AppModal.setBody('detail', '<p style="text-align:center;">로딩 중...</p>');
     AppModal.open('detail');
 

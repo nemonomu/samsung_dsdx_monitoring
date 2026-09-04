@@ -14,10 +14,10 @@ const layer2CommonSource = fs.readFileSync(
 
 const sandbox = {
     console,
-    displayCountryFlagLabel(value) {
-        const flags = { SEA: '🇺🇸', SIEL: '🇮🇳', TSE: '🇹🇭' };
+    renderCountryFlagLabel(value) {
+        const flags = { SEA: 'us', SIEL: 'in', TSE: 'th' };
         const text = String(value || '');
-        return flags[text.split(' ')[0]] ? flags[text.split(' ')[0]] + ' ' + text : text;
+        return flags[text.split(' ')[0]] ? '<img src="/static/img/flags/' + flags[text.split(' ')[0]] + '.svg"><span>' + text + '</span>' : text;
     },
     renderNullFieldsDetail(fields) {
         return Object.keys(fields || {}).join(',');
@@ -74,8 +74,8 @@ assert.ok(groupedHtml.includes('SEA TV'));
 assert.ok(groupedHtml.includes('SEA REF'));
 assert.ok(groupedHtml.includes('SEA LDY'));
 assert.ok(groupedHtml.includes('YouTube'));
-assert.ok(groupedHtml.includes('🇺🇸 SEA Retail'));
-assert.ok(groupedHtml.includes('🇹🇭 TSE Retail'));
+assert.ok(groupedHtml.includes('/static/img/flags/us.svg'));
+assert.ok(groupedHtml.includes('/static/img/flags/th.svg'));
 assert.ok(groupedHtml.indexOf('SEA Retail') < groupedHtml.indexOf('TSE Retail'));
 
 const html = sandbox.renderDXTableDetail(
@@ -113,7 +113,7 @@ let youtubeDetailHtml = '';
 let youtubeTableOptions = null;
 const youtubeSandbox = {
     console,
-    displayCountryFlagLabel: value => String(value),
+    renderCountryFlagLabel: value => String(value),
     getDetailBody() { return { innerHTML: '' }; },
     getSelectedDate() { return '2026-08-31'; },
     isInlineMode() { return true; },

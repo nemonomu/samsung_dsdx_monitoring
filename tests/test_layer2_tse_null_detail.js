@@ -245,8 +245,8 @@ function renderTseDetail(inlineMode) {
     const body = { innerHTML: '' };
     const sandbox = {
         console,
-        displayCountryFlagLabel(value) {
-            return String(value).startsWith('TSE ') ? '🇹🇭 ' + value : String(value);
+        renderCountryFlagLabel(value) {
+            return String(value).startsWith('TSE ') ? '<img src="/static/img/flags/th.svg"><span>' + value + '</span>' : String(value);
         },
         getDetailBody() { return body; },
         getSelectedDate() { return '2026-08-10'; },
@@ -279,7 +279,7 @@ function testTseSqlAndDaysRenderInInlineAndDashboardViews() {
     const dashboard = renderTseDetail(false);
 
     assert.ok(inline.html.includes('id="detail-days"'));
-    assert.ok(inline.html.includes('🇹🇭 TSE TV'));
+    assert.ok(inline.html.includes('/static/img/flags/th.svg'));
     assert.ok(inline.html.includes('dx_tse.dx_tse_tv_retail_com'));
     assert.ok(inline.html.includes('3일 수정용 조회 SQL'));
     assert.ok(dashboard.html.includes('id="detail-days"'));

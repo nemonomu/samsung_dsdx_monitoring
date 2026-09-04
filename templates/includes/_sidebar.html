@@ -32,7 +32,7 @@
                             aria-expanded="{% if item.active %}true{% else %}false{% endif %}"
                             aria-controls="sidebar-subgroup-{{ group.key }}-{{ item.name|slugify }}"
                             onclick="toggleSidebarSubgroup(this)">
-                        <span>{% if item.name == 'SEA Retail' %}🇺🇸 {% elif item.name == 'SIEL Retail' %}🇮🇳 {% elif item.name == 'TSE Retail' %}🇹🇭 {% endif %}{{ item.name }}</span>
+                        <span class="country-flag-label">{% if item.name == 'SEA Retail' %}<img class="country-flag-icon" src="/static/img/flags/us.svg" alt="" aria-hidden="true">{% elif item.name == 'SIEL Retail' %}<img class="country-flag-icon" src="/static/img/flags/in.svg" alt="" aria-hidden="true">{% elif item.name == 'TSE Retail' %}<img class="country-flag-icon" src="/static/img/flags/th.svg" alt="" aria-hidden="true">{% endif %}<span>{{ item.name }}</span></span>
                         <span class="sidebar-subgroup-arrow" aria-hidden="true">▶</span>
                     </button>
                     <div class="sidebar-subgroup-children"
@@ -51,7 +51,7 @@
                 <a class="sidebar-subitem {% if item.active %}active{% endif %}"
                    {% if item.href %}href="{{ item.href }}{% if target_date %}?date={{ target_date|urlencode }}{% endif %}"
                    {% else %}onclick="onSubitemClick('{{ group.key }}', '{{ item.name|escapejs }}', '{{ item.detail_code|default:""|escapejs }}')"{% endif %}>
-                    {% if item.name == 'SEA Retail' %}🇺🇸 {% elif item.name == 'SIEL Retail' %}🇮🇳 {% elif item.name == 'TSE Retail' %}🇹🇭 {% endif %}{{ item.name }}
+                    <span class="country-flag-label">{% if item.name == 'SEA Retail' %}<img class="country-flag-icon" src="/static/img/flags/us.svg" alt="" aria-hidden="true">{% elif item.name == 'SIEL Retail' %}<img class="country-flag-icon" src="/static/img/flags/in.svg" alt="" aria-hidden="true">{% elif item.name == 'TSE Retail' %}<img class="country-flag-icon" src="/static/img/flags/th.svg" alt="" aria-hidden="true">{% endif %}<span>{{ item.name }}</span></span>
                 </a>
                 {% endif %}
                 {% endfor %}

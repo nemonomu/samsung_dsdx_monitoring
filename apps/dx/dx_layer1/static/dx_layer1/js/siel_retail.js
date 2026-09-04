@@ -100,7 +100,7 @@ function renderSielRetailCheck(check, checkIdx) {
     return '<div class="check-item">' +
         '<div class="check-main" onclick="toggleTimeSlots(this, ' + checkIdx + ')">' +
             '<div class="check-info">' +
-                '<div class="check-name"><span class="toggle-icon">▶</span>' + esc(displayCountryFlagLabel(check.name || 'SIEL Retail')) + '</div>' +
+                '<div class="check-name"><span class="toggle-icon">▶</span>' + renderCountryFlagLabel(check.name || 'SIEL Retail') + '</div>' +
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +
             '</div>' +
             '<div class="check-stats">' +

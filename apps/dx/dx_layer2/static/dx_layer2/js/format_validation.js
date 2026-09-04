@@ -154,7 +154,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             var wrapper = `<div class="inline-detail-view">
                 <div class="inline-detail-header"><div>
                     <div class="inline-detail-title">${fieldName} 형식 오류 (0건)</div>
-                    <div class="inline-detail-subtitle" id="detail-subtitle">${displayCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}</div>
+                    <div class="inline-detail-subtitle" id="detail-subtitle">${renderCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}</div>
                 </div><div class="inline-detail-date">${date}(${_we})</div></div>
                 <div id="detail-body">${emptyHtml}</div>
             </div>`;
@@ -211,7 +211,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         const fieldTitle = currentDays > 1
             ? `${fieldName} 형식 오류 항목 (${filteredRecords.length}건 / ${currentDays}일치)`
             : `${fieldName} 형식 오류 (${filteredRecords.length}건)`;
-        const fieldSubtitle = `${displayCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}`;
+        const fieldSubtitle = `${renderCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}`;
         var daysInputHtml = isRetail ? `<div style="display:flex;align-items:center;gap:6px;margin-right:12px;">
             <label style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">일수:</label>
             <input type="number" id="fmt-detail-days" value="${currentDays}" min="1" max="30"
@@ -273,7 +273,7 @@ async function reloadFormatData(date) {
 
         const records = data.records || data.results || [];
         var subtitle = getDetailSubtitle();
-        if (subtitle) subtitle.textContent = `${displayCountryFlagLabel(modalState.tableName)} | ${records.length}건의 오류 데이터`;
+        if (subtitle) subtitle.innerHTML = `${renderCountryFlagLabel(modalState.tableName)} | ${records.length}건의 오류 데이터`;
 
         if (selectedField) {
             showFormatFieldDetail(selectedField, false);

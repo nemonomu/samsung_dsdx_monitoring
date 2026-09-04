@@ -1,15 +1,6 @@
 // ============================================================
 // Layer1 Common Utilities
 // ============================================================
-function displayCountryFlagLabel(value) {
-    var text = value === null || value === undefined ? '' : String(value);
-    if (/^(🇺🇸|🇮🇳|🇹🇭)\s/.test(text)) return text;
-    if (/^SEA(?:\s|$)/.test(text)) return '🇺🇸 ' + text;
-    if (/^SIEL(?:\s|$)/.test(text)) return '🇮🇳 ' + text;
-    if (/^TSE(?:\s|$)/.test(text)) return '🇹🇭 ' + text;
-    return text;
-}
-
 var L1 = (function() {
 
     // TV/HHP 카테고리 정렬 순서

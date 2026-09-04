@@ -302,7 +302,7 @@ function renderInlineTableRow(member, childClass) {
              onclick="showTableDetail(${member.index})">
             <div class="table-header">
                 <div class="table-info">
-                    <span class="table-name">${displayCountryFlagLabel(table.table_name)}</span>
+                    <span class="table-name">${renderCountryFlagLabel(table.table_name)}</span>
                     <span class="null-table-checked">(${checkedCount.toLocaleString()}건 검사)</span>
                 </div>
                 <div class="table-stats">
@@ -335,7 +335,7 @@ function renderInlineNullGroups(vType) {
                 <div class="table-header null-country-header"
                      onclick="toggleNullTableGroup('${groupId}', 'icon-${groupId}')">
                     <div class="null-country-info">
-                        <span class="table-name">${displayCountryFlagLabel(entry.name)}</span>
+                        <span class="table-name">${renderCountryFlagLabel(entry.name)}</span>
                         <span class="null-country-description">${entry.description}</span>
                         <span class="null-country-checked">${entry.total_records.toLocaleString()}건 검사</span>
                     </div>
@@ -398,7 +398,7 @@ function renderDXValidationTypes(data) {
                     <div class="inline-detail-view">
                         <div class="inline-detail-header">
                             <div>
-                                <div class="inline-detail-title">${displayCountryFlagLabel(table.table_name)}</div>
+                                <div class="inline-detail-title">${renderCountryFlagLabel(table.table_name)}</div>
                                 <div class="inline-detail-subtitle">${(table.total_records || table.total_checked || 0).toLocaleString()}건 검사 | ${table.total_issues}건 오류</div>
                             </div>
                         </div>
@@ -458,7 +458,7 @@ function showTableDetail(tableIdx) {
         <div class="inline-detail-view">
             <div class="inline-detail-header">
                 <div>
-                    <div class="inline-detail-title">${displayCountryFlagLabel(table.table_name)}</div>
+                    <div class="inline-detail-title">${renderCountryFlagLabel(table.table_name)}</div>
                     <div class="inline-detail-subtitle">${(table.total_records || table.total_checked || 0).toLocaleString()}건 검사 | ${table.total_issues}건 오류</div>
                 </div>
             </div>
@@ -487,7 +487,7 @@ function renderDashboardTableItem(vType, vIdx, table, tIdx, childClass) {
         <div class="table-item ${childClass || ''}">
             <div class="table-header" onclick="toggleTable(${vIdx}, ${tIdx})">
                 <div class="table-info">
-                    <span class="table-name">${displayCountryFlagLabel(table.table_name)}</span>
+                    <span class="table-name">${renderCountryFlagLabel(table.table_name)}</span>
                     <span class="null-table-checked">(${checkedCount.toLocaleString()}건 검사)</span>
                 </div>
                 <div class="table-stats">
@@ -521,7 +521,7 @@ function renderDashboardNullGroups(vType, vIdx) {
                 <div class="table-header null-country-header"
                      onclick="toggleNullTableGroup('${groupId}', 'icon-${groupId}')">
                     <div class="null-country-info">
-                        <span class="table-name">${displayCountryFlagLabel(entry.name)}</span>
+                        <span class="table-name">${renderCountryFlagLabel(entry.name)}</span>
                         <span class="null-country-description">${entry.description}</span>
                         <span class="null-country-checked">${entry.total_records.toLocaleString()}건 검사</span>
                     </div>

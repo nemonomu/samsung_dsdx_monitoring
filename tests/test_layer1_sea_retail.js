@@ -80,7 +80,7 @@ const summaries = {
 };
 
 const context = {
-    displayCountryFlagLabel: value => '🇺🇸 ' + String(value),
+    renderCountryFlagLabel: value => '<img class="country-flag-icon" src="/static/img/flags/us.svg"><span>' + String(value) + '</span>',
     L1: {
         renderers: {},
         initLayer1Page: function() {},
@@ -218,7 +218,8 @@ function categoryFromSummary(key) {
         status: 'PENDING',
         categories: [],
     }, 0);
-    assert.ok(fallbackHtml.includes('🇺🇸 SEA Retail'));
+    assert.ok(fallbackHtml.includes('/static/img/flags/us.svg'));
+    assert.ok(fallbackHtml.includes('<span>SEA Retail</span>'));
     const tvIndex = fallbackHtml.indexOf('sentiment-category-name">TV');
     const refIndex = fallbackHtml.indexOf('sentiment-category-name">REF');
     const ldyIndex = fallbackHtml.indexOf('sentiment-category-name">LDY');
@@ -239,11 +240,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=14"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=14"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=8"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=15"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=15"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=9"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=9"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=10"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
     assert.ok(!youtubeSource.includes("(offset_days="));

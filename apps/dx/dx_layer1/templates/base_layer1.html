@@ -31,7 +31,7 @@
             </div>
         </div>
         {% else %}
-        <h2 class="section-title">{% if section_title == 'SEA Retail' %}🇺🇸 {% elif section_title == 'SIEL Retail' %}🇮🇳 {% elif section_title == 'TSE Retail' %}🇹🇭 {% endif %}{{ section_title }}</h2>
+        <h2 class="section-title"><span class="country-flag-label">{% if section_title == 'SEA Retail' %}<img class="country-flag-icon" src="{% static 'img/flags/us.svg' %}" alt="" aria-hidden="true">{% elif section_title == 'SIEL Retail' %}<img class="country-flag-icon" src="{% static 'img/flags/in.svg' %}" alt="" aria-hidden="true">{% elif section_title == 'TSE Retail' %}<img class="country-flag-icon" src="{% static 'img/flags/th.svg' %}" alt="" aria-hidden="true">{% endif %}<span>{{ section_title }}</span></span></h2>
         {% endif %}
 
         <div id="filter-bar-container"></div>
@@ -51,7 +51,7 @@
     };
 
 </script>
-<script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=8"></script>
+<script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=9"></script>
 <script src="{% static 'dx_layer1/js/raw-data-view.js' %}?v=1"></script>
 {% block layer1_js %}{% endblock %}
 {% endblock %}

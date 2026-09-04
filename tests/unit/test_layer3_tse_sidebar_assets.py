@@ -74,9 +74,12 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             'id="sidebar-subgroup-cross_field-sea-retail" hidden', rendered
         )
         self.assertIn('onclick="toggleSidebarSubgroup(this)"', rendered)
-        self.assertIn('<span>🇺🇸 SEA Retail</span>', rendered)
-        self.assertIn('<span>🇮🇳 SIEL Retail</span>', rendered)
-        self.assertIn('<span>🇹🇭 TSE Retail</span>', rendered)
+        self.assertIn('img/flags/us.svg', rendered)
+        self.assertIn('img/flags/in.svg', rendered)
+        self.assertIn('img/flags/th.svg', rendered)
+        self.assertIn('<span>SEA Retail</span>', rendered)
+        self.assertIn('<span>SIEL Retail</span>', rendered)
+        self.assertIn('<span>TSE Retail</span>', rendered)
         self.assertIn('data-item-name="TSE REF"', rendered)
         self.assertIn('data-detail-code="tse_ref"', rendered)
         self.assertIn(
@@ -125,11 +128,11 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             source,
         )
         self.assertIn(
-            'let title = displayCountryFlagLabel(getLayer3DisplayName(checkName, detailCode));',
+            'let title = getLayer3DisplayName(checkName, detailCode);',
             source,
         )
         self.assertIn(
-            "displayCountryFlagLabel(getLayer3DisplayName(checkName, '')) + ' - 검증 규칙'",
+            "getLayer3DisplayName(checkName, '') + ' - 검증 규칙'",
             source,
         )
         self.assertIn(

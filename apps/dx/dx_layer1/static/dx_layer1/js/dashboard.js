@@ -61,7 +61,7 @@ async function loadStats() {
                 <div class="check-item">
                     <div class="check-main">
                         <div class="check-info">
-                            <div class="check-name">${esc(displayCountryFlagLabel(check.name))}</div>
+                            <div class="check-name">${renderCountryFlagLabel(check.name)}</div>
                             <div class="check-description">${esc(check.description || '')}</div>
                         </div>
                         <div class="check-stats">

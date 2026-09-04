@@ -401,7 +401,7 @@ function renderRetailCheck(check, checkIdx) {
             '<div class="check-info">' +
                 '<div class="check-name">' +
                     '<span class="toggle-icon">▶</span>' +
-                    displayCountryFlagLabel(check.name) +
+                    renderCountryFlagLabel(check.name) +
                 '</div>' +
                 '<div class="check-description">' + check.description + '</div>' +
             '</div>' +
@@ -439,7 +439,7 @@ function toggleRetailCategory(element, checkIdx, catIdx) {
 var rawView = new RawDataView({
     apiUrl: '/dx/layer1/retail/api/raw-data/',
     backUrl: '/dx/layer1/retail/',
-    title: function(p) { return displayCountryFlagLabel('SEA Retail') + ' - ' + p.retailer + ' (' + p.period + ')'; },
+    title: function(p) { return 'SEA Retail - ' + p.retailer + ' (' + p.period + ')'; },
     urlParams: ['category', 'retailer', 'period']
 });
 

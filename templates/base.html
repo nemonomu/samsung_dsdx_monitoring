@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}데이터 품질 모니터링{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'css/common.css' %}?v=4">
+    <link rel="stylesheet" href="{% static 'css/common.css' %}?v=5">
     <link rel="stylesheet" href="{% static 'css/table.css' %}?v=1">
     <link rel="stylesheet" href="{% static 'css/buttons.css' %}?v=1">
     <link rel="stylesheet" href="{% static 'css/filter-bar.css' %}?v=1">
@@ -96,6 +96,8 @@
         </div>
     </footer>
 
+    <script>window.COUNTRY_FLAG_BASE_URL = "{% static 'img/flags/' %}";</script>
+    <script src="{% static 'js/country-flags.js' %}?v=1"></script>
     <script src="{% static 'js/security.js' %}?v=2"></script>
     <script src="{% static 'js/format.js' %}?v=1"></script>
     <script src="{% static 'js/ui.js' %}?v=1"></script>
