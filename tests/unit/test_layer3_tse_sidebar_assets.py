@@ -42,6 +42,16 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
                             'active': True,
                         }],
                     },
+                    {
+                        'name': 'SIEL Retail',
+                        'active': False,
+                        'children': [{
+                            'name': 'SIEL LDY',
+                            'label': 'LDY',
+                            'detail_code': 'siel_ldy',
+                            'active': False,
+                        }],
+                    },
                 ],
             }],
         }))
@@ -50,7 +60,7 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             "onSubitemClick('cross_field', 'SEA Retail', 'tv')", rendered
         )
         self.assertEqual(
-            2, rendered.count('onclick="toggleSidebarSubgroup(this)"')
+            3, rendered.count('onclick="toggleSidebarSubgroup(this)"')
         )
         self.assertIn('class="sidebar-subgroup active expanded"', rendered)
         self.assertIn(
@@ -64,7 +74,9 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             'id="sidebar-subgroup-cross_field-sea-retail" hidden', rendered
         )
         self.assertIn('onclick="toggleSidebarSubgroup(this)"', rendered)
-        self.assertIn('<span>TSE Retail</span>', rendered)
+        self.assertIn('<span>🇺🇸 SEA Retail</span>', rendered)
+        self.assertIn('<span>🇮🇳 SIEL Retail</span>', rendered)
+        self.assertIn('<span>🇹🇭 TSE Retail</span>', rendered)
         self.assertIn('data-item-name="TSE REF"', rendered)
         self.assertIn('data-detail-code="tse_ref"', rendered)
         self.assertIn(
@@ -113,11 +125,11 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             source,
         )
         self.assertIn(
-            'let title = getLayer3DisplayName(checkName, detailCode);',
+            'let title = displayCountryFlagLabel(getLayer3DisplayName(checkName, detailCode));',
             source,
         )
         self.assertIn(
-            "getLayer3DisplayName(checkName, '') + ' - 검증 규칙'",
+            "displayCountryFlagLabel(getLayer3DisplayName(checkName, '')) + ' - 검증 규칙'",
             source,
         )
         self.assertIn(

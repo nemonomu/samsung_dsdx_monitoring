@@ -80,6 +80,7 @@ const summaries = {
 };
 
 const context = {
+    displayCountryFlagLabel: value => '🇺🇸 ' + String(value),
     L1: {
         renderers: {},
         initLayer1Page: function() {},
@@ -217,6 +218,7 @@ function categoryFromSummary(key) {
         status: 'PENDING',
         categories: [],
     }, 0);
+    assert.ok(fallbackHtml.includes('🇺🇸 SEA Retail'));
     const tvIndex = fallbackHtml.indexOf('sentiment-category-name">TV');
     const refIndex = fallbackHtml.indexOf('sentiment-category-name">REF');
     const ldyIndex = fallbackHtml.indexOf('sentiment-category-name">LDY');
@@ -237,11 +239,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=13"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=13"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=7"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=14"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=14"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=8"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=9"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
     assert.ok(!youtubeSource.includes("(offset_days="));

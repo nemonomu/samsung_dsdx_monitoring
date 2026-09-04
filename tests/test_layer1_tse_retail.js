@@ -46,6 +46,7 @@ const dashboardSource = fs.readFileSync(
 
 const context = {
     L1: { renderers: {} },
+    displayCountryFlagLabel: value => '🇹🇭 ' + String(value),
     esc: value => String(value),
     getStatusBadge: status => '<status>' + status + '</status>',
     Number,
@@ -87,7 +88,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=8"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=9"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
@@ -98,6 +99,7 @@ const checkHtml = context.renderTseRetailCheck({
 }, 1);
 
 assert(checkHtml.includes('<div class="value">882</div>'));
+assert(checkHtml.includes('🇹🇭 TSE Retail'));
 assert(!checkHtml.includes('882/900'));
 assert(!checkHtml.includes('check-criteria'));
 assert(!checkHtml.includes('Homepro: 200건 이상 정상'));

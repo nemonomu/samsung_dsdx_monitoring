@@ -188,7 +188,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
 
     const typeNames = { 'null': 'NULL 검증', 'format': '형식 검증', 'duplicate': '중복 검증' };
     const titleText = `${retailer} - ${typeNames[type]} 오류`;
-    const subtitleText = `${tableName} | ${count}건의 오류 데이터`;
+    const subtitleText = `${displayCountryFlagLabel(tableName)} | ${count}건의 오류 데이터`;
 
     const date = getSelectedDate();
     const tableParam = tableCode || (tableName === 'YouTube' ? 'youtube' :
@@ -448,7 +448,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             var wrapper = `<div class="inline-detail-view">
                 <div class="inline-detail-header"><div>
                     <div class="inline-detail-title">${fieldName} NULL 오류 (0건)</div>
-                    <div class="inline-detail-subtitle" id="detail-subtitle">${modalState.tableName} | ${modalState.retailer}${sourceScope}</div>
+                    <div class="inline-detail-subtitle" id="detail-subtitle">${displayCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}${sourceScope}</div>
                 </div><div class="inline-detail-date">${date}(${_we})</div></div>
                 <div id="detail-body">${emptyHtml}</div>
             </div>`;
@@ -567,7 +567,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         const fieldTitle = currentDays > 1
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
-        const fieldSubtitle = `${modalState.tableName} | ${modalState.retailer}${sourceScope}`;
+        const fieldSubtitle = `${displayCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}${sourceScope}`;
         const wrapper = `<div class="inline-detail-view">
             <div class="inline-detail-header"><div>
                 <div class="inline-detail-title">${fieldTitle}</div>

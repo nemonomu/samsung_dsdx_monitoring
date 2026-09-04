@@ -14,6 +14,11 @@ const layer2CommonSource = fs.readFileSync(
 
 const sandbox = {
     console,
+    displayCountryFlagLabel(value) {
+        const flags = { SEA: '🇺🇸', SIEL: '🇮🇳', TSE: '🇹🇭' };
+        const text = String(value || '');
+        return flags[text.split(' ')[0]] ? flags[text.split(' ')[0]] + ' ' + text : text;
+    },
     renderNullFieldsDetail(fields) {
         return Object.keys(fields || {}).join(',');
     }
@@ -69,6 +74,8 @@ assert.ok(groupedHtml.includes('SEA TV'));
 assert.ok(groupedHtml.includes('SEA REF'));
 assert.ok(groupedHtml.includes('SEA LDY'));
 assert.ok(groupedHtml.includes('YouTube'));
+assert.ok(groupedHtml.includes('🇺🇸 SEA Retail'));
+assert.ok(groupedHtml.includes('🇹🇭 TSE Retail'));
 assert.ok(groupedHtml.indexOf('SEA Retail') < groupedHtml.indexOf('TSE Retail'));
 
 const html = sandbox.renderDXTableDetail(
@@ -106,6 +113,7 @@ let youtubeDetailHtml = '';
 let youtubeTableOptions = null;
 const youtubeSandbox = {
     console,
+    displayCountryFlagLabel: value => String(value),
     getDetailBody() { return { innerHTML: '' }; },
     getSelectedDate() { return '2026-08-31'; },
     isInlineMode() { return true; },

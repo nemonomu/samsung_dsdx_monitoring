@@ -36,7 +36,7 @@ assert(source.includes('function _fmSubmitReviews'));
 assert(source.includes("cell.classList.add('cell-review-selected')"));
 assert(source.includes('return Promise.all(requests)'));
 assert(commonSource.includes('switchFieldMissingTab(detailCodeParam || focusParam.toLowerCase())'));
-assert(template.includes("common.js' %}?v=20260903-2"));
+assert(template.includes("common.js' %}?v=20260904-1"));
 assert(template.includes('id="field-missing-date-scope"'));
 assert(template.includes('data-pl="sea_ref"'));
 assert(template.includes('data-pl="sea_ldy"'));

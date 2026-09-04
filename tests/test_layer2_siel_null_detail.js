@@ -17,6 +17,7 @@ const nullTemplateSource = fs.readFileSync(
 
 const dashboardSandbox = {
     console,
+    displayCountryFlagLabel: value => String(value),
     renderNullFieldsDetail(fields) {
         return Object.keys(fields || {}).join(',');
     }
@@ -167,7 +168,7 @@ assert.ok(commonSource.includes("detailViewState.type !== 'null'"));
 assert.ok(commonSource.includes('requireMemo: requiresMemo'));
 assert.ok(commonSource.includes('if (memoRequired && !memo)'));
 assert.ok(nullTemplateSource.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260904-2"
+    "dx_layer2/js/layer2-common.js' %}?v=20260904-3"
 ));
 
 console.log('Layer2 SIEL NULL frontend tests passed.');

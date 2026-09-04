@@ -34,6 +34,7 @@ const baseSource = fs.readFileSync(
 
 const context = {
     L1: { renderers: {} },
+    displayCountryFlagLabel: value => '🇮🇳 ' + String(value),
     esc: value => String(value),
     getStatusBadge: status => '<status>' + status + '</status>',
     Number,
@@ -78,9 +79,10 @@ const checkHtml = context.renderSielRetailCheck({
 
 assert(!checkHtml.includes('검수일 2026-08-11 · 데이터일 2026-08-11 (D)'));
 assert(checkHtml.includes('<div class="value">1,817</div>'));
+assert(checkHtml.includes('🇮🇳 SIEL Retail'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
-assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=7"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=2"));
+assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=8"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=3"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 
 const commonContext = {
@@ -91,6 +93,10 @@ const commonContext = {
     Date,
 };
 vm.runInNewContext(commonSource, commonContext);
+assert.strictEqual(commonContext.displayCountryFlagLabel('SEA Retail'), '🇺🇸 SEA Retail');
+assert.strictEqual(commonContext.displayCountryFlagLabel('SIEL TV'), '🇮🇳 SIEL TV');
+assert.strictEqual(commonContext.displayCountryFlagLabel('TSE LDY'), '🇹🇭 TSE LDY');
+assert.strictEqual(commonContext.displayCountryFlagLabel('YouTube'), 'YouTube');
 
 commonContext.currentStatsData = {
     checks: [{ check_type: 'siel_retail', rate: 98 }],

@@ -141,9 +141,9 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
     assert(html.includes('SEA TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('SIEL TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('TSE TV/REF/LDY 크로스필드 검증'));
-    assert(html.includes('<div class="crossfield-region-name">SEA Retail</div>'));
-    assert(html.includes('<div class="crossfield-region-name">SIEL Retail</div>'));
-    assert(html.includes('<div class="crossfield-region-name">TSE Retail</div>'));
+    assert(html.includes('<div class="crossfield-region-name">🇺🇸 SEA Retail</div>'));
+    assert(html.includes('<div class="crossfield-region-name">🇮🇳 SIEL Retail</div>'));
+    assert(html.includes('<div class="crossfield-region-name">🇹🇭 TSE Retail</div>'));
     assert(html.includes('TV Sentiment↔리뷰 일관성'));
     assert(html.includes('확인 필요'));
     assert(html.includes('review-needed-value'));
@@ -478,7 +478,7 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
         requestedUrl,
         '/layer3/api/cross-field-detail/?date=2026-08-11&type=tv'
     );
-    assert.strictEqual(detailModal.title, 'SEA Retail (0건)');
+    assert.strictEqual(detailModal.title, '🇺🇸 SEA Retail (0건)');
     assert(detailModal.body.includes('논리 오류 데이터가 없습니다'));
     assert(detailModal.body.includes('onclick="showCrossfieldGuide()"'));
     assert.strictEqual(detailModal.opened, true);

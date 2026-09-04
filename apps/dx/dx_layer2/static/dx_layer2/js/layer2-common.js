@@ -1,4 +1,13 @@
 // Layer 2: 형식/NULL 검수 (DX 데이터 품질 모니터링)
+function displayCountryFlagLabel(value) {
+    var text = value === null || value === undefined ? '' : String(value);
+    if (/^(🇺🇸|🇮🇳|🇹🇭)\s/.test(text)) return text;
+    if (/^SEA(?:\s|$)/.test(text)) return '🇺🇸 ' + text;
+    if (/^SIEL(?:\s|$)/.test(text)) return '🇮🇳 ' + text;
+    if (/^TSE(?:\s|$)/.test(text)) return '🇹🇭 ' + text;
+    return text;
+}
+
 let dxData = null;
 let currentFocusTable = null;  // 현재 보고 있는 테이블 이름 (날짜 변경 시 유지용)
 
