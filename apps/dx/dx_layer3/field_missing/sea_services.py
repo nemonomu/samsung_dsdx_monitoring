@@ -546,6 +546,13 @@ def field_missing_detail_by_field(
         detail = {column: row.get(column) for column in columns}
         detail['finding_type'] = row['finding_type']
         data.append(detail)
+    target_text = str(target_date)
+    data.sort(key=lambda row: (
+        0 if _source_date(row, date_column) == target_text else 1,
+        str(row.get('item') or '').casefold(),
+        _source_date(row, date_column),
+        str(row.get('id') or '').zfill(20),
+    ))
 
     return {
         'status': 'success',

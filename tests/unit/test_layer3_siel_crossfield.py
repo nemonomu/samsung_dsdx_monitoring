@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import date, timedelta
 
 from apps.common import inspection_dates, retail_validation, siel_retail
 from tests.unit.support import (
@@ -298,7 +298,7 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertTrue(result['found'])
         self.assertEqual('2026-09-03', result['source_date'])
         self.assertEqual(
-            ['comparison_history', 'target'],
+            ['target', 'comparison_history'],
             [row['row_role'] for row in result['anomalies']],
         )
         self.assertEqual(1, result['total_anomalies'])
@@ -313,6 +313,41 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
         self.assertIn('    count_of_reviews', result['query'])
         self.assertIn('    count_of_star_ratings', result['query'])
+
+    def test_thirty_day_detail_keeps_target_rows_at_the_front(self):
+        rule = _rule(1, 'review_gt_star_count', 'Flipkart')
+        rows = []
+        row_id = 1
+        for item_index in range(4):
+            for day in range(29, -1, -1):
+                rows.append(_flipkart_row(
+                    id=row_id,
+                    item=f'ITEM-{item_index}',
+                    crawl_datetime=(
+                        date(2026, 9, 3) - timedelta(days=day)
+                    ).isoformat() + 'T08:00:00+09:00',
+                    count_of_reviews='21',
+                    count_of_star_ratings='20',
+                ))
+                row_id += 1
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]},
+            {'fetchall': rows},
+            {'fetchall': []},
+        ])
+
+        result = siel_services.get_siel_cross_field_rule_detail(
+            cursor, date(2026, 9, 3), 'siel_tv', 1, days=30
+        )
+
+        self.assertEqual(
+            ['target'] * 4,
+            [row['row_role'] for row in result['anomalies'][:4]],
+        )
+        self.assertEqual(
+            {'ITEM-0', 'ITEM-1', 'ITEM-2', 'ITEM-3'},
+            {row['item'] for row in result['anomalies'][:4]},
+        )
 
 
 class SielCrossfieldSeedTests(unittest.TestCase):

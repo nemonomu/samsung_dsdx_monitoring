@@ -910,10 +910,19 @@ def _detail_row_item_key(row):
 
 def _detail_row_sort_key(row, date_column):
     retailer = str(row.get('account_name') or '').strip().casefold()
+    role_order = {
+        'target': 0,
+        'comparison_history': 1,
+        'past_finding': 2,
+    }
+    row_role = str(row.get('row_role') or '')
     item = str(row.get('item') or '').strip().casefold()
     source_date = _detail_row_source_date(row, date_column)
     row_id = str(row.get('id') or '')
-    return retailer, item, source_date, row_id.zfill(20)
+    return (
+        retailer, role_order.get(row_role, 3), item,
+        source_date, row_id.zfill(20),
+    )
 
 
 def get_siel_cross_field_rule_detail(

@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from apps.common import inspection_dates
@@ -348,6 +348,50 @@ class SeaFieldMissingDateTests(unittest.TestCase):
                 'count_of_reviews', 'count_of_star_ratings', 'product_url',
             ],
             result['default_columns'],
+        )
+
+    def test_thirty_day_ref_detail_keeps_target_rows_at_the_front(self):
+        target_date = date(2026, 8, 31)
+        rows = []
+        row_id = 1
+        for item_index in range(4):
+            for day in range(29, -1, -1):
+                rows.append({
+                    'id': row_id,
+                    'account_name': 'Bestbuy',
+                    'page_type': 'MAIN',
+                    'item': f'REF-{item_index}',
+                    'crawl_strdatetime': str(
+                        target_date - timedelta(days=day)
+                    ),
+                    'recommendation_intent': (
+                        None if day == 0 else
+                        '90% would recommend to a friend'
+                    ),
+                    'product_url': 'https://example.test/ref',
+                })
+                row_id += 1
+        cursor = ScriptedCursor([
+            {'fetchall': rows},
+            {'fetchall': []},
+        ])
+
+        result = services.field_missing_detail_by_field(
+            cursor, target_date, 'sea_ref', 'Bestbuy',
+            'recommendation_intent', 30, [],
+            ['recommendation_intent'], ['recommendation_intent'],
+            ['recommendation_intent'],
+            inspection_date=date(2026, 9, 1),
+        )
+
+        self.assertEqual(4, result['today_null_count'])
+        self.assertEqual(
+            [str(target_date)] * 4,
+            [row['crawl_strdatetime'] for row in result['data'][:4]],
+        )
+        self.assertEqual(
+            {'REF-0', 'REF-1', 'REF-2', 'REF-3'},
+            {row['item'] for row in result['data'][:4]},
         )
 
     def test_ldy_detects_new_null_item_in_latest_batch_scope(self):
