@@ -15,7 +15,9 @@
         'SIEL AMAZON TV', 'SIEL FLIPKART TV',
         'SIEL AMAZON REF', 'SIEL FLIPKART REF',
         'SIEL AMAZON LDY', 'SIEL FLIPKART LDY',
-        'HOMEPRO TV', 'HOMEPRO REF', 'HOMEPRO LDY'
+        'TSE LAZADA TV', 'TSE HOMEPRO TV',
+        'TSE LAZADA REF', 'TSE HOMEPRO REF',
+        'TSE LAZADA LDY', 'TSE HOMEPRO LDY'
     ];
 
     var SEA_TABLE_CATEGORY = {
@@ -55,8 +57,7 @@
     function reportRetailerName(tableName, retailer, fallbackCategory) {
         var tseCategory = TSE_TABLE_CATEGORY[tableName];
         if (tseCategory) {
-            var tseRetailer = String(retailer || 'TSE').trim().toUpperCase();
-            return tseRetailer + ' ' + tseCategory;
+            return marketRetailerName('TSE', retailer, tseCategory);
         }
         var sielCategory = SIEL_TABLE_CATEGORY[tableName];
         if (sielCategory) {

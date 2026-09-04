@@ -48,7 +48,8 @@ const reportData = {
         null_check: {
             'dx_tse.dx_tse_ldy_retail_com': [
                 { retailer: 'Homepro', status: 'corrected', column_name: 'sku', item: 'A' },
-                { retailer: 'Homepro', status: 'corrected', column_name: 'sku', item: 'B' }
+                { retailer: 'Homepro', status: 'corrected', column_name: 'sku', item: 'B' },
+                { retailer: 'Lazada', status: 'corrected', column_name: 'sku', item: 'B2' }
             ],
             'public.ref_retail_com': [
                 { retailer: 'Bestbuy', status: 'corrected', column_name: 'sku', item: 'R1' },
@@ -121,9 +122,10 @@ sandbox.L4._sectionHandler.report();
 
 setImmediate(() => {
     const html = renderedRows.join('\n');
-    assert(html.includes('HOMEPRO TV'));
-    assert(html.includes('HOMEPRO REF'));
-    assert(html.includes('HOMEPRO LDY'));
+    assert(html.includes('TSE HOMEPRO TV'));
+    assert(html.includes('TSE HOMEPRO REF'));
+    assert(html.includes('TSE HOMEPRO LDY'));
+    assert(html.includes('TSE LAZADA LDY'));
     assert(html.includes('SEA BESTBUY REF'));
     assert(html.includes('SEA LOWES REF'));
     assert(html.includes('SEA LOWES LDY'));
@@ -137,6 +139,6 @@ setImmediate(() => {
     assert(!html.includes('dx_siel.dx_siel_ref_retail_com'));
     assert(!html.includes('dx_siel.dx_siel_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=4"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=5"));
     console.log('Layer 4 retail report label tests passed');
 });
