@@ -5,6 +5,7 @@ from apps.common.siel_retail import (
     SIEL_SOURCE_CONFIG,
     SIEL_TABLE_TO_PRODUCT_LINE,
     display_siel_retailer,
+    get_siel_format_editable_columns,
     get_siel_collection_phase,
     get_siel_count_status,
     get_siel_source,
@@ -47,6 +48,20 @@ class SielRetailCommonTests(unittest.TestCase):
     def test_unknown_product_line_fails_closed(self):
         with self.assertRaises(ValueError):
             get_siel_source('sea_tv')
+
+    def test_format_edit_allowlist_matches_retailer_and_product(self):
+        amazon_tv = get_siel_format_editable_columns('siel_tv', 'Amazon')
+        flipkart_ref = get_siel_format_editable_columns(
+            'siel_ref', 'Flipkart'
+        )
+
+        self.assertIn('screen_size', amazon_tv)
+        self.assertIn('product_url', amazon_tv)
+        self.assertNotIn('count_of_reviews', amazon_tv)
+        self.assertIn('count_of_reviews', flipkart_ref)
+        self.assertIn('ref_refrigerator_type', flipkart_ref)
+        self.assertNotIn('batch_id', amazon_tv)
+        self.assertNotIn('crawl_datetime', flipkart_ref)
 
     def test_collection_finishes_after_kst_0900(self):
         self.assertEqual('collecting', get_siel_collection_phase(time(8, 59)))

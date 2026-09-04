@@ -80,6 +80,18 @@ def shared_stubs():
             'apps.common.siel_retail',
             SIEL_BUSINESS_TIMEZONE='Asia/Seoul',
             SIEL_SOURCE_CONFIG=SIEL_SOURCES,
+            get_siel_format_editable_columns=lambda product, retailer: [
+                'account_name', 'calendar_week', 'country',
+                'detailed_review_content', 'original_sku_price',
+                'page_type', 'product', 'product_url', 'star_rating',
+                *(
+                    ['final_sku_price', 'count_of_star_ratings',
+                     'screen_size', 'estimated_annual_electricity_use',
+                     'model_year']
+                    if product == 'siel_tv'
+                    and str(retailer).lower() == 'amazon' else []
+                ),
+            ],
         ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
@@ -335,7 +347,9 @@ class SIELFormatValidationTests(unittest.TestCase):
             'crawl_datetime'
         ])
         self.assertEqual({'screen_size': 1}, result['field_counts'])
-        self.assertEqual([], result['editable_cols'])
+        self.assertIn('screen_size', result['editable_cols'])
+        self.assertIn('product_url', result['editable_cols'])
+        self.assertNotIn('batch_id', result['editable_cols'])
 
     def test_stats_append_all_three_siel_cards(self):
         validation = {'tables': [{'table': 'tv_retail'}]}

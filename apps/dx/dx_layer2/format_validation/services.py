@@ -57,10 +57,12 @@ try:
     from apps.common.siel_retail import (
         SIEL_BUSINESS_TIMEZONE,
         SIEL_SOURCE_CONFIG,
+        get_siel_format_editable_columns,
     )
 except (ImportError, AttributeError):
     SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
     SIEL_SOURCE_CONFIG = {}
+    get_siel_format_editable_columns = None
 
 
 SEA_FORMAT_SECTION_BY_PRODUCT = {
@@ -1854,7 +1856,10 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days):
         'retailer': retailer_value,
         'column_names': column_names,
         'select_cols': column_names,
-        'editable_cols': [],
+        'editable_cols': (
+            get_siel_format_editable_columns(source_key, retailer_value)
+            if get_siel_format_editable_columns else []
+        ),
         'actual_table': source['table_name'],
         'normal_reviews': normal_reviews,
         'results': results,

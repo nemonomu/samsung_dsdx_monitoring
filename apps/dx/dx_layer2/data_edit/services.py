@@ -9,6 +9,12 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 
 try:
+    from apps.common.retail_validation import get_tv_validation_condition
+except (ImportError, AttributeError):
+    def get_tv_validation_condition(_alias=None):
+        return 'TRUE'
+
+try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
 except (ImportError, AttributeError):
@@ -28,6 +34,21 @@ except (ImportError, AttributeError):
     get_tse_product_line_for_table = None
     resolve_tse_table = None
 
+try:
+    from apps.common.siel_retail import (
+        SIEL_BUSINESS_TIMEZONE,
+        SIEL_TABLE_TO_PRODUCT_LINE,
+        get_siel_format_editable_columns,
+        get_siel_product_line_for_table,
+        get_siel_source,
+    )
+except (ImportError, AttributeError):
+    SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
+    SIEL_TABLE_TO_PRODUCT_LINE = {}
+    get_siel_format_editable_columns = None
+    get_siel_product_line_for_table = None
+    get_siel_source = None
+
 
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
@@ -35,7 +56,9 @@ VALID_TABLES_UPDATE = ({
     'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
-} | set(TSE_TABLE_TO_PRODUCT_LINE)) - DISABLED_SOURCE_TABLES
+} | set(TSE_TABLE_TO_PRODUCT_LINE) | set(
+    SIEL_TABLE_TO_PRODUCT_LINE
+)) - DISABLED_SOURCE_TABLES
 
 
 def _get_sea_edit_context(table_name):
@@ -74,6 +97,73 @@ def _get_tse_edit_context(table_name):
         return None
 
 
+def _get_siel_edit_context(table_name):
+    """Return registry-backed SIEL edit metadata for a canonical table."""
+    if not all((
+        get_siel_format_editable_columns,
+        get_siel_product_line_for_table,
+        get_siel_source,
+    )) or table_name not in SIEL_TABLE_TO_PRODUCT_LINE:
+        return None
+    try:
+        product_line = get_siel_product_line_for_table(table_name)
+        source = get_siel_source(product_line)
+        return {
+            'table_name': source['table_name'],
+            'product_line': product_line,
+            'source': source,
+        }
+    except (ImportError, AttributeError, ValueError):
+        return None
+
+
+def _select_siel_edit_record(
+        cursor, context, select_columns, row_id, inspection_date):
+    """Select only the SIEL inspection-day latest MAIN-anchored row."""
+    source = context['source']
+    date_contract = resolve_monitoring_date(
+        inspection_date, 'SIEL', source['source_key']
+    )
+    table_name = source['table_name']
+    date_column = source['date_column']
+    source_date = date_contract['source_date']
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {table_name} source
+        WHERE source.id = %s
+          AND source.{date_column} >= (
+                %s::date::timestamp AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND source.{date_column} < (
+                (%s::date + 1)::timestamp AT TIME ZONE
+                '{SIEL_BUSINESS_TIMEZONE}'
+              )
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
+              IN ('main', 'bsr')
+          AND {get_tv_validation_condition('source')}
+          AND source.batch_id IS NOT DISTINCT FROM (
+              SELECT anchor.batch_id
+              FROM {table_name} anchor
+              WHERE anchor.{date_column} >= (
+                        %s::date::timestamp AT TIME ZONE
+                        '{SIEL_BUSINESS_TIMEZONE}'
+                    )
+                AND anchor.{date_column} < (
+                        (%s::date + 1)::timestamp AT TIME ZONE
+                        '{SIEL_BUSINESS_TIMEZONE}'
+                    )
+                AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
+                    LOWER(BTRIM(CAST(source.account_name AS TEXT)))
+                AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+                AND {get_tv_validation_condition('anchor')}
+              ORDER BY anchor.id DESC
+              LIMIT 1
+          )
+    """, (
+        row_id, source_date, source_date, source_date, source_date,
+    ))
+
+
 def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                       crawl_date, correction_type, username, memo):
     """
@@ -91,6 +181,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # product_line 결정
     tse_context = _get_tse_edit_context(table_name)
+    siel_context = _get_siel_edit_context(table_name)
     sea_context = _get_sea_edit_context(table_name)
     if tse_context:
         table_name = tse_context['table_name']
@@ -100,6 +191,9 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif sea_context:
         table_name = sea_context['table_name']
         product_line = sea_context['product_line']
+    elif siel_context:
+        table_name = siel_context['table_name']
+        product_line = siel_context['product_line']
     else:
         product_line = 'tv' if table_name == 'tv_retail_com' else 'hhp'
 
@@ -147,6 +241,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             row_id, date_contract['source_date'],
             date_contract['source_date'],
         ))
+    elif siel_context:
+        _select_siel_edit_record(
+            cursor, siel_context, select_columns, row_id, crawl_date
+        )
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
@@ -165,7 +263,13 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     editable_retailer = retailer
     if tse_context and not editable_retailer and column_name == 'account_name':
         editable_retailer = new_value
-    editable_cols = get_editable_columns(product_line, editable_retailer)
+    if siel_context and column_name == 'account_name':
+        editable_retailer = new_value
+    editable_cols = (
+        get_siel_format_editable_columns(product_line, editable_retailer)
+        if siel_context else
+        get_editable_columns(product_line, editable_retailer)
+    )
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 

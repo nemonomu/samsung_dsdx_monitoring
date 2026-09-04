@@ -348,7 +348,10 @@ function getCellHtml(row, col, tableParam) {
     // product_url → 링크 아이콘 + URL 텍스트
     if (key === 'product_url') {
         if (!val) return '<td>-</td>';
-        return '<td data-copy-text="' + esc(val) + '" title="' + esc(val) + '">'
+        var sielUrlEditAttr = /^siel_(tv|ref|ldy)_retail$/.test(
+            String(detailViewState.tableParam || '')
+        ) ? _editableAttr(row, key) : '';
+        return '<td' + sielUrlEditAttr + ' data-copy-text="' + esc(val) + '" title="' + esc(val) + '">'
             + '<a href="' + esc(val) + '" target="_blank" onclick="event.stopPropagation();" style="color:#2563eb;margin-right:6px;vertical-align:middle;cursor:pointer;">'
             + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
             + '</a>'

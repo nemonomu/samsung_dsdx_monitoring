@@ -45,6 +45,8 @@ assert(format.includes(
     "new Set(['country', 'account_name', 'page_type'])"
 ));
 assert(format.includes('selectCols = columnNames.filter'));
+assert(common.includes('var sielUrlEditAttr'));
+assert(common.includes("/^siel_(tv|ref|ldy)_retail$/.test("));
 
 assert(anomaly.includes('data.readonly_message'));
 assert(dashboard.includes(
@@ -52,7 +54,7 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260903-3"
+    "dx_layer2/js/layer2-common.js' %}?v=20260904-1"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/format_validation.js' %}?v=20260903-3"
