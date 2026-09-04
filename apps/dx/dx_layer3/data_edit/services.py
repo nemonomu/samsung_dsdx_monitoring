@@ -364,12 +364,6 @@ def save_review(cursor, conn, table_name, record_id, column_name,
                     'status': 403,
                 }
 
-    if siel_context and status == 'normal' and not str(memo or '').strip():
-        return {
-            'error': 'SIEL 크로스필드 확인 메모는 필수입니다',
-            'status': 400,
-        }
-
     # 중복 정상처리 체크
     cursor.execute("""
         SELECT id FROM monitoring_corrections

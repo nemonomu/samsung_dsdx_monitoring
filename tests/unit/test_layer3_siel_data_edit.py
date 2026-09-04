@@ -102,20 +102,24 @@ class SielLayer3DataEditTests(unittest.TestCase):
         self.assertEqual(71, history_params[-1])
         self.assertEqual(1, conn.commits)
 
-    def test_siel_normal_review_requires_memo(self):
+    def test_siel_normal_review_allows_empty_memo(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, 'Flipkart', 'F-1')},
+            {'fetchone': None},
+            {},
         ])
+        conn = FakeConnection()
 
         result = services.save_review(
-            cursor, FakeConnection(), self.table_name, 20,
+            cursor, conn, self.table_name, 20,
             'count_of_star_ratings', 'normal', '', '정상 데이터',
             '2026-09-03', 'cross_field', 'tester', 72,
         )
 
-        self.assertEqual(400, result['status'])
-        self.assertIn('메모는 필수', result['error'])
-        self.assertEqual(1, len(cursor.calls))
+        self.assertTrue(result['success'])
+        self.assertIsNone(cursor.calls[2][1][11])
+        self.assertEqual('정상 데이터', cursor.calls[2][1][12])
+        self.assertEqual(1, conn.commits)
 
     def test_siel_crossfield_confirmation_does_not_require_edit_config(self):
         cursor = ScriptedCursor([

@@ -1391,14 +1391,12 @@ function _showReviewDialog(checkType, callback) {
             var reasonOpts = '<option value="">-- 선택 --</option>';
             reasons.forEach(function(r) { reasonOpts += '<option value="' + esc(r) + '">' + esc(r) + '</option>'; });
             var hideReason = reasons.length === 0;
-            var memoRequired = checkType === 'cross_field'
-                && /^SIEL_/.test(String(window.crossfieldProductLine || '').toUpperCase());
             overlay.innerHTML = '<div class="memo-dialog">'
                 + '<div class="memo-dialog-title">확인</div>'
                 + '<div class="memo-dialog-field"' + (hideReason ? ' style="display:none"' : '') + '><label class="memo-dialog-label">이유 <span style="color:#dc2626;">*</span></label>'
                 + '<select class="memo-dialog-select" id="review-reason-select">' + reasonOpts + '</select></div>'
-                + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모' + (memoRequired ? ' <span style="color:#dc2626;">*</span>' : '') + '</label>'
-                + '<textarea class="memo-dialog-input" id="review-memo" placeholder="' + (memoRequired ? '확인 메모 입력 (필수)' : '메모 입력 (선택사항)') + '" rows="3"></textarea></div>'
+                + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모</label>'
+                + '<textarea class="memo-dialog-input" id="review-memo" placeholder="메모 입력 (선택사항)" rows="3"></textarea></div>'
                 + '<div class="memo-dialog-buttons">'
                 + '<button class="memo-dialog-cancel">취소</button>'
                 + '<button class="memo-dialog-confirm">확인</button>'
@@ -1415,7 +1413,6 @@ function _showReviewDialog(checkType, callback) {
                 var reason = hideReason ? '' : document.getElementById('review-reason-select').value;
                 var memo = document.getElementById('review-memo').value.trim();
                 if (!hideReason && !reason) { showToast('이유를 선택해주세요', 'warning'); return; }
-                if (memoRequired && !memo) { showToast('SIEL 확인 메모를 입력해주세요', 'warning'); return; }
                 closeDlg();
                 callback(reason, memo);
             };

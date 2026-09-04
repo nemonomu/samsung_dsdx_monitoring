@@ -331,6 +331,8 @@ function testSeaTvUsesCompactCurrentDateItemQuery() {
 testSeaTvUsesCompactCurrentDateItemQuery();
 assert(commonSource.includes('window.crossfieldDisplayQuery = data.query ||'));
 assert(commonSource.includes('window.crossfieldDisplayQueries = data.queries ||'));
+assert(commonSource.includes('placeholder="메모 입력 (선택사항)"'));
+assert(!commonSource.includes("memoRequired = checkType === 'cross_field'"));
 assert(commonSource.includes("? (rule.query || '쿼리 없음')"));
 assert(commonSource.includes('preserveRaw === true ? text : formatSQL(text)'));
 assert(source.includes("itemTitle.textContent = listLabel + ' 목록 ('"));
