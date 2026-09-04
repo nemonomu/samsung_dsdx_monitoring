@@ -24,10 +24,12 @@ try:
     from apps.common.siel_retail import (
         SIEL_BUSINESS_TIMEZONE,
         SIEL_SOURCE_CONFIG,
+        get_siel_format_editable_columns,
     )
 except (ImportError, AttributeError):
     SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
     SIEL_SOURCE_CONFIG = {}
+    get_siel_format_editable_columns = None
 
 try:
     from apps.common.retail_columns import load_tse_retail_columns
@@ -204,6 +206,20 @@ def _get_siel_allowed_columns(source, retailer=None):
         column
         for columns in columns_by_retailer.values()
         for column in columns
+    }
+
+
+def _get_siel_format_allowed_columns(source, retailer=None):
+    """Return the fixed SIEL format-edit allowlist for one source."""
+    if not source or not get_siel_format_editable_columns:
+        return set()
+    retailers = (retailer,) if retailer else source.get('retailers', ())
+    return {
+        column
+        for retailer_name in retailers
+        for column in get_siel_format_editable_columns(
+            source['source_key'], retailer_name
+        )
     }
 
 
@@ -2599,14 +2615,16 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if status != 'normal':
         return {'error': '잘못된 status 값', 'status_code': 400}
 
-    if not reason:
-        return {'error': '이유 선택은 필수입니다', 'status_code': 400}
-
     if table_name not in VALID_TABLES_UPDATE:
         return {'error': '허용되지 않는 테이블', 'status_code': 400}
 
     sea_source = _get_sea_null_source_for_table(table_name)
     siel_source = _get_siel_null_source_for_table(table_name)
+    is_siel_format_review = bool(
+        siel_source and correction_type_value == 'format_check'
+    )
+    if not reason and not is_siel_format_review:
+        return {'error': '이유 선택은 필수입니다', 'status_code': 400}
     if (
         sea_source
         and column_name not in SEA_NULL_COLUMNS[sea_source['product_key']]
@@ -2614,9 +2632,17 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     if siel_source:
-        if correction_type_value != 'null_check':
-            return {'error': 'SIEL은 NULL 검수만 지원합니다', 'status_code': 400}
-        if column_name not in _get_siel_allowed_columns(siel_source):
+        if correction_type_value not in {'null_check', 'format_check'}:
+            return {
+                'error': 'SIEL은 NULL/형식 검수만 지원합니다',
+                'status_code': 400,
+            }
+        siel_allowed_columns = (
+            _get_siel_format_allowed_columns(siel_source)
+            if correction_type_value == 'format_check'
+            else _get_siel_allowed_columns(siel_source)
+        )
+        if column_name not in siel_allowed_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     runtime = _get_tse_runtime()
@@ -2724,7 +2750,11 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
 
     if (
         siel_source
-        and column_name not in _get_siel_allowed_columns(siel_source, retailer)
+        and column_name not in (
+            _get_siel_format_allowed_columns(siel_source, retailer)
+            if correction_type_value == 'format_check'
+            else _get_siel_allowed_columns(siel_source, retailer)
+        )
     ):
         return {'error': '허용되지 않는 리테일러별 컬럼', 'status_code': 400}
 

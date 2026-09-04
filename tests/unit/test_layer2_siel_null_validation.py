@@ -73,6 +73,24 @@ SIEL_COLUMNS = {
     },
 }
 
+SIEL_FORMAT_COLUMNS = {
+    'siel_tv': {
+        'amazon': ('account_name', 'screen_size', 'star_rating'),
+        'flipkart': ('account_name', 'screen_size', 'star_rating'),
+    },
+    'siel_ref': {
+        'amazon': ('account_name', 'ref_capacity', 'star_rating'),
+        'flipkart': (
+            'account_name', 'ref_capacity', 'ref_refrigerator_type',
+            'star_rating',
+        ),
+    },
+    'siel_ldy': {
+        'amazon': ('account_name', 'ldy_capacity', 'star_rating'),
+        'flipkart': ('account_name', 'ldy_capacity', 'star_rating'),
+    },
+}
+
 
 def db_rows():
     rows = []
@@ -162,6 +180,11 @@ def common_stubs():
             'apps.common.siel_retail',
             SIEL_BUSINESS_TIMEZONE='Asia/Seoul',
             SIEL_SOURCE_CONFIG=SIEL_SOURCES,
+            get_siel_format_editable_columns=lambda product, retailer: list(
+                SIEL_FORMAT_COLUMNS.get(product, {}).get(
+                    str(retailer or '').lower(), ()
+                )
+            ),
         ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
@@ -513,6 +536,42 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
             scope_params,
         )
         conn.commit.assert_called_once_with()
+
+    def test_format_review_allows_blank_reason_and_memo(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('invalid', 'Amazon', 'item-3')},
+            {'fetchone': None},
+            {},
+        ])
+        conn = Mock()
+
+        result = self.service.save_null_review(
+            cursor, conn, 'dx_siel.dx_siel_tv_retail_com', 88,
+            'screen_size', 'normal', '', '', '2026-09-03', 'format',
+            'tester',
+        )
+
+        self.assertTrue(result['success'])
+        insert_params = cursor.calls[2][1]
+        self.assertEqual('format_check', insert_params[1])
+        self.assertIsNone(insert_params[11])
+        self.assertIsNone(insert_params[12])
+        conn.commit.assert_called_once_with()
+
+    def test_format_review_rechecks_siel_retailer_column_matrix(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('invalid', 'Amazon', 'item-4')},
+        ])
+
+        result = self.service.save_null_review(
+            cursor, Mock(), 'dx_siel.dx_siel_ref_retail_com', 89,
+            'ref_refrigerator_type', 'normal', '', '', '2026-09-03',
+            'format', 'tester',
+        )
+
+        self.assertEqual(
+            '허용되지 않는 리테일러별 컬럼', result['error']
+        )
 
 
 if __name__ == '__main__':
