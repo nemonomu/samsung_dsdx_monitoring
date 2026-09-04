@@ -184,9 +184,38 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 </div>
             </div>`;
         } else if (!isInlineMode() && items.length > 0) {
-            const tblName = tableParam === 'tv_retail' ? 'tv_retail_com' : 'hhp_retail_com';
+            const querySources = {
+                tv_retail: {
+                    tableName: 'tv_retail_com', dateColumn: 'crawl_datetime'
+                },
+                hhp_retail: {
+                    tableName: 'hhp_retail_com', dateColumn: 'crawl_strdatetime'
+                },
+                sea_ref_retail: {
+                    tableName: 'public.ref_retail_com',
+                    dateColumn: 'crawl_strdatetime'
+                },
+                sea_ldy_retail: {
+                    tableName: 'public.ldy_retail_com',
+                    dateColumn: 'crawl_strdatetime'
+                },
+                siel_tv_retail: {
+                    tableName: 'dx_siel.dx_siel_tv_retail_com',
+                    dateColumn: 'crawl_datetime'
+                },
+                siel_ref_retail: {
+                    tableName: 'dx_siel.dx_siel_ref_retail_com',
+                    dateColumn: 'crawl_datetime'
+                },
+                siel_ldy_retail: {
+                    tableName: 'dx_siel.dx_siel_ldy_retail_com',
+                    dateColumn: 'crawl_datetime'
+                }
+            };
+            const querySource = querySources[tableParam];
+            const tblName = querySource.tableName;
             const retailerName = modalState.retailer || '';
-            const dateCol = tableParam === 'hhp_retail' ? 'crawl_strdatetime' : 'crawl_datetime';
+            const dateCol = querySource.dateColumn;
             const inClause = items.map(item => `'${item}'`).join(', ');
             const query3Days = `SELECT id, ${dateCol}, account_name, item, ${fieldName}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateCol}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateCol}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateCol} ASC;`;
             itemQueryHtml += `<div class="item-query-section">

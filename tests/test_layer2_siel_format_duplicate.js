@@ -41,6 +41,12 @@ assert(format.includes(
     'const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam)'
 ));
 assert(format.includes('(isTseRetail || isSeaRetail || isSielRetail)'));
+assert(format.includes("tableName: 'dx_siel.dx_siel_tv_retail_com'"));
+assert(format.includes("tableName: 'dx_siel.dx_siel_ref_retail_com'"));
+assert(format.includes("tableName: 'dx_siel.dx_siel_ldy_retail_com'"));
+assert(format.includes("tableName: 'public.ref_retail_com'"));
+assert(format.includes("tableName: 'public.ldy_retail_com'"));
+assert(format.includes('const dateCol = querySource.dateColumn'));
 assert(format.includes(
     "new Set(['country', 'account_name', 'page_type'])"
 ));
@@ -57,7 +63,7 @@ assert(formatTemplate.includes(
     "dx_layer2/js/layer2-common.js' %}?v=20260904-4"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260904-2"
+    "dx_layer2/js/format_validation.js' %}?v=20260904-3"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260904-2"
