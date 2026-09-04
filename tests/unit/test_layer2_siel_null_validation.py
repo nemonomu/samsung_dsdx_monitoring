@@ -455,15 +455,21 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
             'a_20260902_160000', result['results'][0]['batch_id']
         )
 
-    def test_review_requires_memo_and_rechecks_retailer_column_matrix(self):
-        missing_memo = self.service.save_null_review(
-            ScriptedCursor([]), Mock(),
+    def test_review_allows_empty_memo_and_rechecks_retailer_column_matrix(self):
+        empty_memo_cursor = ScriptedCursor([
+            {'fetchone': (None, 'Amazon', 'item-1')},
+            {'fetchone': None},
+            {},
+        ])
+        empty_memo_conn = Mock()
+        empty_memo = self.service.save_null_review(
+            empty_memo_cursor, empty_memo_conn,
             'dx_siel.dx_siel_ref_retail_com', 42, 'sku', 'normal', '',
             '수집처 특례', '2026-08-31', 'null', 'tester',
         )
-        self.assertEqual(
-            'SIEL 심각 항목 확인 메모는 필수입니다', missing_memo['error']
-        )
+        self.assertTrue(empty_memo['success'])
+        self.assertIsNone(empty_memo_cursor.calls[2][1][11])
+        empty_memo_conn.commit.assert_called_once_with()
 
         amazon_cursor = ScriptedCursor([
             {'fetchone': (None, 'Amazon', 'item-1')},

@@ -1031,8 +1031,9 @@ function _showNullReviewBar(cells) {
     btn.className = 'btn-null-normal';
     btn.textContent = cells.length > 1 ? cells.length + '건 확인' : '확인';
     btn.addEventListener('click', function() {
-        var requiresMemo = /^dx_siel\.dx_siel_(tv|ref|ldy)_retail_com$/
-            .test(String(detailViewState.actualTable || '').toLowerCase());
+        var requiresMemo = detailViewState.type !== 'null'
+            && /^dx_siel\.dx_siel_(tv|ref|ldy)_retail_com$/
+                .test(String(detailViewState.actualTable || '').toLowerCase());
         _showReviewDialog(function(reason, memo) {
             _submitNullReviews(cells, 'normal', memo, reason);
         }, {

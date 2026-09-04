@@ -11,6 +11,9 @@ const nullSource = fs.readFileSync(
 const commonSource = fs.readFileSync(
     'apps/dx/dx_layer2/static/dx_layer2/js/layer2-common.js', 'utf8'
 );
+const nullTemplateSource = fs.readFileSync(
+    'apps/dx/dx_layer2/templates/layer2_null_validation.html', 'utf8'
+);
 
 const dashboardSandbox = {
     console,
@@ -160,8 +163,11 @@ assert.deepStrictEqual(
     JSON.parse(JSON.stringify(tableOptions.editableCols)), []
 );
 
-assert.ok(commonSource.includes("/^dx_siel\\.dx_siel_(tv|ref|ldy)_retail_com$/"));
-assert.ok(commonSource.includes('확인 메모 입력 (필수)'));
+assert.ok(commonSource.includes("detailViewState.type !== 'null'"));
+assert.ok(commonSource.includes('requireMemo: requiresMemo'));
 assert.ok(commonSource.includes('if (memoRequired && !memo)'));
+assert.ok(nullTemplateSource.includes(
+    "dx_layer2/js/layer2-common.js' %}?v=20260904-2"
+));
 
 console.log('Layer2 SIEL NULL frontend tests passed.');

@@ -2618,8 +2618,6 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             return {'error': 'SIEL은 NULL 검수만 지원합니다', 'status_code': 400}
         if column_name not in _get_siel_allowed_columns(siel_source):
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
-        if not str(memo or '').strip():
-            return {'error': 'SIEL 심각 항목 확인 메모는 필수입니다', 'status_code': 400}
 
     runtime = _get_tse_runtime()
     tse_product_line = None
