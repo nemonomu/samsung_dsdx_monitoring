@@ -10,6 +10,13 @@ const source = fs.readFileSync(
     ),
     'utf8'
 );
+const templateSource = fs.readFileSync(
+    path.join(
+        __dirname, '..', 'apps', 'dx', 'dx_layer4', 'templates',
+        'layer4', 'report.html'
+    ),
+    'utf8'
+);
 
 function element() {
     return {
@@ -46,6 +53,9 @@ const reportData = {
             'public.ref_retail_com': [
                 { retailer: 'Bestbuy', status: 'corrected', column_name: 'sku', item: 'R1' },
                 { retailer: 'Lowes', status: 'corrected', column_name: 'sku', item: 'R2' }
+            ],
+            'dx_siel.dx_siel_ref_retail_com': [
+                { retailer: 'Amazon', status: 'normal', column_name: 'sku', item: 'SR1' }
             ]
         },
         duplicate_check: {
@@ -64,6 +74,9 @@ const reportData = {
             ],
             'public.ldy_retail_com': [
                 { retailer: 'Lowes', status: 'corrected', item: 'L1', detail_code: 'price', rule_name: '가격 일치' }
+            ],
+            'dx_siel.dx_siel_ldy_retail_com': [
+                { retailer: 'Flipkart', status: 'normal', item: 'SL1', detail_code: 'price', rule_name: '가격 일치' }
             ]
         }
     }
@@ -111,14 +124,19 @@ setImmediate(() => {
     assert(html.includes('HOMEPRO TV'));
     assert(html.includes('HOMEPRO REF'));
     assert(html.includes('HOMEPRO LDY'));
-    assert(html.includes('BESTBUY REF'));
-    assert(html.includes('LOWES REF'));
-    assert(html.includes('LOWES LDY'));
+    assert(html.includes('SEA BESTBUY REF'));
+    assert(html.includes('SEA LOWES REF'));
+    assert(html.includes('SEA LOWES LDY'));
+    assert(html.includes('SIEL AMAZON REF'));
+    assert(html.includes('SIEL FLIPKART LDY'));
     assert(!html.includes('dx_tse.dx_tse_tv_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ref_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ldy_retail_com'));
     assert(!html.includes('public.ref_retail_com'));
     assert(!html.includes('public.ldy_retail_com'));
+    assert(!html.includes('dx_siel.dx_siel_ref_retail_com'));
+    assert(!html.includes('dx_siel.dx_siel_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=4"));
     console.log('Layer 4 retail report label tests passed');
 });

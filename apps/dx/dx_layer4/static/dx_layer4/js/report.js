@@ -9,9 +9,12 @@
 
     // 리테일러 고정 정렬 순서
     var RETAILER_ORDER = [
-        'AMAZON TV', 'BESTBUY TV', 'WALMART TV',
-        'BESTBUY REF', 'LOWES REF',
-        'BESTBUY LDY', 'LOWES LDY',
+        'SEA AMAZON TV', 'SEA BESTBUY TV', 'SEA WALMART TV',
+        'SEA BESTBUY REF', 'SEA LOWES REF',
+        'SEA BESTBUY LDY', 'SEA LOWES LDY',
+        'SIEL AMAZON TV', 'SIEL FLIPKART TV',
+        'SIEL AMAZON REF', 'SIEL FLIPKART REF',
+        'SIEL AMAZON LDY', 'SIEL FLIPKART LDY',
         'HOMEPRO TV', 'HOMEPRO REF', 'HOMEPRO LDY'
     ];
 
@@ -30,19 +33,38 @@
         'dx_tse.dx_tse_ldy_retail_com': 'LDY'
     };
 
+    var SIEL_TABLE_CATEGORY = {
+        'dx_siel_tv_retail_com': 'TV',
+        'dx_siel.dx_siel_tv_retail_com': 'TV',
+        'dx_siel_ref_retail_com': 'REF',
+        'dx_siel.dx_siel_ref_retail_com': 'REF',
+        'dx_siel_ldy_retail_com': 'LDY',
+        'dx_siel.dx_siel_ldy_retail_com': 'LDY'
+    };
+
+    function marketRetailerName(market, retailer, category) {
+        var value = String(retailer || '').trim();
+        var normalized = value.toLowerCase();
+        if (!value || normalized === '-' || normalized === 'retail'
+                || normalized === 'unknown' || normalized === market.toLowerCase()) {
+            return market + ' ' + category;
+        }
+        return market + ' ' + value.toUpperCase() + ' ' + category;
+    }
+
     function reportRetailerName(tableName, retailer, fallbackCategory) {
         var tseCategory = TSE_TABLE_CATEGORY[tableName];
         if (tseCategory) {
             var tseRetailer = String(retailer || 'TSE').trim().toUpperCase();
             return tseRetailer + ' ' + tseCategory;
         }
+        var sielCategory = SIEL_TABLE_CATEGORY[tableName];
+        if (sielCategory) {
+            return marketRetailerName('SIEL', retailer, sielCategory);
+        }
         var seaCategory = SEA_TABLE_CATEGORY[tableName];
         if (seaCategory) {
-            var seaRetailer = String(retailer || '').trim();
-            if (!seaRetailer || seaRetailer.toLowerCase() === 'retail') {
-                return 'SEA ' + seaCategory;
-            }
-            return seaRetailer.toUpperCase() + ' ' + seaCategory;
+            return marketRetailerName('SEA', retailer, seaCategory);
         }
         var category = fallbackCategory || tableName;
         return retailer ? (category + ' ' + retailer) : category;
@@ -166,7 +188,8 @@
 
         var retailerData = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = SEA_TABLE_CATEGORY[tn] || TSE_TABLE_CATEGORY[tn] || tn;
+            var category = SEA_TABLE_CATEGORY[tn] || SIEL_TABLE_CATEGORY[tn]
+                || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
                 var retailerName = reportRetailerName(tn, d.retailer, category);
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, groups: {} };
@@ -280,7 +303,8 @@
 
         var retailerData = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = SEA_TABLE_CATEGORY[tn] || TSE_TABLE_CATEGORY[tn] || tn;
+            var category = SEA_TABLE_CATEGORY[tn] || SIEL_TABLE_CATEGORY[tn]
+                || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
                 var retailerName = reportRetailerName(tn, d.retailer, category);
                 if (!retailerData[retailerName]) retailerData[retailerName] = { total: 0, items: [], action: '' };
@@ -330,7 +354,8 @@
 
         var ruleGroups = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = SEA_TABLE_CATEGORY[tn] || TSE_TABLE_CATEGORY[tn] || tn;
+            var category = SEA_TABLE_CATEGORY[tn] || SIEL_TABLE_CATEGORY[tn]
+                || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
                 var ruleKey = d.detail_code || d.rule_name || '규칙 ' + (d.rule_id || 0);
                 if (!ruleGroups[ruleKey]) ruleGroups[ruleKey] = { name: d.rule_name || ruleKey, items: [] };
@@ -485,7 +510,11 @@
                 var sectionStats = {};
                 Object.keys(tableGroups).forEach(function(tn) {
                     tableGroups[tn].forEach(function(d) {
-                        var sName = TSE_TABLE_CATEGORY[tn] || SEA_TABLE_CATEGORY[tn]
+                        var isRetailTable = Boolean(
+                            TSE_TABLE_CATEGORY[tn] || SEA_TABLE_CATEGORY[tn]
+                            || SIEL_TABLE_CATEGORY[tn]
+                        );
+                        var sName = isRetailTable
                             ? reportRetailerName(tn, d.retailer, tn)
                             : (TABLE_SECTION[tn] || tn);
                         if (!sectionStats[sName]) sectionStats[sName] = { corrected: 0, normal: 0 };
