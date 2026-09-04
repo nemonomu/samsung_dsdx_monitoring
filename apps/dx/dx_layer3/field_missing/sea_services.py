@@ -194,6 +194,33 @@ def _item_groups(rows):
     return groups
 
 
+def _load_previously_seen_items(
+        cursor, product_line, retailer, items, target_date):
+    item_values = sorted({
+        str(item).strip() for item in items
+        if item is not None and str(item).strip()
+    })
+    if not item_values:
+        return set()
+
+    source = _source(product_line)
+    placeholders = ', '.join(['%s'] * len(item_values))
+    cursor.execute(f"""
+        SELECT DISTINCT CAST(source.item AS TEXT) AS item
+        FROM {source['table_name']} source
+        WHERE LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
+          AND CAST(source.item AS TEXT) IN ({placeholders})
+          AND LEFT(TRIM(CAST(source.{source['date_column']} AS TEXT)), 10)
+                  < %s
+    """, (retailer, *item_values, str(target_date)))
+    seen = set()
+    for row in cursor.fetchall():
+        value = row.get('item') if isinstance(row, dict) else row[0]
+        if value is not None and str(value).strip():
+            seen.add(str(value).strip())
+    return seen
+
+
 def _classify_missing(rows, target_date, columns, date_column):
     """Classify existing-item gaps and first-seen NULL items by field."""
     target_text = str(target_date)
@@ -524,6 +551,13 @@ def field_missing_detail_by_field(
         if row.get('item') is not None
         and _source_date(row, source['date_column']) < str(target_date)
     }
+    unresolved_new_items = {
+        item_key for item_key, finding_type in finding_types.items()
+        if finding_type == 'new' and item_key not in previously_seen_items
+    }
+    previously_seen_items.update(_load_previously_seen_items(
+        cursor, key, retailer, unresolved_new_items, target_date,
+    ))
     for item_key, finding_type in list(finding_types.items()):
         if finding_type == 'new' and item_key in previously_seen_items:
             finding_types[item_key] = 'missing'

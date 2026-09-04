@@ -312,6 +312,7 @@ class SeaFieldMissingDateTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': rows},
             {'fetchall': []},
+            {'fetchall': []},
         ])
 
         display_fields = (
@@ -396,19 +397,12 @@ class SeaFieldMissingDateTests(unittest.TestCase):
              for index in (29, 59, 89, 119)},
         )
 
-    def test_thirty_day_history_prevents_existing_item_from_showing_as_new(self):
+    def test_history_before_display_range_prevents_new_badge(self):
         target_date = date(2026, 8, 31)
         rows = [
             {
-                'id': 1, 'account_name': 'Bestbuy', 'page_type': 'MAIN',
-                'item': 'NEW-IN-WINDOW',
-                'crawl_strdatetime': '2026-08-10',
-                'recommendation_intent': None,
-                'product_url': 'https://example.test/old',
-            },
-            {
                 'id': 2, 'account_name': 'Bestbuy', 'page_type': 'MAIN',
-                'item': 'NEW-IN-WINDOW',
+                'item': 'OLD-BEYOND-RANGE',
                 'crawl_strdatetime': str(target_date),
                 'recommendation_intent': None,
                 'product_url': 'https://example.test/target',
@@ -416,6 +410,7 @@ class SeaFieldMissingDateTests(unittest.TestCase):
         ]
         cursor = ScriptedCursor([
             {'fetchall': rows},
+            {'fetchall': [('OLD-BEYOND-RANGE',)]},
             {'fetchall': []},
         ])
 
@@ -434,8 +429,15 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             {row['finding_type'] for row in result['data']},
         )
         self.assertEqual(
-            ['2026-08-10', '2026-08-31'],
+            ['2026-08-31'],
             [row['crawl_strdatetime'] for row in result['data']],
+        )
+        history_sql, history_params = cursor.calls[1]
+        self.assertIn('public.ref_retail_com', history_sql)
+        self.assertIn('CAST(source.item AS TEXT) IN (%s)', history_sql)
+        self.assertEqual(
+            ('Bestbuy', 'OLD-BEYOND-RANGE', '2026-08-31'),
+            history_params,
         )
 
     def test_ldy_detects_new_null_item_in_latest_batch_scope(self):
