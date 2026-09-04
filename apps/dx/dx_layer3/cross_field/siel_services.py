@@ -12,12 +12,12 @@ import re
 from zoneinfo import ZoneInfo
 
 from apps.common.inspection_dates import resolve_monitoring_date
-from apps.common.retail_columns import get_editable_columns
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_RETAILERS,
     display_siel_retailer,
+    get_siel_crossfield_editable_columns,
     get_siel_source,
     normalize_siel_product_line,
 )
@@ -963,7 +963,9 @@ def get_siel_cross_field_rule_detail(
     editable_columns = set()
     retailer_columns = {}
     for retailer in retailers:
-        columns = set(get_editable_columns(result['product_line'], retailer))
+        columns = set(get_siel_crossfield_editable_columns(
+            result['product_line'], retailer,
+        ))
         editable_columns.update(columns)
         retailer_columns[retailer] = sorted(columns)
 

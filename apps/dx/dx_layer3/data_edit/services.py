@@ -12,6 +12,7 @@ from apps.common.sea_retail import SEA_RETAIL_SOURCES
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_TABLE_TO_PRODUCT_LINE,
+    get_siel_crossfield_editable_columns,
     get_siel_product_line_for_table,
     get_siel_source,
 )
@@ -244,7 +245,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     retailer = row[2]
     item_value = str(row[3]) if row[3] else ''
 
-    editable_cols = get_editable_columns(product_line, retailer)
+    editable_cols = (
+        get_siel_crossfield_editable_columns(product_line, retailer)
+        if siel_context else
+        get_editable_columns(product_line, retailer)
+    )
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 

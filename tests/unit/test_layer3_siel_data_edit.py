@@ -1,5 +1,4 @@
 import unittest
-from unittest.mock import patch
 
 from apps.common import (
     inspection_dates,
@@ -68,11 +67,7 @@ class SielLayer3DataEditTests(unittest.TestCase):
             'dx_siel.any_retail_com', services.VALID_TABLES_UPDATE
         )
 
-    @patch.object(
-        services, 'get_editable_columns', return_value=['star_rating']
-    )
-    def test_update_uses_kst_same_day_latest_batch_and_redirect_scope(
-            self, _editable):
+    def test_update_uses_kst_same_day_latest_batch_and_redirect_scope(self):
         cursor = ScriptedCursor([
             {'fetchone': ('5.5', None, 'Amazon', 'A-1')},
             {},
@@ -107,11 +102,7 @@ class SielLayer3DataEditTests(unittest.TestCase):
         self.assertEqual(71, history_params[-1])
         self.assertEqual(1, conn.commits)
 
-    @patch.object(
-        services, 'get_editable_columns',
-        return_value=['count_of_star_ratings'],
-    )
-    def test_siel_normal_review_requires_memo(self, _editable):
+    def test_siel_normal_review_requires_memo(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, 'Flipkart', 'F-1')},
         ])

@@ -53,6 +53,20 @@ SIEL_FORMAT_EDITABLE_COLUMNS = {
     },
 }
 
+# Layer3 SIEL cross-field rules use a fixed, source-specific edit policy.
+# These columns are deliberately kept separate from
+# ``monitoring_retail_columns`` because the SIEL NULL configuration is stored
+# in the dedicated monitoring_null_* tables and does not populate that shared
+# edit flag table.
+SIEL_CROSSFIELD_COMMON_EDITABLE_COLUMNS = (
+    'star_rating', 'count_of_star_ratings',
+    'final_sku_price', 'original_sku_price', 'savings',
+)
+SIEL_CROSSFIELD_RETAILER_EDITABLE_COLUMNS = {
+    'amazon': ('page_type', 'main_rank', 'bsr_rank'),
+    'flipkart': ('count_of_reviews', 'detailed_review_content'),
+}
+
 SIEL_SOURCE_CONFIG = {
     'siel_tv': {
         'source_key': 'siel_tv',
@@ -146,6 +160,19 @@ def get_siel_format_editable_columns(product_line, retailer):
     )
     return list(dict.fromkeys((
         *SIEL_FORMAT_COMMON_EDITABLE_COLUMNS,
+        *specific,
+    )))
+
+
+def get_siel_crossfield_editable_columns(product_line, retailer):
+    """Return fields that can correct one SIEL cross-field finding."""
+    normalize_siel_product_line(product_line)
+    retailer_key = str(retailer or '').strip().casefold()
+    specific = SIEL_CROSSFIELD_RETAILER_EDITABLE_COLUMNS.get(retailer_key)
+    if specific is None:
+        return []
+    return list(dict.fromkeys((
+        *SIEL_CROSSFIELD_COMMON_EDITABLE_COLUMNS,
         *specific,
     )))
 

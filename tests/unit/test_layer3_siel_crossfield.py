@@ -302,6 +302,11 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
             [row['row_role'] for row in result['anomalies']],
         )
         self.assertEqual(1, result['total_anomalies'])
+        self.assertIn('count_of_reviews', result['editable_columns'])
+        self.assertIn(
+            'detailed_review_content', result['editable_columns']
+        )
+        self.assertNotIn('main_rank', result['editable_columns'])
         self.assertIn(
             "crawl_datetime >= CURRENT_DATE - INTERVAL '2 days'",
             result['query'],
