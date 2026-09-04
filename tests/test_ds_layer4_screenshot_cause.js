@@ -8,6 +8,9 @@ const indexSource = fs.readFileSync(
 const screenshotSource = fs.readFileSync(
     'apps/ds/ds_layer4/static/ds_layer4/js/screenshot.js', 'utf8'
 );
+const reportSource = fs.readFileSync(
+    'apps/ds/ds_layer4/static/ds_layer4/js/report.js', 'utf8'
+);
 const screenshotCss = fs.readFileSync(
     'apps/ds/ds_layer4/static/ds_layer4/css/index.css', 'utf8'
 );
@@ -26,6 +29,12 @@ assert.ok(layer4Template.includes(
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-4"
+));
+assert.ok(layer4Template.includes(
+    "{% static 'ds_layer4/js/index.js' %}?v=20260904-1"
+));
+assert.ok(layer4Template.includes(
+    "{% static 'ds_layer4/js/report.js' %}?v=20260904-1"
 ));
 
 function fakeClassList() {
@@ -73,7 +82,8 @@ const elements = {
     totalAnomalies: fakeElement(),
     screenshotStatus: fakeElement(),
     filledCause: fakeElement(),
-    reportCount: fakeElement()
+    reportCount: fakeElement(),
+    reportOutputOverlay: fakeElement()
 };
 const requests = [];
 
@@ -113,6 +123,7 @@ const sandbox = {
 
 vm.createContext(sandbox);
 vm.runInContext(indexSource, sandbox);
+vm.runInContext(reportSource, sandbox);
 vm.runInContext(screenshotSource, sandbox);
 
 function setReportData(cause) {
@@ -156,8 +167,23 @@ assert.strictEqual(elements.screenshotCauseSelect.value, '__custom__');
 assert.strictEqual(elements.screenshotCustomCause.value, '직접 확인한 신규 원인');
 assert.strictEqual(elements.screenshotCustomCause.hidden, false);
 assert.ok(sandbox.getCauseOptionsHtml('Danawa', '직접 확인한 신규 원인').includes(
-    '기타: 직접 확인한 신규 원인'
+    '>직접 확인한 신규 원인</option>'
 ));
+assert.ok(!sandbox.getCauseOptionsHtml('Danawa', '직접 확인한 신규 원인').includes('기타:'));
+assert.strictEqual(
+    sandbox.getCheckedStatusMemo(
+        { dataset: { causeSummary: '직판 아님(2건)' } },
+        { dataset: { original: '일시품절(6건)' } }
+    ),
+    '직판 아님(2건)'
+);
+assert.strictEqual(
+    sandbox.getCheckedStatusMemo(
+        { dataset: { causeSummary: '' } },
+        { dataset: { original: '직접 작성 메모' } }
+    ),
+    '직접 작성 메모'
+);
 
 setReportData('crawler_null_capture');
 sandbox.renderScreenshotCauseEditor(101);

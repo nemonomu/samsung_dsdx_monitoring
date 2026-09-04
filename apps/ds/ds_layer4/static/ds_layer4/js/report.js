@@ -181,6 +181,11 @@ function renderStatusTable(data) {
     if (table) enableColumnResize(table);
 }
 
+function getCheckedStatusMemo(checkbox, memoInput) {
+    const causeSummary = checkbox?.dataset?.causeSummary || '';
+    return causeSummary || memoInput?.dataset?.original || '';
+}
+
 // 현황 전체 선택/해제
 function toggleStatusSelectAll() {
     const selectAll = document.getElementById('statusSelectAll');
@@ -192,10 +197,7 @@ function toggleStatusSelectAll() {
         if (memoInput) {
             memoInput.disabled = !selectAll.checked;
             if (selectAll.checked) {
-                if (!memoInput.dataset.original) {
-                    const causeSummary = cb.dataset.causeSummary || '';
-                    if (causeSummary) memoInput.value = causeSummary;
-                }
+                memoInput.value = getCheckedStatusMemo(cb, memoInput);
             } else {
                 memoInput.value = memoInput.dataset.original || '';
             }
@@ -210,10 +212,7 @@ function toggleStatusInput(dailyId) {
     if (checkbox && memoInput) {
         memoInput.disabled = !checkbox.checked;
         if (checkbox.checked) {
-            if (!memoInput.dataset.original) {
-                const causeSummary = checkbox.dataset.causeSummary || '';
-                if (causeSummary) memoInput.value = causeSummary;
-            }
+            memoInput.value = getCheckedStatusMemo(checkbox, memoInput);
             memoInput.focus();
         } else {
             memoInput.value = memoInput.dataset.original || '';

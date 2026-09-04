@@ -27,7 +27,7 @@ function getCauseOptionsHtml(retailer, selectedValue) {
     });
     if (selected && !options.includes(selected)) {
         const safeSelected = esc(selected);
-        html += `<option value="${safeSelected}" selected>기타: ${safeSelected}</option>`;
+        html += `<option value="${safeSelected}" selected>${safeSelected}</option>`;
     }
     return html;
 }
