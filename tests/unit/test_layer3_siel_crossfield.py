@@ -1,5 +1,5 @@
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from apps.common import inspection_dates, retail_validation, siel_retail
 from tests.unit.support import (
@@ -198,6 +198,18 @@ class SielCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
+    def test_detail_source_date_converts_utc_timestamp_to_kst_date(self):
+        row = {
+            'crawl_datetime': datetime(
+                2026, 9, 2, 18, 0, tzinfo=timezone.utc,
+            ),
+        }
+
+        self.assertEqual(
+            '2026-09-03',
+            siel_services._detail_row_source_date(row, 'crawl_datetime'),
+        )
+
     def test_latest_batch_query_uses_kst_same_day_and_redirect_scope(self):
         cursor = ScriptedCursor([{'fetchall': [_amazon_row()]}])
 
@@ -298,8 +310,12 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertTrue(result['found'])
         self.assertEqual('2026-09-03', result['source_date'])
         self.assertEqual(
-            ['target', 'comparison_history'],
+            ['comparison_history', 'target'],
             [row['row_role'] for row in result['anomalies']],
+        )
+        self.assertEqual(
+            ['2026-09-02', '2026-09-03'],
+            [row['row_source_date'] for row in result['anomalies']],
         )
         self.assertEqual(1, result['total_anomalies'])
         self.assertIn('count_of_reviews', result['editable_columns'])
@@ -314,7 +330,7 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertIn('    count_of_reviews', result['query'])
         self.assertIn('    count_of_star_ratings', result['query'])
 
-    def test_thirty_day_detail_keeps_target_rows_at_the_front(self):
+    def test_thirty_day_detail_keeps_each_item_in_date_order(self):
         rule = _rule(1, 'review_gt_star_count', 'Flipkart')
         rows = []
         row_id = 1
@@ -341,12 +357,15 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            ['target'] * 4,
-            [row['row_role'] for row in result['anomalies'][:4]],
+            ['comparison_history'] * 29 + ['target'],
+            [row['row_role'] for row in result['anomalies'][:30]],
         )
         self.assertEqual(
-            {'ITEM-0', 'ITEM-1', 'ITEM-2', 'ITEM-3'},
-            {row['item'] for row in result['anomalies'][:4]},
+            ['ITEM-0'] * 30,
+            [row['item'] for row in result['anomalies'][:30]],
+        )
+        self.assertEqual(
+            '2026-09-03', result['anomalies'][29]['row_source_date'],
         )
 
 

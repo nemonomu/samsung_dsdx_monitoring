@@ -350,6 +350,8 @@ assert(source.includes('더블클릭해 수정'));
 assert(source.includes("td.dataset.col === 'detailed_review_content'"));
 assert(source.includes("r._findingLevel = row.finding_level || 'anomaly'"));
 assert(source.includes("r._rowRole = row.row_role || ''"));
+assert(source.includes('r._rowDate = row.row_source_date'));
+assert(source.includes("'row_role', 'row_source_date'"));
 assert(source.includes("&& nextRole === itemRole"));
 assert(source.includes("var isTargetDate = rowRole === 'target'"));
 assert(source.includes("else if (rowRole === 'comparison_history')"));

@@ -507,8 +507,12 @@ def field_missing_detail_by_field(
     rows = _load_latest_rows(
         cursor, query_start, target_date, key, retailer, fields,
     )
+    validation_rows = [
+        row for row in rows
+        if _source_date(row, source['date_column']) >= str(validation_start)
+    ]
     stats = _classify_missing(
-        rows, target_date, [field], source['date_column']
+        validation_rows, target_date, [field], source['date_column']
     )[field]
     finding_types = {
         finding['item']: finding['finding_type']
@@ -546,9 +550,7 @@ def field_missing_detail_by_field(
         detail = {column: row.get(column) for column in columns}
         detail['finding_type'] = row['finding_type']
         data.append(detail)
-    target_text = str(target_date)
     data.sort(key=lambda row: (
-        0 if _source_date(row, date_column) == target_text else 1,
         str(row.get('item') or '').casefold(),
         _source_date(row, date_column),
         str(row.get('id') or '').zfill(20),

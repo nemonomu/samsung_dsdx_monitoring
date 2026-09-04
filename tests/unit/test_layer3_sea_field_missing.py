@@ -350,7 +350,7 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             result['default_columns'],
         )
 
-    def test_thirty_day_ref_detail_keeps_target_rows_at_the_front(self):
+    def test_thirty_day_ref_detail_keeps_each_item_in_date_order(self):
         target_date = date(2026, 8, 31)
         rows = []
         row_id = 1
@@ -387,11 +387,51 @@ class SeaFieldMissingDateTests(unittest.TestCase):
         self.assertEqual(4, result['today_null_count'])
         self.assertEqual(
             [str(target_date)] * 4,
-            [row['crawl_strdatetime'] for row in result['data'][:4]],
+            [result['data'][index]['crawl_strdatetime']
+             for index in (29, 59, 89, 119)],
         )
         self.assertEqual(
             {'REF-0', 'REF-1', 'REF-2', 'REF-3'},
-            {row['item'] for row in result['data'][:4]},
+            {result['data'][index]['item']
+             for index in (29, 59, 89, 119)},
+        )
+
+    def test_thirty_day_display_does_not_change_three_day_classification(self):
+        target_date = date(2026, 8, 31)
+        rows = [
+            {
+                'id': 1, 'account_name': 'Bestbuy', 'page_type': 'MAIN',
+                'item': 'NEW-IN-WINDOW',
+                'crawl_strdatetime': '2026-08-10',
+                'recommendation_intent': None,
+                'product_url': 'https://example.test/old',
+            },
+            {
+                'id': 2, 'account_name': 'Bestbuy', 'page_type': 'MAIN',
+                'item': 'NEW-IN-WINDOW',
+                'crawl_strdatetime': str(target_date),
+                'recommendation_intent': None,
+                'product_url': 'https://example.test/target',
+            },
+        ]
+        cursor = ScriptedCursor([
+            {'fetchall': rows},
+            {'fetchall': []},
+        ])
+
+        result = services.field_missing_detail_by_field(
+            cursor, target_date, 'sea_ref', 'Bestbuy',
+            'recommendation_intent', 30, [],
+            ['recommendation_intent'], ['recommendation_intent'],
+            ['recommendation_intent'],
+            inspection_date=date(2026, 9, 1),
+        )
+
+        self.assertEqual(1, result['today_null_count'])
+        self.assertEqual(1, result['new_item_count'])
+        self.assertEqual(
+            ['2026-08-10', '2026-08-31'],
+            [row['crawl_strdatetime'] for row in result['data']],
         )
 
     def test_ldy_detects_new_null_item_in_latest_batch_scope(self):

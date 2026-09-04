@@ -150,7 +150,8 @@ function showRetailerDetail(retailer) {
 
     // 동적 컬럼
     const excludeKeys = [
-        'id', 'item', 'account_name', 'page_type', 'finding_level', 'row_role'
+        'id', 'item', 'account_name', 'page_type', 'finding_level', 'row_role',
+        'row_source_date'
     ];
     let dynamicKeys = [];
     if (rows.length > 0) {
@@ -363,7 +364,8 @@ function showRetailerDetail(retailer) {
             r['product_url'] = renderProductUrl(row[urlKey]);
         }
         r._rowId = row.id;
-        r._rowDate = (row[dateCol] || '').substring(0, 10);
+        r._rowDate = row.row_source_date
+            || (row[dateCol] || '').substring(0, 10);
         r._findingLevel = row.finding_level || 'anomaly';
         r._rowRole = row.row_role || '';
         return r;
@@ -599,7 +601,9 @@ function _cfRenderPage(page) {
                 return;
             }
             if (c.key === 'crawl_datetime' || c.key === 'crawl_strdatetime') {
-                var dataDate = displayVal === '-' ? '-' : displayVal.substring(0, 10);
+                var dataDate = row._rowDate || (
+                    displayVal === '-' ? '-' : displayVal.substring(0, 10)
+                );
                 var dateBadge = '';
                 if (isTargetDate) {
                     dateBadge = '<span class="cf-date-badge target">수정 대상</span>';
@@ -752,7 +756,10 @@ async function reloadCfDays() {
             var normalReviews = window.crossfieldNormalReviews;
 
             // 동적 컬럼
-            var excludeKeys = ['id', 'item', 'account_name', 'page_type', 'finding_level'];
+            var excludeKeys = [
+                'id', 'item', 'account_name', 'page_type', 'finding_level',
+                'row_role', 'row_source_date'
+            ];
             var dynamicKeys = [];
             if (rows.length > 0) {
                 Object.keys(rows[0]).forEach(function(key) {
@@ -774,8 +781,10 @@ async function reloadCfDays() {
                 r._rowId = row.id;
                 var dateCol = window.crossfieldDateCol
                     || ((window.crossfieldProductLine || 'tv').toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
-                r._rowDate = (row[dateCol] || '').substring(0, 10);
+                r._rowDate = row.row_source_date
+                    || (row[dateCol] || '').substring(0, 10);
                 r._findingLevel = row.finding_level || 'anomaly';
+                r._rowRole = row.row_role || '';
                 return r;
             });
 
