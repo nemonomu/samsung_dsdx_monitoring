@@ -159,7 +159,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             ['sea_tv', 'sea_ref', 'sea_ldy'], check['source_keys']
         )
         self.assertEqual(
-            'SEA TV/REF/LDY 일일 수집 현황', check['description']
+            'SEA 미국 TV/REF/LDY 일일 수집 현황', check['description']
         )
         self.assertEqual('OK', check['status'])
         self.assertEqual(['TV', 'REF', 'LDY'], [
@@ -214,7 +214,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         check = result['check']
         self.assertEqual('CRITICAL', check['status'])
         self.assertEqual(
-            'SEA TV/REF/LDY 일일 수집 현황', check['description']
+            'SEA 미국 TV/REF/LDY 일일 수집 현황', check['description']
         )
         self.assertEqual(7, len(result['failed_items']))
         self.assertEqual(

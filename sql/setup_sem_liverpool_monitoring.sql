@@ -39,7 +39,7 @@ WITH source(category, table_name) AS (
         collection_duration_min = 600,
         view_table_name = source.table_name,
         sort_order = 4,
-        description = 'SEM Mexico Liverpool ' || source.category || ' 당일(D) 수집',
+        description = 'SEM 멕시코 Liverpool ' || source.category || ' 당일(D) 수집',
         is_active = TRUE,
         is_del = 0,
         updated_at = NOW(),
@@ -60,7 +60,7 @@ SELECT
     'Retail', 'sem_retail', 'SEM ' || source.category || ' 수집',
     source.category, 'daily', NULL, NULL, 'Liverpool', 300, 'SEM', 600,
     source.table_name, 4,
-    'SEM Mexico Liverpool ' || source.category || ' 당일(D) 수집',
+    'SEM 멕시코 Liverpool ' || source.category || ' 당일(D) 수집',
     TRUE, 0, NOW(), 'setup_sem_liverpool', NOW(), 'setup_sem_liverpool'
 FROM source
 WHERE NOT EXISTS (

@@ -406,7 +406,7 @@ def get_layer1_stats(cursor, target_date, now=None):
 
     check = {
         'name': SECTION_TITLES['retail'],
-        'description': 'SEA TV/REF/LDY 일일 수집 현황',
+        'description': 'SEA 미국 TV/REF/LDY 일일 수집 현황',
         'actual': total_count,
         'expected': total_expected,
         'expected_min': total_expected,

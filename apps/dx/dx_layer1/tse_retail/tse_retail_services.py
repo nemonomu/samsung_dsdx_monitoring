@@ -281,7 +281,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     actual_total = sum(category['actual'] for category in categories)
     check = {
         'name': 'TSE Retail',
-        'description': 'TSE TV/REF/LDY 일일 수집 현황',
+        'description': 'TSE 태국 TV/REF/LDY 일일 수집 현황',
         'check_type': 'tse_retail',
         'status': _worst_status([category['status'] for category in categories]),
         'phase': phase,

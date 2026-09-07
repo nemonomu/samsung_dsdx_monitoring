@@ -140,6 +140,9 @@ class TseLayer1ServiceTests(unittest.TestCase):
         check = result['check']
 
         self.assertEqual('tse_retail', check['check_type'])
+        self.assertEqual(
+            'TSE 태국 TV/REF/LDY 일일 수집 현황', check['description']
+        )
         self.assertEqual('KST 09:00~11:00', check['collection_window'])
         self.assertEqual('OK', check['status'])
         self.assertEqual([], result['failed_items'])

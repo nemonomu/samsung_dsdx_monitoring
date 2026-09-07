@@ -1,4 +1,6 @@
 import unittest
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch
 
 from apps.common.sem_retail import (
     SEM_SOURCE_CONFIG,
@@ -7,6 +9,7 @@ from apps.common.sem_retail import (
 )
 from apps.dx.dx_layer2.sem_validation import evaluate_format, product_line_for
 from apps.dx.dx_layer3.cross_field.sem_services import _failed_rules
+from apps.dx.dx_layer1.sem_retail import sem_retail_services
 
 
 class SemRetailConfigurationTests(unittest.TestCase):
@@ -25,6 +28,37 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertIn('screen_size', get_sem_required_columns('sem_tv'))
         self.assertIn('ref_capacity', get_sem_required_columns('sem_ref'))
         self.assertIn('ldy_capacity', get_sem_required_columns('sem_ldy'))
+
+    def test_layer1_description_uses_korean_country_name(self):
+        current = {
+            'retailer': 'Liverpool',
+            'batch_id': 'batch',
+            'actual_count': 1,
+            'main_count': 1,
+            'bsr_count': 0,
+        }
+        with patch.object(
+            sem_retail_services.repo,
+            'get_latest_batch_counts',
+            return_value=current,
+        ), patch.object(
+            sem_retail_services.repo,
+            'get_previous_main_counts',
+            return_value=[{'main_count': 1}],
+        ):
+            result = sem_retail_services.get_layer1_stats(
+                object(),
+                date(2026, 9, 7),
+                datetime(
+                    2026, 9, 7, 13, 0,
+                    tzinfo=timezone(timedelta(hours=9)),
+                ),
+            )
+
+        self.assertEqual(
+            'SEM 멕시코 Liverpool TV/REF/LDY 일일 수집 현황',
+            result['check']['description'],
+        )
 
 
 class SemRetailValidationTests(unittest.TestCase):

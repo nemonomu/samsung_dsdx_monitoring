@@ -102,6 +102,7 @@ const flagContext = { window: {} };
 vm.runInNewContext(flagSource, flagContext);
 assert(flagContext.window.renderCountryFlagLabel('SEA Retail').includes('/static/img/flags/us.svg'));
 assert(flagContext.window.renderCountryFlagLabel('SIEL TV').includes('/static/img/flags/in.svg'));
+assert(flagContext.window.renderCountryFlagLabel('SEM Retail').includes('/static/img/flags/mx.svg'));
 assert(flagContext.window.renderCountryFlagLabel('TSE LDY').includes('/static/img/flags/th.svg'));
 assert.strictEqual(flagContext.window.renderCountryFlagLabel('YouTube'), 'YouTube');
 assert(!flagContext.window.renderCountryFlagLabel('SEA Retail').includes('🇺🇸'));

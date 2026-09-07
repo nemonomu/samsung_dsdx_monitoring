@@ -302,7 +302,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                         results['failed_items'].append({
                             'source': 'SEM Retail',
                             'error_type': '조회 오류',
-                            'expected': 'SEM Mexico Liverpool 수집 데이터',
+                            'expected': 'SEM 멕시코 Liverpool 수집 데이터',
                             'actual': 0,
                             'timestamp': str(target_date),
                         })
