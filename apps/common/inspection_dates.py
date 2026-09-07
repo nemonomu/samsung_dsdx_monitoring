@@ -12,13 +12,14 @@ class MonitoringDateError(ValueError):
     """Raised when an inspection-date mapping request is not allow-listed."""
 
 
-COUNTRY_ORDER = ('SEA', 'SEDA', 'SEG', 'SIEL', 'TSE')
+COUNTRY_ORDER = ('SEA', 'SEDA', 'SEG', 'SIEL', 'SEM', 'TSE')
 PRODUCT_ORDER = ('TV', 'REF', 'LDY')
 COUNTRY_OFFSETS = {
     'SEA': -1,
     'SEDA': -1,
     'SEG': 0,
     'SIEL': 0,
+    'SEM': 0,
     'TSE': 0,
 }
 
@@ -97,7 +98,7 @@ def resolve_monitoring_date(inspection_date, country, source_key):
 
 
 def resolve_monitoring_dates(inspection_date):
-    """Return mappings for all five countries and fifteen product sources."""
+    """Return mappings for every configured country and product source."""
 
     return [
         resolve_monitoring_date(inspection_date, country, source_key)

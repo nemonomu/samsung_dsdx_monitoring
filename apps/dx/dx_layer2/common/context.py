@@ -79,6 +79,15 @@ SIEL_RETAIL_CATEGORIES = {
     child['detail_code'] for child in SIEL_RETAIL_SIDEBAR_CHILDREN
 }
 
+SEM_RETAIL_SIDEBAR_CHILDREN = (
+    {'name': 'SEM TV', 'label': 'TV', 'detail_code': 'sem_tv_retail'},
+    {'name': 'SEM REF', 'label': 'REF', 'detail_code': 'sem_ref_retail'},
+    {'name': 'SEM LDY', 'label': 'LDY', 'detail_code': 'sem_ldy_retail'},
+)
+SEM_RETAIL_CATEGORIES = {
+    child['detail_code'] for child in SEM_RETAIL_SIDEBAR_CHILDREN
+}
+
 
 DISPLAY_NAME_OVERRIDES = {
     'tv_retail': 'SEA TV',
@@ -87,6 +96,9 @@ DISPLAY_NAME_OVERRIDES = {
     'siel_tv_retail': 'SIEL TV',
     'siel_ref_retail': 'SIEL REF',
     'siel_ldy_retail': 'SIEL LDY',
+    'sem_tv_retail': 'SEM TV',
+    'sem_ref_retail': 'SEM REF',
+    'sem_ldy_retail': 'SEM LDY',
 }
 
 
@@ -103,8 +115,11 @@ def _legacy_display_order(category):
         'siel_tv_retail': 3,
         'siel_ref_retail': 4,
         'siel_ldy_retail': 5,
-        'youtube': 6,
-    }.get(category, 7)
+        'sem_tv_retail': 6,
+        'sem_ref_retail': 7,
+        'sem_ldy_retail': 8,
+        'youtube': 9,
+    }.get(category, 10)
 
 
 
@@ -141,6 +156,7 @@ def build_sidebar_groups(section, focus=''):
         items = []
         sea_added = False
         siel_added = False
+        sem_added = False
         for category, info in sorted(
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
@@ -211,6 +227,32 @@ def build_sidebar_groups(section, focus=''):
                         child['active'] for child in siel_children
                     ),
                     'children': siel_children,
+                })
+                continue
+            if category in SEM_RETAIL_CATEGORIES:
+                if sem_added:
+                    continue
+                sem_added = True
+                children = []
+                for child in SEM_RETAIL_SIDEBAR_CHILDREN:
+                    detail_code = child['detail_code']
+                    child_info = config.get(detail_code)
+                    if child_info is None:
+                        continue
+                    child_item = dict(child)
+                    child_item['active'] = (
+                        section == sec
+                        and focus in (
+                            child['name'],
+                            _get_display_name(detail_code, child_info),
+                            child_info['display_name'], detail_code,
+                        )
+                    )
+                    children.append(child_item)
+                items.append({
+                    'name': 'SEM Retail',
+                    'active': any(child['active'] for child in children),
+                    'children': children,
                 })
                 continue
             items.append({

@@ -119,6 +119,9 @@ def backup_retail_data(request):
                 'siel_tv_count': result['siel_tv_count'],
                 'siel_ref_count': result['siel_ref_count'],
                 'siel_ldy_count': result['siel_ldy_count'],
+                'sem_tv_count': result['sem_tv_count'],
+                'sem_ref_count': result['sem_ref_count'],
+                'sem_ldy_count': result['sem_ldy_count'],
                 'tse_tv_count': result['tse_tv_count'],
                 'tse_ref_count': result['tse_ref_count'],
                 'tse_ldy_count': result['tse_ldy_count'],
@@ -144,6 +147,9 @@ def backup_retail_data(request):
                 'siel_tv_count': result['siel_tv']['count'],
                 'siel_ref_count': result['siel_ref']['count'],
                 'siel_ldy_count': result['siel_ldy']['count'],
+                'sem_tv_count': result['sem_tv']['count'],
+                'sem_ref_count': result['sem_ref']['count'],
+                'sem_ldy_count': result['sem_ldy']['count'],
                 'tse_tv_count': result['tse_tv']['count'],
                 'tse_ref_count': result['tse_ref']['count'],
                 'tse_ldy_count': result['tse_ldy']['count'],
@@ -155,6 +161,9 @@ def backup_retail_data(request):
                 f"SIEL TV: {counts['siel_tv_count']}건, "
                 f"SIEL REF: {counts['siel_ref_count']}건, "
                 f"SIEL LDY: {counts['siel_ldy_count']}건, "
+                f"SEM TV: {counts['sem_tv_count']}건, "
+                f"SEM REF: {counts['sem_ref_count']}건, "
+                f"SEM LDY: {counts['sem_ldy_count']}건, "
                 f"TSE TV: {counts['tse_tv_count']}건, "
                 f"TSE REF: {counts['tse_ref_count']}건, "
                 f"TSE LDY: {counts['tse_ldy_count']}건"

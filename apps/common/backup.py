@@ -13,6 +13,7 @@ from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_SOURCE_CONFIG,
 )
+from apps.common.sem_retail import SEM_SOURCE_CONFIG
 
 
 def _sea_backup_source(product_key):
@@ -42,6 +43,21 @@ def _siel_backup_source(source_key):
         'backup_table': source['backup_table_name'],
         'date_column': f"a.{source['date_column']}",
         'date_mode': 'siel_kst_timestamp',
+    }
+
+
+def _sem_backup_source(source_key):
+    source = SEM_SOURCE_CONFIG[source_key]
+    return {
+        'key': source['source_key'],
+        'source_key': source['source_key'],
+        'country': 'SEM',
+        'category': f"SEM {source['category']}",
+        'product_line': source['source_key'],
+        'source_table': source['table_name'],
+        'backup_table': source['backup_table_name'],
+        'date_column': f"a.{source['date_column']}",
+        'date_mode': 'text_prefix',
     }
 
 
@@ -85,6 +101,9 @@ _BACKUP_SOURCES = tuple(
 ) + tuple(
     _siel_backup_source(source_key)
     for source_key in ('siel_tv', 'siel_ref', 'siel_ldy')
+) + tuple(
+    _sem_backup_source(source_key)
+    for source_key in ('sem_tv', 'sem_ref', 'sem_ldy')
 )
 _BACKUP_SOURCE_BY_KEY = {source['key']: source for source in _BACKUP_SOURCES}
 _INVALID_DATE_ERROR_CODE = 'invalid_inspection_date'

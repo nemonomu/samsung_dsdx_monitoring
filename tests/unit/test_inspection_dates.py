@@ -12,16 +12,16 @@ class InspectionDateResolverTests(unittest.TestCase):
             'tests._inspection_dates_under_test',
         )
 
-    def test_all_fifteen_sources_follow_the_country_offsets(self):
+    def test_all_eighteen_sources_follow_the_country_offsets(self):
         results = self.resolver.resolve_monitoring_dates('2026-08-20')
 
-        self.assertEqual(15, len(results))
+        self.assertEqual(18, len(results))
         by_country = {}
         for result in results:
             by_country.setdefault(result['country'], []).append(result)
 
         self.assertEqual(
-            ['SEA', 'SEDA', 'SEG', 'SIEL', 'TSE'],
+            ['SEA', 'SEDA', 'SEG', 'SIEL', 'SEM', 'TSE'],
             list(by_country),
         )
         for country in ('SEA', 'SEDA'):
@@ -33,7 +33,7 @@ class InspectionDateResolverTests(unittest.TestCase):
             self.assertEqual(
                 {-1}, {item['offset_days'] for item in by_country[country]}
             )
-        for country in ('SEG', 'SIEL', 'TSE'):
+        for country in ('SEG', 'SIEL', 'SEM', 'TSE'):
             self.assertEqual(3, len(by_country[country]))
             self.assertEqual(
                 {'2026-08-20'},

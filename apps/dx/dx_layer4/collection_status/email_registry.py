@@ -105,6 +105,9 @@ _SIEL_RETAILERS = (
     _retailer('Amazon', email_redirect_metric=True),
     _retailer('Flipkart'),
 )
+_SEM_RETAILERS = (_retailer('Liverpool'),)
+
+
 def _tse_retailers(product):
     return (_retailer('Homepro', include_unassigned=False),)
 
@@ -171,6 +174,22 @@ EMAIL_REPORT_SOURCES = (
             collection_scope='all',
             email_include_skipped_columns=(
                 _TSE_EMAIL_SKIPPED_ALLOWLIST[product]
+            ),
+        )
+        for product in ('TV', 'REF', 'LDY')
+    ),
+    *(
+        _source(
+            f'sem_{product.lower()}', 'SEM', product,
+            f'dx_sem.dx_sem_{product.lower()}_retail_com',
+            'crawl_datetime', 'text', _SEM_RETAILERS,
+            has_page_type=False, include_unassigned=False,
+            collection_scope='all',
+            email_include_skipped_columns=(
+                'original_sku_price', 'savings',
+                'ref_refrigerator_type' if product == 'REF' else
+                'ldy_loading_type' if product == 'LDY' else
+                'screen_size',
             ),
         )
         for product in ('TV', 'REF', 'LDY')

@@ -13,6 +13,7 @@ from apps.common.retail_columns import (
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
+from apps.dx.dx_layer2 import sem_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -987,6 +988,10 @@ def _build_dup_delete_query(table, retailer=''):
 
 def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
+    if sem_validation.product_line_for(table):
+        return sem_validation.duplicate_detail(
+            cursor, target_date, table, page, page_size
+        )
     if _sea_duplicate_product_key(table):
         return _get_sea_anomaly_detail(
             cursor, target_date, table, retailer, page, page_size
@@ -1969,6 +1974,9 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
     )
 
     total_anomaly_issues += _append_tse_anomaly_stats(
+        cursor, target_date, anomaly_validation
+    )
+    total_anomaly_issues += sem_validation.append_duplicate_stats(
         cursor, target_date, anomaly_validation
     )
 

@@ -41,6 +41,7 @@ config/create_admin.py
 *.pfx
 *.sql
 !sql/disable_tse_lazada_powerbuy_monitoring.sql
+!sql/setup_sem_liverpool_monitoring.sql
 
 # Nginx (서버에서 직접 설정)
 nginx/

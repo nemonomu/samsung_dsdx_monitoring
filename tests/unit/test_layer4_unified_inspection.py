@@ -48,17 +48,17 @@ class UnifiedInspectionApiTests(unittest.TestCase):
     def setUpClass(cls):
         cls.api = load_api()
 
-    def test_api_returns_five_visible_rows_and_fifteen_sources(self):
+    def test_api_returns_six_visible_rows_and_eighteen_sources(self):
         response = self.api.date_mapping(FakeRequest('2026-08-20'))
 
         self.assertEqual(200, response.status_code)
         self.assertTrue(response.data['success'])
         self.assertTrue(response.data['read_only'])
         self.assertEqual('2026-08-20', response.data['inspection_date'])
-        self.assertEqual(5, len(response.data['countries']))
-        self.assertEqual(15, response.data['source_count'])
+        self.assertEqual(6, len(response.data['countries']))
+        self.assertEqual(18, response.data['source_count'])
         self.assertEqual(
-            15,
+            18,
             sum(
                 len(country['sources'])
                 for country in response.data['countries']
@@ -72,7 +72,7 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         self.assertEqual('D-1', countries['SEA']['rule'])
         self.assertEqual('2026-08-19', countries['SEDA']['source_date'])
         self.assertEqual('D-1', countries['SEDA']['rule'])
-        for country in ('SEG', 'SIEL', 'TSE'):
+        for country in ('SEG', 'SIEL', 'SEM', 'TSE'):
             self.assertEqual(
                 '2026-08-20', countries[country]['source_date']
             )

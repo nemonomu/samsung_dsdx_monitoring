@@ -245,6 +245,9 @@ function formatBackupPrompt(data) {
             Number(data.siel_tv_count || 0) +
             Number(data.siel_ref_count || 0) +
             Number(data.siel_ldy_count || 0) +
+            Number(data.sem_tv_count || 0) +
+            Number(data.sem_ref_count || 0) +
+            Number(data.sem_ldy_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
             Number(data.tse_ldy_count || 0);
@@ -268,6 +271,13 @@ function formatBackupPrompt(data) {
         'TV ' + formatBackupCount(data.siel_tv_count) +
             '  ·  REF ' + formatBackupCount(data.siel_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.siel_ldy_count),
+        '',
+        'SEM · D 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']
+        ),
+        'TV ' + formatBackupCount(data.sem_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.sem_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.sem_ldy_count),
         '',
         'TSE · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['tse_tv', 'tse_ref', 'tse_ldy']
@@ -295,6 +305,9 @@ function renderBackupConfirmContent(data) {
             Number(data.siel_tv_count || 0) +
             Number(data.siel_ref_count || 0) +
             Number(data.siel_ldy_count || 0) +
+            Number(data.sem_tv_count || 0) +
+            Number(data.sem_ref_count || 0) +
+            Number(data.sem_ldy_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
             Number(data.tse_ldy_count || 0);
@@ -370,6 +383,15 @@ function renderBackupConfirmContent(data) {
             { label: 'TV', value: data.siel_tv_count },
             { label: 'REF', value: data.siel_ref_count },
             { label: 'LDY', value: data.siel_ldy_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'SEM', 'D',
+        formatBackupSourceDate(sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']),
+        [
+            { label: 'TV', value: data.sem_tv_count },
+            { label: 'REF', value: data.sem_ref_count },
+            { label: 'LDY', value: data.sem_ldy_count }
         ]
     ));
     cards.appendChild(countryCard(

@@ -12,6 +12,7 @@ from apps.common.retail_columns import load_retail_columns, get_editable_columns
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
+from apps.dx.dx_layer2 import sem_validation
 
 try:
     from apps.common.inspection_dates import resolve_monitoring_date
@@ -2072,6 +2073,8 @@ def get_null_stats(cursor, target_date, include_youtube=True):
     config = load_null_check_config()
 
     for category, cat_info in config.items():
+        if sem_validation.product_line_for(category):
+            continue
         if not include_youtube and str(category).lower() == 'youtube':
             continue
         if not cat_info['checks']:
@@ -2242,6 +2245,10 @@ def get_null_stats(cursor, target_date, include_youtube=True):
     total_null_issues += _append_tse_null_stats(
         cursor, target_date, null_validation
     )
+    if any(sem_validation.product_line_for(category) for category in config):
+        total_null_issues += sem_validation.append_null_stats(
+            cursor, target_date, null_validation
+        )
     null_validation['total_issues'] = total_null_issues
     null_validation['status'] = get_status(total_null_issues)
     return null_validation, total_null_issues
@@ -2249,6 +2256,11 @@ def get_null_stats(cursor, target_date, include_youtube=True):
 
 def get_null_detail(cursor, target_date, category, retailer, days, column):
     """NULL 필드 상세 조회 — 특정 컬럼의 NULL 행만 조회. dict 반환."""
+
+    if sem_validation.product_line_for(category):
+        return sem_validation.null_detail(
+            cursor, target_date, category, column, days=days
+        )
 
     runtime = _get_tse_runtime()
     product_line = _get_tse_product_line_for_category(category, runtime)

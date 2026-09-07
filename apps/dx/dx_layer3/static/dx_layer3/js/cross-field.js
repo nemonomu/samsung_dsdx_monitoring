@@ -135,7 +135,7 @@ function showRetailerDetail(retailer) {
     const dateCol = window.crossfieldDateCol
         || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
-    const isCanonicalProductLine = /^(SEA_|SIEL_|TSE_)/.test(productLineDisplay);
+    const isCanonicalProductLine = /^(SEA_|SIEL_|SEM_|TSE_)/.test(productLineDisplay);
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const anomalyCount = Number(rSummary.count || 0);
     const reviewCount = Number(rSummary.review_count || 0);

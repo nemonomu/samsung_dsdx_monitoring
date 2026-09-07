@@ -21,6 +21,20 @@ def module_stub(name, **attributes):
     return module
 
 
+def sem_validation_stub():
+    """No-op SEM dependency for isolated legacy Layer 2 service tests."""
+    return module_stub(
+        'apps.dx.dx_layer2.sem_validation',
+        product_line_for=lambda _value: None,
+        append_null_stats=lambda *_args, **_kwargs: 0,
+        append_format_stats=lambda *_args, **_kwargs: 0,
+        append_duplicate_stats=lambda *_args, **_kwargs: 0,
+        null_detail=lambda *_args, **_kwargs: {},
+        format_detail=lambda *_args, **_kwargs: {},
+        duplicate_detail=lambda *_args, **_kwargs: {},
+    )
+
+
 def load_module(relative_path, module_name, stubs=None):
     path = REPO_ROOT / relative_path
     spec = importlib.util.spec_from_file_location(module_name, path)

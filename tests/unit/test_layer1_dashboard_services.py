@@ -63,6 +63,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'sentiment': 'sentiment_services',
             'youtube': 'youtube_services',
             'siel_retail': 'siel_retail_services',
+            'sem_retail': 'sem_retail_services',
             'tse_retail': 'tse_retail_services',
             'market_trend': 'market_trend_services',
             'market_demand': 'market_demand_services',

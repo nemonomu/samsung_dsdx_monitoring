@@ -68,11 +68,11 @@ class EmailRegistryTests(unittest.TestCase):
     def test_registry_has_metadata_and_aliases_but_no_column_matrix(self):
         registry = load_registry()
 
-        self.assertEqual(15, len(registry.EMAIL_REPORT_SOURCES))
+        self.assertEqual(18, len(registry.EMAIL_REPORT_SOURCES))
         self.assertEqual(
             {
                 (country, product)
-                for country in ('SEA', 'SEDA', 'SEG', 'SIEL', 'TSE')
+                for country in ('SEA', 'SEDA', 'SEG', 'SIEL', 'SEM', 'TSE')
                 for product in ('TV', 'REF', 'LDY')
             },
             {
@@ -152,6 +152,20 @@ class EmailRegistryTests(unittest.TestCase):
             self.assertFalse(
                 retailers['Homepro']['optional_if_unconfigured']
             )
+
+        sem_sources = {
+            source['key']: source
+            for source in registry.EMAIL_REPORT_SOURCES
+            if source['country'] == 'SEM'
+        }
+        self.assertEqual(set(sem_sources), {'sem_tv', 'sem_ref', 'sem_ldy'})
+        for configured_source in sem_sources.values():
+            self.assertEqual(
+                {retailer['name'] for retailer in configured_source['retailers']},
+                {'Liverpool'},
+            )
+            self.assertEqual(configured_source['date_mode'], 'text')
+            self.assertFalse(configured_source['has_page_type'])
 
         siel_sources = [
             source for source in registry.EMAIL_REPORT_SOURCES

@@ -202,6 +202,9 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SIEL TV' ? 'siel_tv_retail' :
                        tableName === 'SIEL REF' ? 'siel_ref_retail' :
                        tableName === 'SIEL LDY' ? 'siel_ldy_retail' :
+                       tableName === 'SEM TV' ? 'sem_tv_retail' :
+                       tableName === 'SEM REF' ? 'sem_ref_retail' :
+                       tableName === 'SEM LDY' ? 'sem_ldy_retail' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :
                        tableName === 'TSE TV' ? 'tse_tv_retail' :

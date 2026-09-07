@@ -133,6 +133,23 @@ const DETAIL_COLUMNS = {
             { key: 'product_url', label: 'URL', width: 80 },
         ]
     },
+    dup_sem_retail: {
+        group: [
+            { key: '_no', label: 'No', width: 50, align: 'center' },
+            { key: 'duplicate_type', label: '중복 유형', width: 130 },
+            { key: 'item', label: 'Item', width: 150 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 220 },
+            { key: 'reason', label: '중복사유', width: 260 },
+        ],
+        detail: [
+            { key: 'id', label: 'ID', width: 80 },
+            { key: 'sku', label: 'SKU', width: 130 },
+            { key: 'retailer_sku_name', label: 'Retailer SKU Name', width: 200 },
+            { key: 'final_sku_price', label: '판매가', width: 110 },
+            { key: 'crawl_datetime', label: '수집시각', width: 150 },
+            { key: 'product_url', label: 'URL', width: 80 },
+        ]
+    },
     dup_sea_retail: {
         group: [
             { key: '_no', label: 'No', width: 50, align: 'center' },
@@ -216,6 +233,9 @@ function getColumnConfig(type, tableParam) {
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_tse_retail;
         }
+        if (/^sem_(tv|ref|ldy)_retail$/.test(tableParam)) {
+            return DETAIL_COLUMNS.dup_sem_retail;
+        }
         var key = 'dup_' + tableParam;
         return DETAIL_COLUMNS[key] || DETAIL_COLUMNS.dup_default;
     }
@@ -231,6 +251,7 @@ function isTseDuplicateTable(tableParam) {
 
 function isReadOnlyDuplicateTable(tableParam) {
     return isTseDuplicateTable(tableParam)
+        || /^sem_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
 }
 

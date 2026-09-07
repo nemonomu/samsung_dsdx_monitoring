@@ -12,6 +12,7 @@ from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
 from apps.dx.dx_layer1.youtube import youtube_services as youtube_svc
 from apps.dx.dx_layer1.siel_retail import siel_retail_services as siel_retail_svc
+from apps.dx.dx_layer1.sem_retail import sem_retail_services as sem_retail_svc
 from apps.dx.dx_layer1.tse_retail import tse_retail_services as tse_retail_svc
 from apps.dx.dx_layer1.market_trend import market_trend_services as market_trend_svc
 from apps.dx.dx_layer1.market_demand import market_demand_services as market_demand_svc
@@ -33,6 +34,7 @@ _SERVICE_MAP = {
     'sentiment': sentiment_svc,
     'youtube': youtube_svc,
     'siel_retail': siel_retail_svc,
+    'sem_retail': sem_retail_svc,
     'tse_retail': tse_retail_svc,
     'market_trend': market_trend_svc,
     'market_demand': market_demand_svc,
@@ -53,13 +55,15 @@ _SERVICE_MAP = {
 
 _YOUTUBE_SAVEPOINT = 'layer1_youtube_monitoring'
 _SIEL_RETAIL_SAVEPOINT = 'layer1_siel_retail_monitoring'
+_SEM_RETAIL_SAVEPOINT = 'layer1_sem_retail_monitoring'
 _TSE_RETAIL_SAVEPOINT = 'layer1_tse_retail_monitoring'
 _TSE_KST = timezone(timedelta(hours=9))
 _DISPLAY_CHECK_PRIORITY = {
     'retail': 0,
     'siel_retail': 1,
-    'tse_retail': 2,
-    'youtube': 3,
+    'sem_retail': 2,
+    'tse_retail': 3,
+    'youtube': 4,
 }
 
 
@@ -87,6 +91,10 @@ def _get_tse_kst_now():
 
 def _get_siel_kst_now():
     """Return an explicit KST clock for SIEL collection-phase decisions."""
+    return datetime.now(_TSE_KST)
+
+
+def _get_sem_kst_now():
     return datetime.now(_TSE_KST)
 
 
@@ -162,6 +170,26 @@ def _get_siel_retail_stats_isolated(cursor, svc, target_date, now):
     return svc_result
 
 
+def _get_sem_retail_stats_isolated(cursor, svc, target_date, now):
+    """Keep a SEM query failure from invalidating other Layer 1 results."""
+    cursor.execute(f'SAVEPOINT {_SEM_RETAIL_SAVEPOINT}')
+    try:
+        svc_result = svc.get_layer1_stats(cursor, target_date, now)
+        if not isinstance(svc_result, dict) or not isinstance(
+            svc_result.get('check'), dict
+        ):
+            cursor.execute(f'ROLLBACK TO SAVEPOINT {_SEM_RETAIL_SAVEPOINT}')
+            cursor.execute(f'RELEASE SAVEPOINT {_SEM_RETAIL_SAVEPOINT}')
+            return None
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {_SEM_RETAIL_SAVEPOINT}')
+        cursor.execute(f'RELEASE SAVEPOINT {_SEM_RETAIL_SAVEPOINT}')
+        log_error(exc)
+        return None
+    cursor.execute(f'RELEASE SAVEPOINT {_SEM_RETAIL_SAVEPOINT}')
+    return svc_result
+
+
 def _get_active_services(target_date=None):
     """스케줄 DB에서 활성 서비스 목록, daily 여부, target_date 여부를 동적으로 구성"""
     schedules = load_collection_schedules()
@@ -192,6 +220,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
     """Layer 1 statistics orchestration for active configured services."""
     now = datetime.now()
     siel_now = _get_siel_kst_now()
+    sem_now = _get_sem_kst_now()
     tse_now = _get_tse_kst_now()
     today = now.date()
 
@@ -261,6 +290,19 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                             'source': 'TSE Retail',
                             'error_type': '조회 오류',
                             'expected': 'TSE 국가 수집 데이터',
+                            'actual': 0,
+                            'timestamp': str(target_date),
+                        })
+                        continue
+                elif check_type == 'sem_retail':
+                    svc_result = _get_sem_retail_stats_isolated(
+                        cursor, svc, target_date, sem_now
+                    )
+                    if svc_result is None:
+                        results['failed_items'].append({
+                            'source': 'SEM Retail',
+                            'error_type': '조회 오류',
+                            'expected': 'SEM Mexico Liverpool 수집 데이터',
                             'actual': 0,
                             'timestamp': str(target_date),
                         })

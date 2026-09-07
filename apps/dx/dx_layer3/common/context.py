@@ -8,6 +8,7 @@ from apps.dx.dx_layer3.dashboard.services import (
     load_category_rules,
 )
 from apps.common.siel_retail import SIEL_SOURCE_CONFIG
+from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 
 
@@ -58,6 +59,9 @@ def _get_sidebar_items():
     siel_section_codes = {
         source['section_code'] for source in SIEL_SOURCE_CONFIG.values()
     }
+    sem_section_codes = {
+        source['section_code'] for source in SEM_SOURCE_CONFIG.values()
+    }
     crossfield_items = []
     seen_crossfield_sections = set()
     sea_item_index = None
@@ -71,6 +75,7 @@ def _get_sidebar_items():
         if (
             not section_name
             or section_code in siel_section_codes
+            or section_code in sem_section_codes
             or section_code in tse_section_codes
         ):
             continue
@@ -143,6 +148,21 @@ def _get_sidebar_items():
             else len(crossfield_items)
         )
         crossfield_items.insert(insert_at, tse_item)
+
+    sem_children = [{
+        'name': source['display_name'],
+        'label': source['category'],
+        'detail_code': detail_code,
+    } for detail_code, source in SEM_SOURCE_CONFIG.items()]
+    if sem_children:
+        tse_index = next((
+            index for index, item in enumerate(crossfield_items)
+            if isinstance(item, dict) and item.get('name') == 'TSE Retail'
+        ), len(crossfield_items))
+        crossfield_items.insert(tse_index, {
+            'name': 'SEM Retail',
+            'children': sem_children,
+        })
 
     sidebar['cross_field'] = crossfield_items
 

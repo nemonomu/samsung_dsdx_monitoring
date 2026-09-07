@@ -564,7 +564,7 @@ function renderData(data) {
         };
 
         if (categoryName === '크로스 필드 검증') {
-            const regionGroups = { sea: [], siel: [], tse: [] };
+            const regionGroups = { sea: [], siel: [], sem: [], tse: [] };
             const standaloneChecks = [];
             checks.forEach(check => {
                 const detailCode = String(check.detail_code || '').toLowerCase();
@@ -580,6 +580,8 @@ function renderData(data) {
                     regionGroups.sea.push(check);
                 } else if (/^siel_(tv|ref|ldy)$/.test(detailCode)) {
                     regionGroups.siel.push(check);
+                } else if (/^sem_(tv|ref|ldy)$/.test(detailCode)) {
+                    regionGroups.sem.push(check);
                 } else if (/^tse_(tv|ref|ldy)$/.test(detailCode)) {
                     regionGroups.tse.push(check);
                 } else {
@@ -590,6 +592,7 @@ function renderData(data) {
             [
                 { key: 'sea', title: 'SEA Retail', description: 'SEA TV/REF/LDY 크로스필드 검증' },
                 { key: 'siel', title: 'SIEL Retail', description: 'SIEL TV/REF/LDY 크로스필드 검증' },
+                { key: 'sem', title: 'SEM Retail', description: 'SEM TV/REF/LDY 크로스필드 검증' },
                 { key: 'tse', title: 'TSE Retail', description: 'TSE TV/REF/LDY 크로스필드 검증' },
             ].forEach(region => {
                 const groupChecks = regionGroups[region.key];
@@ -943,7 +946,7 @@ function renderCrossfieldReviewTypes(summary) {
 function renderCrossfieldSummaryContent(title, _category, data) {
     const inline = isCrossFieldInline();
     const ruleSummary = data.rule_summary || [];
-    const isCanonicalProductLine = /^(SEA_|SIEL_|TSE_)/.test(
+    const isCanonicalProductLine = /^(SEA_|SIEL_|SEM_|TSE_)/.test(
         String(data.product_line || '').toUpperCase()
     );
 

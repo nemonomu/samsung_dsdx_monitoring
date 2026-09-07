@@ -13,6 +13,7 @@
         'retail': 'Retail',
         'sentiment': 'Retail',
         'youtube': 'Consumer',
+        'sem_retail': 'SEM',
         'tse_retail': 'TSE',
         'market_trend': 'Market',
         'market_demand': 'Market',
@@ -25,6 +26,7 @@
         'retail': '거래선 제품 정보 / 감성점수',
         'sentiment': '감성분석',
         'youtube': 'YouTube 영상 데이터 (HHP)',
+        'sem_retail': 'SEM Retail 수집 데이터',
         'tse_retail': 'TSE Retail 수집 데이터',
         'market_trend': '키워드 검색 트렌드 (TV/HHP)',
         'market_demand': '수요 증감율 예측 (TV/HHP)',
@@ -41,6 +43,9 @@
         'tse_tv': 'dx_tse.dx_tse_tv_retail_com',
         'tse_ref': 'dx_tse.dx_tse_ref_retail_com',
         'tse_ldy': 'dx_tse.dx_tse_ldy_retail_com',
+        'sem_tv': 'dx_sem.dx_sem_tv_retail_com',
+        'sem_ref': 'dx_sem.dx_sem_ref_retail_com',
+        'sem_ldy': 'dx_sem.dx_sem_ldy_retail_com',
         'market_trend': 'RAW_EXT_MARKET_TREND_VIEW',
         'market_demand': 'RAW_EXT_OPENAI_FORECAST_RESULTS_VIEW',
         'market_competitor_event': 'RAW_EXT_MARKET_COMP_EVENT_VIEW',
@@ -61,7 +66,8 @@
         'SEG': 1,
         'SIEL': 2,
         'SEDA': 3,
-        'TSE': 4
+        'SEM': 4,
+        'TSE': 5
     };
 
     // 수집이 중단된 항목은 Layer 1 응답에 남아 있어도 일일 현황·이메일에서 제외한다.
@@ -332,10 +338,12 @@
                 return;
             } else if (check.is_target_date === false) {
                 return;
-            } else if (checkType === 'tse_retail') {
+            } else if (checkType === 'tse_retail' || checkType === 'sem_retail') {
                 if (options.excludeTseRetail) return;
                 (check.categories || []).forEach(function(cat) {
-                    var productLine = String(cat.product_line || ('tse_' + String(cat.name || '').toLowerCase())).toLowerCase();
+                    var country = checkType === 'sem_retail' ? 'SEM' : 'TSE';
+                    var prefix = country.toLowerCase();
+                    var productLine = String(cat.product_line || (prefix + '_' + String(cat.name || '').toLowerCase())).toLowerCase();
                     var retailerRows = cat.retailers || [];
                     var expected = typeof cat.expected === 'number' ? cat.expected : 0;
                     var actual = typeof cat.total === 'number' ? cat.total : (typeof cat.actual === 'number' ? cat.actual : 0);
@@ -349,8 +357,8 @@
                     }
                     rows.push({
                         no: no++,
-                        category: 'TSE',
-                        name: 'TSE ' + String(cat.name || '').toUpperCase() + ' 수집 데이터',
+                        category: country,
+                        name: country + ' ' + String(cat.name || '').toUpperCase() + ' 수집 데이터',
                         table_name: cat.table_name || TABLE_NAME_MAP[productLine] || '',
                         expected: expected || 300,
                         actual: actual
@@ -713,7 +721,7 @@
         html += '<table width="100%" cellpadding="0" cellspacing="0"><tr><td style="border:0;font:13px Malgun Gothic,sans-serif;line-height:1.7">';
 
         html += '검수일 ' + dateDisplay + ' 기준 데이터 수집 모니터링 현황 공유드립니다.<br>';
-        html += '<span style="font-size:12px;color:#666;">SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D)</span><br><br>';
+        html += '<span style="font-size:12px;color:#666;">SEA·YouTube·SEDA: 전날(D-1) / SEG·SIEL·TSE: 금일(D) · SEM: 금일(D)</span><br><br>';
 
         // 1. 일일 수집 현황
         html += '<b>1. 일일 수집 현황</b><br><br>';

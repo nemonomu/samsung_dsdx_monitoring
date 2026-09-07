@@ -16,6 +16,7 @@ from apps.common.db import dx_table
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
+from apps.dx.dx_layer2 import sem_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -1768,6 +1769,10 @@ def get_format_detail(cursor, target_date, table, retailer, days):
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if sem_validation.product_line_for(table):
+        return sem_validation.format_detail(
+            cursor, target_date, table, days=days
+        )
     if _sea_format_product_key(table):
         return _get_sea_format_detail(
             cursor, target_date, table, retailer, days
@@ -2883,6 +2888,9 @@ def get_format_stats(cursor, target_date):
     )
 
     total_format_issues += _append_tse_format_stats(
+        cursor, target_date, format_validation
+    )
+    total_format_issues += sem_validation.append_format_stats(
         cursor, target_date, format_validation
     )
 

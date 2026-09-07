@@ -40,6 +40,24 @@ SIEL_SOURCE_CONFIG = {
     },
 }
 
+SEM_SOURCE_CONFIG = {
+    'sem_tv': {
+        'category': 'TV',
+        'section_code': 'sem_tv_retail',
+        'display_name': 'SEM TV',
+    },
+    'sem_ref': {
+        'category': 'REF',
+        'section_code': 'sem_ref_retail',
+        'display_name': 'SEM REF',
+    },
+    'sem_ldy': {
+        'category': 'LDY',
+        'section_code': 'sem_ldy_retail',
+        'display_name': 'SEM LDY',
+    },
+}
+
 
 class Layer3TseSidebarContextTests(unittest.TestCase):
     def _load_context(self, crossfield_rules):
@@ -52,6 +70,10 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
                 'apps.common.siel_retail': module_stub(
                     'apps.common.siel_retail',
                     SIEL_SOURCE_CONFIG=SIEL_SOURCE_CONFIG,
+                ),
+                'apps.common.sem_retail': module_stub(
+                    'apps.common.sem_retail',
+                    SEM_SOURCE_CONFIG=SEM_SOURCE_CONFIG,
                 ),
                 'apps.common.tse_retail': module_stub(
                     'apps.common.tse_retail',
@@ -86,7 +108,7 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         )[1]
 
         self.assertEqual(
-            ['SEA Retail', 'TSE Retail', 'Sentiment'],
+            ['SEA Retail', 'SEM Retail', 'TSE Retail', 'Sentiment'],
             [item['name'] for item in crossfield_group['items']],
         )
         sea_parent = crossfield_group['items'][0]
@@ -100,7 +122,10 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
                 for child in sea_parent['children']
             ],
         )
-        tse_parent = crossfield_group['items'][1]
+        tse_parent = next(
+            item for item in crossfield_group['items']
+            if item['name'] == 'TSE Retail'
+        )
         self.assertTrue(tse_parent['active'])
         self.assertEqual(
             [
@@ -126,7 +151,10 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         crossfield_group = context._build_sidebar_groups(
             'cross_field', detail_code='tse_tv'
         )[1]
-        tse_parent = crossfield_group['items'][0]
+        tse_parent = next(
+            item for item in crossfield_group['items']
+            if item['name'] == 'TSE Retail'
+        )
 
         self.assertTrue(tse_parent['active'])
         self.assertEqual(
@@ -148,7 +176,7 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         )[1]
 
         self.assertEqual(
-            ['SEA Retail', 'SIEL Retail', 'TSE Retail'],
+            ['SEA Retail', 'SIEL Retail', 'SEM Retail', 'TSE Retail'],
             [item['name'] for item in crossfield_group['items']],
         )
         siel_parent = crossfield_group['items'][1]
@@ -241,7 +269,10 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
         })
 
         result = context.build_context('cross_field', request)
-        tse_parent = result['sidebar_groups'][1]['items'][0]
+        tse_parent = next(
+            item for item in result['sidebar_groups'][1]['items']
+            if item['name'] == 'TSE Retail'
+        )
 
         self.assertEqual('2026-08-10', result['target_date'])
         self.assertTrue(tse_parent['active'])
