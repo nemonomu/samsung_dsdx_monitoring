@@ -122,6 +122,22 @@ _TSE_EMAIL_SKIPPED_ALLOWLIST = {
     ),
 }
 
+_SEM_EMAIL_SKIPPED_ALLOWLIST = {
+    'TV': (
+        'sku', 'original_sku_price', 'savings', 'star_rating',
+        'count_of_star_ratings', 'count_of_reviews',
+    ),
+    'REF': (
+        'sku', 'original_sku_price', 'savings', 'star_rating',
+        'count_of_star_ratings', 'count_of_reviews',
+        'ref_refrigerator_type',
+    ),
+    'LDY': (
+        'sku', 'original_sku_price', 'savings', 'star_rating',
+        'count_of_star_ratings', 'count_of_reviews', 'ldy_loading_type',
+    ),
+}
+
 
 EMAIL_REPORT_SOURCES = (
     # SEA TV keeps its established batch-date/all-row collection semantics.
@@ -186,10 +202,7 @@ EMAIL_REPORT_SOURCES = (
             has_page_type=False, include_unassigned=False,
             collection_scope='all',
             email_include_skipped_columns=(
-                'original_sku_price',
-                'ref_refrigerator_type' if product == 'REF' else
-                'ldy_loading_type' if product == 'LDY' else
-                'screen_size',
+                _SEM_EMAIL_SKIPPED_ALLOWLIST[product]
             ),
         )
         for product in ('TV', 'REF', 'LDY')

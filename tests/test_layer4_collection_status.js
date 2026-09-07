@@ -725,6 +725,81 @@ async function run() {
     ));
     assert(!email.requests.some(request => request.url.includes('category=tv')));
 
+    const semEmailData = {
+        success: true,
+        complete: true,
+        date: '2026-07-29',
+        inspection_date: '2026-07-29',
+        sources: [{
+            key: 'sem_tv',
+            country: 'SEM',
+            product: 'TV',
+            table_name: 'dx_sem.dx_sem_tv_retail_com',
+            inspection_date: '2026-07-29',
+            source_date: '2026-07-29',
+            offset_days: 0,
+            total_count: 637,
+            main_count: 637,
+            bsr_count: 0,
+            column_order: [
+                'item', 'sku', 'retailer_sku_name', 'screen_size',
+                'final_sku_price', 'original_sku_price', 'savings',
+                'product_url', 'star_rating', 'count_of_star_ratings',
+                'count_of_reviews'
+            ],
+            retailers: [{
+                retailer: 'Liverpool',
+                total_count: 637,
+                main_count: 637,
+                bsr_count: 0,
+                columns: [
+                    { column: 'item', total_count: 637, null_count: 0 },
+                    { column: 'sku', total_count: 637, null_count: 0 },
+                    { column: 'retailer_sku_name', total_count: 637, null_count: 0 },
+                    { column: 'screen_size', total_count: 637, null_count: 0 },
+                    { column: 'final_sku_price', total_count: 637, null_count: 0 },
+                    { column: 'original_sku_price', total_count: 637, null_count: 11 },
+                    { column: 'savings', total_count: 637, null_count: 637 },
+                    { column: 'product_url', total_count: 637, null_count: 0 },
+                    { column: 'star_rating', total_count: 637, null_count: 20 },
+                    { column: 'count_of_star_ratings', total_count: 637, null_count: 20 },
+                    { column: 'count_of_reviews', total_count: 637, null_count: 20 }
+                ]
+            }]
+        }],
+        errors: []
+    };
+    const semEmail = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'),
+        layer1Data,
+        { success: true, retailers: [] },
+        semEmailData
+    );
+    semEmail.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const semHtml = semEmail.elements['cs-email-container'].innerHTML;
+    const semStart = semHtml.indexOf('<div class="et">SEM - TV');
+    const semEnd = semHtml.indexOf('<br>감사합니다.', semStart);
+    const semTables = Array.from(
+        semHtml.slice(semStart, semEnd).matchAll(/<table[\s\S]*?<\/table>/g),
+        match => match[0]
+    );
+    assert.strictEqual(semTables.length, 2);
+    const semMissingTable = semTables[1];
+    [
+        'item', 'sku', 'retailer_sku_name', 'screen_size',
+        'final_sku_price', 'original_sku_price', 'savings', 'product_url',
+        'star_rating', 'count_of_star_ratings', 'count_of_reviews'
+    ].forEach(columnName => assert(semMissingTable.includes('>' + columnName + '</td>')));
+    const semSavingsRow = semMissingTable.match(
+        /<tr><td[^>]*>savings<\/td>([\s\S]*?)<\/tr>/
+    );
+    assert(semSavingsRow);
+    assert(semSavingsRow[1].includes(
+        '<td align="center">-</td><td align="center">-</td>'
+    ));
+    assert(!semSavingsRow[1].includes('637'));
+
     const redirectData = {
         success: true,
         retailers: [{

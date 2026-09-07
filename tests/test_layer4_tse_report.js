@@ -58,6 +58,15 @@ const reportData = {
             ],
             'dx_siel.dx_siel_ref_retail_com': [
                 { retailer: 'Amazon', status: 'normal', column_name: 'sku', item: 'SR1' }
+            ],
+            'dx_sem.dx_sem_tv_retail_com': [
+                { retailer: 'Liverpool', status: 'corrected', column_name: 'sku', item: 'MT1' }
+            ],
+            'dx_sem.dx_sem_ref_retail_com': [
+                { retailer: 'Liverpool', status: 'corrected', column_name: 'sku', item: 'MR1' }
+            ],
+            'dx_sem.dx_sem_ldy_retail_com': [
+                { retailer: 'Liverpool', status: 'corrected', column_name: 'sku', item: 'ML1' }
             ]
         },
         duplicate_check: {
@@ -133,6 +142,9 @@ setImmediate(() => {
     assert(html.includes('SEA LOWES LDY'));
     assert(html.includes('SIEL AMAZON REF'));
     assert(html.includes('SIEL FLIPKART LDY'));
+    assert(html.includes('SEM Liverpool TV'));
+    assert(html.includes('SEM Liverpool REF'));
+    assert(html.includes('SEM Liverpool LDY'));
     assert(!html.includes('dx_tse.dx_tse_tv_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ref_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ldy_retail_com'));
@@ -140,7 +152,10 @@ setImmediate(() => {
     assert(!html.includes('public.ldy_retail_com'));
     assert(!html.includes('dx_siel.dx_siel_ref_retail_com'));
     assert(!html.includes('dx_siel.dx_siel_ldy_retail_com'));
+    assert(!html.includes('dx_sem.dx_sem_tv_retail_com'));
+    assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
+    assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=6"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=7"));
     console.log('Layer 4 retail report label tests passed');
 });

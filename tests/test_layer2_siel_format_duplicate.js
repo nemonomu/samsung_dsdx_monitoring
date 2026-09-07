@@ -40,7 +40,15 @@ assert(nullUi.includes('SIEL_NULL_HISTORY_TABLES.has(tableCode)'));
 assert(format.includes(
     'const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam)'
 ));
-assert(format.includes('(isTseRetail || isSeaRetail || isSielRetail)'));
+assert(format.includes(
+    'const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam)'
+));
+assert(format.includes('isSielRetail || isSemRetail || isTseRetail'));
+assert(format.includes('isSemRetail && Array.isArray(data.select_cols)'));
+assert(format.includes('return isSemRetail || !contextOnlyKeys.has(key)'));
+assert(format.includes("tableName: 'dx_sem.dx_sem_tv_retail_com'"));
+assert(format.includes("tableName: 'dx_sem.dx_sem_ref_retail_com'"));
+assert(format.includes("tableName: 'dx_sem.dx_sem_ldy_retail_com'"));
 assert(format.includes("tableName: 'dx_siel.dx_siel_tv_retail_com'"));
 assert(format.includes("tableName: 'dx_siel.dx_siel_ref_retail_com'"));
 assert(format.includes("tableName: 'dx_siel.dx_siel_ldy_retail_com'"));
@@ -50,7 +58,7 @@ assert(format.includes('const dateCol = querySource.dateColumn'));
 assert(format.includes(
     "new Set(['country', 'account_name', 'page_type'])"
 ));
-assert(format.includes('selectCols = columnNames.filter'));
+assert(format.includes('selectCols = selectableColumns.filter'));
 assert(common.includes('var sielUrlEditAttr'));
 assert(common.includes("/^siel_(tv|ref|ldy)_retail$/.test("));
 
@@ -63,7 +71,7 @@ assert(formatTemplate.includes(
     "dx_layer2/js/layer2-common.js' %}?v=20260904-5"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260904-3"
+    "dx_layer2/js/format_validation.js' %}?v=20260907-1"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260904-2"

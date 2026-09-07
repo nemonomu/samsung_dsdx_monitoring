@@ -19,6 +19,7 @@ from apps.common.sem_retail import (
 _MONEY_VALUE = r'\$\d{1,3}(?:,\d{3})*(?:\.\d{2})'
 _PRICE = re.compile(rf'^{_MONEY_VALUE}(?:\s*/\s*{_MONEY_VALUE})*$')
 _COUNT = re.compile(r'^\d+$')
+_POSITIVE_INTEGER = re.compile(r'^[1-9]\d*$')
 _RATING = re.compile(r'^(?:[0-4](?:\.\d)?|5(?:\.0)?)$')
 _WEEK = re.compile(r'^[Ww](?:[1-9]|[1-4]\d|5[0-3])$')
 _URL = re.compile(r'^https://(?:www\.)?liverpool\.com\.mx/tienda/pdp/', re.I)
@@ -32,6 +33,14 @@ _LDY_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s+kg'
 _LDY_CAPACITY = re.compile(
     rf'^{_LDY_CAPACITY_VALUE}(?:\s*/\s*{_LDY_CAPACITY_VALUE})*$', re.I
 )
+_REF_REFRIGERATOR_TYPES = {
+    'Freezer',
+    'Freezer-on-Bottom (Bottom Mount)',
+    'Freezer-on-Top (Top Mount)',
+    'French Door',
+    'Side-by-Side',
+}
+_LDY_LOADING_TYPES = {'Front Load', 'Top Load'}
 _REVIEW_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
@@ -69,12 +78,10 @@ def _latest_rows(cursor, target_date, source):
         FROM {source['table_name']} source
         CROSS JOIN latest_batch
         WHERE LEFT(BTRIM(source.crawl_datetime), 10) = %s
-          AND LOWER(BTRIM(source.account_name)) = LOWER(%s)
-          AND UPPER(BTRIM(source.country)) = %s
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
         ORDER BY source.id
     """, (mapping['source_date'], SEM_RETAILER,
-          mapping['source_date'], SEM_RETAILER, SEM_COUNTRY))
+          mapping['source_date']))
     columns = [description[0] for description in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()], mapping
 
@@ -114,11 +121,9 @@ def _history_rows(cursor, source, start_date, end_date, items,
         JOIN latest_batches latest
           ON {date_expression} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-        WHERE LOWER(BTRIM(source.account_name)) = LOWER(%s)
-          AND UPPER(BTRIM(source.country)) = %s
-          AND ({' OR '.join(conditions)})
+        WHERE ({' OR '.join(conditions)})
         ORDER BY source.item, {date_expression}, source.id
-    """, (*params[:4], SEM_RETAILER, SEM_COUNTRY, *params[4:]))
+    """, (*params[:4], *params[4:]))
     columns = [description[0] for description in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -136,11 +141,23 @@ def _missing(value):
     return value is None or str(value).strip() == ''
 
 
+def _valid_datetime(value):
+    if isinstance(value, datetime):
+        return True
+    try:
+        datetime.fromisoformat(str(value).strip().replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def evaluate_format(row, product_line):
     errors = []
     checks = {
         'country': lambda value: str(value).strip().upper() == SEM_COUNTRY,
         'account_name': lambda value: str(value).strip().casefold() == SEM_RETAILER.casefold(),
+        'item': lambda value: bool(_POSITIVE_INTEGER.fullmatch(str(value).strip())),
+        'crawl_datetime': _valid_datetime,
         'calendar_week': lambda value: bool(_WEEK.fullmatch(str(value).strip())),
         'product_url': lambda value: bool(_URL.match(str(value).strip())),
         'final_sku_price': lambda value: bool(_PRICE.fullmatch(str(value).strip())),
@@ -148,13 +165,21 @@ def evaluate_format(row, product_line):
         'star_rating': lambda value: bool(_RATING.fullmatch(str(value).strip())),
         'count_of_reviews': lambda value: bool(_COUNT.fullmatch(str(value).strip())),
         'count_of_star_ratings': lambda value: bool(_COUNT.fullmatch(str(value).strip())),
+        'main_rank': lambda value: bool(_POSITIVE_INTEGER.fullmatch(str(value).strip())),
+        'bsr_rank': lambda value: bool(_POSITIVE_INTEGER.fullmatch(str(value).strip())),
     }
     if product_line == 'sem_tv':
         checks['screen_size'] = lambda value: bool(_SIZE.fullmatch(str(value).strip()))
     elif product_line == 'sem_ref':
         checks['ref_capacity'] = lambda value: bool(_REF_CAPACITY.fullmatch(str(value).strip()))
+        checks['ref_refrigerator_type'] = (
+            lambda value: str(value).strip() in _REF_REFRIGERATOR_TYPES
+        )
     elif product_line == 'sem_ldy':
         checks['ldy_capacity'] = lambda value: bool(_LDY_CAPACITY.fullmatch(str(value).strip()))
+        checks['ldy_loading_type'] = (
+            lambda value: str(value).strip() in _LDY_LOADING_TYPES
+        )
 
     for field, validator in checks.items():
         value = row.get(field)
@@ -298,12 +323,32 @@ def format_detail(cursor, target_date, table, days=1):
     if not source:
         return {'results': [], 'column_names': [], 'actual_table': ''}
     rows, mapping = _latest_rows(cursor, target_date, source)
-    records = [_serialize(row, product_line) for row in rows]
-    records = [row for row in records if row['error_fields']]
+    target_records = [_serialize(row, product_line) for row in rows]
+    target_records = [row for row in target_records if row['error_fields']]
     field_counts = defaultdict(int)
-    for row in records:
+    for row in target_records:
         for field in row['error_fields']:
             field_counts[field] += 1
+
+    history_days = min(max(int(days or 1), 1), 30)
+    records = target_records
+    if history_days > 1 and target_records:
+        items = sorted({
+            str(row.get('item')) for row in target_records
+            if not _missing(row.get('item'))
+        })
+        source_date = datetime.strptime(
+            mapping['source_date'], '%Y-%m-%d'
+        ).date()
+        history_rows = _history_rows(
+            cursor,
+            source,
+            source_date - timedelta(days=history_days - 1),
+            source_date,
+            items,
+        )
+        if history_rows:
+            records = [_serialize(row, product_line) for row in history_rows]
     columns = list(dict.fromkeys((
         'id', 'crawl_datetime', 'item', 'sku', 'retailer_sku_name',
         *source['extra_format_columns'], 'final_sku_price',
@@ -316,13 +361,16 @@ def format_detail(cursor, target_date, table, days=1):
         'table': source['section_code'],
         'retailer': SEM_RETAILER,
         'column_names': columns,
-        'select_cols': columns,
+        'select_cols': list(get_sem_table_columns(product_line)),
         'editable_cols': editable,
         'actual_table': source['table_name'],
         'normal_reviews': {},
         'results': records,
         'field_counts': dict(field_counts),
         'total_format_count': sum(field_counts.values()),
+        'supports_day_history': True,
+        'history_days': history_days,
+        'date_column': source['date_column'],
         'readonly': False,
         **mapping,
     }

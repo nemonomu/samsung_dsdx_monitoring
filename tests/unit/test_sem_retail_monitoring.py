@@ -99,6 +99,8 @@ class SemRetailValidationTests(unittest.TestCase):
         self.row = {
             'country': 'SEM',
             'account_name': 'Liverpool',
+            'item': '1097076932',
+            'crawl_datetime': '2026-09-07 13:32:00',
             'calendar_week': 'W37',
             'product_url': 'https://www.liverpool.com.mx/tienda/pdp/example/123',
             'final_sku_price': '$13,759.20',
@@ -108,7 +110,11 @@ class SemRetailValidationTests(unittest.TestCase):
             'count_of_reviews': '20',
             'screen_size': '55 inch',
             'ref_capacity': '31 cu ft',
+            'ref_refrigerator_type': 'French Door',
             'ldy_capacity': '22 kg',
+            'ldy_loading_type': 'Front Load',
+            'main_rank': 1,
+            'bsr_rank': 2,
         }
 
     def test_exported_mexico_formats_are_accepted(self):
@@ -135,6 +141,28 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertEqual(
             {'final_sku_price', 'product_url', 'screen_size'},
             set(evaluate_format(row, 'sem_tv')),
+        )
+
+    def test_identity_date_rank_and_product_type_formats_are_reported(self):
+        row = {
+            **self.row,
+            'item': 'item-1',
+            'crawl_datetime': 'not-a-date',
+            'main_rank': 0,
+            'bsr_rank': '-1',
+            'ref_refrigerator_type': 'Bottom Freezer',
+        }
+        self.assertEqual(
+            {
+                'item', 'crawl_datetime', 'main_rank', 'bsr_rank',
+                'ref_refrigerator_type',
+            },
+            set(evaluate_format(row, 'sem_ref')),
+        )
+
+        ldy_row = {**self.row, 'ldy_loading_type': 'Stacked'}
+        self.assertEqual(
+            ['ldy_loading_type'], evaluate_format(ldy_row, 'sem_ldy')
         )
 
     def test_optional_rating_fields_may_all_be_blank(self):
@@ -270,6 +298,45 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertEqual(date(2026, 9, 5), args[2])
         self.assertEqual(date(2026, 9, 7), args[3])
         self.assertEqual(['item-1'], args[4])
+
+    @patch('apps.dx.dx_layer2.sem_validation._history_rows')
+    @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
+    def test_format_detail_expands_history_and_exposes_all_table_columns(
+            self, latest_rows, history_rows):
+        latest_rows.return_value = ([{
+            **self.row,
+            'id': 3,
+            'item': '1097076932',
+            'screen_size': '55',
+        }], {
+            'inspection_date': '2026-09-07',
+            'source_date': '2026-09-07',
+            'offset_days': 0,
+        })
+        history_rows.return_value = [
+            {
+                **self.row,
+                'id': day,
+                'item': '1097076932',
+                'screen_size': value,
+                'crawl_datetime': f'2026-09-0{day} 10:00:00',
+            }
+            for day, value in ((5, '55 inch'), (6, '55 inch'), (7, '55'))
+        ]
+
+        result = format_detail(
+            None, date(2026, 9, 7), 'sem_tv', days=3
+        )
+
+        self.assertEqual([5, 6, 7], [row['id'] for row in result['results']])
+        self.assertEqual({'screen_size': 1}, result['field_counts'])
+        self.assertTrue(result['supports_day_history'])
+        self.assertEqual(3, result['history_days'])
+        self.assertIn('batch_id', result['select_cols'])
+        self.assertIn('savings', result['select_cols'])
+        self.assertIn('main_rank', result['select_cols'])
+        self.assertIn('bsr_rank', result['select_cols'])
+        history_rows.assert_called_once()
 
     def test_cross_field_failures_are_classified(self):
         row = {

@@ -486,7 +486,8 @@
         var retailers = (source.retailers || []).map(function(retailer) {
             var copy = Object.assign({}, retailer);
             copy.columns = (retailer.columns || []).filter(function(column) {
-                return isVisibleColumn(column.column);
+                return isVisibleColumn(column.column)
+                    && !(source.country === 'SEM' && column.column === 'savings');
             });
             var hasRedirectMetric = Object.prototype.hasOwnProperty.call(
                 retailer, 'redirect_true_count'

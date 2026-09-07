@@ -159,15 +159,31 @@ class EmailRegistryTests(unittest.TestCase):
             if source['country'] == 'SEM'
         }
         self.assertEqual(set(sem_sources), {'sem_tv', 'sem_ref', 'sem_ldy'})
-        for configured_source in sem_sources.values():
+        expected_sem_skipped = {
+            'sem_tv': (
+                'sku', 'original_sku_price', 'savings', 'star_rating',
+                'count_of_star_ratings', 'count_of_reviews',
+            ),
+            'sem_ref': (
+                'sku', 'original_sku_price', 'savings', 'star_rating',
+                'count_of_star_ratings', 'count_of_reviews',
+                'ref_refrigerator_type',
+            ),
+            'sem_ldy': (
+                'sku', 'original_sku_price', 'savings', 'star_rating',
+                'count_of_star_ratings', 'count_of_reviews',
+                'ldy_loading_type',
+            ),
+        }
+        for key, configured_source in sem_sources.items():
             self.assertEqual(
                 {retailer['name'] for retailer in configured_source['retailers']},
                 {'Liverpool'},
             )
             self.assertEqual(configured_source['date_mode'], 'text')
             self.assertFalse(configured_source['has_page_type'])
-            self.assertNotIn(
-                'savings',
+            self.assertEqual(
+                expected_sem_skipped[key],
                 configured_source['email_include_skipped_columns'],
             )
 
@@ -714,6 +730,55 @@ class EmailReportDataTests(unittest.TestCase):
                 self.assertNotIn('unapproved_email_skip', columns)
                 for column in extras:
                     self.assertIn(column, columns)
+
+    def test_sem_email_column_counts_match_tse_layout(self):
+        registry = load_registry()
+        base_columns = {
+            'sem_tv': (
+                'country', 'account_name', 'item', 'retailer_sku_name',
+                'product_url', 'screen_size', 'final_sku_price',
+            ),
+            'sem_ref': (
+                'country', 'account_name', 'item', 'retailer_sku_name',
+                'product_url', 'ref_capacity', 'final_sku_price',
+            ),
+            'sem_ldy': (
+                'country', 'account_name', 'item', 'retailer_sku_name',
+                'product_url', 'ldy_capacity', 'final_sku_price',
+            ),
+        }
+        expected_counts = {'sem_tv': 13, 'sem_ref': 14, 'sem_ldy': 14}
+
+        for key, expected_count in expected_counts.items():
+            with self.subTest(product_line=key):
+                configured_source = next(
+                    source for source in registry.EMAIL_REPORT_SOURCES
+                    if source['key'] == key
+                )
+                configured_rows = [
+                    (column, 'liverpool', False)
+                    for column in base_columns[key]
+                ] + [
+                    (column, 'liverpool', True)
+                    for column in configured_source[
+                        'email_include_skipped_columns'
+                    ]
+                ]
+                cursor = ScriptedCursor([{'fetchall': configured_rows}])
+                service = load_service(cursor)
+
+                columns = service._configured_retailers(
+                    cursor, configured_source
+                )[0]['columns']
+
+                self.assertEqual(expected_count, len(columns))
+                self.assertEqual('item', columns[0])
+                self.assertIn('sku', columns)
+                self.assertIn('star_rating', columns)
+                self.assertIn('count_of_star_ratings', columns)
+                self.assertIn('count_of_reviews', columns)
+                self.assertIn('original_sku_price', columns)
+                self.assertIn('savings', columns)
 
     def test_non_tse_columns_remain_db_driven_without_product_url_injection(self):
         configured_source = source(key='sea_ref', date_mode='text')
