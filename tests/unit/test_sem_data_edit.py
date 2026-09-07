@@ -4,11 +4,13 @@ from unittest.mock import Mock
 
 from apps.common.sem_retail import get_sem_editable_columns
 from apps.dx.dx_layer2.data_edit import services as layer2_services
+from apps.dx.dx_layer2.null_validation import services as null_services
 from apps.dx.dx_layer3.data_edit import services as layer3_services
 from tests.unit.support import ScriptedCursor
 
 
 SEM_TABLE = 'dx_sem.dx_sem_tv_retail_com'
+SEM_REF_TABLE = 'dx_sem.dx_sem_ref_retail_com'
 
 
 class SemEditableColumnTests(unittest.TestCase):
@@ -53,6 +55,61 @@ class SemLayer2DataEditTests(unittest.TestCase):
         )
 
         self.assertEqual(403, result['status'])
+        self.assertEqual([], cursor.calls)
+
+
+class SemLayer2NormalReviewTests(unittest.TestCase):
+    def test_sem_null_review_uses_latest_batch_and_writes_reason(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'Liverpool', '1051810429')},
+            {'fetchone': None},
+            {},
+        ])
+        conn = Mock()
+
+        result = null_services.save_null_review(
+            cursor, conn, SEM_REF_TABLE, 404, 'sku', 'normal', '',
+            '항목 부재', date(2026, 9, 7), 'null', 'tester',
+        )
+
+        self.assertTrue(result['success'])
+        self.assertIn(SEM_REF_TABLE, null_services.VALID_TABLES_UPDATE)
+        scope_sql, scope_params = cursor.calls[0]
+        self.assertIn('WITH latest_batch AS', scope_sql)
+        self.assertIn(
+            'source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id',
+            scope_sql,
+        )
+        self.assertEqual(
+            ('2026-09-07', 'Liverpool', 404, '2026-09-07'),
+            scope_params,
+        )
+        self.assertIn('INSERT INTO monitoring_corrections', cursor.calls[2][0])
+        self.assertEqual('항목 부재', cursor.calls[2][1][12])
+        conn.commit.assert_called_once_with()
+
+    def test_sem_comparison_or_old_batch_record_is_rejected(self):
+        cursor = ScriptedCursor([{'fetchone': None}])
+
+        result = null_services.save_null_review(
+            cursor, Mock(), SEM_REF_TABLE, 137, 'sku', 'normal', '',
+            '해당 값 정상 확인', date(2026, 9, 7), 'null', 'tester',
+        )
+
+        self.assertEqual(404, result['status_code'])
+        self.assertEqual('해당 레코드가 없습니다', result['error'])
+        self.assertEqual(1, len(cursor.calls))
+
+    def test_sem_review_rejects_column_outside_validation(self):
+        cursor = ScriptedCursor([])
+
+        result = null_services.save_null_review(
+            cursor, Mock(), SEM_REF_TABLE, 404, 'savings', 'normal', '',
+            '해당 값 정상 확인', date(2026, 9, 7), 'null', 'tester',
+        )
+
+        self.assertEqual(400, result['status_code'])
+        self.assertEqual('허용되지 않는 컬럼', result['error'])
         self.assertEqual([], cursor.calls)
 
 

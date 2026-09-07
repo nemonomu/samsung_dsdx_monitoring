@@ -9,6 +9,7 @@ from apps.common.sem_retail import (
     get_sem_table_columns,
 )
 from apps.dx.dx_layer2.sem_validation import (
+    _load_normal_reviews,
     append_null_stats,
     duplicate_detail,
     evaluate_format,
@@ -22,6 +23,7 @@ from apps.dx.dx_layer3.cross_field.sem_services import (
     get_sem_cross_field_summary,
 )
 from apps.dx.dx_layer1.sem_retail import sem_retail_services
+from tests.unit.support import ScriptedCursor
 
 
 class SemRetailConfigurationTests(unittest.TestCase):
@@ -165,6 +167,29 @@ class SemRetailValidationTests(unittest.TestCase):
             ['ldy_loading_type'], evaluate_format(ldy_row, 'sem_ldy')
         )
 
+    def test_normal_review_metadata_is_loaded_for_reload_badge(self):
+        cursor = ScriptedCursor([{'fetchall': [(
+            404, 'sku', '확인 메모', 'tester',
+            datetime(2026, 9, 7, 14, 30), '항목 부재',
+        )]}])
+
+        reviews = _load_normal_reviews(
+            cursor, date(2026, 9, 7), 'sem_ref', 'null_check', 'sku'
+        )
+
+        self.assertEqual('항목 부재', reviews['404_sku']['reason'])
+        self.assertEqual('확인 메모', reviews['404_sku']['memo'])
+        self.assertEqual(
+            '2026-09-07 14:30:00', reviews['404_sku']['created_at']
+        )
+        self.assertEqual(
+            [
+                'dx_sem.dx_sem_ref_retail_com', '2026-09-07',
+                'null_check', 'sku',
+            ],
+            cursor.calls[0][1],
+        )
+
     def test_optional_rating_fields_may_all_be_blank(self):
         row = {
             **self.row,
@@ -176,8 +201,10 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertEqual([], evaluate_format(row, 'sem_tv'))
         self.assertEqual([], _failed_rules(row))
 
+    @patch('apps.dx.dx_layer2.sem_validation._load_normal_reviews', return_value={})
     @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
-    def test_null_stats_use_existing_retailer_ui_contract(self, latest_rows):
+    def test_null_stats_use_existing_retailer_ui_contract(
+            self, latest_rows, _normal_reviews):
         latest_rows.return_value = ([{
             'country': 'SEM',
             'account_name': 'Liverpool',
@@ -210,8 +237,16 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertNotIn('field_counts', retailer)
         self.assertNotIn('savings', retailer['fields_detail'])
 
+    @patch('apps.dx.dx_layer2.sem_validation._load_normal_reviews')
     @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
-    def test_all_layer2_details_are_editable(self, latest_rows):
+    def test_all_layer2_details_are_editable(
+            self, latest_rows, normal_reviews):
+        normal_reviews.return_value = {
+            '1_sku': {
+                'reason': '항목 부재', 'memo': '', 'created_id': 'tester',
+                'created_at': '2026-09-07 14:00:00',
+            },
+        }
         rows = [{
             **self.row,
             'id': 1,
@@ -254,6 +289,12 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertIn('batch_id', null_result['select_cols'])
         self.assertIn('main_rank', null_result['select_cols'])
         self.assertIn('bsr_rank', null_result['select_cols'])
+        self.assertEqual(
+            '항목 부재', null_result['normal_reviews']['1_sku']['reason']
+        )
+        self.assertEqual(
+            '항목 부재', format_result['normal_reviews']['1_sku']['reason']
+        )
 
         rating_result = null_detail(
             None, date(2026, 9, 7), 'sem_tv', 'star_rating'
@@ -265,10 +306,11 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertIn('count_of_star_ratings', rating_columns)
         self.assertIn('count_of_reviews', rating_columns)
 
+    @patch('apps.dx.dx_layer2.sem_validation._load_normal_reviews', return_value={})
     @patch('apps.dx.dx_layer2.sem_validation._history_rows')
     @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
     def test_null_detail_expands_target_items_to_daily_history(
-            self, latest_rows, history_rows):
+            self, latest_rows, history_rows, _normal_reviews):
         latest_rows.return_value = ([{
             **self.row,
             'id': 3,
@@ -299,10 +341,11 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertEqual(date(2026, 9, 7), args[3])
         self.assertEqual(['item-1'], args[4])
 
+    @patch('apps.dx.dx_layer2.sem_validation._load_normal_reviews', return_value={})
     @patch('apps.dx.dx_layer2.sem_validation._history_rows')
     @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
     def test_format_detail_expands_history_and_exposes_all_table_columns(
-            self, latest_rows, history_rows):
+            self, latest_rows, history_rows, _normal_reviews):
         latest_rows.return_value = ([{
             **self.row,
             'id': 3,

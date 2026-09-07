@@ -1251,6 +1251,7 @@ function _submitNullReviews(cells, status, memo, reason) {
     return Promise.all(requests).then(function(results) {
         var successCount = 0;
         var failCount = 0;
+        var failureMessages = [];
         results.forEach(function(result) {
             if (result.response.success) {
                 successCount++;
@@ -1261,6 +1262,10 @@ function _submitNullReviews(cells, status, memo, reason) {
                 }
             } else {
                 failCount++;
+                var message = result.response && result.response.error;
+                if (message && failureMessages.indexOf(message) === -1) {
+                    failureMessages.push(message);
+                }
             }
         });
         _hideNullReviewBar();
@@ -1270,7 +1275,9 @@ function _submitNullReviews(cells, status, memo, reason) {
             showToast(successCount + '건 확인 처리 완료', 'success');
         }
         if (failCount > 0) {
-            showToast(failCount + '건 처리 실패', 'error');
+            var failureDetail = failureMessages.length > 0
+                ? ': ' + failureMessages.join(' / ') : '';
+            showToast(failCount + '건 처리 실패' + failureDetail, 'error');
         }
         return results;
     });

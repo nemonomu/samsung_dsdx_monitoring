@@ -2624,6 +2624,9 @@ VALID_TABLES_UPDATE = ({
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } | set(TSE_TABLE_TO_PRODUCT_LINE) | {
     source['table_name'] for source in SIEL_SOURCE_CONFIG.values()
+} | {
+    source['table_name']
+    for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
 }) - DISABLED_SOURCE_TABLES
 
 
@@ -2645,6 +2648,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
 
     sea_source = _get_sea_null_source_for_table(table_name)
     siel_source = _get_siel_null_source_for_table(table_name)
+    sem_product_line = sem_validation.product_line_for(table_name)
     is_siel_format_review = bool(
         siel_source and correction_type_value == 'format_check'
     )
@@ -2668,6 +2672,18 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             else _get_siel_allowed_columns(siel_source)
         )
         if column_name not in siel_allowed_columns:
+            return {'error': '허용되지 않는 컬럼', 'status_code': 400}
+
+    if sem_product_line:
+        if correction_type_value not in {'null_check', 'format_check'}:
+            return {
+                'error': 'SEM은 NULL/형식 검수만 지원합니다',
+                'status_code': 400,
+            }
+        sem_allowed_columns = sem_validation.get_review_allowed_columns(
+            sem_product_line, correction_type_value
+        )
+        if column_name not in sem_allowed_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
     runtime = _get_tse_runtime()
@@ -2696,48 +2712,57 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     else:
         select_columns = f"{column_name}, account_name, item"
 
-    if tse_product_line:
-        country_scope = _build_tse_country_scope()
-        cursor.execute(f"""
-            SELECT {select_columns}
-            FROM {table_name} source
-            WHERE source.id = %s
-              AND {country_scope}
-              AND LEFT(TRIM(source.crawl_datetime), 10) = %s
-        """, (record_id, TSE_COUNTRY, str(crawl_date)))
-    elif siel_source:
-        siel_date = _resolve_siel_null_date(crawl_date, siel_source)
-        if not siel_date:
-            return {'error': 'SIEL 날짜 설정 조회 실패', 'status_code': 500}
-        scope_query, retailer_params = _build_siel_latest_batch_record_query(
-            siel_source, column_name
-        )
-        if not scope_query:
-            return {'error': 'SIEL 리테일러 설정 조회 실패', 'status_code': 500}
-        cursor.execute(scope_query, (
-            siel_date['source_date'], siel_date['source_date'],
-            *retailer_params, record_id,
-            siel_date['source_date'], siel_date['source_date'],
-        ))
-    elif sea_source:
-        sea_date = _resolve_sea_null_date(crawl_date, sea_source)
-        if not sea_date:
-            return {'error': 'SEA 날짜 설정 조회 실패', 'status_code': 500}
-        scope_query, retailer_params = _build_sea_latest_batch_record_query(
-            sea_source, column_name
-        )
-        if not scope_query:
-            return {'error': 'SEA 리테일러 설정 조회 실패', 'status_code': 500}
-        cursor.execute(scope_query, (
-            sea_date['source_date'], *retailer_params,
-            record_id, sea_date['source_date'],
-        ))
+    if sem_product_line:
+        try:
+            row = sem_validation.fetch_review_record(
+                cursor, crawl_date, sem_product_line, record_id, column_name
+            )
+        except Exception as exc:
+            log_error(exc, 'db')
+            return {'error': 'SEM 검수 대상 조회 실패', 'status_code': 500}
     else:
-        cursor.execute(
-            f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
-            (record_id,)
-        )
-    row = cursor.fetchone()
+        if tse_product_line:
+            country_scope = _build_tse_country_scope()
+            cursor.execute(f"""
+                SELECT {select_columns}
+                FROM {table_name} source
+                WHERE source.id = %s
+                  AND {country_scope}
+                  AND LEFT(TRIM(source.crawl_datetime), 10) = %s
+            """, (record_id, TSE_COUNTRY, str(crawl_date)))
+        elif siel_source:
+            siel_date = _resolve_siel_null_date(crawl_date, siel_source)
+            if not siel_date:
+                return {'error': 'SIEL 날짜 설정 조회 실패', 'status_code': 500}
+            scope_query, retailer_params = _build_siel_latest_batch_record_query(
+                siel_source, column_name
+            )
+            if not scope_query:
+                return {'error': 'SIEL 리테일러 설정 조회 실패', 'status_code': 500}
+            cursor.execute(scope_query, (
+                siel_date['source_date'], siel_date['source_date'],
+                *retailer_params, record_id,
+                siel_date['source_date'], siel_date['source_date'],
+            ))
+        elif sea_source:
+            sea_date = _resolve_sea_null_date(crawl_date, sea_source)
+            if not sea_date:
+                return {'error': 'SEA 날짜 설정 조회 실패', 'status_code': 500}
+            scope_query, retailer_params = _build_sea_latest_batch_record_query(
+                sea_source, column_name
+            )
+            if not scope_query:
+                return {'error': 'SEA 리테일러 설정 조회 실패', 'status_code': 500}
+            cursor.execute(scope_query, (
+                sea_date['source_date'], *retailer_params,
+                record_id, sea_date['source_date'],
+            ))
+        else:
+            cursor.execute(
+                f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
+                (record_id,)
+            )
+        row = cursor.fetchone()
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 
@@ -2747,6 +2772,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         None if youtube_columns is not None
         else str(row[2]) if row[2] else None
     )
+    if sem_product_line and not retailer:
+        retailer = sem_validation.SEM_RETAILER
 
     if tse_product_line:
         try:

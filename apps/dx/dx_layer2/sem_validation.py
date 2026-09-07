@@ -151,8 +151,7 @@ def _valid_datetime(value):
     return True
 
 
-def evaluate_format(row, product_line):
-    errors = []
+def _format_checks(product_line):
     checks = {
         'country': lambda value: str(value).strip().upper() == SEM_COUNTRY,
         'account_name': lambda value: str(value).strip().casefold() == SEM_RETAILER.casefold(),
@@ -180,6 +179,85 @@ def evaluate_format(row, product_line):
         checks['ldy_loading_type'] = (
             lambda value: str(value).strip() in _LDY_LOADING_TYPES
         )
+    return checks
+
+
+def get_review_allowed_columns(product_line, correction_type):
+    """Return SEM columns that may be acknowledged without source edits."""
+    if product_line not in SEM_SOURCE_CONFIG:
+        return ()
+    if correction_type == 'null_check':
+        return tuple(get_sem_required_columns(product_line))
+    if correction_type == 'format_check':
+        return tuple(_format_checks(product_line))
+    return ()
+
+
+def fetch_review_record(cursor, target_date, product_line, record_id, column):
+    """Return one record only when it belongs to the inspection batch."""
+    source = SEM_SOURCE_CONFIG[product_line]
+    mapping = _mapping(target_date, source)
+    cursor.execute(f"""
+        WITH latest_batch AS (
+            SELECT batch_id
+            FROM {source['table_name']}
+            WHERE LEFT(BTRIM(crawl_datetime), 10) = %s
+              AND LOWER(BTRIM(account_name)) = LOWER(%s)
+            ORDER BY id DESC
+            LIMIT 1
+        )
+        SELECT source.{column}, source.account_name, source.item
+        FROM {source['table_name']} source
+        CROSS JOIN latest_batch
+        WHERE source.id = %s
+          AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
+    """, (
+        mapping['source_date'], SEM_RETAILER, record_id,
+        mapping['source_date'],
+    ))
+    return cursor.fetchone()
+
+
+def _load_normal_reviews(cursor, target_date, product_line,
+                         correction_type, column=None):
+    """Load exact-day SEM acknowledgement metadata for detail rendering."""
+    source = SEM_SOURCE_CONFIG[product_line]
+    mapping = _mapping(target_date, source)
+    params = [
+        source['table_name'], mapping['inspection_date'], correction_type,
+    ]
+    column_clause = ''
+    if column:
+        column_clause = ' AND column_name = %s'
+        params.append(column)
+    cursor.execute(f"""
+        SELECT record_id, column_name, memo, created_id, created_at, reason
+        FROM monitoring_corrections
+        WHERE table_name = %s
+          AND crawl_date = %s
+          AND correction_type = %s
+          AND status = 'normal'
+          {column_clause}
+    """, params)
+    reviews = {}
+    for row in cursor.fetchall():
+        created_at = row[4]
+        reviews[f'{row[0]}_{row[1]}'] = {
+            'memo': row[2],
+            'created_id': row[3],
+            'created_at': (
+                created_at.strftime('%Y-%m-%d %H:%M:%S')
+                if created_at else None
+            ),
+            'reason': row[5],
+        }
+    return reviews
+
+
+def evaluate_format(row, product_line):
+    errors = []
+    checks = _format_checks(product_line)
 
     for field, validator in checks.items():
         value = row.get(field)
@@ -203,9 +281,16 @@ def append_null_stats(cursor, target_date, validation):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
         rows, mapping = _latest_rows(cursor, target_date, source)
+        normal_reviews = _load_normal_reviews(
+            cursor, target_date, product_line, 'null_check'
+        )
         fields = list(get_sem_required_columns(product_line))
         field_counts = {
-            field: sum(1 for row in rows if _missing(row.get(field)))
+            field: sum(
+                1 for row in rows
+                if _missing(row.get(field))
+                and f"{row.get('id')}_{field}" not in normal_reviews
+            )
             for field in fields
         }
         issue_count = sum(field_counts.values())
@@ -235,6 +320,9 @@ def null_detail(cursor, target_date, table, column, days=1):
     if not source or column not in get_sem_required_columns(product_line):
         return {'results': [], 'display_config': {}, 'query_config': {}}
     rows, mapping = _latest_rows(cursor, target_date, source)
+    normal_reviews = _load_normal_reviews(
+        cursor, target_date, product_line, 'null_check', column
+    )
     target_results = []
     for row in rows:
         null_fields = [
@@ -286,6 +374,7 @@ def null_detail(cursor, target_date, table, column, days=1):
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display},
         'query_retailer': SEM_RETAILER,
+        'normal_reviews': normal_reviews,
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
@@ -298,7 +387,15 @@ def append_format_stats(cursor, target_date, validation):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
         rows, mapping = _latest_rows(cursor, target_date, source)
-        issue_count = sum(len(evaluate_format(row, product_line)) for row in rows)
+        normal_reviews = _load_normal_reviews(
+            cursor, target_date, product_line, 'format_check'
+        )
+        issue_count = sum(
+            1
+            for row in rows
+            for field in evaluate_format(row, product_line)
+            if f"{row.get('id')}_{field}" not in normal_reviews
+        )
         validation['tables'].append({
             'table': source['section_code'],
             'table_name': source['display_name'],
@@ -323,12 +420,16 @@ def format_detail(cursor, target_date, table, days=1):
     if not source:
         return {'results': [], 'column_names': [], 'actual_table': ''}
     rows, mapping = _latest_rows(cursor, target_date, source)
+    normal_reviews = _load_normal_reviews(
+        cursor, target_date, product_line, 'format_check'
+    )
     target_records = [_serialize(row, product_line) for row in rows]
     target_records = [row for row in target_records if row['error_fields']]
     field_counts = defaultdict(int)
     for row in target_records:
         for field in row['error_fields']:
-            field_counts[field] += 1
+            if f"{row.get('id')}_{field}" not in normal_reviews:
+                field_counts[field] += 1
 
     history_days = min(max(int(days or 1), 1), 30)
     records = target_records
@@ -364,7 +465,7 @@ def format_detail(cursor, target_date, table, days=1):
         'select_cols': list(get_sem_table_columns(product_line)),
         'editable_cols': editable,
         'actual_table': source['table_name'],
-        'normal_reviews': {},
+        'normal_reviews': normal_reviews,
         'results': records,
         'field_counts': dict(field_counts),
         'total_format_count': sum(field_counts.values()),

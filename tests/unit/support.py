@@ -32,6 +32,10 @@ def sem_validation_stub():
         null_detail=lambda *_args, **_kwargs: {},
         format_detail=lambda *_args, **_kwargs: {},
         duplicate_detail=lambda *_args, **_kwargs: {},
+        SEM_SOURCE_CONFIG={},
+        SEM_RETAILER='Liverpool',
+        get_review_allowed_columns=lambda *_args, **_kwargs: (),
+        fetch_review_record=lambda *_args, **_kwargs: None,
     )
 
 
