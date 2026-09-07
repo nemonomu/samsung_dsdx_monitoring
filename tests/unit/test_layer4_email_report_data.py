@@ -166,6 +166,10 @@ class EmailRegistryTests(unittest.TestCase):
             )
             self.assertEqual(configured_source['date_mode'], 'text')
             self.assertFalse(configured_source['has_page_type'])
+            self.assertNotIn(
+                'savings',
+                configured_source['email_include_skipped_columns'],
+            )
 
         siel_sources = [
             source for source in registry.EMAIL_REPORT_SOURCES

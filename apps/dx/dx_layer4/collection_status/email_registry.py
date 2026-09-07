@@ -186,7 +186,7 @@ EMAIL_REPORT_SOURCES = (
             has_page_type=False, include_unassigned=False,
             collection_scope='all',
             email_include_skipped_columns=(
-                'original_sku_price', 'savings',
+                'original_sku_price',
                 'ref_refrigerator_type' if product == 'REF' else
                 'ldy_loading_type' if product == 'LDY' else
                 'screen_size',
