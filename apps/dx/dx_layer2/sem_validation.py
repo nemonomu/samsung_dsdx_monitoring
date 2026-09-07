@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.sem_retail import (
@@ -12,6 +12,7 @@ from apps.common.sem_retail import (
     SEM_SOURCE_CONFIG,
     get_sem_editable_columns,
     get_sem_required_columns,
+    get_sem_table_columns,
 )
 
 
@@ -30,6 +31,9 @@ _REF_CAPACITY = re.compile(
 _LDY_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s+kg'
 _LDY_CAPACITY = re.compile(
     rf'^{_LDY_CAPACITY_VALUE}(?:\s*/\s*{_LDY_CAPACITY_VALUE})*$', re.I
+)
+_REVIEW_COLUMNS = (
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
 
 
@@ -73,6 +77,59 @@ def _latest_rows(cursor, target_date, source):
           mapping['source_date'], SEM_RETAILER, SEM_COUNTRY))
     columns = [description[0] for description in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()], mapping
+
+
+def _history_rows(cursor, source, start_date, end_date, items,
+                  include_missing_item=False):
+    """Load the latest Liverpool batch per day for target error items."""
+    conditions = []
+    params = [str(start_date), str(end_date), SEM_RETAILER, SEM_COUNTRY]
+    if items:
+        placeholders = ', '.join(['%s'] * len(items))
+        conditions.append(f'source.item IN ({placeholders})')
+        params.extend(items)
+    if include_missing_item:
+        conditions.append(
+            "(source.item IS NULL OR BTRIM(CAST(source.item AS TEXT)) = '')"
+        )
+    if not conditions:
+        return []
+
+    date_expression = "LEFT(BTRIM(source.crawl_datetime), 10)"
+    cursor.execute(f"""
+        WITH latest_batches AS (
+            SELECT DISTINCT ON (LEFT(BTRIM(crawl_datetime), 10))
+                   LEFT(BTRIM(crawl_datetime), 10) AS source_date,
+                   batch_id,
+                   id
+            FROM {source['table_name']}
+            WHERE LEFT(BTRIM(crawl_datetime), 10) >= %s
+              AND LEFT(BTRIM(crawl_datetime), 10) <= %s
+              AND LOWER(BTRIM(account_name)) = LOWER(%s)
+              AND UPPER(BTRIM(country)) = %s
+            ORDER BY source_date, id DESC
+        )
+        SELECT source.*
+        FROM {source['table_name']} source
+        JOIN latest_batches latest
+          ON {date_expression} = latest.source_date
+         AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+        WHERE LOWER(BTRIM(source.account_name)) = LOWER(%s)
+          AND UPPER(BTRIM(source.country)) = %s
+          AND ({' OR '.join(conditions)})
+        ORDER BY source.item, {date_expression}, source.id
+    """, (*params[:4], SEM_RETAILER, SEM_COUNTRY, *params[4:]))
+    columns = [description[0] for description in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def _null_detail_columns(column):
+    columns = [
+        'id', 'crawl_datetime', 'item', 'sku', 'retailer_sku_name',
+    ]
+    columns.extend(_REVIEW_COLUMNS if column in _REVIEW_COLUMNS else (column,))
+    columns.append('product_url')
+    return list(dict.fromkeys(columns))
 
 
 def _missing(value):
@@ -153,28 +210,60 @@ def null_detail(cursor, target_date, table, column, days=1):
     if not source or column not in get_sem_required_columns(product_line):
         return {'results': [], 'display_config': {}, 'query_config': {}}
     rows, mapping = _latest_rows(cursor, target_date, source)
-    results = []
+    target_results = []
     for row in rows:
         null_fields = [
             field for field in get_sem_required_columns(product_line)
             if _missing(row.get(field))
         ]
         if column in null_fields:
-            results.append({**row, 'null_fields': null_fields})
-    display = list(dict.fromkeys((
-        'id', 'item', 'sku', 'retailer_sku_name', column,
-        'crawl_datetime', 'product_url',
-    )))
+            target_results.append({**row, 'null_fields': null_fields})
+
+    history_days = min(max(int(days or 1), 1), 30)
+    results = target_results
+    if history_days > 1 and target_results:
+        items = sorted({
+            str(row.get('item')) for row in target_results
+            if not _missing(row.get('item'))
+        })
+        include_missing_item = any(
+            _missing(row.get('item')) for row in target_results
+        )
+        source_date = datetime.strptime(
+            mapping['source_date'], '%Y-%m-%d'
+        ).date()
+        history_rows = _history_rows(
+            cursor,
+            source,
+            source_date - timedelta(days=history_days - 1),
+            source_date,
+            items,
+            include_missing_item=include_missing_item,
+        )
+        if history_rows:
+            results = []
+            for row in history_rows:
+                null_fields = [
+                    field for field in get_sem_required_columns(product_line)
+                    if _missing(row.get(field))
+                ]
+                results.append({**row, 'null_fields': null_fields})
+
+    display = _null_detail_columns(column)
+    all_columns = list(get_sem_table_columns(product_line))
     editable = list(get_sem_editable_columns(product_line))
     return {
         'date': mapping['inspection_date'],
         'results': results,
-        'select_cols': display,
+        'select_cols': all_columns,
         'editable_cols': editable,
         'actual_table': source['table_name'],
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display},
         'query_retailer': SEM_RETAILER,
+        'supports_day_history': True,
+        'history_days': history_days,
+        'date_column': source['date_column'],
         'readonly': False,
         **mapping,
     }

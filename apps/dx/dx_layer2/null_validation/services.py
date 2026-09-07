@@ -1808,7 +1808,14 @@ def _get_tse_null_detail(
 
     results = []
     for row in raw_rows:
-        if row_is_suppressed(row):
+        row_record = row_as_mapping(row)
+        row_date = _tse_review_date(row_record.get('crawl_datetime'))
+        is_comparison_row = (
+            is_expanded and row_date is not None and row_date != target_date
+        )
+        # A normal review removes a current error from the active worklist,
+        # but it must not erase that row from an item's comparison history.
+        if not is_comparison_row and row_is_suppressed(row):
             continue
         record = {}
         for column_name, index in column_index.items():
@@ -1817,7 +1824,13 @@ def _get_tse_null_detail(
                 value.strftime('%Y-%m-%d %H:%M:%S')
                 if isinstance(value, datetime) else value
             )
-        record['null_fields'] = active_null_fields(row)
+        record['null_fields'] = (
+            [
+                related for related in related_columns
+                if _is_field_null(row_record.get(related), 'both')
+            ]
+            if is_comparison_row else active_null_fields(row)
+        )
         results.append(record)
 
     editable_columns = _safe_tse_editable_columns(

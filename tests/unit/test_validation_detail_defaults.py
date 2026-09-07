@@ -76,6 +76,37 @@ class ValidationDetailDefaultTests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual(3, captured['days'])
 
+    def test_layer2_sem_null_defaults_to_three_days(self):
+        captured = {}
+        services = module_stub(
+            'apps.dx.dx_layer2.null_validation.services',
+            get_all_categories=lambda: {'sem_tv_retail'},
+            get_null_detail=lambda _cursor, _date, _category, _retailer,
+            days, _column: captured.setdefault('days', days) or {},
+        )
+        stubs = common_stubs()
+        stubs.update({
+            'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
+            'apps.dx.dx_layer2.null_validation': package_stub(
+                'apps.dx.dx_layer2.null_validation'
+            ),
+            'apps.dx.dx_layer2.null_validation.services': services,
+        })
+        api = load_module(
+            'apps/dx/dx_layer2/null_validation/api.py',
+            'apps.dx.dx_layer2.null_validation.api_sem_defaults_under_test',
+            stubs=stubs,
+        )
+
+        response = api.null_detail(FakeRequest({
+            'date': '2026-09-07',
+            'table': 'sem_tv_retail',
+            'column': 'star_rating',
+        }))
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(3, captured['days'])
+
     def test_layer2_format_retail_defaults_to_three_days(self):
         captured = {}
         services = module_stub(

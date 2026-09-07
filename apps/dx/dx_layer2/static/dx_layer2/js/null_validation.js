@@ -17,7 +17,10 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
     'sea_ldy_retail',
     'tse_tv_retail',
     'tse_ref_retail',
-    'tse_ldy_retail'
+    'tse_ldy_retail',
+    'sem_tv_retail',
+    'sem_ref_retail',
+    'sem_ldy_retail'
 ]);
 const SIEL_NULL_HISTORY_TABLES = new Set([
     'siel_tv_retail',
@@ -97,10 +100,11 @@ function _tseRecordItems(records) {
         .map(value => String(value)))].sort();
 }
 
-function _tseCountryScope() {
-    return `(country = 'TSE'
-       OR country IS NULL
-       OR TRIM(CAST(country AS TEXT)) = '')`;
+function _tseCountryScope(alias) {
+    const prefix = alias ? alias + '.' : '';
+    return `(${prefix}country = 'TSE'
+       OR ${prefix}country IS NULL
+       OR TRIM(CAST(${prefix}country AS TEXT)) = '')`;
 }
 
 function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) {
@@ -113,15 +117,19 @@ function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) 
         return '';
     }
 
-    const selectSql = queryColumns.map(col => `    ${col}`).join(',\n');
     const tableSql = tableName;
     const retailerSql = _tseSqlLiteral(retailer);
     const startDateSql = _tseSqlLiteral(_tseHistoryStartDate(date, days));
-    const endDateSql = _tseSqlLiteral(_tseNextDate(date));
-    const countryScopeSql = _tseCountryScope();
-    let accountScope = `LOWER(account_name) = LOWER(${retailerSql})`;
+    const endDateSql = _tseSqlLiteral(date);
+    const countryScopeSql = _tseCountryScope('source');
+    let accountScope = `LOWER(source.account_name) = LOWER(${retailerSql})`;
     if (data.query_include_unassigned === true) {
-        accountScope = `(${accountScope}\n       OR account_name IS NULL\n       OR TRIM(CAST(account_name AS TEXT)) = '')`;
+        accountScope = `(${accountScope}\n       OR source.account_name IS NULL\n       OR TRIM(CAST(source.account_name AS TEXT)) = '')`;
+    }
+    let anchorAccountScope = `LOWER(account_name) = LOWER(${retailerSql})`;
+    if (data.query_include_unassigned === true && !String(retailer).trim()) {
+        anchorAccountScope = `(account_name IS NULL
+       OR TRIM(CAST(account_name AS TEXT)) = '')`;
     }
 
     const items = _tseRecordItems(records);
@@ -135,23 +143,36 @@ function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) 
     const recordConditions = [];
     if (items.length > 0) {
         recordConditions.push(
-            `item IN (\n${items.map(item => `    ${_tseSqlLiteral(item)}`).join(',\n')}\n  )`
+            `source.item IN (\n${items.map(item => `    ${_tseSqlLiteral(item)}`).join(',\n')}\n  )`
         );
     }
     if (hasMissingItem && missingItemIds.length > 0) {
-        recordConditions.push(`id IN (${missingItemIds.join(', ')})`);
+        recordConditions.push(`source.id IN (${missingItemIds.join(', ')})`);
     }
     if (recordConditions.length === 0) return '';
 
-    return `SELECT
-${selectSql}
-FROM ${tableSql}
+    return `WITH latest_batches AS (
+  SELECT DISTINCT ON (LEFT(TRIM(crawl_datetime), 10))
+         LEFT(TRIM(crawl_datetime), 10) AS crawl_date,
+         batch_id,
+         id
+  FROM ${tableSql}
+  WHERE LEFT(TRIM(crawl_datetime), 10) >= ${startDateSql}
+    AND LEFT(TRIM(crawl_datetime), 10) <= ${endDateSql}
+    AND ${anchorAccountScope}
+    AND ${_tseCountryScope()}
+  ORDER BY crawl_date, id DESC
+)
+SELECT
+${queryColumns.map(col => `    source.${col}`).join(',\n')}
+FROM ${tableSql} source
+JOIN latest_batches latest
+  ON LEFT(TRIM(source.crawl_datetime), 10) = latest.crawl_date
+ AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
 WHERE ${accountScope}
   AND ${countryScopeSql}
   AND (${recordConditions.join('\n       OR ')})
-  AND DATE(crawl_datetime::timestamp) >= DATE ${startDateSql}
-  AND DATE(crawl_datetime::timestamp) <= DATE ${endDateSql}
-ORDER BY item, crawl_datetime;`;
+ORDER BY source.item, source.crawl_datetime;`;
 }
 
 function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, days) {
@@ -380,13 +401,15 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSeaAppliance = /^sea_(ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = isSeaTv || isSeaAppliance;
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || tableParam === 'youtube';
-    const isRetail = isLegacyRetail || isSeaRetail || isSielRetail;
+    const isRetail = isLegacyRetail || isSeaRetail || isSielRetail || isSemRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
         || (isSeaAppliance && data.supports_day_history === true)
         || (isSielRetail && data.supports_day_history === true)
+        || (isSemRetail && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
     const defaultDays = getDefaultNullHistoryDays(tableParam);
     const currentDays = supportsDayHistory
@@ -438,7 +461,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
-            ${(isSeaRetail || isSielRetail || isTseRetail) ? daysInputHtml : ''}
+            ${(isSeaRetail || isSielRetail || isSemRetail || isTseRetail) ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL 오류 (${records.length}건)</h4>`;
     }
@@ -521,12 +544,15 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     sielRedirectScope
                         + (currentDays > 1 ? 'ORDER BY source.item' : 'ORDER BY item')
                 );
+                const semHistoryQuery = `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(BTRIM(crawl_datetime), 10))\n         LEFT(BTRIM(crawl_datetime), 10) AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE LEFT(BTRIM(crawl_datetime), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND LOWER(BTRIM(account_name)) = LOWER('${retailerName}')\n    AND UPPER(BTRIM(country)) = 'SEM'\n  ORDER BY source_date, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(BTRIM(source.${dateColumn}), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(BTRIM(source.account_name)) = LOWER('${retailerName}')\n  AND UPPER(BTRIM(source.country)) = 'SEM'\n  AND source.item IN (${inClause})\nORDER BY source.item, source.${dateColumn} ASC;`;
                 const query3Days = isSielRetail
                     ? scopedSielHistoryQuery
+                    : isSemRetail
+                    ? semHistoryQuery
                     : isSeaRetail
                     ? seaHistoryQuery
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
-                const queryLabel = (isSeaRetail || isSielRetail)
+                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">

@@ -34,6 +34,27 @@ SEM_COMMON_EDITABLE_COLUMNS = (
     'calendar_week',
 )
 
+SEM_COMMON_TABLE_COLUMNS = (
+    'id',
+    'batch_id',
+    'country',
+    'account_name',
+    'item',
+    'sku',
+    'retailer_sku_name',
+    'product_url',
+    'count_of_reviews',
+    'star_rating',
+    'count_of_star_ratings',
+    'final_sku_price',
+    'original_sku_price',
+    'savings',
+    'main_rank',
+    'bsr_rank',
+    'crawl_datetime',
+    'calendar_week',
+)
+
 SEM_SOURCE_CONFIG = {
     'sem_tv': {
         'source_key': 'sem_tv',
@@ -46,6 +67,7 @@ SEM_SOURCE_CONFIG = {
         'retailers': (SEM_RETAILER,),
         'extra_required_columns': ('screen_size',),
         'extra_format_columns': ('screen_size',),
+        'extra_table_columns': ('screen_size',),
     },
     'sem_ref': {
         'source_key': 'sem_ref',
@@ -58,6 +80,7 @@ SEM_SOURCE_CONFIG = {
         'retailers': (SEM_RETAILER,),
         'extra_required_columns': ('ref_capacity',),
         'extra_format_columns': ('ref_capacity', 'ref_refrigerator_type'),
+        'extra_table_columns': ('ref_capacity', 'ref_refrigerator_type'),
     },
     'sem_ldy': {
         'source_key': 'sem_ldy',
@@ -70,6 +93,7 @@ SEM_SOURCE_CONFIG = {
         'retailers': (SEM_RETAILER,),
         'extra_required_columns': ('ldy_capacity',),
         'extra_format_columns': ('ldy_capacity', 'ldy_loading_type'),
+        'extra_table_columns': ('ldy_loading_type', 'ldy_capacity'),
     },
 }
 
@@ -118,6 +142,14 @@ def get_sem_editable_columns(product_line):
     source = get_sem_source(product_line)
     return tuple(dict.fromkeys(
         SEM_COMMON_EDITABLE_COLUMNS + source['extra_format_columns']
+    ))
+
+
+def get_sem_table_columns(product_line):
+    """Return every physical source column available to detail selectors."""
+    source = get_sem_source(product_line)
+    return tuple(dict.fromkeys(
+        SEM_COMMON_TABLE_COLUMNS + source['extra_table_columns']
     ))
 
 

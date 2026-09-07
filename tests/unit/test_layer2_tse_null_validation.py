@@ -606,6 +606,11 @@ class TSELayer2NullTests(unittest.TestCase):
             {
                 'fetchall': [
                     (
+                        1, 'sku', 'checked', 'tester', None,
+                        '수집 대상 제품 아님',
+                        date(2026, 7, 12), 'TV-1', None,
+                    ),
+                    (
                         12, 'sku', 'checked', 'tester', None,
                         self.service.TSE_NORMAL_VALUE_REASON,
                         date(2026, 8, 10), 'TV-2', None,
@@ -617,7 +622,7 @@ class TSELayer2NullTests(unittest.TestCase):
                 'fetchall': [
                     (
                         1, 'h20260712_095803', 'TSE', 'Homepro',
-                        'TV-1', '2026-07-12T09:58:03+09:00', 'SKU-1',
+                        'TV-1', '2026-07-12T09:58:03+09:00', None,
                         'https://example.test/tv-1',
                     ),
                     (
@@ -637,7 +642,9 @@ class TSELayer2NullTests(unittest.TestCase):
         self.assertEqual(30, result['history_days'])
         self.assertFalse(result['latest_batch_only'])
         self.assertEqual([1, 11], [row['id'] for row in result['results']])
-        self.assertEqual([], result['results'][0]['null_fields'])
+        self.assertEqual(
+            ['sku'], result['results'][0]['null_fields']
+        )
         self.assertEqual(['sku'], result['results'][1]['null_fields'])
         history_sql, history_params = cursor.calls[2]
         self.assertIn('WITH latest_batches AS', history_sql)

@@ -6,6 +6,7 @@ from apps.common.sem_retail import (
     SEM_SOURCE_CONFIG,
     get_sem_count_status,
     get_sem_required_columns,
+    get_sem_table_columns,
 )
 from apps.dx.dx_layer2.sem_validation import (
     append_null_stats,
@@ -39,6 +40,19 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertIn('screen_size', get_sem_required_columns('sem_tv'))
         self.assertIn('ref_capacity', get_sem_required_columns('sem_ref'))
         self.assertIn('ldy_capacity', get_sem_required_columns('sem_ldy'))
+
+    def test_table_columns_include_full_schema_and_product_fields(self):
+        for product_line, extra_column in (
+            ('sem_tv', 'screen_size'),
+            ('sem_ref', 'ref_refrigerator_type'),
+            ('sem_ldy', 'ldy_loading_type'),
+        ):
+            columns = get_sem_table_columns(product_line)
+            self.assertIn('batch_id', columns)
+            self.assertIn('main_rank', columns)
+            self.assertIn('bsr_rank', columns)
+            self.assertIn('savings', columns)
+            self.assertIn(extra_column, columns)
 
     def test_null_columns_match_homepro_style_without_savings(self):
         required = get_sem_required_columns('sem_tv')
@@ -209,6 +223,54 @@ class SemRetailValidationTests(unittest.TestCase):
                 'dx_sem.dx_sem_tv_retail_com', result['actual_table']
             )
 
+        self.assertIn('batch_id', null_result['select_cols'])
+        self.assertIn('main_rank', null_result['select_cols'])
+        self.assertIn('bsr_rank', null_result['select_cols'])
+
+        rating_result = null_detail(
+            None, date(2026, 9, 7), 'sem_tv', 'star_rating'
+        )
+        rating_columns = rating_result['display_config']['star_rating'][
+            'select_columns'
+        ]
+        self.assertIn('star_rating', rating_columns)
+        self.assertIn('count_of_star_ratings', rating_columns)
+        self.assertIn('count_of_reviews', rating_columns)
+
+    @patch('apps.dx.dx_layer2.sem_validation._history_rows')
+    @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
+    def test_null_detail_expands_target_items_to_daily_history(
+            self, latest_rows, history_rows):
+        latest_rows.return_value = ([{
+            **self.row,
+            'id': 3,
+            'item': 'item-1',
+            'sku': None,
+            'crawl_datetime': '2026-09-07 10:00:00',
+        }], {
+            'inspection_date': '2026-09-07',
+            'source_date': '2026-09-07',
+            'offset_days': 0,
+        })
+        history_rows.return_value = [
+            {**self.row, 'id': day, 'item': 'item-1', 'sku': value,
+             'crawl_datetime': f'2026-09-0{day} 10:00:00'}
+            for day, value in ((5, 'old-1'), (6, 'old-2'), (7, None))
+        ]
+
+        result = null_detail(
+            None, date(2026, 9, 7), 'sem_tv', 'sku', days=3
+        )
+
+        self.assertEqual([5, 6, 7], [row['id'] for row in result['results']])
+        self.assertTrue(result['supports_day_history'])
+        self.assertEqual(3, result['history_days'])
+        history_rows.assert_called_once()
+        args = history_rows.call_args.args
+        self.assertEqual(date(2026, 9, 5), args[2])
+        self.assertEqual(date(2026, 9, 7), args[3])
+        self.assertEqual(['item-1'], args[4])
+
     def test_cross_field_failures_are_classified(self):
         row = {
             **self.row,
@@ -274,6 +336,13 @@ class SemRetailValidationTests(unittest.TestCase):
             'savings',
             '|'.join(rule['select_fields'] for rule in result['rule_summary']),
         )
+        rating_rules = result['rule_summary'][:2]
+        self.assertTrue(all(
+            rule['select_fields'] == (
+                'star_rating|count_of_star_ratings|count_of_reviews'
+            )
+            for rule in rating_rules
+        ))
 
     @patch('apps.dx.dx_layer3.cross_field.sem_services._latest_rows')
     def test_cross_field_detail_is_editable(self, latest_rows):
@@ -299,10 +368,12 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertTrue(result['found'])
         self.assertIn('original_sku_price', result['editable_columns'])
         self.assertNotIn('savings', result['editable_columns'])
-        self.assertEqual(
-            result['editable_columns'],
-            result['retailer_columns']['Liverpool'],
-        )
+        selector_columns = result['retailer_columns']['Liverpool']
+        self.assertIn('batch_id', selector_columns)
+        self.assertIn('main_rank', selector_columns)
+        self.assertIn('bsr_rank', selector_columns)
+        self.assertIn('savings', selector_columns)
+        self.assertNotIn('savings', result['editable_columns'])
 
     def test_main_count_uses_previous_valid_average(self):
         self.assertEqual(('ok', 100.0), get_sem_count_status(85, [90, 110]))

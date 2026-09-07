@@ -4,6 +4,7 @@ from apps.common.sem_retail import (
     SEM_RETAILER,
     SEM_SOURCE_CONFIG,
     get_sem_editable_columns,
+    get_sem_table_columns,
 )
 from apps.dx.dx_layer2.sem_validation import _latest_rows, product_line_for
 
@@ -20,6 +21,9 @@ _RULES = (
     ('original_price_zero', '원가 0 검사', 'original_sku_price',
      None, 'original_sku_price가 0입니다.'),
 )
+_REVIEW_COLUMNS = (
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+)
 
 
 def _blank(value):
@@ -31,6 +35,13 @@ def _number(value):
         return float(str(value).replace('$', '').replace(',', '').strip())
     except (TypeError, ValueError):
         return None
+
+
+def _rule_select_fields(field1, field2):
+    fields = (field1, field2)
+    if any(field in _REVIEW_COLUMNS for field in fields):
+        return '|'.join(_REVIEW_COLUMNS)
+    return '|'.join(field for field in fields if field)
 
 
 def _failed_rules(row):
@@ -88,7 +99,7 @@ def _result(cursor, target_date, product_line):
             'validation_type': rule_key,
             'error_message': message,
             'error_count': len(failures[rule_key]),
-            'select_fields': 'star_rating|count_of_star_ratings|count_of_reviews|final_sku_price|original_sku_price',
+            'select_fields': _rule_select_fields(field1, field2),
             'sort_order': index * 10,
         })
     return source, rows, failures, failed_ids, summaries, mapping
@@ -123,6 +134,7 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         return {'found': False}
     anomalies = failures[rule['rule_key']]
     editable_columns = list(get_sem_editable_columns(source['source_key']))
+    table_columns = list(get_sem_table_columns(source['source_key']))
     return {
         'found': True,
         'date': mapping['inspection_date'],
@@ -145,6 +157,6 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'date_col': source['date_column'],
         'editable_columns': editable_columns,
         'normal_reviews': {},
-        'retailer_columns': {SEM_RETAILER: editable_columns},
+        'retailer_columns': {SEM_RETAILER: table_columns},
         **mapping,
     }

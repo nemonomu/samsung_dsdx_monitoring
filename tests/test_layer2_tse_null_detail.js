@@ -176,14 +176,14 @@ function testTseCorrectionSqlEscapesLiteralsAndHtml() {
     );
 
     assert.ok(query.includes('FROM dx_tse.dx_tse_tv_retail_com'));
-    assert.ok(!query.includes('WITH latest_batches AS'));
-    assert.ok(query.includes("DATE(crawl_datetime::timestamp) >= DATE '2026-08-08'"));
-    assert.ok(query.includes("DATE(crawl_datetime::timestamp) <= DATE '2026-08-11'"));
+    assert.ok(query.includes('WITH latest_batches AS'));
+    assert.ok(query.includes("LEFT(TRIM(crawl_datetime), 10) >= '2026-08-08'"));
+    assert.ok(query.includes("LEFT(TRIM(crawl_datetime), 10) <= '2026-08-10'"));
     assert.ok(query.includes("LOWER('Home''pro')"));
     assert.ok(query.includes("'TV''1 <script>'"));
     assert.ok(query.includes("country = 'TSE'"));
     assert.ok(query.includes('retailer_sku_name'));
-    assert.ok(!query.includes('batch_id IS NOT DISTINCT FROM'));
+    assert.ok(query.includes('source.batch_id IS NOT DISTINCT FROM latest.batch_id'));
     assert.ok(!html.includes('<script>'));
     assert.ok(html.includes('&lt;script&gt;'));
     assert.ok(html.includes('3일 수정용 조회 SQL'));
@@ -193,7 +193,7 @@ function testTseCorrectionSqlEscapesLiteralsAndHtml() {
         data.date, 1
     );
     assert.ok(!singleDayQuery.includes('WITH latest_batch AS'));
-    assert.ok(!singleDayQuery.includes('WITH latest_batches AS'));
+    assert.ok(singleDayQuery.includes('WITH latest_batches AS'));
     assert.ok(singleDayQuery.includes("country = 'TSE'"));
     assert.ok(!singleDayQuery.includes('sku IS NULL'));
     assert.ok(singleDayQuery.includes("'TV''1 <script>'"));
@@ -219,8 +219,8 @@ function testTseItemNullUsesSimpleIdFallbackQuery() {
         data.date, data.history_days
     );
 
-    assert.ok(!query.includes('WITH latest_batches AS'));
-    assert.ok(query.includes('id IN (8)'));
+    assert.ok(query.includes('WITH latest_batches AS'));
+    assert.ok(query.includes('source.id IN (8)'));
     assert.ok(query.includes("country = 'TSE'"));
 
     const mixedData = makeTseDetailData();
