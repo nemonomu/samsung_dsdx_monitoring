@@ -647,9 +647,9 @@ function renderData(data) {
                         <div class="crossfield-region-children" id="${groupId}">
                             ${groupChecks.map(check => {
                                 const detailCode = String(check.detail_code || '').toLowerCase();
-                                const label = detailCode === 'tv' || detailCode === 'siel_tv' || detailCode === 'tse_tv'
+                                const label = detailCode === 'tv' || detailCode === 'siel_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'
                                     ? 'TV'
-                                    : (detailCode === 'sea_ref' || detailCode === 'siel_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
+                                    : (detailCode === 'sea_ref' || detailCode === 'siel_ref' || detailCode === 'sem_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
                                 return renderCheckItem(check, label);
                             }).join('')}
                         </div>
