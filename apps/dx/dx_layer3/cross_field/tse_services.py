@@ -46,7 +46,10 @@ TSE_RULE_SPECS = OrderedDict((
             'star_rating', 'count_of_star_ratings', 'count_of_reviews',
             'crawl_datetime',
         ),
-        'error_message': 'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
+        'error_message': (
+            'star_rating과 count_of_star_ratings의 0 여부가 다르거나 '
+            'star_rating과 count_of_reviews의 존재 여부가 다릅니다.'
+        ),
     }),
     ('final_original_price', {
         'detail_name': '최종가와 원가 순서',
@@ -192,6 +195,8 @@ def evaluate_tse_row(row):
     review_count = parse_tse_number(row.get('count_of_reviews'))
     star_count = parse_tse_number(row.get('count_of_star_ratings'))
     rating = parse_tse_number(row.get('star_rating'))
+    rating_present = _has_value(row.get('star_rating'))
+    review_count_present = _has_value(row.get('count_of_reviews'))
 
     if review_count is not None and star_count is not None:
         if review_count != star_count:
@@ -199,6 +204,8 @@ def evaluate_tse_row(row):
     if rating is not None and star_count is not None:
         if (rating == 0) != (star_count == 0):
             errors.add('review_zero_pair')
+    if rating_present != review_count_present:
+        errors.add('review_zero_pair')
 
     savings_present = _has_value(row.get('savings'))
     original_present = _has_value(row.get('original_sku_price'))

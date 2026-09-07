@@ -90,6 +90,17 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
         self.assertIn('review_count_match', errors)
         self.assertIn('review_zero_pair', errors)
 
+    def test_rating_and_review_presence_mismatch_uses_zero_pair_rule(self):
+        rating_only = tse_services.evaluate_tse_row(_valid_row(
+            count_of_reviews=None,
+        ))
+        review_only = tse_services.evaluate_tse_row(_valid_row(
+            star_rating=None,
+        ))
+
+        self.assertIn('review_zero_pair', rating_only)
+        self.assertIn('review_zero_pair', review_only)
+
     def test_price_reversal_does_not_cascade_to_savings(self):
         errors = tse_services.evaluate_tse_row(_valid_row(
             final_sku_price='฿10,820',

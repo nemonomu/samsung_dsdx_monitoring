@@ -5,17 +5,16 @@ from apps.dx.dx_layer2.sem_validation import _latest_rows, product_line_for
 
 
 _RULES = (
-    ('rating_fields_presence', '평점 필드 존재 일치', 'star_rating',
-     'count_of_star_ratings|count_of_reviews',
-     '평점, 평점 수, 리뷰 수의 존재 여부가 서로 다릅니다.'),
     ('rating_count_consistency', '평점과 평가 수 일치', 'star_rating',
      'count_of_star_ratings',
-     '평점 0 여부와 평가 수 0 여부가 일치하지 않습니다.'),
+     '평점과 평가 수의 0 여부가 다르거나 평점과 리뷰 수의 존재 여부가 다릅니다.'),
     ('review_rating_count', '리뷰 수와 평가 수 일치', 'count_of_reviews',
      'count_of_star_ratings',
      'Liverpool 리뷰 수와 평가 수가 일치하지 않습니다.'),
     ('final_original_price', '최종가와 원가 순서', 'final_sku_price',
      'original_sku_price', '최종 판매가가 원가보다 큽니다.'),
+    ('original_price_zero', '원가 0 검사', 'original_sku_price',
+     None, 'original_sku_price가 0입니다.'),
 )
 
 
@@ -34,21 +33,28 @@ def _failed_rules(row):
     rating = row.get('star_rating')
     rating_count = row.get('count_of_star_ratings')
     review_count = row.get('count_of_reviews')
-    present = [not _blank(value) for value in (rating, rating_count, review_count)]
+    rating_present = not _blank(rating)
+    rating_count_present = not _blank(rating_count)
+    review_count_present = not _blank(review_count)
     failed = []
-    if any(present) and not all(present):
-        failed.append('rating_fields_presence')
-    if all(present):
+    if rating_present and rating_count_present:
         rating_value = _number(rating)
         rating_count_value = _number(rating_count)
-        review_count_value = _number(review_count)
         if ((rating_value == 0) != (rating_count_value == 0)):
             failed.append('rating_count_consistency')
+    if rating_present != review_count_present:
+        if 'rating_count_consistency' not in failed:
+            failed.append('rating_count_consistency')
+    if rating_count_present and review_count_present:
+        rating_count_value = _number(rating_count)
+        review_count_value = _number(review_count)
         if rating_count_value != review_count_value:
             failed.append('review_rating_count')
     final_price = _number(row.get('final_sku_price'))
     original_price = _number(row.get('original_sku_price'))
-    if final_price is not None and original_price is not None and final_price > original_price:
+    if original_price == 0:
+        failed.append('original_price_zero')
+    elif final_price is not None and original_price is not None and final_price > original_price:
         failed.append('final_original_price')
     return failed
 

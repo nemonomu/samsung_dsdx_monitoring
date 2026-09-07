@@ -12,7 +12,10 @@ from apps.dx.dx_layer2.sem_validation import (
     evaluate_format,
     product_line_for,
 )
-from apps.dx.dx_layer3.cross_field.sem_services import _failed_rules
+from apps.dx.dx_layer3.cross_field.sem_services import (
+    _failed_rules,
+    get_sem_cross_field_summary,
+)
 from apps.dx.dx_layer1.sem_retail import sem_retail_services
 
 
@@ -176,6 +179,55 @@ class SemRetailValidationTests(unittest.TestCase):
                 'final_original_price',
             },
             set(_failed_rules(row)),
+        )
+
+    def test_rating_and_review_presence_mismatch_uses_rating_rule(self):
+        rating_only = _failed_rules({
+            **self.row,
+            'count_of_reviews': None,
+        })
+        review_only = _failed_rules({
+            **self.row,
+            'star_rating': None,
+        })
+
+        self.assertIn('rating_count_consistency', rating_only)
+        self.assertIn('rating_count_consistency', review_only)
+
+    def test_original_price_zero_is_reported_without_price_reversal(self):
+        errors = set(_failed_rules({
+            **self.row,
+            'final_sku_price': '$100.00',
+            'original_sku_price': '$0.00',
+        }))
+
+        self.assertIn('original_price_zero', errors)
+        self.assertNotIn('final_original_price', errors)
+
+    @patch('apps.dx.dx_layer3.cross_field.sem_services._latest_rows')
+    def test_cross_field_summary_exposes_only_agreed_rules(self, latest_rows):
+        latest_rows.return_value = ([], {
+            'inspection_date': '2026-09-07',
+            'source_date': '2026-09-07',
+            'offset_days': 0,
+        })
+
+        result = get_sem_cross_field_summary(
+            None, date(2026, 9, 7), 'sem_tv'
+        )
+
+        self.assertEqual(
+            [
+                'rating_count_consistency',
+                'review_rating_count',
+                'final_original_price',
+                'original_price_zero',
+            ],
+            [rule['rule_key'] for rule in result['rule_summary']],
+        )
+        self.assertNotIn(
+            'savings',
+            '|'.join(rule['select_fields'] for rule in result['rule_summary']),
         )
 
     def test_main_count_uses_previous_valid_average(self):
