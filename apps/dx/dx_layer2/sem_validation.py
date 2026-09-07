@@ -1,4 +1,4 @@
-"""Read-only Layer 2 validation for SEM Mexico Liverpool sources."""
+"""Layer 2 validation for SEM Mexico Liverpool sources."""
 
 import re
 from collections import defaultdict
@@ -10,6 +10,7 @@ from apps.common.sem_retail import (
     SEM_RETAILER,
     SEM_SECTION_TO_PRODUCT_LINE,
     SEM_SOURCE_CONFIG,
+    get_sem_editable_columns,
     get_sem_required_columns,
 )
 
@@ -164,15 +165,17 @@ def null_detail(cursor, target_date, table, column, days=1):
         'id', 'item', 'sku', 'retailer_sku_name', column,
         'crawl_datetime', 'product_url',
     )))
+    editable = list(get_sem_editable_columns(product_line))
     return {
+        'date': mapping['inspection_date'],
         'results': results,
         'select_cols': display,
-        'editable_cols': [],
+        'editable_cols': editable,
         'actual_table': source['table_name'],
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display},
         'query_retailer': SEM_RETAILER,
-        'readonly': True,
+        'readonly': False,
         **mapping,
     }
 
@@ -218,19 +221,20 @@ def format_detail(cursor, target_date, table, days=1):
         'original_sku_price', 'star_rating', 'count_of_star_ratings',
         'count_of_reviews', 'calendar_week', 'product_url',
     )))
+    editable = list(get_sem_editable_columns(product_line))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
         'retailer': SEM_RETAILER,
         'column_names': columns,
         'select_cols': columns,
-        'editable_cols': [],
+        'editable_cols': editable,
         'actual_table': source['table_name'],
         'normal_reviews': {},
         'results': records,
         'field_counts': dict(field_counts),
         'total_format_count': sum(field_counts.values()),
-        'readonly': True,
+        'readonly': False,
         **mapping,
     }
 
@@ -290,6 +294,7 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50):
     groups = _duplicate_groups(rows)
     start = (page - 1) * page_size
     total_pages = (len(groups) + page_size - 1) // page_size if groups else 0
+    editable = list(get_sem_editable_columns(product_line))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
@@ -298,9 +303,9 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50):
             'group': ['duplicate_type', 'item', 'retailer_sku_name', 'dup_count', 'reason'],
             'record': ['id', 'sku', 'retailer_sku_name', 'final_sku_price', 'crawl_datetime', 'product_url'],
         },
-        'editable_cols': [],
+        'editable_cols': editable,
         'actual_table': source['table_name'],
-        'readonly': True,
+        'readonly': False,
         'results': {
             'duplicates': groups[start:start + page_size],
             'total_groups': len(groups),

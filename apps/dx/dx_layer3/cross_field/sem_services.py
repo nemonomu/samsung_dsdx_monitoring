@@ -1,6 +1,10 @@
 """SEM Liverpool cross-field validation for the latest daily batch."""
 
-from apps.common.sem_retail import SEM_RETAILER, SEM_SOURCE_CONFIG
+from apps.common.sem_retail import (
+    SEM_RETAILER,
+    SEM_SOURCE_CONFIG,
+    get_sem_editable_columns,
+)
 from apps.dx.dx_layer2.sem_validation import _latest_rows, product_line_for
 
 
@@ -118,6 +122,7 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     if rule is None:
         return {'found': False}
     anomalies = failures[rule['rule_key']]
+    editable_columns = list(get_sem_editable_columns(source['source_key']))
     return {
         'found': True,
         'date': mapping['inspection_date'],
@@ -138,8 +143,8 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'select_fields': rule['select_fields'],
         'table_name': source['table_name'],
         'date_col': source['date_column'],
-        'editable_columns': [],
+        'editable_columns': editable_columns,
         'normal_reviews': {},
-        'retailer_columns': {SEM_RETAILER: []},
+        'retailer_columns': {SEM_RETAILER: editable_columns},
         **mapping,
     }

@@ -363,7 +363,7 @@ assert(layer3Css.includes('background: #ecfdf5'));
 assert(source.includes("if (urlKey) defaultVisibleSet.add('product_url')"));
 assert(source.includes("r['product_url'] = renderProductUrl(row[urlKey])"));
 assert(source.includes('window.crossfieldSourceDate'));
-assert(source.includes("/^(SEA_|SIEL_|TSE_)/.test(productLineDisplay)"));
+assert(source.includes("/^(SEA_|SIEL_|SEM_|TSE_)/.test(productLineDisplay)"));
 assert(source.includes('Shift+클릭으로 범위 선택'));
 assert(source.includes("showToast(successCount + '건 확인 처리 완료'"));
 assert(source.includes("days + '일치 Item 조회 SQL'"));

@@ -9,11 +9,15 @@ from apps.common.sem_retail import (
 )
 from apps.dx.dx_layer2.sem_validation import (
     append_null_stats,
+    duplicate_detail,
     evaluate_format,
+    format_detail,
+    null_detail,
     product_line_for,
 )
 from apps.dx.dx_layer3.cross_field.sem_services import (
     _failed_rules,
+    get_sem_cross_field_rule_detail,
     get_sem_cross_field_summary,
 )
 from apps.dx.dx_layer1.sem_retail import sem_retail_services
@@ -164,6 +168,47 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertNotIn('field_counts', retailer)
         self.assertNotIn('savings', retailer['fields_detail'])
 
+    @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
+    def test_all_layer2_details_are_editable(self, latest_rows):
+        rows = [{
+            **self.row,
+            'id': 1,
+            'item': 'item-1',
+            'sku': None,
+            'retailer_sku_name': 'TV',
+            'crawl_datetime': '2026-09-07 10:00:00',
+        }, {
+            **self.row,
+            'id': 2,
+            'item': 'item-1',
+            'sku': 'sku-2',
+            'retailer_sku_name': 'TV',
+            'crawl_datetime': '2026-09-07 10:00:00',
+        }]
+        latest_rows.return_value = (rows, {
+            'inspection_date': '2026-09-07',
+            'source_date': '2026-09-07',
+            'offset_days': 0,
+        })
+
+        null_result = null_detail(
+            None, date(2026, 9, 7), 'sem_tv', 'sku'
+        )
+        format_result = format_detail(
+            None, date(2026, 9, 7), 'sem_tv'
+        )
+        duplicate_result = duplicate_detail(
+            None, date(2026, 9, 7), 'sem_tv'
+        )
+
+        for result in (null_result, format_result, duplicate_result):
+            self.assertFalse(result['readonly'])
+            self.assertIn('sku', result['editable_cols'])
+            self.assertNotIn('savings', result['editable_cols'])
+            self.assertEqual(
+                'dx_sem.dx_sem_tv_retail_com', result['actual_table']
+            )
+
     def test_cross_field_failures_are_classified(self):
         row = {
             **self.row,
@@ -228,6 +273,35 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertNotIn(
             'savings',
             '|'.join(rule['select_fields'] for rule in result['rule_summary']),
+        )
+
+    @patch('apps.dx.dx_layer3.cross_field.sem_services._latest_rows')
+    def test_cross_field_detail_is_editable(self, latest_rows):
+        latest_rows.return_value = ([{
+            **self.row,
+            'id': 1,
+            'item': 'item-1',
+            'final_sku_price': '$100.00',
+            'original_sku_price': '$0.00',
+        }], {
+            'inspection_date': '2026-09-07',
+            'source_date': '2026-09-07',
+            'offset_days': 0,
+        })
+
+        result = get_sem_cross_field_rule_detail(
+            None,
+            date(2026, 9, 7),
+            'sem_tv',
+            'sem_tv:original_price_zero',
+        )
+
+        self.assertTrue(result['found'])
+        self.assertIn('original_sku_price', result['editable_columns'])
+        self.assertNotIn('savings', result['editable_columns'])
+        self.assertEqual(
+            result['editable_columns'],
+            result['retailer_columns']['Liverpool'],
         )
 
     def test_main_count_uses_previous_valid_average(self):

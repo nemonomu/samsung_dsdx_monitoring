@@ -523,6 +523,7 @@ function renderData(data) {
                 || crossfieldChecksWithRules.includes(check.name)
                 || /^SEA (REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^SIEL (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
+                || /^SEM (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
 
@@ -759,6 +760,9 @@ async function showDetail(category, checkName, detailCode) {
             else if (detailCode === 'siel_tv' || checkName.includes('SIEL TV')) type = 'siel_tv';
             else if (detailCode === 'siel_ref' || checkName.includes('SIEL REF')) type = 'siel_ref';
             else if (detailCode === 'siel_ldy' || checkName.includes('SIEL LDY')) type = 'siel_ldy';
+            else if (detailCode === 'sem_tv' || checkName.includes('SEM TV')) type = 'sem_tv';
+            else if (detailCode === 'sem_ref' || checkName.includes('SEM REF')) type = 'sem_ref';
+            else if (detailCode === 'sem_ldy' || checkName.includes('SEM LDY')) type = 'sem_ldy';
             else if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
             else if (detailCode === 'tse_ref' || checkName.includes('TSE REF')) type = 'tse_ref';
             else if (detailCode === 'tse_ldy' || checkName.includes('TSE LDY')) type = 'tse_ldy';
@@ -1437,8 +1441,9 @@ async function showRulesModal(checkName) {
     const crossfieldChecks = ['TV 논리적 일관성', 'HHP 논리적 일관성', 'TV Sentiment↔리뷰 일관성', 'HHP Sentiment↔리뷰 일관성'];
     const isSeaCrossfield = /^SEA (REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isSielCrossfield = /^SIEL (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
+    const isSemCrossfield = /^SEM (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
-    const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isSielCrossfield || isTseCrossfield;
+    const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isSielCrossfield || isSemCrossfield || isTseCrossfield;
 
     // checkName에서 category 추출
     let category = 'all';
@@ -1456,6 +1461,12 @@ async function showRulesModal(checkName) {
             category = 'siel_ref_retail';
         } else if (checkName.includes('SIEL LDY')) {
             category = 'siel_ldy_retail';
+        } else if (checkName.includes('SEM TV')) {
+            category = 'sem_tv';
+        } else if (checkName.includes('SEM REF')) {
+            category = 'sem_ref';
+        } else if (checkName.includes('SEM LDY')) {
+            category = 'sem_ldy';
         } else if (checkName.includes('TSE TV')) {
             category = 'tse_tv_retail';
         } else if (checkName.includes('TSE REF')) {
@@ -1471,7 +1482,9 @@ async function showRulesModal(checkName) {
         } else if (checkName.includes('HHP')) {
             category = 'hhp_retail';
         }
-        apiUrl = `/layer3/api/crossfield-rules/?section=${category}`;
+        apiUrl = isSemCrossfield
+            ? `/layer3/api/cross-field-detail/?date=${getSelectedDate()}&type=${category}`
+            : `/layer3/api/crossfield-rules/?section=${category}`;
     } else {
         // 카테고리별 특성 규칙 (display_name으로 매핑)
         // 먼저 category-rules API에서 모든 규칙을 가져와서 display_name으로 매칭
@@ -1484,9 +1497,12 @@ async function showRulesModal(checkName) {
     try {
         const data = await fetchAPI(apiUrl);
 
-        if (data.status === 'success' && data.rules.length > 0) {
+        const loadedRules = isSemCrossfield
+            ? (data.rule_summary || [])
+            : (data.rules || []);
+        if ((isSemCrossfield || data.status === 'success') && loadedRules.length > 0) {
             let html = '<ul class="rules-list">';
-            data.rules.forEach((rule, idx) => {
+            loadedRules.forEach((rule, idx) => {
                 const retailerInfo = rule.retailer && rule.retailer !== 'all' ? ` (${rule.retailer})` : '';
                 const thresholdInfo = rule.threshold ? ` [${rule.threshold}]` : '';
 

@@ -49,6 +49,25 @@ except (ImportError, AttributeError):
     get_siel_product_line_for_table = None
     get_siel_source = None
 
+try:
+    from apps.common.sem_retail import (
+        SEM_COUNTRY,
+        SEM_RETAILER,
+        SEM_TABLE_TO_PRODUCT_LINE,
+        get_sem_editable_columns,
+        get_sem_product_line_for_table,
+        get_sem_source,
+        resolve_sem_table,
+    )
+except (ImportError, AttributeError):
+    SEM_COUNTRY = 'SEM'
+    SEM_RETAILER = 'Liverpool'
+    SEM_TABLE_TO_PRODUCT_LINE = {}
+    get_sem_editable_columns = None
+    get_sem_product_line_for_table = None
+    get_sem_source = None
+    resolve_sem_table = None
+
 
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
@@ -58,6 +77,8 @@ VALID_TABLES_UPDATE = ({
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } | set(TSE_TABLE_TO_PRODUCT_LINE) | set(
     SIEL_TABLE_TO_PRODUCT_LINE
+) | set(
+    SEM_TABLE_TO_PRODUCT_LINE
 )) - DISABLED_SOURCE_TABLES
 
 
@@ -117,6 +138,27 @@ def _get_siel_edit_context(table_name):
         return None
 
 
+def _get_sem_edit_context(table_name):
+    if not all((
+        get_sem_editable_columns,
+        get_sem_product_line_for_table,
+        get_sem_source,
+        resolve_sem_table,
+    )):
+        return None
+    try:
+        canonical_table = resolve_sem_table(table_name)
+        product_line = get_sem_product_line_for_table(canonical_table)
+        return {
+            'table_name': canonical_table,
+            'product_line': product_line,
+            'source': get_sem_source(product_line),
+            'max_editable': set(get_sem_editable_columns(product_line)),
+        }
+    except (ImportError, AttributeError, ValueError):
+        return None
+
+
 def _select_siel_edit_record(
         cursor, context, select_columns, row_id, inspection_date):
     """Select only the SIEL inspection-day latest MAIN-anchored row."""
@@ -164,6 +206,35 @@ def _select_siel_edit_record(
     ))
 
 
+def _select_sem_edit_record(
+        cursor, context, select_columns, row_id, inspection_date):
+    source = context['source']
+    mapping = resolve_monitoring_date(
+        inspection_date, SEM_COUNTRY, source['source_key']
+    )
+    table_name = context['table_name']
+    source_date = mapping['source_date']
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {table_name} source
+        WHERE source.id = %s
+          AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND UPPER(BTRIM(source.country)) = %s
+          AND LOWER(BTRIM(source.account_name)) = LOWER(%s)
+          AND source.batch_id IS NOT DISTINCT FROM (
+              SELECT anchor.batch_id
+              FROM {table_name} anchor
+              WHERE LEFT(BTRIM(anchor.crawl_datetime), 10) = %s
+                AND LOWER(BTRIM(anchor.account_name)) = LOWER(%s)
+              ORDER BY anchor.id DESC
+              LIMIT 1
+          )
+    """, (
+        row_id, source_date, SEM_COUNTRY, SEM_RETAILER,
+        source_date, SEM_RETAILER,
+    ))
+
+
 def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                       crawl_date, correction_type, username, memo):
     """
@@ -181,12 +252,18 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # product_line 결정
     tse_context = _get_tse_edit_context(table_name)
+    sem_context = _get_sem_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
     sea_context = _get_sea_edit_context(table_name)
     if tse_context:
         table_name = tse_context['table_name']
         product_line = tse_context['product_line']
         if column_name not in tse_context['max_editable']:
+            return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+    elif sem_context:
+        table_name = sem_context['table_name']
+        product_line = sem_context['product_line']
+        if column_name not in sem_context['max_editable']:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif sea_context:
         table_name = sea_context['table_name']
@@ -199,7 +276,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # 기존 값 + retailer + item 조회
     select_columns = f"{column_name}, account_name, item"
-    if tse_context:
+    if tse_context or sem_context:
         select_columns += ", batch_id"
     if tse_context:
         cursor.execute(f"""
@@ -213,6 +290,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
               )
               AND LEFT(TRIM(crawl_datetime), 10) = %s
         """, (row_id, str(crawl_date)))
+    elif sem_context:
+        _select_sem_edit_record(
+            cursor, sem_context, select_columns, row_id, crawl_date
+        )
     elif sea_context:
         date_contract = resolve_monitoring_date(
             crawl_date, 'SEA', sea_context['source_key']
@@ -257,7 +338,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else ''
-    batch_id = row[3] if tse_context else None
+    batch_id = row[3] if tse_context or sem_context else None
 
     # editable 컬럼 확인
     editable_retailer = retailer
@@ -265,11 +346,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_retailer = new_value
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
-    editable_cols = (
-        get_siel_format_editable_columns(product_line, editable_retailer)
-        if siel_context else
-        get_editable_columns(product_line, editable_retailer)
-    )
+    if sem_context:
+        editable_cols = sem_context['max_editable']
+    elif siel_context:
+        editable_cols = get_siel_format_editable_columns(
+            product_line, editable_retailer
+        )
+    else:
+        editable_cols = get_editable_columns(product_line, editable_retailer)
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 
@@ -284,7 +368,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     # TSE source tables enforce UNIQUE(account_name, batch_id, item). Check
     # the candidate identity before UPDATE so the API returns a clear error
     # and no correction history is written on collision.
-    if tse_context and column_name in {'account_name', 'item'}:
+    if (tse_context or sem_context) and column_name in {'account_name', 'item'}:
         candidate_retailer = (
             update_value if column_name == 'account_name' else retailer
         )

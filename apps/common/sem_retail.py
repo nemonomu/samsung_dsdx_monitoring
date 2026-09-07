@@ -28,6 +28,12 @@ SEM_OPTIONAL_COLUMNS = (
     'savings',
 )
 
+SEM_COMMON_EDITABLE_COLUMNS = (
+    *SEM_COMMON_REQUIRED_COLUMNS,
+    'original_sku_price',
+    'calendar_week',
+)
+
 SEM_SOURCE_CONFIG = {
     'sem_tv': {
         'source_key': 'sem_tv',
@@ -101,6 +107,26 @@ def resolve_sem_table(value):
 def get_sem_required_columns(product_line):
     source = get_sem_source(product_line)
     return SEM_COMMON_REQUIRED_COLUMNS + source['extra_required_columns']
+
+
+def get_sem_product_line_for_table(table_name):
+    canonical = resolve_sem_table(table_name)
+    return SEM_TABLE_TO_PRODUCT_LINE[canonical]
+
+
+def get_sem_editable_columns(product_line):
+    source = get_sem_source(product_line)
+    return tuple(dict.fromkeys(
+        SEM_COMMON_EDITABLE_COLUMNS + source['extra_format_columns']
+    ))
+
+
+def validate_sem_editable_column(product_line, column_name):
+    key = normalize_sem_product_line(product_line)
+    column = str(column_name or '').strip()
+    if column not in get_sem_editable_columns(key):
+        raise ValueError(f'{column_name} 컬럼은 수정할 수 없습니다')
+    return column
 
 
 def get_sem_collection_phase(current_time):

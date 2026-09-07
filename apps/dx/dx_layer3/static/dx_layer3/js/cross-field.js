@@ -1138,7 +1138,10 @@ function _cfDoSaveEdits(memo) {
     var btn = document.getElementById('cf-btn-save');
     if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
 
-    var ruleId = (window._cfDetailState && window._cfDetailState._ruleId) || window.crossfieldRuleId || null;
+    var ruleId = _cfPersistedRuleId(
+        (window._cfDetailState && window._cfDetailState._ruleId)
+        || window.crossfieldRuleId
+    );
 
     var requests = keys.map(function(k) {
         var edit = edits[k];
@@ -1322,6 +1325,11 @@ function _cfShowReviewDialog(callback) {
     _showReviewDialog('cross_field', callback);
 }
 
+function _cfPersistedRuleId(ruleId) {
+    var text = String(ruleId === null || ruleId === undefined ? '' : ruleId);
+    return /^\d+$/.test(text) ? parseInt(text, 10) : null;
+}
+
 function _cfSubmitReview(td, status, memo, reason) {
     return _cfSubmitReviews([td], status, memo, reason);
 }
@@ -1333,7 +1341,10 @@ function _cfSubmitReviews(cells, status, memo, reason) {
     if (cells.length === 0) return Promise.resolve([]);
 
     var retailerVal = window._cfCurrentRetailer || '';
-    var ruleId = (window._cfDetailState && window._cfDetailState._ruleId) || window.crossfieldRuleId || null;
+    var ruleId = _cfPersistedRuleId(
+        (window._cfDetailState && window._cfDetailState._ruleId)
+        || window.crossfieldRuleId
+    );
     var button = document.querySelector('#cf-review-bar .btn-null-normal');
     if (button) {
         button.disabled = true;
