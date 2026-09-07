@@ -167,7 +167,9 @@ VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
-} | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG)
+} | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG) | set(
+    getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})
+)
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
 
 
@@ -2403,6 +2405,11 @@ def get_format_rules(cursor, table_name, retailer):
     if table_name in SIEL_SOURCE_CONFIG:
         return {
             'rules': _get_siel_static_format_rules(table_name, retailer)
+        }
+    sem_product_line = sem_validation.product_line_for(table_name)
+    if sem_product_line:
+        return {
+            'rules': sem_validation.get_format_rule_details(sem_product_line)
         }
 
     tbl_rules = dx_table('monitoring_format_rules')

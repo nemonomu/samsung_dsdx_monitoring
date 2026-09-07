@@ -32,6 +32,12 @@ assert(common.includes("'SIEL LDY': 'siel_ldy'"));
 assert(common.includes("'siel_tv_retail': 'siel_tv'"));
 assert(common.includes("'siel_ref_retail': 'siel_ref'"));
 assert(common.includes("'siel_ldy_retail': 'siel_ldy'"));
+assert(common.includes("'SEM TV': 'sem_tv'"));
+assert(common.includes("'SEM REF': 'sem_ref'"));
+assert(common.includes("'SEM LDY': 'sem_ldy'"));
+assert(common.includes("'sem_tv_retail': 'sem_tv'"));
+assert(common.includes("'sem_ref_retail': 'sem_ref'"));
+assert(common.includes("'sem_ldy_retail': 'sem_ldy'"));
 assert(common.includes('tableNameMap[tableName] || tableName'));
 assert(!common.includes("tableNameMap[tableName] || 'tv_retail_com'"));
 assert(common.includes('function isReadOnlyDuplicateTable(tableParam)'));
@@ -68,7 +74,7 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260907-2"
+    "dx_layer2/js/layer2-common.js' %}?v=20260907-3"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/format_validation.js' %}?v=20260907-1"

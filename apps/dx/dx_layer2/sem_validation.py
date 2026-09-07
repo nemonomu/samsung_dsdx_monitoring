@@ -45,6 +45,84 @@ _REVIEW_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
 
+_FORMAT_RULE_DETAILS = {
+    'country': {
+        'description': 'SEM 국가 코드와 일치',
+        'pattern': 'SEM',
+    },
+    'account_name': {
+        'description': 'SEM 수집 리테일러명과 일치',
+        'pattern': 'Liverpool',
+    },
+    'item': {
+        'description': '0보다 큰 정수',
+        'pattern': '1 / 1051810429',
+    },
+    'crawl_datetime': {
+        'description': 'ISO 날짜 또는 날짜·시간 형식',
+        'pattern': '2026-09-07 / 2026-09-07T13:32:00',
+    },
+    'calendar_week': {
+        'description': 'W1~W53 범위의 주차',
+        'pattern': 'W1 / W36 / w53',
+    },
+    'product_url': {
+        'description': 'Liverpool 멕시코 상품 상세 URL',
+        'pattern': 'https://www.liverpool.com.mx/tienda/pdp/...',
+    },
+    'final_sku_price': {
+        'description': '멕시코 페소 금액 형식',
+        'pattern': '$10,999.00 / $8,999.00',
+    },
+    'original_sku_price': {
+        'description': '값이 있으면 멕시코 페소 금액 형식',
+        'pattern': '$12,999.00 / $10,999.00',
+    },
+    'star_rating': {
+        'description': '0~5 범위, 소수점 한 자리까지',
+        'pattern': '0 / 4.5 / 5.0',
+    },
+    'count_of_reviews': {
+        'description': '0 이상의 정수',
+        'pattern': '0 / 128',
+    },
+    'count_of_star_ratings': {
+        'description': '0 이상의 정수',
+        'pattern': '0 / 128',
+    },
+    'main_rank': {
+        'description': '값이 있으면 0보다 큰 정수',
+        'pattern': '1 / 25',
+    },
+    'bsr_rank': {
+        'description': '값이 있으면 0보다 큰 정수',
+        'pattern': '1 / 25',
+    },
+    'screen_size': {
+        'description': '숫자와 inch 단위 형식',
+        'pattern': '55 inch / 65 inch',
+    },
+    'ref_capacity': {
+        'description': '숫자와 냉장고 용량 단위 형식',
+        'pattern': '20 cu ft / 500 L / 500 liters',
+    },
+    'ref_refrigerator_type': {
+        'description': '허용된 냉장고 유형',
+        'pattern': (
+            'Freezer / Freezer-on-Bottom (Bottom Mount) / '
+            'Freezer-on-Top (Top Mount) / French Door / Side-by-Side'
+        ),
+    },
+    'ldy_capacity': {
+        'description': '숫자와 kg 단위 형식',
+        'pattern': '10 kg / 20.5 kg',
+    },
+    'ldy_loading_type': {
+        'description': '허용된 세탁기 로딩 유형',
+        'pattern': 'Front Load / Top Load',
+    },
+}
+
 
 def product_line_for(value):
     key = str(value or '').strip().lower()
@@ -191,6 +269,17 @@ def get_review_allowed_columns(product_line, correction_type):
     if correction_type == 'format_check':
         return tuple(_format_checks(product_line))
     return ()
+
+
+def get_format_rule_details(product_line):
+    """Return popup metadata for the exact rules used by SEM validation."""
+    return [
+        {
+            'field': field,
+            **_FORMAT_RULE_DETAILS[field],
+        }
+        for field in _format_checks(product_line)
+    ]
 
 
 def fetch_review_record(cursor, target_date, product_line, record_id, column):

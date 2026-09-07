@@ -14,8 +14,14 @@ from apps.dx.dx_layer2.sem_validation import (
     duplicate_detail,
     evaluate_format,
     format_detail,
+    get_format_rule_details,
+    get_review_allowed_columns,
     null_detail,
     product_line_for,
+)
+from apps.dx.dx_layer2.format_validation.services import (
+    VALID_TABLES_RULES,
+    get_format_rules,
 )
 from apps.dx.dx_layer3.cross_field.sem_services import (
     _failed_rules,
@@ -63,6 +69,28 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertIn('star_rating', required)
         self.assertIn('count_of_star_ratings', required)
         self.assertNotIn('savings', required)
+
+    def test_format_rule_popup_uses_exact_sem_validation_fields(self):
+        product_extras = {
+            'sem_tv': {'screen_size'},
+            'sem_ref': {'ref_capacity', 'ref_refrigerator_type'},
+            'sem_ldy': {'ldy_capacity', 'ldy_loading_type'},
+        }
+        for product_line, extras in product_extras.items():
+            with self.subTest(product_line=product_line):
+                expected = set(get_review_allowed_columns(
+                    product_line, 'format_check'
+                ))
+                direct_rules = get_format_rule_details(product_line)
+                api_rules = get_format_rules(
+                    None, product_line, 'Liverpool'
+                )['rules']
+                self.assertIn(product_line, VALID_TABLES_RULES)
+                self.assertEqual(
+                    expected, {rule['field'] for rule in direct_rules}
+                )
+                self.assertEqual(direct_rules, api_rules)
+                self.assertTrue(extras.issubset(expected))
 
     def test_layer1_description_uses_korean_country_name(self):
         current = {
