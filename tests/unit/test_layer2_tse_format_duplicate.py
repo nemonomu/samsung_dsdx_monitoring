@@ -220,31 +220,6 @@ class TSEFormatValidationTests(unittest.TestCase):
             'star_rating',
         }, set(errors))
 
-    def test_powerbuy_does_not_require_savings_percentage_format(self):
-        amount_only = self.valid_row(
-            account_name='PowerBuy', savings='฿3,000',
-        )
-
-        self.assertEqual({}, self.service.evaluate_tse_format_row(
-            amount_only, 'tse_tv', 'PowerBuy',
-        ))
-        self.assertIn(
-            'savings',
-            self.service.evaluate_tse_format_row(
-                amount_only, 'tse_tv', 'Homepro',
-            ),
-        )
-
-        powerbuy_rules = self.service._get_tse_static_format_rules(
-            'tse_tv', 'PowerBuy'
-        )
-        self.assertNotIn('savings', {
-            rule['field'] for rule in powerbuy_rules
-        })
-        self.assertIn('original_sku_price / savings', {
-            rule['field'] for rule in powerbuy_rules
-        })
-
     def test_lotuss_tv_uses_percentage_savings_and_ignores_reviews(self):
         row = {
             'account_name': 'Lotuss',
@@ -346,98 +321,6 @@ class TSEFormatValidationTests(unittest.TestCase):
                 'tse_ldy', 'Lotuss',
             ),
         )
-
-    def test_lazada_accepts_integer_one_and_two_decimal_prices(self):
-        base = {
-            'account_name': 'Lazada',
-            'item': '1000366675',
-            'product_url': (
-                'https://www.lazada.co.th/products/'
-                'pdp-i1000366675.html'
-            ),
-            'savings': '-54%',
-            'count_of_reviews': '585',
-            'count_of_star_ratings': '585',
-            'star_rating': '4.9',
-            'screen_size': '32 inch',
-        }
-        price_pairs = (
-            ('\u0e3f1,390', '\u0e3f2,999'),
-            ('\u0e3f3,288.3', '\u0e3f4,699.9'),
-            ('\u0e3f2,656.83', '\u0e3f3,590.00'),
-        )
-        for final_price, original_price in price_pairs:
-            with self.subTest(final_price=final_price):
-                self.assertEqual({}, self.service.evaluate_tse_format_row(
-                    {
-                        **base,
-                        'final_sku_price': final_price,
-                        'original_sku_price': original_price,
-                    },
-                    'tse_tv', 'Lazada',
-                ))
-
-    def test_lazada_item_is_not_a_format_validation_field(self):
-        row = {
-            'account_name': 'Lazada',
-            'item': 'LAZ-ITEM-A_01',
-            'product_url': (
-                'https://www.lazada.co.th/products/'
-                'pdp-i1000366675.html'
-            ),
-            'final_sku_price': '\u0e3f1,390',
-            'original_sku_price': '\u0e3f2,999',
-            'savings': '-54%',
-            'count_of_reviews': '585',
-            'count_of_star_ratings': '585',
-            'star_rating': '4.9',
-            'screen_size': '32 inch',
-        }
-        errors = self.service.evaluate_tse_format_row(
-            row, 'tse_tv', 'Lazada'
-        )
-        self.assertNotIn('item', errors)
-        self.assertNotIn(
-            'item',
-            {
-                rule['field']
-                for rule in self.service._get_tse_static_format_rules(
-                    'tse_tv', 'Lazada'
-                )
-            },
-        )
-
-    def test_lazada_product_specific_values_follow_csv_formats(self):
-        common = {
-            'account_name': 'Lazada',
-            'item': '1024616655',
-            'product_url': (
-                'https://www.lazada.co.th/products/'
-                'pdp-i1024616655.html'
-            ),
-            'final_sku_price': '\u0e3f599',
-            'original_sku_price': '\u0e3f1,990',
-            'savings': '-70%',
-            'count_of_reviews': '16',
-            'count_of_star_ratings': '16',
-            'star_rating': '4.6',
-        }
-        self.assertEqual({}, self.service.evaluate_tse_format_row(
-            {
-                **common,
-                'ldy_capacity': '8.5 L',
-                'ldy_loading_type': 'Top Load',
-            },
-            'tse_ldy', 'Lazada',
-        ))
-        self.assertEqual({}, self.service.evaluate_tse_format_row(
-            {
-                **common,
-                'ref_capacity': '7.3 cu ft',
-                'ref_refrigerator_type': 'Multi Door',
-            },
-            'tse_ref', 'Lazada',
-        ))
 
     def test_static_tse_rule_api_does_not_require_database_rows(self):
         result = self.service.get_format_rules(None, 'tse_tv', 'Homepro')

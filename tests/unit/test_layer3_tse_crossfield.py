@@ -125,25 +125,6 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
         errors = tse_services.evaluate_tse_row(_valid_row(savings='unknown'))
         self.assertEqual(errors, {'savings_format'})
 
-    def test_lazada_percentage_allows_display_price_rounding_tolerance(self):
-        errors = tse_services.evaluate_tse_row(_valid_row(
-            account_name='Lazada',
-            final_sku_price='\u0e3f16,090',
-            original_sku_price='\u0e3f28,990',
-            savings='-45%',
-        ))
-        self.assertNotIn('savings_rate_match', errors)
-
-    def test_powerbuy_amount_only_savings_remains_valid_crossfield_data(self):
-        errors = tse_services.evaluate_tse_row(_valid_row(
-            account_name='PowerBuy', savings='฿3,500',
-        ))
-
-        self.assertNotIn('savings_format', errors)
-        self.assertNotIn('savings_amount_match', errors)
-        self.assertNotIn('savings_rate_match', errors)
-
-
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
     def setUp(self):
         tse_services.get_tse_retailer_columns = lambda *_: {
@@ -221,7 +202,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertIn('    count_of_star_ratings,', query)
         self.assertIn('    count_of_reviews,', query)
 
-    def test_retailer_cloned_rules_are_merged_by_validation_type(self):
+    def test_excluded_retailer_rules_are_not_loaded(self):
         homepro_rule = _rule(1, 'review_zero_pair')
         homepro_rule.update({
             'retailer': 'Homepro',
@@ -238,13 +219,13 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         rules = tse_services.load_active_tse_rules(cursor, 'tse_tv')
 
         self.assertEqual(1, len(rules))
-        self.assertEqual([1, 2], rules[0]['_source_rule_ids'])
-        self.assertEqual(['Homepro', 'Lazada'], rules[0]['_retailers'])
+        self.assertEqual([1], rules[0]['_source_rule_ids'])
+        self.assertEqual(['Homepro'], rules[0]['_retailers'])
         self.assertIn(
             'count_of_reviews', rules[0]['select_fields'].split('|')
         )
 
-    def test_merged_retailer_rules_do_not_duplicate_findings(self):
+    def test_excluded_retailer_rows_are_not_evaluated(self):
         homepro_rule = _rule(1, 'review_count_match')
         homepro_rule['retailer'] = 'Homepro'
         lazada_rule = _rule(2, 'review_count_match')
@@ -267,14 +248,14 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
             cursor, date(2026, 8, 10), 'tse_tv',
         )
 
-        self.assertEqual(2, result['total_anomalies'])
+        self.assertEqual(1, result['total_anomalies'])
         self.assertEqual(1, len(result['rule_summary']))
-        self.assertEqual(2, result['rule_summary'][0]['error_count'])
+        self.assertEqual(1, result['rule_summary'][0]['error_count'])
         self.assertIn(
             "TRIM(account_name) ILIKE 'Homepro'",
             result['rule_summary'][0]['query'],
         )
-        self.assertIn(
+        self.assertNotIn(
             "TRIM(account_name) ILIKE 'Lazada'",
             result['rule_summary'][0]['query'],
         )

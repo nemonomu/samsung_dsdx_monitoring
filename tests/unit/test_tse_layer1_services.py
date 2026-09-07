@@ -62,6 +62,10 @@ class TseLayer1ServiceTests(unittest.TestCase):
                 ),
                 get_tse_collection_phase=collection_phase,
                 get_tse_count_status=count_status,
+                is_tse_retailer_monitored=lambda value: (
+                    str(value).strip().casefold()
+                    not in {'lazada', 'powerbuy'}
+                ),
             ),
             'apps.dx': package_stub('apps.dx'),
             'apps.dx.dx_layer1': package_stub('apps.dx.dx_layer1'),
@@ -201,6 +205,35 @@ class TseLayer1ServiceTests(unittest.TestCase):
             'Lotuss',
             [retailer['retailer'] for retailer in tv['retailers']],
         )
+
+    def test_lazada_and_powerbuy_are_hidden_even_when_configured_and_collected(self):
+        self.service.get_tse_retailer_columns = lambda product_line: (
+            {
+                'Homepro': {'retailer': 'homepro'},
+                'Lazada': {'retailer': 'lazada'},
+                'PowerBuy': {'retailer': 'powerbuy'},
+            }
+            if product_line == 'tse_tv'
+            else {'Homepro': {'retailer': 'homepro'}}
+        )
+        self._set_counts({
+            'tse_tv': [
+                {'retailer': 'Homepro', 'actual_count': 300},
+                {'retailer': 'Lazada', 'actual_count': 250},
+                {'retailer': 'PowerBuy', 'actual_count': 200},
+            ],
+            'tse_ref': [{'retailer': 'Homepro', 'actual_count': 300}],
+            'tse_ldy': [{'retailer': 'Homepro', 'actual_count': 300}],
+        })
+
+        result = self.service.get_layer1_stats(
+            object(), date(2026, 8, 18), datetime(2026, 8, 18, 11, 1)
+        )
+        tv = result['check']['categories'][0]
+
+        self.assertEqual(['Homepro'], [row['retailer'] for row in tv['retailers']])
+        self.assertEqual(300, tv['actual'])
+        self.assertEqual(300, tv['expected'])
 
     def test_time_phases_use_kst_0900_to_1100(self):
         self._set_counts({

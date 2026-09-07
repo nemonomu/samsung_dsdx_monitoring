@@ -34,6 +34,20 @@ class TseRetailColumnLoaderTests(unittest.TestCase):
                 'skip_missing_check': True,
                 'is_editable': False,
             },
+            {
+                'product_line': 'tse_tv',
+                'column_name': 'sku',
+                'retailer': 'lazada',
+                'skip_missing_check': False,
+                'is_editable': True,
+            },
+            {
+                'product_line': 'tse_tv',
+                'column_name': 'sku',
+                'retailer': 'powerbuy',
+                'skip_missing_check': False,
+                'is_editable': True,
+            },
         ]
         module = load_module(
             'apps/common/retail_columns.py',
@@ -70,6 +84,8 @@ class TseRetailColumnLoaderTests(unittest.TestCase):
         self.assertEqual(
             loaded['tse_ldy']['Homepro']['editable_columns'], [],
         )
+        self.assertNotIn('Lazada', loaded['tse_tv'])
+        self.assertNotIn('PowerBuy', loaded['tse_tv'])
 
 
 if __name__ == '__main__':

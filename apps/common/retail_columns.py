@@ -11,6 +11,7 @@ from apps.common.response import log_error
 from apps.common.tse_retail import (
     TSE_SOURCE_CONFIG,
     display_tse_retailer,
+    is_tse_retailer_monitored,
     normalize_tse_product_line,
 )
 
@@ -176,7 +177,7 @@ def load_tse_retail_columns():
                 continue
 
             retailer_key = str(row.get('retailer') or '').strip().lower()
-            if not retailer_key:
+            if not retailer_key or not is_tse_retailer_monitored(retailer_key):
                 continue
             retailer_name = display_tse_retailer(row['retailer'])
             retailer_config = result[product_line].setdefault(retailer_name, {

@@ -12,6 +12,7 @@ from apps.common.tse_retail import (
     display_tse_retailer,
     get_tse_collection_phase,
     get_tse_count_status,
+    is_tse_retailer_monitored,
 )
 
 from . import tse_retail_repositories as repo
@@ -99,7 +100,7 @@ def _configured_retailers(product_line):
     for display_name, config in get_tse_retailer_columns(product_line).items():
         raw_name = config.get('retailer') or display_name
         key = str(raw_name).strip().lower()
-        if key:
+        if key and is_tse_retailer_monitored(key):
             retailers[key] = display_tse_retailer(display_name or raw_name)
     return retailers
 
@@ -111,7 +112,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
 
     for row in rows:
         raw_retailer = str(row.get('retailer') or '').strip()
-        if not raw_retailer:
+        if not raw_retailer or not is_tse_retailer_monitored(raw_retailer):
             continue
         key = raw_retailer.lower()
         actual_by_retailer[key] = {

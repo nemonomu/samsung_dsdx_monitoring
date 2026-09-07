@@ -15,9 +15,9 @@
         'SIEL AMAZON TV', 'SIEL FLIPKART TV',
         'SIEL AMAZON REF', 'SIEL FLIPKART REF',
         'SIEL AMAZON LDY', 'SIEL FLIPKART LDY',
-        'TSE LAZADA TV', 'TSE HOMEPRO TV',
-        'TSE LAZADA REF', 'TSE HOMEPRO REF',
-        'TSE LAZADA LDY', 'TSE HOMEPRO LDY'
+        'TSE HOMEPRO TV',
+        'TSE HOMEPRO REF',
+        'TSE HOMEPRO LDY'
     ];
 
     var SEA_TABLE_CATEGORY = {
@@ -43,6 +43,42 @@
         'dx_siel_ldy_retail_com': 'LDY',
         'dx_siel.dx_siel_ldy_retail_com': 'LDY'
     };
+
+    function isExcludedTseRetailer(tableName, retailer) {
+        if (!TSE_TABLE_CATEGORY[tableName]) return false;
+        var key = String(retailer || '').trim().toLowerCase();
+        return key === 'lazada' || key === 'powerbuy';
+    }
+
+    function filterMonitoringDetails(groupedDetails) {
+        var filtered = {};
+        Object.keys(groupedDetails || {}).forEach(function(type) {
+            var tableGroups = {};
+            Object.keys(groupedDetails[type] || {}).forEach(function(tableName) {
+                var rows = groupedDetails[type][tableName].filter(function(row) {
+                    return !isExcludedTseRetailer(tableName, row.retailer);
+                });
+                if (rows.length > 0) tableGroups[tableName] = rows;
+            });
+            if (Object.keys(tableGroups).length > 0) filtered[type] = tableGroups;
+        });
+        return filtered;
+    }
+
+    function summarizeMonitoringDetails(groupedDetails) {
+        var summary = {};
+        Object.keys(groupedDetails || {}).forEach(function(type) {
+            var counts = {};
+            Object.keys(groupedDetails[type]).forEach(function(tableName) {
+                groupedDetails[type][tableName].forEach(function(row) {
+                    var status = row.status;
+                    if (status) counts[status] = (counts[status] || 0) + 1;
+                });
+            });
+            summary[type] = counts;
+        });
+        return summary;
+    }
 
     function marketRetailerName(market, retailer, category) {
         var value = String(retailer || '').trim();
@@ -456,8 +492,8 @@
         var date = data.date || '';
         var collectionStatus = data.collection_status || [];
         var collectionIssues = data.collection_issues || [];
-        var typeSummary = data.type_summary || {};
-        var groupedDetails = data.grouped_details || {};
+        var groupedDetails = filterMonitoringDetails(data.grouped_details || {});
+        var typeSummary = summarizeMonitoringDetails(groupedDetails);
 
         var totalCorrected = 0, totalNormal = 0;
         Object.keys(typeSummary).forEach(function(ct) {

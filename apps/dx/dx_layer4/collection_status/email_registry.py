@@ -106,19 +106,7 @@ _SIEL_RETAILERS = (
     _retailer('Flipkart'),
 )
 def _tse_retailers(product):
-    retailers = [
-        _retailer('Homepro', include_unassigned=False),
-        _retailer(
-            'Lazada', include_unassigned=False,
-            conditional_columns=('original_sku_price', 'savings'),
-        ),
-    ]
-    if product == 'TV':
-        retailers.append(_retailer(
-            'PowerBuy', include_unassigned=False,
-            conditional_columns=('original_sku_price', 'savings'),
-        ))
-    return tuple(retailers)
+    return (_retailer('Homepro', include_unassigned=False),)
 
 
 _TSE_EMAIL_SKIPPED_ALLOWLIST = {

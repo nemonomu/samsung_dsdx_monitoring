@@ -1503,8 +1503,8 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 if column not in table_fields:
                     table_fields.append(column)
 
-        # Missing account names cannot be assigned safely to Homepro,
-        # Lazada, or any future retailer.  Surface every such row in a
+        # Missing account names cannot be assigned safely to Homepro or any
+        # future retailer.  Surface every such row in a
         # dedicated NULL-review bucket instead of silently excluding it or
         # attaching it to the first configured retailer.
         unassigned_scope = _build_null_sql_condition(

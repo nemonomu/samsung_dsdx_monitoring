@@ -18,11 +18,11 @@ from apps.common.retail_columns import (
 )
 from apps.common.tse_retail import (
     TSE_COUNTRY,
-    TSE_LAZADA_RETAILER,
     TSE_LOTUSS_RETAILER,
     display_tse_retailer,
     get_tse_editable_columns,
     get_tse_source,
+    is_tse_retailer_monitored,
     normalize_tse_product_line,
     tse_crossfield_rule_supported,
 )
@@ -189,8 +189,6 @@ def evaluate_tse_row(row):
     downstream savings comparisons for that row.
     """
     errors = set()
-    retailer_key = str(row.get('account_name') or '').strip().casefold()
-
     review_count = parse_tse_number(row.get('count_of_reviews'))
     star_count = parse_tse_number(row.get('count_of_star_ratings'))
     rating = parse_tse_number(row.get('star_rating'))
@@ -236,18 +234,9 @@ def evaluate_tse_row(row):
         errors.add('savings_amount_match')
     if savings_rate is not None:
         raw_rate = (difference / original_price) * Decimal('100')
-        if retailer_key == TSE_LAZADA_RETAILER:
-            # Lazada calculates the displayed percentage before its displayed
-            # prices are rounded.  The CSV can therefore differ by less than
-            # one percentage point from a calculation using displayed prices.
-            if abs(abs(savings_rate) - raw_rate) > Decimal('1'):
-                errors.add('savings_rate_match')
-        else:
-            calculated_rate = raw_rate.to_integral_value(
-                rounding=ROUND_FLOOR
-            )
-            if abs(savings_rate) != calculated_rate:
-                errors.add('savings_rate_match')
+        calculated_rate = raw_rate.to_integral_value(rounding=ROUND_FLOOR)
+        if abs(savings_rate) != calculated_rate:
+            errors.add('savings_rate_match')
 
     return errors
 
@@ -327,6 +316,11 @@ def load_active_tse_rules(cursor, product_line):
                     display_fields.append(field)
 
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
+        if (
+            configured_retailer.upper() != 'ALL'
+            and not is_tse_retailer_monitored(configured_retailer)
+        ):
+            continue
         row.update({
             'rule_key': rule_key,
             'detail_name': row.get('detail_name') or spec['detail_name'],
@@ -404,7 +398,10 @@ def load_latest_tse_rows(cursor, target_date, product_line, from_date=None):
         ORDER BY LEFT(TRIM(source.crawl_datetime), 10),
                  LOWER(TRIM(source.account_name)), source.id
     """, (start_date, end_date, TSE_COUNTRY, start_date, end_date, TSE_COUNTRY))
-    return _rows_as_dicts(cursor)
+    return [
+        row for row in _rows_as_dicts(cursor)
+        if is_tse_retailer_monitored(row.get('account_name'))
+    ]
 
 
 def _display_sql_literal(value):

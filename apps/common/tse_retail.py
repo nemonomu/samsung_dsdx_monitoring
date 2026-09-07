@@ -13,8 +13,7 @@ TSE_COUNTRY = 'TSE'
 TSE_EXPECTED_COUNT = 300
 TSE_ALLOWED_SHORTFALL = 100
 TSE_LOTUSS_RETAILER = 'lotuss'
-TSE_LAZADA_RETAILER = 'lazada'
-TSE_POWERBUY_RETAILER = 'powerbuy'
+TSE_MONITORING_EXCLUDED_RETAILERS = frozenset({'lazada', 'powerbuy'})
 TSE_UNASSIGNED_RETAILER = '__unassigned__'
 TSE_UNASSIGNED_DISPLAY_NAME = '리테일러 미지정'
 TSE_LOTUSS_HISTORY_DAYS = 7
@@ -53,12 +52,6 @@ TSE_DEFAULT_FORMAT_FIELDS = (
     *TSE_REVIEW_COLUMNS,
 )
 
-TSE_POWERBUY_FORMAT_FIELDS = {
-    'tse_tv': (
-        'final_sku_price', 'original_sku_price', *TSE_REVIEW_COLUMNS,
-    ),
-}
-
 TSE_LOTUSS_FORMAT_FIELDS = {
     'tse_tv': (
         'item', 'product_url', 'final_sku_price', 'original_sku_price',
@@ -87,41 +80,6 @@ TSE_LOTUSS_CROSSFIELD_RULE_KEYS = {
     'tse_ldy': frozenset(),
 }
 
-TSE_LAZADA_FORMAT_FIELDS = {
-    'tse_tv': (
-        'product_url', 'final_sku_price', 'original_sku_price',
-        'savings', 'count_of_reviews', 'star_rating',
-        'count_of_star_ratings', 'screen_size',
-    ),
-    'tse_ref': (
-        'product_url', 'final_sku_price', 'original_sku_price',
-        'savings', 'count_of_reviews', 'star_rating',
-        'count_of_star_ratings', 'ref_capacity', 'ref_refrigerator_type',
-    ),
-    'tse_ldy': (
-        'product_url', 'final_sku_price', 'original_sku_price',
-        'savings', 'count_of_reviews', 'star_rating',
-        'count_of_star_ratings', 'ldy_capacity', 'ldy_loading_type',
-    ),
-}
-
-_TSE_LAZADA_CROSSFIELD_RULE_KEYS = frozenset({
-    'review_count_match',
-    # Keep zero-review/rating mismatches visible until the source behavior is
-    # reviewed; CSV presence alone does not prove that the value is normal.
-    'review_zero_pair',
-    'final_original_price',
-    'savings_requires_original',
-    'savings_format',
-    'original_price_zero',
-    'savings_amount_match',
-    'savings_rate_match',
-})
-TSE_LAZADA_CROSSFIELD_RULE_KEYS = {
-    product_line: _TSE_LAZADA_CROSSFIELD_RULE_KEYS
-    for product_line in ('tse_tv', 'tse_ref', 'tse_ldy')
-}
-
 TSE_RETAILER_POLICIES = {
     'homepro': {
         'display_name': 'Homepro',
@@ -147,20 +105,6 @@ TSE_RETAILER_POLICIES = {
         },
         'format_fields': TSE_LOTUSS_FORMAT_FIELDS,
         'crossfield_rule_keys': TSE_LOTUSS_CROSSFIELD_RULE_KEYS,
-    },
-    TSE_LAZADA_RETAILER: {
-        'display_name': 'Lazada',
-        'include_unassigned': False,
-        'format_fields': TSE_LAZADA_FORMAT_FIELDS,
-        'crossfield_rule_keys': TSE_LAZADA_CROSSFIELD_RULE_KEYS,
-    },
-    TSE_POWERBUY_RETAILER: {
-        'display_name': 'PowerBuy',
-        'include_unassigned': False,
-        # PowerBuy savings may contain a baht amount without a percentage.
-        # Keep savings relationship checks in Layer 3, but do not impose the
-        # Homepro-only ``฿3,000 (-3%)`` display format in Layer 2.
-        'format_fields': TSE_POWERBUY_FORMAT_FIELDS,
     },
 }
 
@@ -274,6 +218,11 @@ def display_tse_retailer(value):
 def normalize_tse_retailer(value):
     """Return a stable case-insensitive retailer key."""
     return str(value or '').strip().casefold()
+
+
+def is_tse_retailer_monitored(value):
+    """Return whether a TSE retailer is allowed into monitoring flows."""
+    return normalize_tse_retailer(value) not in TSE_MONITORING_EXCLUDED_RETAILERS
 
 
 def get_tse_retailer_policy(retailer):

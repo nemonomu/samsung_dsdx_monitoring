@@ -12,6 +12,7 @@ from apps.common.tse_retail import (
     get_tse_format_fields,
     get_tse_required_columns,
     get_tse_product_line_for_table,
+    is_tse_retailer_monitored,
     resolve_tse_table,
     tse_crossfield_rule_supported,
     tse_retailer_include_unassigned,
@@ -70,10 +71,6 @@ class TseRetailCommonTests(unittest.TestCase):
         self.assertEqual(20, TSE_LOTUSS_CRITICAL_DEVIATION)
         self.assertEqual('Lotuss', display_tse_retailer('lotuss'))
         self.assertEqual('Lotuss', display_tse_retailer('LOTUSS'))
-        self.assertEqual('Lazada', display_tse_retailer('lazada'))
-        self.assertEqual('Lazada', display_tse_retailer('LAZADA'))
-        self.assertEqual('PowerBuy', display_tse_retailer('powerbuy'))
-        self.assertEqual('PowerBuy', display_tse_retailer('POWERBUY'))
 
     def test_retailer_policy_is_not_based_on_config_count(self):
         self.assertFalse(tse_retailer_include_unassigned('Homepro'))
@@ -81,39 +78,13 @@ class TseRetailCommonTests(unittest.TestCase):
         self.assertFalse(tse_retailer_include_unassigned('Lazada'))
         self.assertFalse(tse_retailer_include_unassigned('PowerBuy'))
 
-    def test_lazada_format_and_crossfield_policy_matches_csv_contract(self):
-        self.assertNotIn(
-            'item', get_tse_format_fields('tse_tv', 'Lazada')
-        )
-        self.assertIn(
-            'screen_size', get_tse_format_fields('tse_tv', 'Lazada')
-        )
-        self.assertIn(
-            'ref_refrigerator_type',
-            get_tse_format_fields('tse_ref', 'Lazada'),
-        )
-        self.assertIn(
-            'ldy_loading_type',
-            get_tse_format_fields('tse_ldy', 'Lazada'),
-        )
-        self.assertTrue(tse_crossfield_rule_supported(
-            'tse_tv', 'Lazada', 'review_count_match'
-        ))
-        self.assertTrue(tse_crossfield_rule_supported(
-            'tse_tv', 'Lazada', 'review_zero_pair'
-        ))
-        self.assertTrue(tse_crossfield_rule_supported(
-            'tse_tv', 'Lazada', 'savings_rate_match'
-        ))
-
-    def test_powerbuy_layer2_omits_strict_savings_display_format(self):
-        fields = get_tse_format_fields('tse_tv', 'PowerBuy')
-
-        self.assertNotIn('savings', fields)
-        self.assertIn('original_sku_price', fields)
-        self.assertTrue(tse_crossfield_rule_supported(
-            'tse_tv', 'PowerBuy', 'savings_amount_match'
-        ))
+    def test_lazada_and_powerbuy_are_excluded_from_monitoring(self):
+        self.assertFalse(is_tse_retailer_monitored('Lazada'))
+        self.assertFalse(is_tse_retailer_monitored('LAZADA'))
+        self.assertFalse(is_tse_retailer_monitored('PowerBuy'))
+        self.assertFalse(is_tse_retailer_monitored(' powerbuy '))
+        self.assertTrue(is_tse_retailer_monitored('Homepro'))
+        self.assertTrue(is_tse_retailer_monitored('Lotuss'))
 
     def test_lotuss_column_and_format_capabilities_are_product_specific(self):
         self.assertFalse(tse_retailer_supports_column(
