@@ -127,7 +127,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     return {
         'check': {
             'name': 'SEM Retail',
-            'description': 'SEM 멕시코 Liverpool TV/REF/LDY 일일 수집 현황',
+            'description': 'SEM 멕시코 TV/REF/LDY 일일 수집 현황',
             'check_type': SEM_CHECK_TYPE,
             'status': _worst([category['status'] for category in categories]),
             'phase': phase,

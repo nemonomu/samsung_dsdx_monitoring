@@ -91,7 +91,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
             )
 
         self.assertEqual(
-            'SEM 멕시코 Liverpool TV/REF/LDY 일일 수집 현황',
+            'SEM 멕시코 TV/REF/LDY 일일 수집 현황',
             result['check']['description'],
         )
 
