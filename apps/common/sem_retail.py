@@ -14,18 +14,18 @@ SEM_COMMON_REQUIRED_COLUMNS = (
     'country',
     'account_name',
     'item',
-    'retailer_sku_name',
+    'sku',
     'product_url',
+    'retailer_sku_name',
+    'count_of_reviews',
+    'star_rating',
+    'count_of_star_ratings',
     'final_sku_price',
 )
 
 SEM_OPTIONAL_COLUMNS = (
-    'sku',
     'original_sku_price',
     'savings',
-    'star_rating',
-    'count_of_star_ratings',
-    'count_of_reviews',
 )
 
 SEM_SOURCE_CONFIG = {

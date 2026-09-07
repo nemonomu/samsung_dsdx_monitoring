@@ -136,8 +136,8 @@ def append_null_stats(cursor, target_date, validation):
             'retailers': [{
                 'retailer': SEM_RETAILER,
                 'total': len(rows),
-                'issue_count': issue_count,
-                'field_counts': field_counts,
+                'total_null_count': issue_count,
+                'fields_detail': field_counts,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
             }],
             **mapping,

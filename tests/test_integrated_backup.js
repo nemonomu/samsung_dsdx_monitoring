@@ -56,6 +56,9 @@ async function testIntegratedBackupPromptAndPost() {
         siel_tv_count: 7,
         siel_ref_count: 8,
         siel_ldy_count: 9,
+        sem_tv_count: 10,
+        sem_ref_count: 11,
+        sem_ldy_count: 12,
         tse_tv_count: 2,
         tse_ref_count: 3,
         tse_ldy_count: 4,
@@ -68,6 +71,9 @@ async function testIntegratedBackupPromptAndPost() {
             siel_tv: '2026-08-11',
             siel_ref: '2026-08-11',
             siel_ldy: '2026-08-11',
+            sem_tv: '2026-08-11',
+            sem_ref: '2026-08-11',
+            sem_ldy: '2026-08-11',
             tse_tv: '2026-08-11',
             tse_ref: '2026-08-11',
             tse_ldy: '2026-08-11'
@@ -132,12 +138,22 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(renderedText.includes('2026-08-11'));
     assert.ok(renderedText.includes('SEA'));
     assert.ok(renderedText.includes('D-1'));
+    assert.ok(renderedText.includes('SEM'));
     assert.ok(renderedText.includes('SIEL'));
     assert.ok(renderedText.includes('TSE'));
     assert.ok(renderedText.includes('총 백업 대상'));
     assert.ok(renderedText.includes('45건'));
-    assert.ok(renderedText.indexOf('SEA') < renderedText.indexOf('SIEL'));
+    assert.ok(renderedText.indexOf('SEA') < renderedText.indexOf('SEM'));
+    assert.ok(renderedText.indexOf('SEM') < renderedText.indexOf('SIEL'));
     assert.ok(renderedText.indexOf('SIEL') < renderedText.indexOf('TSE'));
+    assert.strictEqual(confirmMessage.children[2].style.cssText.includes(
+        'grid-template-columns:repeat(2,minmax(0,1fr))'
+    ), true);
+    const cards = confirmMessage.children[2].children;
+    assert.strictEqual(cards[0].children[0].children[0].children[0].src, '/static/img/flags/us.svg');
+    assert.strictEqual(cards[1].children[0].children[0].children[0].src, '/static/img/flags/mx.svg');
+    assert.strictEqual(cards[2].children[0].children[0].children[0].src, '/static/img/flags/in.svg');
+    assert.strictEqual(cards[3].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');

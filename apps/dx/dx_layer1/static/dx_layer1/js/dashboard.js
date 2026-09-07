@@ -265,19 +265,19 @@ function formatBackupPrompt(data) {
             '  ·  REF ' + formatBackupCount(data.sea_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.sea_ldy_count),
         '',
-        'SIEL · D 데이터 · ' + formatBackupSourceDate(
-            sourceDates, ['siel_tv', 'siel_ref', 'siel_ldy']
-        ),
-        'TV ' + formatBackupCount(data.siel_tv_count) +
-            '  ·  REF ' + formatBackupCount(data.siel_ref_count) +
-            '  ·  LDY ' + formatBackupCount(data.siel_ldy_count),
-        '',
         'SEM · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']
         ),
         'TV ' + formatBackupCount(data.sem_tv_count) +
             '  ·  REF ' + formatBackupCount(data.sem_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.sem_ldy_count),
+        '',
+        'SIEL · D 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['siel_tv', 'siel_ref', 'siel_ldy']
+        ),
+        'TV ' + formatBackupCount(data.siel_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.siel_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.siel_ldy_count),
         '',
         'TSE · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['tse_tv', 'tse_ref', 'tse_ldy']
@@ -321,12 +321,21 @@ function renderBackupConfirmContent(data) {
     }
 
     function countryCard(country, offsetLabel, sourceDate, counts) {
+        var flagCodes = { SEA: 'us', SEM: 'mx', SIEL: 'in', TSE: 'th' };
         var card = element('div', null,
             'border:1px solid #e2e8f0;border-radius:10px;padding:13px 14px;background:#fff;');
         var header = element('div', null,
-            'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;');
-        var title = element('strong', country,
+            'display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;');
+        var title = element('strong', null,
             'font-size:15px;color:#0f172a;');
+        title.className = 'country-flag-label';
+        var flag = element('img');
+        flag.className = 'country-flag-icon';
+        flag.src = '/static/img/flags/' + flagCodes[country] + '.svg';
+        flag.alt = '';
+        flag.setAttribute && flag.setAttribute('aria-hidden', 'true');
+        title.appendChild(flag);
+        title.appendChild(element('span', country));
         var meta = element('div', null,
             'display:flex;align-items:center;gap:7px;font-size:12px;color:#64748b;');
         meta.appendChild(element('span', '데이터일 ' + sourceDate));
@@ -366,7 +375,8 @@ function renderBackupConfirmContent(data) {
         'font-size:14px;color:#0f172a;'));
     container.appendChild(inspection);
 
-    var cards = element('div', null, 'display:grid;gap:9px;');
+    var cards = element('div', null,
+        'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;');
     cards.appendChild(countryCard(
         'SEA', 'D-1',
         formatBackupSourceDate(sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy']),
@@ -377,21 +387,21 @@ function renderBackupConfirmContent(data) {
         ]
     ));
     cards.appendChild(countryCard(
-        'SIEL', 'D',
-        formatBackupSourceDate(sourceDates, ['siel_tv', 'siel_ref', 'siel_ldy']),
-        [
-            { label: 'TV', value: data.siel_tv_count },
-            { label: 'REF', value: data.siel_ref_count },
-            { label: 'LDY', value: data.siel_ldy_count }
-        ]
-    ));
-    cards.appendChild(countryCard(
         'SEM', 'D',
         formatBackupSourceDate(sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']),
         [
             { label: 'TV', value: data.sem_tv_count },
             { label: 'REF', value: data.sem_ref_count },
             { label: 'LDY', value: data.sem_ldy_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'SIEL', 'D',
+        formatBackupSourceDate(sourceDates, ['siel_tv', 'siel_ref', 'siel_ldy']),
+        [
+            { label: 'TV', value: data.siel_tv_count },
+            { label: 'REF', value: data.siel_ref_count },
+            { label: 'LDY', value: data.siel_ldy_count }
         ]
     ));
     cards.appendChild(countryCard(

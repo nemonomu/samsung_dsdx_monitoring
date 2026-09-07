@@ -7,7 +7,11 @@ from apps.common.sem_retail import (
     get_sem_count_status,
     get_sem_required_columns,
 )
-from apps.dx.dx_layer2.sem_validation import evaluate_format, product_line_for
+from apps.dx.dx_layer2.sem_validation import (
+    append_null_stats,
+    evaluate_format,
+    product_line_for,
+)
 from apps.dx.dx_layer3.cross_field.sem_services import _failed_rules
 from apps.dx.dx_layer1.sem_retail import sem_retail_services
 
@@ -28,6 +32,14 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertIn('screen_size', get_sem_required_columns('sem_tv'))
         self.assertIn('ref_capacity', get_sem_required_columns('sem_ref'))
         self.assertIn('ldy_capacity', get_sem_required_columns('sem_ldy'))
+
+    def test_null_columns_match_homepro_style_without_savings(self):
+        required = get_sem_required_columns('sem_tv')
+        self.assertIn('sku', required)
+        self.assertIn('count_of_reviews', required)
+        self.assertIn('star_rating', required)
+        self.assertIn('count_of_star_ratings', required)
+        self.assertNotIn('savings', required)
 
     def test_layer1_description_uses_korean_country_name(self):
         current = {
@@ -114,6 +126,40 @@ class SemRetailValidationTests(unittest.TestCase):
         }
         self.assertEqual([], evaluate_format(row, 'sem_tv'))
         self.assertEqual([], _failed_rules(row))
+
+    @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
+    def test_null_stats_use_existing_retailer_ui_contract(self, latest_rows):
+        latest_rows.return_value = ([{
+            'country': 'SEM',
+            'account_name': 'Liverpool',
+            'item': 'item-1',
+            'sku': None,
+            'product_url': 'https://example.com',
+            'retailer_sku_name': 'TV',
+            'count_of_reviews': None,
+            'star_rating': '4.8',
+            'count_of_star_ratings': '20',
+            'final_sku_price': '$10.00',
+            'screen_size': '55 inch',
+            'ref_capacity': '20 cu ft',
+            'ldy_capacity': '20 kg',
+        }], {
+            'inspection_date': '2026-09-07',
+            'source_date': '2026-09-07',
+            'offset_days': 0,
+        })
+        validation = {'tables': []}
+
+        total = append_null_stats(None, date(2026, 9, 7), validation)
+
+        self.assertEqual(6, total)
+        retailer = validation['tables'][0]['retailers'][0]
+        self.assertEqual(2, retailer['total_null_count'])
+        self.assertEqual(1, retailer['fields_detail']['sku'])
+        self.assertEqual(1, retailer['fields_detail']['count_of_reviews'])
+        self.assertNotIn('issue_count', retailer)
+        self.assertNotIn('field_counts', retailer)
+        self.assertNotIn('savings', retailer['fields_detail'])
 
     def test_cross_field_failures_are_classified(self):
         row = {
