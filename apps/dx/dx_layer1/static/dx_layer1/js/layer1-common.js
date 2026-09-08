@@ -238,10 +238,8 @@ function getSelectedDate() {
 
 function initFilterBar(options) {
     var saved = localStorage.getItem('monitoringSelectedDate');
-    var yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    var defaultDate = saved || formatLocalDate(yesterday);
     var today = formatLocalDate(new Date());
+    var defaultDate = saved || today;
 
     function onDateChange() {
         localStorage.setItem('monitoringSelectedDate', filterBar.getDate());
@@ -352,10 +350,10 @@ function flattenCheckToDetails(sectionType, check) {
                         category: cat.category || cat.name,
                         time_slot: check.collection_window || (
                             sectionType === 'siel_retail'
-                                ? 'KST 09:00 완료 기준'
+                                ? 'KST 05:30~08:30'
                                 : sectionType === 'sem_retail'
-                                ? 'KST 10:00 완료 기준'
-                                : 'KST 09:00~11:00'
+                                ? 'KST 09:00~11:00'
+                                : 'KST 09:00~10:30'
                         ),
                         retailer: ret.retailer,
                         item_name: ret.batch_id || '',

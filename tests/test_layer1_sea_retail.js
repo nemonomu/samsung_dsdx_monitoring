@@ -220,6 +220,12 @@ function categoryFromSummary(key) {
     }, 0);
     assert.ok(fallbackHtml.includes('/static/img/flags/us.svg'));
     assert.ok(fallbackHtml.includes('<span>SEA Retail</span>'));
+    assert.ok(fallbackHtml.includes('수집 완료 시간 KST 09:00'));
+    assert.ok(fallbackHtml.includes('Amazon 05:50 시작'));
+    assert.ok(fallbackHtml.includes('Best Buy 06:55 시작'));
+    assert.ok(fallbackHtml.includes('Lowes 06:55 시작'));
+    assert.ok(fallbackHtml.includes('수집 완료 시간 KST 21:00'));
+    assert.ok(fallbackHtml.includes('Walmart 16:55 시작'));
     const tvIndex = fallbackHtml.indexOf('sentiment-category-name">TV');
     const refIndex = fallbackHtml.indexOf('sentiment-category-name">REF');
     const ldyIndex = fallbackHtml.indexOf('sentiment-category-name">LDY');
@@ -240,11 +246,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=15"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=15"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=16"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=16"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=10"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=10"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=11"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
     assert.ok(!youtubeSource.includes("(offset_days="));

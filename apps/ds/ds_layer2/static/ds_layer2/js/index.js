@@ -21,7 +21,7 @@ const layer2Bar = new FilterBar('#layer2FilterBar', {
 }).render();
 
 document.addEventListener('DOMContentLoaded', function() {
-    // 저장된 날짜 또는 어제 날짜로 초기화
+    // 저장된 날짜 또는 오늘 날짜로 초기화
     document.getElementById('targetDate').value = getPersistedDate();
     loadData();
 });

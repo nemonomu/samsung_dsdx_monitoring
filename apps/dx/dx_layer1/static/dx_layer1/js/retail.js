@@ -373,14 +373,28 @@ function renderRetailCheck(check, checkIdx) {
     const pmInfo = timeInfo.pm || { us: getSelectedDate() + ' 12:00', kst: getSelectedDate() + ' 01:00' };
     const amUsTime = amInfo.us ? amInfo.us.split(' ')[1] || amInfo.us : '00:00';
     const pmUsTime = pmInfo.us ? pmInfo.us.split(' ')[1] || pmInfo.us : '12:00';
+    const amCompletion = amInfo.collection_completion_kst || '09:00';
+    const pmCompletion = pmInfo.collection_completion_kst || '21:00';
+    const amRetailerStarts = amInfo.retailer_start_times || [
+        ['Amazon', '05:50'], ['Best Buy', '06:55'], ['Lowes', '06:55']
+    ];
+    const pmRetailerStarts = pmInfo.retailer_start_times || [['Walmart', '16:55']];
+    const amRetailerTimes = amRetailerStarts.map(function(item) {
+        return item[0] + ' ' + item[1] + ' 시작';
+    }).join(' · ');
+    const pmRetailerTimes = pmRetailerStarts.map(function(item) {
+        return item[0] + ' ' + item[1] + ' 시작';
+    }).join(' · ');
 
     const timeHeader = '<div class="time-slot-item" style="margin-bottom: 16px;">' +
         '<div class="time-slot-header" style="cursor: default;">' +
             '<div class="time-slot-info">' +
                 '<span class="time-slot-name">서버별 시간</span>' +
-                '<span class="time-slot-time" style="display: flex; flex-direction: row; align-items: center; gap: 24px;">' +
-                    '<span class="utc">[오전] US(NY) ' + amUsTime + ' ' + kstLabel + ' ' + amInfo.kst + '</span>' +
-                    '<span class="utc">[오후] US(NY) ' + pmUsTime + ' ' + kstLabel + ' ' + pmInfo.kst + '</span>' +
+                '<span class="time-slot-time" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;">' +
+                    '<span class="utc">[오전] US(NY) ' + amUsTime + ' ' + kstLabel + ' ' + amInfo.kst +
+                        ' / 수집 완료 시간 KST ' + amCompletion + ' (' + amRetailerTimes + ')</span>' +
+                    '<span class="utc">[오후] US(NY) ' + pmUsTime + ' ' + kstLabel + ' ' + pmInfo.kst +
+                        ' / 수집 완료 시간 KST ' + pmCompletion + ' (' + pmRetailerTimes + ')</span>' +
                 '</span>' +
             '</div>' +
         '</div>' +

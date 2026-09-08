@@ -24,7 +24,9 @@ SOURCE_CONFIG = {
 
 
 def collection_phase(current_time):
-    return 'collecting' if current_time <= time(9, 0) else 'complete'
+    if current_time < time(5, 30):
+        return 'pending'
+    return 'collecting' if current_time <= time(8, 30) else 'complete'
 
 
 def count_status(actual):
@@ -139,7 +141,7 @@ class SielLayer1ServiceTests(unittest.TestCase):
         self.assertEqual('2026-08-11', check['inspection_date'])
         self.assertEqual('2026-08-11', check['source_date'])
         self.assertEqual(0, check['offset_days'])
-        self.assertEqual('KST 09:00 완료 기준', check['collection_window'])
+        self.assertEqual('KST 05:30~08:30', check['collection_window'])
         self.assertEqual('OK', check['status'])
         self.assertEqual(1800, check['expected'])
         self.assertEqual(1817, check['actual'])
@@ -157,7 +159,7 @@ class SielLayer1ServiceTests(unittest.TestCase):
         self._set_counts({})
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 11), datetime(2026, 8, 11, 8, 59)
+            object(), date(2026, 8, 11), datetime(2026, 8, 11, 8, 29)
         )
 
         self.assertEqual('COLLECTING', result['check']['status'])
@@ -172,7 +174,7 @@ class SielLayer1ServiceTests(unittest.TestCase):
         self._set_counts({})
 
         result = self.service.get_layer1_stats(
-            object(), date(2026, 8, 11), datetime(2026, 8, 11, 9, 1)
+            object(), date(2026, 8, 11), datetime(2026, 8, 11, 8, 31)
         )
 
         self.assertEqual('CRITICAL', result['check']['status'])
@@ -181,6 +183,23 @@ class SielLayer1ServiceTests(unittest.TestCase):
             item['error_type'] == '수집 건수 없음'
             for item in result['failed_items']
         ))
+
+    def test_collected_category_turns_ok_while_other_categories_keep_collecting(self):
+        self._set_counts({
+            'siel_tv': [
+                {'retailer': 'Amazon', 'actual_count': 240},
+                {'retailer': 'Flipkart', 'actual_count': 220},
+            ],
+        })
+
+        check = self.service.get_layer1_stats(
+            object(), date(2026, 8, 11), datetime(2026, 8, 11, 7, 0)
+        )['check']
+
+        self.assertEqual('OK', check['categories'][0]['status'])
+        self.assertEqual('COLLECTING', check['categories'][1]['status'])
+        self.assertEqual('COLLECTING', check['categories'][2]['status'])
+        self.assertEqual('COLLECTING', check['status'])
 
     def test_future_date_is_pending(self):
         self._set_counts({})

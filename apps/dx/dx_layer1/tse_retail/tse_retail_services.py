@@ -57,9 +57,10 @@ def _collection_phase(target_date, now):
 def _status_for_count(actual_count, phase):
     if phase == 'pending':
         return 'PENDING'
+    count_status = _STATUS_BY_COUNT[get_tse_count_status(actual_count)]
     if phase == 'collecting':
-        return 'COLLECTING'
-    return _STATUS_BY_COUNT[get_tse_count_status(actual_count)]
+        return 'OK' if count_status == 'OK' else 'COLLECTING'
+    return count_status
 
 
 def _status_for_lotuss_main(main_count, phase, history_counts):
@@ -79,14 +80,16 @@ def _status_for_lotuss_main(main_count, phase, history_counts):
     )
     if phase == 'pending':
         return 'PENDING', baseline
-    if phase == 'collecting':
-        return 'COLLECTING', baseline
     if baseline is None:
         current = int(main_count or 0)
-        return ('OK', float(current)) if current > 0 else ('CRITICAL', None)
+        if current > 0:
+            return 'OK', float(current)
+        return ('COLLECTING', None) if phase == 'collecting' else ('CRITICAL', None)
 
     deviation = abs(int(main_count or 0) - baseline)
     status = 'CRITICAL' if deviation >= TSE_LOTUSS_CRITICAL_DEVIATION else 'OK'
+    if phase == 'collecting' and status == 'CRITICAL':
+        status = 'COLLECTING'
     return status, baseline
 
 
@@ -285,7 +288,7 @@ def get_layer1_stats(cursor, target_date, now=None):
         'check_type': 'tse_retail',
         'status': _worst_status([category['status'] for category in categories]),
         'phase': phase,
-        'collection_window': 'KST 09:00~11:00',
+        'collection_window': 'KST 09:00~10:30',
         'expected': expected_total,
         'actual': actual_total,
         'total': actual_total,

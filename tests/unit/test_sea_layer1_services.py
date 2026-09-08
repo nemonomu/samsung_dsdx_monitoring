@@ -411,6 +411,38 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             for retailer in category['time_slots'][0]['retailers']
         ))
 
+    def test_schedule_collecting_keeps_completed_retailers_normal(self):
+        repo = self._all_ok_repo()
+
+        def schedules(category, target_date, now=None):
+            retailers = (
+                ('Amazon', 'Bestbuy', 'Walmart')
+                if category == 'TV' else ('Bestbuy', 'Lowes')
+            )
+            return [{
+                'time_status': 'COLLECTING',
+                'retailers': [
+                    {'name': retailer, 'expected_count': 300}
+                    for retailer in retailers
+                ],
+            }]
+
+        service = load_service(repo, schedules)
+        result = service.get_layer1_stats(
+            object(), date(2026, 8, 20), datetime(2026, 8, 20, 9, 0)
+        )
+
+        self.assertEqual('OK', result['check']['status'])
+        self.assertTrue(all(
+            category['status'] == 'OK'
+            for category in result['check']['categories']
+        ))
+        self.assertTrue(all(
+            retailer['status'] == 'OK'
+            for category in result['check']['categories']
+            for retailer in category['time_slots'][0]['retailers']
+        ))
+
     def test_partial_schedule_never_drops_a_fixed_source_retailer(self):
         repo = self._all_ok_repo()
 

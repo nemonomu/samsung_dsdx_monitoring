@@ -78,10 +78,11 @@ class SielRetailCommonTests(unittest.TestCase):
         self.assertNotIn('main_rank', flipkart)
         self.assertNotIn('item', amazon)
 
-    def test_collection_finishes_after_kst_0900(self):
-        self.assertEqual('collecting', get_siel_collection_phase(time(8, 59)))
-        self.assertEqual('collecting', get_siel_collection_phase(time(9, 0)))
-        self.assertEqual('complete', get_siel_collection_phase(time(9, 0, 1)))
+    def test_collection_uses_kst_0530_to_0830_window(self):
+        self.assertEqual('pending', get_siel_collection_phase(time(5, 29, 59)))
+        self.assertEqual('collecting', get_siel_collection_phase(time(5, 30)))
+        self.assertEqual('collecting', get_siel_collection_phase(time(8, 30)))
+        self.assertEqual('complete', get_siel_collection_phase(time(8, 30, 1)))
 
     def test_completed_count_threshold_is_200(self):
         self.assertEqual('critical', get_siel_count_status(0))

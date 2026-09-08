@@ -54,9 +54,10 @@ def _collection_phase(target_date, now):
 def _status_for_count(actual_count, phase):
     if phase == 'pending':
         return 'PENDING'
+    count_status = _STATUS_BY_COUNT[get_siel_count_status(actual_count)]
     if phase == 'collecting':
-        return 'COLLECTING'
-    return _STATUS_BY_COUNT[get_siel_count_status(actual_count)]
+        return 'OK' if count_status == 'OK' else 'COLLECTING'
+    return count_status
 
 
 def _worst_status(statuses, default='PENDING'):
@@ -163,7 +164,7 @@ def get_layer1_stats(cursor, target_date, now=None):
         'check_type': SIEL_CHECK_TYPE,
         'status': _worst_status(statuses),
         'phase': phase,
-        'collection_window': 'KST 09:00 완료 기준',
+        'collection_window': 'KST 05:30~08:30',
         'expected': expected_total,
         'actual': actual_total,
         'total': actual_total,

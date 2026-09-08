@@ -58,10 +58,8 @@
 
     function initFilterBar() {
         var saved = localStorage.getItem('monitoringSelectedDate');
-        var yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        var defaultDate = saved || formatLocalDate(yesterday);
         var today = formatLocalDate(new Date());
+        var defaultDate = saved || today;
 
         var urlDate = new URLSearchParams(window.location.search).get('date');
         if (urlDate) { defaultDate = urlDate; localStorage.setItem('monitoringSelectedDate', urlDate); }

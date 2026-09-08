@@ -88,10 +88,11 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=10"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=11"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
+    check_type: 'tse_retail',
     expected: 900,
     actual: 882,
     status: 'OK',
@@ -106,6 +107,7 @@ assert(!checkHtml.includes('check-criteria'));
 assert(!checkHtml.includes('Homepro: 200건 이상 정상'));
 assert(!checkHtml.includes('Lotuss: 최근 7개 유효일 MAIN 평균과 차이 20건 이상 심각'));
 assert(!checkHtml.includes('경고: 200~299건'));
+assert(checkHtml.includes('KST 09:00~10:30'));
 
 const lotussHtml = context.renderTseCategory({
     name: 'TV',

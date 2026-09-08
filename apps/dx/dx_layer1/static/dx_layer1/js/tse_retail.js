@@ -105,6 +105,9 @@ function renderTseCategory(cat, checkIdx, catIdx) {
 function renderTseRetailCheck(check, checkIdx) {
     var categories = check.categories || [];
     var actual = tseNumber(check.actual !== undefined ? check.actual : check.total);
+    var defaultCollectionWindow = check.check_type === 'sem_retail'
+        ? 'KST 09:00~11:00'
+        : 'KST 09:00~10:30';
     var categoriesHtml = categories.map(function(cat, catIdx) {
         return renderTseCategory(cat, checkIdx, catIdx);
     }).join('');
@@ -128,7 +131,7 @@ function renderTseRetailCheck(check, checkIdx) {
                 '<div class="time-slot-header" style="cursor:default;">' +
                     '<div class="time-slot-info">' +
                         '<span class="time-slot-name">수집 시간</span>' +
-                        '<span class="time-slot-time"><span class="utc">' + esc(check.collection_window || 'KST 09:00~11:00') + '</span></span>' +
+                        '<span class="time-slot-time"><span class="utc">' + esc(check.collection_window || defaultCollectionWindow) + '</span></span>' +
                     '</div>' +
                 '</div>' +
             '</div>' +

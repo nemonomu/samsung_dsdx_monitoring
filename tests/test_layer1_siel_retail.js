@@ -86,8 +86,8 @@ assert(checkHtml.includes('<div class="value">1,817</div>'));
 assert(checkHtml.includes('/static/img/flags/in.svg'));
 assert(checkHtml.includes('<span>SIEL Retail</span>'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
-assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=9"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=4"));
+assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=11"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=5"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 
 const commonContext = {
@@ -116,7 +116,7 @@ assert(uncheckedBadge.includes("saveCheck('siel_retail', 1)"));
 assert(!uncheckedBadge.includes("saveCheck('siel_retail', 2)"));
 
 const details = commonContext.flattenCheckToDetails('siel_retail', {
-    collection_window: 'KST 09:00 완료 기준',
+    collection_window: 'KST 05:30~08:30',
     categories: [{
         category: 'LDY',
         retailers: [{
@@ -130,5 +130,5 @@ const details = commonContext.flattenCheckToDetails('siel_retail', {
     }],
 });
 assert.strictEqual(details[0].category, 'LDY');
-assert.strictEqual(details[0].time_slot, 'KST 09:00 완료 기준');
+assert.strictEqual(details[0].time_slot, 'KST 05:30~08:30');
 assert.strictEqual(details[0].item_name, 'a_20260810_203042');

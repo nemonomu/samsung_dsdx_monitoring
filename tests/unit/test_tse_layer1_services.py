@@ -23,7 +23,7 @@ SOURCE_CONFIG = {
 def collection_phase(current_time):
     if current_time < time(9, 0):
         return 'pending'
-    if current_time <= time(11, 0):
+    if current_time <= time(10, 30):
         return 'collecting'
     return 'complete'
 
@@ -143,7 +143,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(
             'TSE 태국 TV/REF/LDY 일일 수집 현황', check['description']
         )
-        self.assertEqual('KST 09:00~11:00', check['collection_window'])
+        self.assertEqual('KST 09:00~10:30', check['collection_window'])
         self.assertEqual('OK', check['status'])
         self.assertEqual([], result['failed_items'])
         self.assertEqual(['TV', 'REF', 'LDY'], [c['category'] for c in check['categories']])
@@ -238,7 +238,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(300, tv['actual'])
         self.assertEqual(300, tv['expected'])
 
-    def test_time_phases_use_kst_0900_to_1100(self):
+    def test_time_phases_use_kst_0900_to_1030(self):
         self._set_counts({
             product_line: [{
                 'retailer': 'Homepro',
@@ -252,27 +252,27 @@ class TseLayer1ServiceTests(unittest.TestCase):
             object(), date(2026, 8, 10), datetime(2026, 8, 10, 8, 59)
         )['check']
         collecting = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 10, 59)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 10, 29)
         )['check']
         complete = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 0, 1)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 10, 30, 1)
         )['check']
 
         self.assertEqual(('pending', 'PENDING'), (pending['phase'], pending['status']))
         self.assertEqual(
-            ('collecting', 'COLLECTING'),
+            ('collecting', 'OK'),
             (collecting['phase'], collecting['status']),
         )
         self.assertEqual(('complete', 'OK'), (complete['phase'], complete['status']))
 
-    def test_zero_rows_change_from_collecting_to_critical_after_1100_kst(self):
+    def test_zero_rows_change_from_collecting_to_critical_after_1030_kst(self):
         self._set_counts({product_line: [] for product_line in SOURCE_CONFIG})
 
         collecting = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 0)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 10, 30)
         )
         complete = self.service.get_layer1_stats(
-            object(), date(2026, 8, 10), datetime(2026, 8, 10, 11, 0, 1)
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 10, 30, 1)
         )
 
         self.assertEqual('collecting', collecting['check']['phase'])
@@ -285,7 +285,7 @@ class TseLayer1ServiceTests(unittest.TestCase):
     def test_default_clock_is_explicit_kst(self):
         self._set_counts({product_line: [] for product_line in SOURCE_CONFIG})
         expected_now = datetime(
-            2026, 8, 10, 11, 0,
+            2026, 8, 10, 10, 30,
             tzinfo=timezone(timedelta(hours=9)),
         )
         original_clock = self.service._get_kst_now
@@ -451,9 +451,28 @@ class TseLayer1ServiceTests(unittest.TestCase):
             self.service._status_for_lotuss_main(86, 'pending', []),
         )
         self.assertEqual(
-            ('COLLECTING', None),
+            ('OK', 86.0),
             self.service._status_for_lotuss_main(86, 'collecting', []),
         )
+
+    def test_collected_category_turns_ok_while_other_categories_keep_collecting(self):
+        self._set_counts({
+            'tse_tv': [{
+                'retailer': 'Homepro', 'actual_count': 300,
+                'main_count': 300, 'bsr_count': 100,
+            }],
+            'tse_ref': [],
+            'tse_ldy': [],
+        })
+
+        check = self.service.get_layer1_stats(
+            object(), date(2026, 8, 10), datetime(2026, 8, 10, 9, 30)
+        )['check']
+
+        self.assertEqual('OK', check['categories'][0]['status'])
+        self.assertEqual('COLLECTING', check['categories'][1]['status'])
+        self.assertEqual('COLLECTING', check['categories'][2]['status'])
+        self.assertEqual('COLLECTING', check['status'])
 
     def test_lotuss_without_history_or_current_main_is_critical(self):
         self.assertEqual(

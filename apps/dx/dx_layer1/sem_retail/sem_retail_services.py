@@ -61,16 +61,18 @@ def _category(cursor, product_line, source, target_date, phase):
     history = [row['main_count'] for row in history_rows]
     if phase == 'pending':
         status, baseline = 'PENDING', None
-    elif phase == 'collecting':
-        status, baseline = 'COLLECTING', None
     else:
         state, baseline = get_sem_count_status(current['main_count'], history)
-        status = 'OK' if state == 'ok' else 'CRITICAL'
-    expected = round(baseline, 1) if baseline is not None else None
+        if state == 'ok':
+            status = 'OK'
+        else:
+            status = 'COLLECTING' if phase == 'collecting' else 'CRITICAL'
+    expected = int(baseline) if baseline is not None else None
     main_count = current['main_count']
     retailer = {
         **current,
         'expected': expected,
+        'expected_precise': baseline,
         'actual': main_count,
         'count': main_count,
         'raw_count': current['actual_count'],
@@ -89,6 +91,7 @@ def _category(cursor, product_line, source, target_date, phase):
         'product_line': product_line,
         'table_name': source['table_name'],
         'expected': expected,
+        'expected_precise': baseline,
         'actual': main_count,
         'total': main_count,
         'rate': retailer['rate'],
@@ -123,6 +126,13 @@ def get_layer1_stats(cursor, target_date, now=None):
         if category['expected'] is not None
     ]
     expected_total = sum(expected_values) if expected_values else None
+    precise_expected_values = [
+        category['expected_precise'] for category in categories
+        if category['expected_precise'] is not None
+    ]
+    precise_expected_total = (
+        sum(precise_expected_values) if precise_expected_values else None
+    )
     actual_total = sum(category['actual'] for category in categories)
     return {
         'check': {
@@ -131,13 +141,13 @@ def get_layer1_stats(cursor, target_date, now=None):
             'check_type': SEM_CHECK_TYPE,
             'status': _worst([category['status'] for category in categories]),
             'phase': phase,
-            'collection_window': 'KST 10:00 완료 기준',
+            'collection_window': 'KST 09:00~11:00',
             'expected': expected_total,
             'actual': actual_total,
             'total': actual_total,
             'rate': (
-                round(actual_total / expected_total * 100, 1)
-                if expected_total else None
+                round(actual_total / precise_expected_total * 100, 1)
+                if precise_expected_total else None
             ),
             'categories': categories,
             'inspection_date': categories[0]['inspection_date'],

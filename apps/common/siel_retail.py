@@ -7,7 +7,8 @@ SIEL_CHECK_TYPE = 'siel_retail'
 SIEL_COUNTRY = 'SIEL'
 SIEL_EXPECTED_COUNT = 300
 SIEL_OK_THRESHOLD = 200
-SIEL_COLLECTION_END = time(9, 0)
+SIEL_COLLECTION_START = time(5, 30)
+SIEL_COLLECTION_END = time(8, 30)
 SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
 SIEL_RETAILERS = ('Amazon', 'Flipkart')
 
@@ -178,12 +179,12 @@ def get_siel_crossfield_editable_columns(product_line, retailer):
 
 
 def get_siel_collection_phase(current_time):
-    """Return the current-day phase using the confirmed KST completion time."""
-    return (
-        'collecting'
-        if current_time <= SIEL_COLLECTION_END
-        else 'complete'
-    )
+    """Return the current-day phase using the confirmed KST window."""
+    if current_time < SIEL_COLLECTION_START:
+        return 'pending'
+    if current_time <= SIEL_COLLECTION_END:
+        return 'collecting'
+    return 'complete'
 
 
 def get_siel_count_status(actual_count):

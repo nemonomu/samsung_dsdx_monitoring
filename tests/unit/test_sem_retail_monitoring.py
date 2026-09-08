@@ -1,9 +1,10 @@
 import unittest
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from unittest.mock import patch
 
 from apps.common.sem_retail import (
     SEM_SOURCE_CONFIG,
+    get_sem_collection_phase,
     get_sem_count_status,
     get_sem_required_columns,
     get_sem_table_columns,
@@ -33,6 +34,12 @@ from tests.unit.support import ScriptedCursor
 
 
 class SemRetailConfigurationTests(unittest.TestCase):
+    def test_collection_uses_kst_0900_to_1100_window(self):
+        self.assertEqual('pending', get_sem_collection_phase(time(8, 59, 59)))
+        self.assertEqual('collecting', get_sem_collection_phase(time(9, 0)))
+        self.assertEqual('collecting', get_sem_collection_phase(time(11, 0)))
+        self.assertEqual('complete', get_sem_collection_phase(time(11, 0, 1)))
+
     def test_all_liverpool_product_lines_are_schema_qualified(self):
         self.assertEqual(
             {'sem_tv', 'sem_ref', 'sem_ldy'},
@@ -122,6 +129,66 @@ class SemRetailConfigurationTests(unittest.TestCase):
             'SEM 멕시코 TV/REF/LDY 일일 수집 현황',
             result['check']['description'],
         )
+        self.assertEqual('KST 09:00~11:00', result['check']['collection_window'])
+
+    def test_layer1_truncates_display_average_but_keeps_precise_rate(self):
+        current = {
+            'retailer': 'Liverpool', 'batch_id': 'batch',
+            'actual_count': 196, 'main_count': 196, 'bsr_count': 0,
+        }
+        with patch.object(
+            sem_retail_services.repo,
+            'get_latest_batch_counts',
+            return_value=current,
+        ), patch.object(
+            sem_retail_services.repo,
+            'get_previous_main_counts',
+            return_value=[{'main_count': 196}, {'main_count': 197}],
+        ):
+            result = sem_retail_services.get_layer1_stats(
+                object(), date(2026, 9, 7), datetime(2026, 9, 7, 12, 0)
+            )
+
+        self.assertTrue(all(
+            category['expected'] == 196
+            for category in result['check']['categories']
+        ))
+        self.assertTrue(all(
+            category['expected_precise'] == 196.5
+            for category in result['check']['categories']
+        ))
+        self.assertTrue(all(
+            category['rate'] == 99.7
+            for category in result['check']['categories']
+        ))
+        self.assertEqual(588, result['check']['expected'])
+        self.assertEqual(99.7, result['check']['rate'])
+
+    def test_layer1_marks_completed_product_ok_during_collection(self):
+        def current_counts(_cursor, product_line, _target_date):
+            count = 200 if product_line == 'sem_tv' else 0
+            return {
+                'retailer': 'Liverpool', 'batch_id': product_line,
+                'actual_count': count, 'main_count': count, 'bsr_count': 0,
+            }
+
+        with patch.object(
+            sem_retail_services.repo,
+            'get_latest_batch_counts',
+            side_effect=current_counts,
+        ), patch.object(
+            sem_retail_services.repo,
+            'get_previous_main_counts',
+            return_value=[{'main_count': 200}],
+        ):
+            check = sem_retail_services.get_layer1_stats(
+                object(), date(2026, 9, 7), datetime(2026, 9, 7, 10, 0)
+            )['check']
+
+        self.assertEqual('OK', check['categories'][0]['status'])
+        self.assertEqual('COLLECTING', check['categories'][1]['status'])
+        self.assertEqual('COLLECTING', check['categories'][2]['status'])
+        self.assertEqual('COLLECTING', check['status'])
 
 
 class SemRetailValidationTests(unittest.TestCase):

@@ -291,10 +291,19 @@ def _build_category(cursor, source, inspection_date, now):
     )
 
     schedule_status = _daily_schedule_status(schedule_slots)
-    status = schedule_status or count_status
     if schedule_status:
         for retailer in retailer_details:
-            retailer['status'] = schedule_status
+            if retailer['status'] != 'OK':
+                retailer['status'] = 'COLLECTING'
+        status = (
+            'OK'
+            if retailer_details and all(
+                retailer['status'] == 'OK' for retailer in retailer_details
+            )
+            else 'COLLECTING'
+        )
+    else:
+        status = count_status
     expected = sum(
         retailer.get('expected_count', 0) for retailer in slot_retailers
     )
@@ -395,11 +404,19 @@ def get_layer1_stats(cursor, target_date, now=None):
             'us': f'{source_date} 00:00',
             'kst': f'{am_kst_date} {am_kst["hour"]:02d}:00',
             'is_dst': am_kst['is_dst'],
+            'collection_completion_kst': '09:00',
+            'retailer_start_times': (
+                ('Amazon', '05:50'),
+                ('Best Buy', '06:55'),
+                ('Lowes', '06:55'),
+            ),
         },
         'pm': {
             'us': f'{source_date} 12:00',
             'kst': f'{pm_kst_date} {pm_kst["hour"]:02d}:00',
             'is_dst': pm_kst['is_dst'],
+            'collection_completion_kst': '21:00',
+            'retailer_start_times': (('Walmart', '16:55'),),
         },
         'is_dst': am_kst['is_dst'],
     }

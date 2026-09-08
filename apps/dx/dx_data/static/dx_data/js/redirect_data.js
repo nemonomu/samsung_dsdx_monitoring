@@ -159,7 +159,6 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         var initial = new Date();
-        initial.setDate(initial.getDate() - 1);
         document.getElementById('redirectDate').value = dateText(initial);
         syncProductOptions();
 

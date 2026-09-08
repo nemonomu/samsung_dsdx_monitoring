@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 모달 생성
     AppModal.create('fileHistory', { style: 'wide' });
 
-    // 저장된 날짜 또는 어제 날짜로 초기화 (URL파라미터 우선)
+    // 저장된 날짜 또는 오늘 날짜로 초기화 (URL파라미터 우선)
     document.getElementById('targetDate').value = getPersistedDate();
     loadReportList();
 });

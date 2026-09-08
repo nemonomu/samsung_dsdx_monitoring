@@ -79,9 +79,7 @@
         } else if (saved) {
             dateInput.value = saved;
         } else {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            dateInput.value = formatLocalDate(yesterday);
+            dateInput.value = formatLocalDate(new Date());
         }
         localStorage.setItem('monitoringSelectedDate', dateInput.value);
 

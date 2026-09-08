@@ -6,7 +6,8 @@ from datetime import time
 SEM_CHECK_TYPE = 'sem_retail'
 SEM_COUNTRY = 'SEM'
 SEM_RETAILER = 'Liverpool'
-SEM_COLLECTION_END = time(10, 0)
+SEM_COLLECTION_START = time(9, 0)
+SEM_COLLECTION_END = time(11, 0)
 SEM_HISTORY_DAYS = 7
 SEM_CRITICAL_DEVIATION = 20
 
@@ -162,7 +163,11 @@ def validate_sem_editable_column(product_line, column_name):
 
 
 def get_sem_collection_phase(current_time):
-    return 'collecting' if current_time <= SEM_COLLECTION_END else 'complete'
+    if current_time < SEM_COLLECTION_START:
+        return 'pending'
+    if current_time <= SEM_COLLECTION_END:
+        return 'collecting'
+    return 'complete'
 
 
 def get_sem_count_status(main_count, history_counts):
