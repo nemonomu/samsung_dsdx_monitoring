@@ -74,6 +74,9 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 'apps.dx.dx_layer3.cross_field.siel_services': module_stub(
                     'apps.dx.dx_layer3.cross_field.siel_services'
                 ),
+                'apps.dx.dx_layer3.cross_field.sem_services': module_stub(
+                    'apps.dx.dx_layer3.cross_field.sem_services'
+                ),
                 'apps.dx.dx_layer3.dashboard': package_stub(
                     'apps.dx.dx_layer3.dashboard'
                 ),

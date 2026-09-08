@@ -175,6 +175,11 @@ class ValidationDetailDefaultTests(unittest.TestCase):
             ),
             'apps.dx.dx_layer3.cross_field.siel_services': siel_services,
             'apps.dx.dx_layer3.cross_field.tse_services': tse_services,
+            'apps.dx.dx_layer3.cross_field.sem_services': module_stub(
+                'apps.dx.dx_layer3.cross_field.sem_services',
+                get_sem_cross_field_rule_detail=lambda _cursor, _date,
+                _product_line, _rule_id, days: {'found': True, 'days': days},
+            ),
         })
         api = load_module(
             'apps/dx/dx_layer3/cross_field/api.py',
@@ -190,6 +195,12 @@ class ValidationDetailDefaultTests(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertEqual(3, captured['days'])
+
+        for product_line in ('sem_tv', 'sem_ref', 'sem_ldy'):
+            response = api.cross_field_detail(FakeRequest({
+                'date': '2026-09-01', 'type': product_line, 'rule_id': '1',
+            }))
+            self.assertEqual(3, response.data['days'])
 
 
 if __name__ == '__main__':

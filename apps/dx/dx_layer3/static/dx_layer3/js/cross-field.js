@@ -5,6 +5,7 @@ function getDefaultCrossfieldHistoryDays(productLine) {
         || key === 'sea_tv'
         || key.startsWith('sea_')
         || key.startsWith('siel_')
+        || key.startsWith('sem_')
         || key.startsWith('tse_')
         ? 3
         : 1;

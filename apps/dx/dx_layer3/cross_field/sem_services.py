@@ -1,12 +1,15 @@
 """SEM Liverpool cross-field validation for the latest daily batch."""
 
+from datetime import date, timedelta
+
 from apps.common.sem_retail import (
+    SEM_COUNTRY,
     SEM_RETAILER,
     SEM_SOURCE_CONFIG,
     get_sem_editable_columns,
     get_sem_table_columns,
 )
-from apps.dx.dx_layer2.sem_validation import _latest_rows, product_line_for
+from apps.dx.dx_layer2.sem_validation import _history_rows, _latest_rows, product_line_for
 
 
 _RULES = (
@@ -132,7 +135,39 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     rule = next((item for item in rules if str(item['rule_id']) == str(rule_id)), None)
     if rule is None:
         return {'found': False}
-    anomalies = failures[rule['rule_key']]
+    target_anomalies = failures[rule['rule_key']]
+    days = min(30, max(1, int(days or 1)))
+    source_date = date.fromisoformat(mapping['source_date'])
+    items = sorted({
+        str(row['item']) for row in target_anomalies
+        if not _blank(row.get('item'))
+    })
+    anomalies = []
+    if days > 1 and items:
+        history = _history_rows(
+            cursor, source, source_date - timedelta(days=days - 1),
+            source_date - timedelta(days=1), items,
+        )
+        start_date = str(source_date - timedelta(days=days - 1))
+        for row in history:
+            row_date = str(row.get(source['date_column']) or '').strip()[:10]
+            if (
+                start_date <= row_date < str(source_date)
+                and str(row.get('item')) in items
+                and str(row.get('account_name') or '').strip().casefold()
+                    == SEM_RETAILER.casefold()
+                and str(row.get('country') or '').strip().upper() == SEM_COUNTRY
+            ):
+                anomalies.append({
+                    **row, 'row_source_date': row_date,
+                    'row_role': 'comparison_history',
+                })
+    anomalies.extend({
+        **row, 'row_source_date': str(source_date), 'row_role': 'target',
+    } for row in target_anomalies)
+    anomalies.sort(key=lambda row: (
+        str(row.get('item') or ''), row['row_source_date'], row.get('id') or 0,
+    ))
     editable_columns = list(get_sem_editable_columns(source['source_key']))
     table_columns = list(get_sem_table_columns(source['source_key']))
     return {
@@ -146,10 +181,10 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'field2': rule['field2'],
         'validation_type': rule['validation_type'],
         'error_message': rule['error_message'],
-        'total_anomalies': len(anomalies),
+        'total_anomalies': len(target_anomalies),
         'retailer_summary': {SEM_RETAILER: {
-            'count': len(anomalies),
-            'items': list(dict.fromkeys(str(row.get('item') or '') for row in anomalies)),
+            'count': len(target_anomalies),
+            'items': list(dict.fromkeys(str(row.get('item') or '') for row in target_anomalies)),
         }},
         'anomalies': anomalies,
         'select_fields': rule['select_fields'],
