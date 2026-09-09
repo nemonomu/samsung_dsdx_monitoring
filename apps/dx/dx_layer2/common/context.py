@@ -79,6 +79,12 @@ SIEL_RETAIL_CATEGORIES = {
     child['detail_code'] for child in SIEL_RETAIL_SIDEBAR_CHILDREN
 }
 
+SEG_RETAIL_SIDEBAR_CHILDREN = (
+    {'name': 'SEG TV', 'label': 'TV', 'detail_code': 'seg_tv_retail'},
+    {'name': 'SEG REF', 'label': 'REF', 'detail_code': 'seg_ref_retail'},
+    {'name': 'SEG LDY', 'label': 'LDY', 'detail_code': 'seg_ldy_retail'},
+)
+
 SEM_RETAIL_SIDEBAR_CHILDREN = (
     {'name': 'SEM TV', 'label': 'TV', 'detail_code': 'sem_tv_retail'},
     {'name': 'SEM REF', 'label': 'REF', 'detail_code': 'sem_ref_retail'},
@@ -267,6 +273,39 @@ def build_sidebar_groups(section, focus=''):
         'anomaly_validation': make_items('anomaly_validation'),
     }
     active_categories = set(get_all_categories())
+
+    # SEG rules are currently available for NULL and duplicate validation.
+    # Keep the sidebar in the same country order as the dashboard: SIEL, SEG,
+    # SEM. Format validation is added after its rules are agreed and enabled.
+    for section_name in ('null_validation', 'anomaly_validation'):
+        items = section_items[section_name]
+        seg_children = []
+        for child in SEG_RETAIL_SIDEBAR_CHILDREN:
+            if child['detail_code'] not in active_categories:
+                continue
+            child_item = dict(child)
+            child_item['active'] = (
+                section == section_name
+                and focus in (child['name'], child['detail_code'])
+            )
+            seg_children.append(child_item)
+
+        if not seg_children:
+            continue
+        seg_parent = {
+            'name': 'SEG Retail',
+            'active': any(child['active'] for child in seg_children),
+            'children': seg_children,
+        }
+        insert_index = next(
+            (
+                index for index, item in enumerate(items)
+                if item['name'] in ('SEM Retail', 'TSE Retail', 'YouTube')
+            ),
+            len(items),
+        )
+        items.insert(insert_index, seg_parent)
+
     for section_name, items in section_items.items():
         tse_children = []
         for child in TSE_RETAIL_SIDEBAR_CHILDREN:

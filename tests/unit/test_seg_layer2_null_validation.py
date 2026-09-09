@@ -96,6 +96,76 @@ class SegNullPolicyTests(unittest.TestCase):
         self.assertEqual(date(2026, 9, 9), args[4])
 
 
+class SegDuplicateValidationTests(unittest.TestCase):
+    def test_groups_within_page_type_and_classifies_mapping_conflicts(self):
+        rows = [
+            {
+                'id': 1, 'page_type': 'main', 'item': 'item-1',
+                'sku': 'SKU-1', 'retailer_sku_name': 'Name 1',
+            },
+            {
+                'id': 2, 'page_type': 'MAIN', 'item': 'item-1',
+                'sku': 'SKU-2', 'retailer_sku_name': 'Name 2',
+            },
+            {
+                'id': 3, 'page_type': 'bsr', 'item': 'item-1',
+                'sku': 'SKU-1', 'retailer_sku_name': 'Name 1',
+            },
+            {
+                'id': 4, 'page_type': 'main', 'item': 'item-2',
+                'sku': 'SKU-3', 'retailer_sku_name': 'Name 3',
+            },
+            {
+                'id': 5, 'page_type': 'main', 'item': 'item-2',
+                'sku': 'SKU-3', 'retailer_sku_name': 'Name 3',
+            },
+        ]
+
+        groups = seg_validation.build_duplicate_groups(rows)
+
+        self.assertEqual(2, len(groups))
+        self.assertEqual('상품 매핑 충돌', groups[0]['duplicate_type'])
+        self.assertEqual('MAIN', groups[0]['page_type'])
+        self.assertEqual([1, 2], [row['id'] for row in groups[0]['records']])
+        self.assertEqual('완전 중복', groups[1]['duplicate_type'])
+        self.assertEqual([4, 5], [row['id'] for row in groups[1]['records']])
+
+    @patch('apps.dx.dx_layer2.seg_validation._latest_rows')
+    def test_detail_is_latest_batch_readonly_and_uses_page_type_item_key(
+            self, latest_rows):
+        latest_rows.return_value = ([
+            {
+                'id': 1, 'page_type': 'main', 'item': 'item-1',
+                'sku': 'SKU-1', 'retailer_sku_name': 'Name 1',
+            },
+            {
+                'id': 2, 'page_type': 'main', 'item': 'item-1',
+                'sku': 'SKU-1', 'retailer_sku_name': 'Name 1',
+            },
+        ], {
+            'inspection_date': '2026-09-09',
+            'source_date': '2026-09-09',
+            'offset_days': 0,
+            'country': 'SEG',
+            'source_key': 'seg_tv',
+            'batch_id': 'batch-1',
+        })
+
+        result = seg_validation.duplicate_detail(
+            None, date(2026, 9, 9), 'seg_tv_retail', 'Amazon'
+        )
+
+        self.assertTrue(result['readonly'])
+        self.assertEqual([], result['editable_cols'])
+        self.assertEqual(1, result['results']['total_groups'])
+        self.assertIn('page_type', result['select_cols']['group'])
+        self.assertIn('crawl_strdatetime', result['select_cols']['record'])
+        source = seg_validation.SEG_SOURCE_CONFIG['seg_tv']
+        latest_rows.assert_called_once_with(
+            None, date(2026, 9, 9), source, 'Amazon'
+        )
+
+
 class SegLayer2DataEditTests(unittest.TestCase):
     def test_null_cell_update_is_scoped_and_retailer_allowlisted(self):
         cursor = ScriptedCursor([

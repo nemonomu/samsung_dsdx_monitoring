@@ -642,6 +642,7 @@ function renderDXTableDetail(vType, table) {
         const isMarket = table.table === 'market';
         const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(table.table || '');
         const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(table.table || '');
+        const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(table.table || '');
         const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
@@ -670,7 +671,7 @@ function renderDXTableDetail(vType, table) {
                 detailText = 'batch_id + comp_brand + comp_sku 중복';
             } else if (isTseRetail) {
                 detailText = '완전 중복 및 Item↔Retailer SKU Name 매핑 충돌';
-            } else if (isSeaRetail) {
+            } else if (isSeaRetail || isSegRetail) {
                 detailText = '최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌';
             } else if (isSielRetail) {
                 detailText = '당일 최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌';

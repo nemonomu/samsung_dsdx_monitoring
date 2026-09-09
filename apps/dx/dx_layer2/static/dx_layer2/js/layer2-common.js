@@ -230,6 +230,9 @@ function getColumnConfig(type, tableParam) {
         if (/^siel_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_siel_retail;
         }
+        if (/^seg_(tv|ref|ldy)_retail$/.test(tableParam)) {
+            return DETAIL_COLUMNS.dup_sea_retail;
+        }
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_tse_retail;
         }
@@ -252,7 +255,8 @@ function isTseDuplicateTable(tableParam) {
 function isReadOnlyDuplicateTable(tableParam) {
     return isTseDuplicateTable(tableParam)
         || /^sem_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
-        || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
+        || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
+        || /^seg_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
 }
 
 function getAllColumns(config) {

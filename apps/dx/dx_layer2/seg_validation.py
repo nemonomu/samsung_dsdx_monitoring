@@ -1,5 +1,6 @@
-"""Layer 2 NULL validation for SEG Germany retail sources."""
+"""Layer 2 NULL and duplicate validation for SEG Germany retail sources."""
 
+from collections import defaultdict
 from datetime import datetime, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
@@ -289,6 +290,164 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         'history_days': history_days,
         'date_column': source['date_column'],
         'readonly': False,
+        **mapping,
+    }
+
+
+def _duplicate_text(value):
+    return str(value or '').strip()
+
+
+def _duplicate_key(value):
+    return _duplicate_text(value).casefold()
+
+
+def _serialize_duplicate_row(row):
+    return {
+        key: (str(value) if value is not None and key != 'id' else value)
+        for key, value in row.items()
+    }
+
+
+def build_duplicate_groups(rows):
+    """Group duplicates within the same page_type and item."""
+    grouped = defaultdict(list)
+    for row in rows:
+        page_type_key = _duplicate_key(row.get('page_type'))
+        item_key = _duplicate_key(row.get('item'))
+        if page_type_key and item_key:
+            grouped[(page_type_key, item_key)].append(row)
+
+    groups = []
+    for duplicate_rows in grouped.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        first = duplicate_rows[0]
+        sku_values = {
+            _duplicate_key(row.get('sku')) or '' for row in duplicate_rows
+        }
+        name_values = {
+            _duplicate_key(row.get('retailer_sku_name')) or ''
+            for row in duplicate_rows
+        }
+        mapping_conflict = len(sku_values) > 1 or len(name_values) > 1
+        page_type = _duplicate_text(first.get('page_type')).upper()
+        item = _duplicate_text(first.get('item'))
+        groups.append({
+            'duplicate_type': (
+                '상품 매핑 충돌' if mapping_conflict else '완전 중복'
+            ),
+            'page_type': page_type,
+            'item': item,
+            'retailer_sku_name': ', '.join(sorted({
+                _duplicate_text(row.get('retailer_sku_name'))
+                for row in duplicate_rows
+                if _duplicate_text(row.get('retailer_sku_name'))
+            })),
+            'dup_count': len(duplicate_rows),
+            'reason': (
+                f'{page_type}의 동일 item에 서로 다른 SKU/상품명이 '
+                f'{len(duplicate_rows)}건 연결됨'
+                if mapping_conflict else
+                f'{page_type}의 동일 item이 최신 배치에 '
+                f'{len(duplicate_rows)}건 수집됨'
+            ),
+            'records': [
+                _serialize_duplicate_row(row) for row in duplicate_rows
+            ],
+        })
+    groups.sort(key=lambda group: (
+        group['page_type'], group['item'], group['duplicate_type']
+    ))
+    return groups
+
+
+def append_duplicate_stats(cursor, target_date, validation):
+    total_issues = 0
+    for _product_line, source in SEG_SOURCE_CONFIG.items():
+        retailer_rows = []
+        table_records = 0
+        table_issues = 0
+        table_mapping = _mapping(target_date, source)
+
+        for retailer in source['retailers']:
+            rows, mapping = _latest_rows(
+                cursor, target_date, source, retailer
+            )
+            groups = build_duplicate_groups(rows)
+            issue_count = len(groups)
+            retailer_rows.append({
+                'retailer': retailer,
+                'total': len(rows),
+                'duplicate_groups': issue_count,
+                'duplicate_keys': ['page_type + item'],
+                'status': 'OK' if issue_count == 0 else 'CRITICAL',
+                **mapping,
+            })
+            table_records += len(rows)
+            table_issues += issue_count
+
+        validation['tables'].append({
+            'table': source['section_code'],
+            'table_name': source['display_name'],
+            'total_records': table_records,
+            'total_issues': table_issues,
+            'duplicate_groups': table_issues,
+            'duplicate_keys': ['page_type + item'],
+            'status': 'OK' if table_issues == 0 else 'CRITICAL',
+            'retailers': retailer_rows,
+            **table_mapping,
+        })
+        total_issues += table_issues
+    return total_issues
+
+
+def duplicate_detail(cursor, target_date, table, retailer, page=1,
+                     page_size=50):
+    product_line = product_line_for(table)
+    source = SEG_SOURCE_CONFIG.get(product_line)
+    if not source or retailer not in source['retailers']:
+        return {
+            'results': {
+                'duplicates': [], 'total_groups': 0, 'total_pages': 0,
+                'page': page, 'page_size': page_size,
+            },
+            'readonly': True,
+        }
+
+    rows, mapping = _latest_rows(cursor, target_date, source, retailer)
+    groups = build_duplicate_groups(rows)
+    start = (page - 1) * page_size
+    total_pages = (
+        (len(groups) + page_size - 1) // page_size if groups else 0
+    )
+    return {
+        'date': mapping['inspection_date'],
+        'table': source['section_code'],
+        'retailer': retailer,
+        'select_cols': {
+            'group': [
+                'duplicate_type', 'page_type', 'item',
+                'retailer_sku_name', 'dup_count', 'reason',
+            ],
+            'record': [
+                'id', 'sku', 'retailer_sku_name', 'final_sku_price',
+                source['date_column'], 'product_url',
+            ],
+        },
+        'editable_cols': [],
+        'actual_table': source['table_name'],
+        'readonly': True,
+        'readonly_message': (
+            'SEG 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.'
+        ),
+        'results': {
+            'duplicates': groups[start:start + page_size],
+            'total_groups': len(groups),
+            'page': page,
+            'page_size': page_size,
+            'total_pages': total_pages,
+        },
         **mapping,
     }
 
