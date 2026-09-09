@@ -148,27 +148,40 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('savings_missing', {
-        'detail_name': '최종가·원가 존재 시 할인율 확인',
+        'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
         'field2': 'final_sku_price|original_sku_price',
-        'retailers': ('Flipkart',),
+        'retailers': ('Amazon', 'Flipkart'),
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            '최종가와 원가가 있는데 savings가 NULL 또는 빈값입니다.'
+            '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.'
         ),
     }),
     ('original_missing', {
         'detail_name': '최종가·할인율 존재 시 원가 확인',
         'field1': 'original_sku_price',
         'field2': 'final_sku_price|savings',
-        'retailers': ('Flipkart',),
+        'retailers': ('Amazon', 'Flipkart'),
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
             '최종가와 savings가 있는데 original_sku_price가 '
+            'NULL 또는 빈값입니다.'
+        ),
+    }),
+    ('final_missing', {
+        'detail_name': '원가·savings 존재 시 최종가 확인',
+        'field1': 'final_sku_price',
+        'field2': 'original_sku_price|savings',
+        'retailers': ('Amazon', 'Flipkart'),
+        'display_fields': (
+            'final_sku_price', 'original_sku_price', 'savings',
+        ),
+        'error_message': (
+            '원가 또는 savings가 있는데 final_sku_price가 '
             'NULL 또는 빈값입니다.'
         ),
     }),
@@ -200,6 +213,7 @@ _RULE_ALIASES = {
     'review_count_over_star_count': 'review_gt_star_count',
     'savings_required': 'savings_missing',
     'original_required': 'original_missing',
+    'final_required': 'final_missing',
     'savings_rate': 'savings_rate_match',
 }
 
@@ -336,11 +350,6 @@ def evaluate_siel_row(row):
         ):
             errors.add('review_gt_star_count')
 
-        if final_present and original_present and not savings_present:
-            errors.add('savings_missing')
-        if final_present and savings_present and not original_present:
-            errors.add('original_missing')
-
         if (
             final_present
             and original_present
@@ -359,6 +368,18 @@ def evaluate_siel_row(row):
                 or abs(savings_rate - calculated_rate) > Decimal('1')
             ):
                 errors.add('savings_rate_match')
+
+    if (
+        final_price is not None
+        and original_price is not None
+        and original_price > final_price
+        and not savings_present
+    ):
+        errors.add('savings_missing')
+    if final_price is not None and savings_present and not original_present:
+        errors.add('original_missing')
+    if not final_present and (original_present or savings_present):
+        errors.add('final_missing')
 
     return errors
 

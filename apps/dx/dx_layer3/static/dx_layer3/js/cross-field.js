@@ -5,6 +5,7 @@ function getDefaultCrossfieldHistoryDays(productLine) {
         || key === 'sea_tv'
         || key.startsWith('sea_')
         || key.startsWith('siel_')
+        || key.startsWith('seg_')
         || key.startsWith('sem_')
         || key.startsWith('tse_')
         ? 3
@@ -136,7 +137,7 @@ function showRetailerDetail(retailer) {
     const dateCol = window.crossfieldDateCol
         || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
-    const isCanonicalProductLine = /^(SEA_|SIEL_|SEM_|TSE_)/.test(productLineDisplay);
+    const isCanonicalProductLine = /^(SEA_|SIEL_|SEG_|SEM_|TSE_)/.test(productLineDisplay);
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const anomalyCount = Number(rSummary.count || 0);
     const reviewCount = Number(rSummary.review_count || 0);

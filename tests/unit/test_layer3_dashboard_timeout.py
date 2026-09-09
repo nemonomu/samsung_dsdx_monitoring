@@ -57,6 +57,12 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 'apps.common.siel_retail': module_stub(
                     'apps.common.siel_retail', SIEL_SOURCE_CONFIG={}
                 ),
+                'apps.common.seg_retail': module_stub(
+                    'apps.common.seg_retail', SEG_SOURCE_CONFIG={}
+                ),
+                'apps.common.sem_retail': module_stub(
+                    'apps.common.sem_retail', SEM_SOURCE_CONFIG={}
+                ),
                 'apps.common.tse_retail': module_stub(
                     'apps.common.tse_retail', TSE_SOURCE_CONFIG={}
                 ),
@@ -73,6 +79,9 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 ),
                 'apps.dx.dx_layer3.cross_field.siel_services': module_stub(
                     'apps.dx.dx_layer3.cross_field.siel_services'
+                ),
+                'apps.dx.dx_layer3.cross_field.seg_services': module_stub(
+                    'apps.dx.dx_layer3.cross_field.seg_services'
                 ),
                 'apps.dx.dx_layer3.cross_field.sem_services': module_stub(
                     'apps.dx.dx_layer3.cross_field.sem_services'

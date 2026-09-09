@@ -7,6 +7,7 @@ SEG_CHECK_TYPE = 'seg_retail'
 SEG_COLLECTION_START = time(7, 0)
 SEG_COLLECTION_END = time(12, 0)
 SEG_HISTORY_DAYS = 7
+SEG_RETAILERS = ('Amazon', 'Mediamarkt', 'OTTO')
 SEG_NULL_COLUMNS = {
     'seg_tv': {
         'Mediamarkt': (
@@ -91,6 +92,14 @@ SEG_FORMAT_PRODUCT_COLUMNS = {
     'seg_ldy': ('ldy_capacity', 'ldy_loading_type'),
 }
 
+# Layer 3 cross-field findings may be corrected only in fields participating
+# in the fixed SEG rules. Source identity and audit fields remain read-only.
+SEG_CROSSFIELD_COMMON_EDITABLE_COLUMNS = (
+    'star_rating', 'count_of_star_ratings',
+    'final_sku_price', 'original_sku_price', 'savings',
+    'page_type', 'main_rank', 'bsr_rank',
+)
+
 SEG_SOURCE_CONFIG = {
     f'seg_{product.lower()}': {
         'source_key': f'seg_{product.lower()}',
@@ -122,6 +131,37 @@ def get_seg_source(product_line):
     if source is None:
         raise ValueError(f'Unsupported SEG product line: {product_line}')
     return source
+
+
+def normalize_seg_product_line(value):
+    product_line = get_seg_product_line(value)
+    if not product_line:
+        raise ValueError(f'Unsupported SEG product line: {value}')
+    return product_line
+
+
+def display_seg_retailer(value):
+    normalized = str(value or '').strip().casefold()
+    for retailer in SEG_RETAILERS:
+        if retailer.casefold() == normalized:
+            return retailer
+    return str(value or '').strip()
+
+
+def get_seg_product_line_for_table(table_name):
+    product_line = get_seg_product_line(table_name)
+    if not product_line:
+        raise ValueError(f'Unsupported SEG table: {table_name}')
+    return product_line
+
+
+def get_seg_crossfield_editable_columns(product_line, retailer):
+    product_key = normalize_seg_product_line(product_line)
+    source = SEG_SOURCE_CONFIG[product_key]
+    retailer_name = display_seg_retailer(retailer)
+    if retailer_name not in source['retailers']:
+        return []
+    return list(SEG_CROSSFIELD_COMMON_EDITABLE_COLUMNS)
 
 
 def get_seg_product_line(value):

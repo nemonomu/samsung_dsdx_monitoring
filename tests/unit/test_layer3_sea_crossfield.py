@@ -213,6 +213,31 @@ class SeaCrossfieldEvaluationTests(unittest.TestCase):
                     sea_services.evaluate_sea_row(_lowes_row(**overrides)),
                 )
 
+    def test_bestbuy_uses_the_same_price_presence_rules(self):
+        self.assertIn(
+            'savings_missing',
+            sea_services.evaluate_sea_row(_bestbuy_row(savings=None)),
+        )
+        self.assertNotIn(
+            'savings_missing',
+            sea_services.evaluate_sea_row(_bestbuy_row(
+                final_sku_price='$1,000', original_sku_price='$1,000',
+                savings=None,
+            )),
+        )
+        self.assertIn(
+            'original_missing',
+            sea_services.evaluate_sea_row(_bestbuy_row(
+                original_sku_price=None, savings='$100',
+            )),
+        )
+        self.assertIn(
+            'final_missing',
+            sea_services.evaluate_sea_row(_bestbuy_row(
+                final_sku_price=None, savings='$100',
+            )),
+        )
+
     def test_recommendation_format_is_retailer_specific(self):
         self.assertNotIn(
             'recommendation_intent',

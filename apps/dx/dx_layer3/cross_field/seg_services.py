@@ -1,59 +1,72 @@
-"""SEA REF/LDY cross-field validation.
+"""SEG TV/REF/LDY cross-field validation.
 
-Database rows in ``monitoring_validation_rules`` enable and describe rules.
-Validation itself stays allow-listed here so a stored query cannot widen the
-exact D-1/latest-MAIN-batch scope used by the SEA monitoring contract.
+Rule metadata is enabled through ``monitoring_validation_rules``.  Stored SQL
+is never executed: the application applies an allow-listed Python rule set to
+the exact SEG inspection-day/latest-MAIN-batch scope.
 """
 
 from collections import OrderedDict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import re
 
 from apps.common.inspection_dates import resolve_monitoring_date
-from apps.common.retail_columns import get_editable_columns
-from apps.common.sea_retail import get_sea_retail_source
+from apps.common.seg_retail import (
+    SEG_RETAILERS,
+    display_seg_retailer,
+    get_seg_crossfield_editable_columns,
+    get_seg_source,
+    normalize_seg_product_line,
+)
 
 
-SEA_PRODUCT_KEYS = {
-    'sea_ref': 'ref',
-    'sea_ldy': 'ldy',
+SEG_NO_REVIEW_TEXT = 'No customer reviews'
+
+SEG_PRICE_STATUS_TEXTS = {
+    'Höherer Preis als üblich',
+    'Derzeit nicht verfügbar.',
 }
 
-LOWES_REVIEW_ISSUES = OrderedDict((
-    ('body_missing', '리뷰 수 있음 · 리뷰본문 없음'),
-    ('body_without_reviews', '리뷰 수 0 · 리뷰본문 있음'),
-    ('body_over_review_count', '리뷰본문 번호가 리뷰 수보다 큼'),
-    ('review20_missing', '리뷰 수 20 이상 · review20 없음'),
-))
-
-SEA_RULE_SPECS = OrderedDict((
-    ('review_count_match', {
-        'detail_name': '리뷰 수와 별점 수 일치',
-        'field1': 'count_of_reviews',
-        'field2': 'count_of_star_ratings',
-        'retailers': ('Bestbuy', 'Lowes'),
-        'display_fields': (
-            'count_of_reviews', 'count_of_star_ratings',
-            'detailed_review_content',
-        ),
-        'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
-    }),
+SEG_RULE_SPECS = OrderedDict((
     ('rating_count_presence', {
-        'detail_name': '별점 0과 별점 수 0 일치',
+        'detail_name': '별점과 별점 수 존재 일치',
         'field1': 'star_rating',
         'field2': 'count_of_star_ratings',
-        'retailers': ('Bestbuy', 'Lowes'),
+        'retailers': SEG_RETAILERS,
         'display_fields': (
             'star_rating', 'count_of_star_ratings', 'count_of_reviews',
         ),
-        'error_message': 'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
+        'error_message': (
+            'star_rating의 0 여부와 count_of_star_ratings의 '
+            'NULL·빈값·0 여부가 일치하지 않습니다.'
+        ),
+    }),
+    ('no_review_rating_count', {
+        'detail_name': '리뷰 없음 문구와 별점 수 일치',
+        'field1': 'star_rating',
+        'field2': 'count_of_star_ratings',
+        'retailers': ('Amazon',),
+        'display_fields': ('star_rating', 'count_of_star_ratings'),
+        'error_message': (
+            'star_rating이 No customer reviews인데 '
+            'count_of_star_ratings가 1 이상입니다.'
+        ),
+    }),
+    ('rating_range', {
+        'detail_name': '별점 숫자 형식 및 5점 이하',
+        'field1': 'star_rating',
+        'field2': None,
+        'retailers': SEG_RETAILERS,
+        'display_fields': ('star_rating', 'count_of_star_ratings'),
+        'error_message': (
+            'star_rating이 숫자가 아니거나 허용 범위 0~5를 벗어났습니다.'
+        ),
     }),
     ('rank_page_type', {
         'detail_name': '페이지 유형과 순위 필드 일치',
         'field1': 'page_type',
         'field2': 'main_rank|bsr_rank',
-        'retailers': ('Bestbuy',),
+        'retailers': ('Amazon',),
         'display_fields': ('page_type', 'main_rank', 'bsr_rank'),
         'error_message': 'MAIN/BSR page_type에 해당하는 순위 필드가 없습니다.',
     }),
@@ -61,123 +74,96 @@ SEA_RULE_SPECS = OrderedDict((
         'detail_name': '최종가와 원가 순서',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
-        'retailers': ('Bestbuy', 'Lowes'),
+        'retailers': SEG_RETAILERS,
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
-        'error_message': '최종가와 원가의 가격 관계가 올바르지 않습니다.',
+        'error_message': 'final_sku_price가 original_sku_price보다 큽니다.',
     }),
     ('discount_rate_90', {
-        'detail_name': '90% 이상 할인 검사',
+        'detail_name': '90% 이상 할인 검증',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
-        'retailers': ('Bestbuy',),
+        'retailers': ('Amazon',),
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': '최종가와 원가로 계산한 할인율이 90% 이상입니다.',
     }),
-    ('review_body_count', {
-        'detail_name': '리뷰 수와 리뷰 본문 개수 일치',
-        'field1': 'count_of_reviews',
-        'field2': 'detailed_review_content',
-        'retailers': ('Bestbuy', 'Lowes'),
-        'display_fields': (
-            'count_of_reviews', 'count_of_star_ratings',
-            'detailed_review_content',
-        ),
-        'error_message': '리뷰 수와 detailed_review_content의 reviewN 범위가 맞지 않습니다.',
-    }),
     ('savings_missing', {
         'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
         'field2': 'final_sku_price|original_sku_price',
-        'retailers': ('Bestbuy', 'Lowes'),
+        'retailers': SEG_RETAILERS,
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
-        'error_message': '숫자 원가가 판매가보다 큰데 savings가 없습니다.',
+        'error_message': (
+            '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.'
+        ),
     }),
     ('original_missing', {
-        'detail_name': '최종가·savings 존재 시 원가 확인',
+        'detail_name': '판매가·savings 존재 시 원가 확인',
         'field1': 'original_sku_price',
         'field2': 'final_sku_price|savings',
-        'retailers': ('Bestbuy', 'Lowes'),
+        'retailers': SEG_RETAILERS,
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
-        'error_message': '최종가와 savings가 있는데 original_sku_price가 없습니다.',
-    }),
-    ('savings_amount_match', {
-        'detail_name': '할인 금액 일치',
-        'field1': 'savings',
-        'field2': 'original_sku_price|final_sku_price',
-        'retailers': ('Bestbuy', 'Lowes'),
-        'display_fields': (
-            'final_sku_price', 'original_sku_price', 'savings',
+        'error_message': (
+            '판매가와 savings가 있는데 original_sku_price가 '
+            'NULL 또는 빈값입니다.'
         ),
-        'error_message': 'original_sku_price-final_sku_price와 savings가 다릅니다.',
     }),
     ('final_missing', {
-        'detail_name': '원가·savings 존재 시 최종가 확인',
+        'detail_name': '원가·savings 존재 시 판매가 확인',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price|savings',
-        'retailers': ('Bestbuy', 'Lowes'),
+        'retailers': SEG_RETAILERS,
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
-        'error_message': '원가 또는 savings가 있는데 final_sku_price가 없습니다.',
-    }),
-    ('recommendation_intent', {
-        'detail_name': '추천 의향 형식',
-        'field1': 'recommendation_intent',
-        'field2': 'count_of_reviews',
-        'retailers': ('Bestbuy', 'Lowes'),
-        'display_fields': (
-            'count_of_reviews', 'recommendation_intent',
-            'detailed_review_content',
+        'error_message': (
+            '원가 또는 savings가 있는데 final_sku_price가 '
+            'NULL 또는 빈값입니다.'
         ),
-        'error_message': '리테일러별 recommendation_intent 문구 또는 0~100% 범위가 올바르지 않습니다.',
+    }),
+    ('savings_amount_match', {
+        'detail_name': 'Amazon 할인 금액 일치',
+        'field1': 'savings',
+        'field2': 'original_sku_price|final_sku_price',
+        'retailers': ('Amazon',),
+        'display_fields': (
+            'final_sku_price', 'original_sku_price', 'savings',
+        ),
+        'error_message': (
+            'savings가 original_sku_price-final_sku_price와 '
+            '센트 단위까지 일치하지 않습니다.'
+        ),
     }),
 ))
 
 _RULE_ALIASES = {
-    'review_count_mismatch': 'review_count_match',
-    'review_rating_count_match': 'review_count_match',
     'rating_count_required': 'rating_count_presence',
+    'review_zero_pair': 'rating_count_presence',
+    'no_review_count': 'no_review_rating_count',
+    'star_rating_range': 'rating_range',
     'page_type_rank': 'rank_page_type',
     'price_order': 'final_original_price',
-    'price_reverse': 'final_original_price',
     'discount_rate': 'discount_rate_90',
-    'review_detail_match': 'review_body_count',
-    'review_body_over_count': 'review_body_count',
     'savings_required': 'savings_missing',
     'original_required': 'original_missing',
-    'savings_amount': 'savings_amount_match',
     'final_required': 'final_missing',
-    'recommendation_format': 'recommendation_intent',
+    'savings_amount': 'savings_amount_match',
 }
 
 _DISPLAY_QUERY_COLUMNS = {
     'id', 'country', 'product', 'account_name', 'page_type', 'item',
     'sku', 'retailer_sku_name', 'main_rank', 'bsr_rank',
     'count_of_reviews', 'count_of_star_ratings', 'star_rating',
-    'detailed_review_content', 'recommendation_intent',
     'final_sku_price', 'original_sku_price', 'savings',
     'crawl_strdatetime', 'batch_id', 'product_url',
 }
-
-
-def normalize_sea_product_line(value):
-    key = str(value or '').strip().lower()
-    if key not in SEA_PRODUCT_KEYS:
-        raise ValueError(f'허용되지 않은 SEA 크로스필드 제품군: {value}')
-    return key
-
-
-def _source_for_product_line(product_line):
-    key = normalize_sea_product_line(product_line)
-    return get_sea_retail_source(SEA_PRODUCT_KEYS[key])
 
 
 def _has_value(value):
@@ -186,7 +172,7 @@ def _has_value(value):
     return str(value).strip().lower() not in ('', '-', 'none', 'null', 'n/a')
 
 
-def parse_sea_number(value):
+def parse_seg_number(value):
     if not _has_value(value):
         return None
     text = str(value).strip().replace(',', '').replace(' ', '')
@@ -198,172 +184,96 @@ def parse_sea_number(value):
         return None
 
 
-def parse_sea_money(value):
+def parse_seg_money(value):
+    """Parse one German euro amount without discarding cents."""
     if not _has_value(value):
         return None
-    text = str(value).strip().replace('$', '').replace(',', '').replace(' ', '')
-    if not re.fullmatch(r'[+-]?\d+(?:\.\d+)?', text):
+    text = str(value).strip().replace('€', '').replace(' ', '')
+    if not re.fullmatch(
+            r'[+-]?(?:0|[1-9]\d{0,2}(?:\.\d{3})*|[1-9]\d*)'
+            r'(?:,\d{2})?', text):
         return None
+    normalized = text.replace('.', '').replace(',', '.')
     try:
-        return Decimal(text)
+        return Decimal(normalized)
     except InvalidOperation:
         return None
 
 
-def _review_body_numbers(value):
-    if not _has_value(value):
-        return []
-    return sorted({
-        int(number)
-        for number in re.findall(r'(?i)\breview\s*(\d+)\s*-', str(value))
-    })
-
-
-def _review_body_max(value):
-    return max(_review_body_numbers(value), default=0)
-
-
-def _review_body_detail_fields(row, issue_code=None):
-    numbers = _review_body_numbers(row.get('detailed_review_content'))
-    review_count = parse_sea_number(row.get('count_of_reviews'))
-    retailer = str(row.get('account_name') or '').strip().title()
-
-    if retailer == 'Bestbuy' and review_count is not None and review_count > 0:
-        expected = min(int(review_count), 20)
-        if not _has_value(row.get('detailed_review_content')):
-            issue_type = '리뷰 수 있음 · 리뷰본문 없음'
-        elif expected == 20:
-            issue_type = 'review20 없음'
-        else:
-            issue_type = f'review{expected} 없음'
-    else:
-        issue_type = LOWES_REVIEW_ISSUES.get(issue_code, '리뷰본문 확인')
-
-    return {
-        'issue_type': issue_type,
-        'review_body_count': len(numbers),
-    }
-
-
-def evaluate_lowes_review_body(row):
-    """Return a non-critical Lowes review-body issue code, if any."""
-    retailer = str(row.get('account_name') or '').strip().title()
-    if retailer != 'Lowes':
-        return None
-
-    review_count = parse_sea_number(row.get('count_of_reviews'))
-    if review_count is None:
-        return None
-
-    body = row.get('detailed_review_content')
-    body_present = _has_value(body)
-    body_max = _review_body_max(body)
-    if review_count > 0 and not body_present:
-        return 'body_missing'
-    if review_count == 0 and body_present:
-        return 'body_without_reviews'
-    if body_max > review_count:
-        return 'body_over_review_count'
-    if review_count >= 20 and body_max < 20:
-        return 'review20_missing'
-    return None
-
-
-def _recommendation_valid(retailer, review_count, value):
-    has_recommendation = _has_value(value)
-    if review_count == 0:
-        return not has_recommendation
-    if review_count is None or review_count < 0:
-        return True
-    if not has_recommendation:
-        return False
-
-    text = str(value).strip()
-    if retailer == 'Bestbuy':
-        match = re.fullmatch(r'(\d{1,3})% would recommend to a friend', text)
-    else:
-        match = re.fullmatch(r'(\d{1,3})% Recommend this product', text)
-    return bool(match and 0 <= int(match.group(1)) <= 100)
-
-
-def evaluate_sea_row(row):
-    """Return canonical SEA rule keys failed by one REF/LDY source row."""
+def evaluate_seg_row(row):
+    """Return canonical SEG rule keys failed by one source row."""
     errors = set()
-    retailer = str(row.get('account_name') or '').strip().title()
-    if retailer not in ('Bestbuy', 'Lowes'):
+    retailer = display_seg_retailer(row.get('account_name'))
+    if retailer not in SEG_RETAILERS:
         return errors
 
-    review_count = parse_sea_number(row.get('count_of_reviews'))
-    star_count = parse_sea_number(row.get('count_of_star_ratings'))
-    rating = parse_sea_number(row.get('star_rating'))
-
-    if review_count is not None and star_count is not None:
-        if review_count != star_count:
-            errors.add('review_count_match')
-
-    if rating is not None and star_count is not None:
-        if (rating == 0) != (star_count == 0):
+    rating_text = str(row.get('star_rating') or '').strip()
+    rating = parse_seg_number(row.get('star_rating'))
+    star_count = parse_seg_number(row.get('count_of_star_ratings'))
+    allowed_no_review = (
+        retailer == 'Amazon'
+        and rating_text.casefold() == SEG_NO_REVIEW_TEXT.casefold()
+    )
+    if rating is not None:
+        if star_count is None:
+            if rating > 0:
+                errors.add('rating_count_presence')
+        elif (rating == 0) != (star_count == 0):
             errors.add('rating_count_presence')
+        if rating < 0 or rating > 5:
+            errors.add('rating_range')
+    elif _has_value(row.get('star_rating')) and not allowed_no_review:
+        errors.add('rating_range')
 
-    if retailer == 'Bestbuy':
-        page_type = str(row.get('page_type') or '').strip().upper()
-        if page_type == 'MAIN' and not _has_value(row.get('main_rank')):
+    if allowed_no_review and star_count is not None and star_count > 0:
+        errors.add('no_review_rating_count')
+
+    if retailer == 'Amazon':
+        page_type = str(row.get('page_type') or '').strip().lower()
+        if page_type == 'main' and not _has_value(row.get('main_rank')):
             errors.add('rank_page_type')
-        if page_type == 'BSR' and not _has_value(row.get('bsr_rank')):
+        if page_type == 'bsr' and not _has_value(row.get('bsr_rank')):
             errors.add('rank_page_type')
 
     final_present = _has_value(row.get('final_sku_price'))
     original_present = _has_value(row.get('original_sku_price'))
     savings_present = _has_value(row.get('savings'))
-    final_price = parse_sea_money(row.get('final_sku_price'))
-    original_price = parse_sea_money(row.get('original_sku_price'))
-    savings = parse_sea_money(row.get('savings'))
+    final_text = str(row.get('final_sku_price') or '').strip()
+    if final_text in SEG_PRICE_STATUS_TEXTS:
+        return errors
+
+    final_price = parse_seg_money(row.get('final_sku_price'))
+    original_price = parse_seg_money(row.get('original_sku_price'))
+    savings_amount = parse_seg_money(row.get('savings'))
 
     if final_price is not None and original_price is not None:
-        if retailer == 'Lowes' and final_price >= original_price:
+        if final_price > original_price:
             errors.add('final_original_price')
-        elif retailer == 'Bestbuy' and final_price > original_price:
-            errors.add('final_original_price')
-
         if (
-            retailer == 'Bestbuy'
+            retailer == 'Amazon'
+            and final_price > 0
             and original_price > 0
             and ((original_price - final_price) / original_price) * 100 >= 90
         ):
             errors.add('discount_rate_90')
-
-    body_max = _review_body_max(row.get('detailed_review_content'))
-    if review_count is not None:
-        if retailer == 'Bestbuy' and review_count > 0:
-            if body_max < min(int(review_count), 20):
-                errors.add('review_body_count')
-        # Lowes review/body combinations are review candidates, not anomalies.
-        # They are evaluated separately by evaluate_lowes_review_body().
-
-        if not _recommendation_valid(
-                retailer, review_count, row.get('recommendation_intent')):
-            errors.add('recommendation_intent')
-
-    if retailer in ('Bestbuy', 'Lowes'):
-        if (
-            final_price is not None
-            and original_price is not None
-            and original_price > final_price
-            and not savings_present
-        ):
+        if original_price > final_price and not savings_present:
             errors.add('savings_missing')
-        if final_price is not None and savings_present and not original_present:
-            errors.add('original_missing')
-        if not final_present and (original_present or savings_present):
-            errors.add('final_missing')
-        if (
-            final_present and original_present and savings_present
-            and final_price is not None
-            and original_price is not None
-            and savings is not None
-            and original_price - final_price != savings
-        ):
-            errors.add('savings_amount_match')
+
+    if final_price is not None and savings_present and not original_present:
+        errors.add('original_missing')
+    if not final_present and (original_present or savings_present):
+        errors.add('final_missing')
+
+    if (
+        retailer == 'Amazon'
+        and final_price is not None
+        and original_price is not None
+        and original_price > final_price
+        and savings_present
+        and savings_amount is not None
+        and original_price - final_price != savings_amount
+    ):
+        errors.add('savings_amount_match')
 
     return errors
 
@@ -381,18 +291,18 @@ def _rows_as_dicts(cursor):
 def _resolve_rule_key(rule):
     for candidate in (rule.get('validation_type'), rule.get('detail_code')):
         key = str(candidate or '').strip().lower()
-        for prefix in ('sea_ref_', 'sea_ldy_', 'sea_'):
+        for prefix in ('seg_tv_', 'seg_ref_', 'seg_ldy_', 'seg_'):
             if key.startswith(prefix):
                 key = key[len(prefix):]
                 break
         key = _RULE_ALIASES.get(key, key)
-        if key in SEA_RULE_SPECS:
+        if key in SEG_RULE_SPECS:
             return key
     return None
 
 
 def _retailer_supported(rule_key, retailer):
-    supported = SEA_RULE_SPECS[rule_key]['retailers']
+    supported = SEG_RULE_SPECS[rule_key]['retailers']
     retailer_key = str(retailer or '').strip().casefold()
     return retailer_key in {value.casefold() for value in supported}
 
@@ -409,11 +319,10 @@ def _rule_applies_to_retailer(rule, retailer):
     }
 
 
-def load_active_sea_rules(cursor, product_line):
-    """Load active SEA rule metadata; stored query text is never executed."""
-    key = normalize_sea_product_line(product_line)
-    source = _source_for_product_line(key)
-    section_code = f'{key}_retail'
+def load_active_seg_rules(cursor, product_line):
+    """Load active SEG metadata; stored query text is never executed."""
+    key = normalize_seg_product_line(product_line)
+    source = get_seg_source(key)
     cursor.execute("""
         SELECT id, detail_code, detail_name, section_code, section_name,
                table_name, date_column, product_line, retailer,
@@ -425,12 +334,12 @@ def load_active_sea_rules(cursor, product_line):
           AND section_code = %s
           AND table_name = %s
         ORDER BY sort_order, id
-    """, (section_code, source['table_name']))
+    """, (source['section_code'], source['table_name']))
     columns = (
-        'rule_id', 'detail_code', 'detail_name', 'section_code', 'section_name',
-        'table_name', 'date_column', 'product_line', 'retailer', 'field1',
-        'field2', 'validation_type', 'error_message', 'select_fields', 'query',
-        'sort_order',
+        'rule_id', 'detail_code', 'detail_name', 'section_code',
+        'section_name', 'table_name', 'date_column', 'product_line',
+        'retailer', 'field1', 'field2', 'validation_type', 'error_message',
+        'select_fields', 'query', 'sort_order',
     )
     rules_by_key = OrderedDict()
     for raw in cursor.fetchall():
@@ -441,7 +350,7 @@ def load_active_sea_rules(cursor, product_line):
         if not rule_key:
             continue
 
-        spec = SEA_RULE_SPECS[rule_key]
+        spec = SEG_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
         if (
             configured_retailer.upper() != 'ALL'
@@ -488,7 +397,8 @@ def load_active_sea_rules(cursor, product_line):
         )
         for retailer in row['_retailers']:
             if retailer.casefold() not in {
-                    value.casefold() for value in existing['_retailers']}:
+                value.casefold() for value in existing['_retailers']
+            }:
                 existing['_retailers'].append(retailer)
         merged_fields = existing['select_fields'].split('|')
         for field in display_fields:
@@ -501,58 +411,75 @@ def load_active_sea_rules(cursor, product_line):
 
 def _date_contract(inspection_date, source):
     contract = resolve_monitoring_date(
-        inspection_date, 'SEA', source['source_key']
+        inspection_date, 'SEG', source['source_key']
     )
     contract['source_date_value'] = date.fromisoformat(contract['source_date'])
     return contract
 
 
-def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
-    """Load exact D-1 rows from each retailer's newest MAIN anchor batch."""
-    source = _source_for_product_line(product_line)
+def load_latest_seg_rows(
+        cursor, inspection_date, product_line, from_date=None):
+    """Load each source day's latest retailer MAIN batch and MAIN+BSR rows."""
+    key = normalize_seg_product_line(product_line)
+    source = get_seg_source(key)
     end_contract = _date_contract(inspection_date, source)
     start_contract = _date_contract(from_date or inspection_date, source)
     start_date = start_contract['source_date']
     end_date = end_contract['source_date']
     table_name = source['table_name']
     date_column = source['date_column']
+    source_date_sql = (
+        f"LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10)"
+    )
+    retailers_sql = ', '.join(
+        "'" + retailer.casefold().replace("'", "''") + "'"
+        for retailer in source['retailers']
+    )
+    redirect_scope = (
+        "AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))) <> 'amazon' "
+        "OR source.redirect IS NOT TRUE)"
+        if source.get('has_redirect') else ''
+    )
     cursor.execute(f"""
         WITH main_batches AS (
             SELECT
-                LEFT(TRIM(CAST({date_column} AS TEXT)), 10) AS source_date,
-                account_name,
-                batch_id,
-                MAX(id) AS max_id
-            FROM {table_name}
-            WHERE LEFT(TRIM(CAST({date_column} AS TEXT)), 10)
-                      BETWEEN %s AND %s
-              AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes')
-              AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'
-              AND NULLIF(TRIM(batch_id), '') IS NOT NULL
-            GROUP BY LEFT(TRIM(CAST({date_column} AS TEXT)), 10),
-                     account_name, batch_id
+                {source_date_sql} AS source_date,
+                source.account_name,
+                source.batch_id,
+                MAX(source.id) AS max_id
+            FROM {table_name} source
+            WHERE {source_date_sql} >= %s
+              AND {source_date_sql} <= %s
+              AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
+              AND LOWER(BTRIM(CAST(source.account_name AS TEXT)))
+                  IN ({retailers_sql})
+              AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'
+              {redirect_scope}
+            GROUP BY {source_date_sql}, source.account_name, source.batch_id
         ), ranked_batches AS (
             SELECT source_date, account_name, batch_id,
                    ROW_NUMBER() OVER (
-                       PARTITION BY source_date, LOWER(TRIM(account_name))
+                       PARTITION BY source_date,
+                                    LOWER(BTRIM(CAST(account_name AS TEXT)))
                        ORDER BY max_id DESC
                    ) AS batch_rank
             FROM main_batches
         )
         SELECT source.*
         FROM {table_name} source
-        JOIN ranked_batches anchor
-          ON anchor.source_date =
-             LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)
-         AND LOWER(TRIM(anchor.account_name)) =
-             LOWER(TRIM(source.account_name))
-         AND anchor.batch_id = source.batch_id
-         AND anchor.batch_rank = 1
-        WHERE LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)
-                  BETWEEN %s AND %s
-          AND UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR')
-        ORDER BY LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10),
-                 LOWER(TRIM(source.account_name)), source.id
+        JOIN ranked_batches latest
+          ON latest.source_date = {source_date_sql}
+         AND LOWER(BTRIM(CAST(latest.account_name AS TEXT))) =
+             LOWER(BTRIM(CAST(source.account_name AS TEXT)))
+         AND latest.batch_id IS NOT DISTINCT FROM source.batch_id
+         AND latest.batch_rank = 1
+        WHERE {source_date_sql} >= %s
+          AND {source_date_sql} <= %s
+          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {redirect_scope}
+        ORDER BY {source_date_sql},
+                 LOWER(BTRIM(CAST(source.account_name AS TEXT))), source.id
     """, (start_date, end_date, start_date, end_date))
     return _rows_as_dicts(cursor)
 
@@ -586,13 +513,13 @@ def _load_normal_corrections(
     ]
 
 
-def build_sea_crossfield_result(
+def build_seg_crossfield_result(
         cursor, inspection_date, product_line, from_date=None):
-    key = normalize_sea_product_line(product_line)
-    source = _source_for_product_line(key)
+    key = normalize_seg_product_line(product_line)
+    source = get_seg_source(key)
     contract = _date_contract(inspection_date, source)
-    rules = load_active_sea_rules(cursor, key)
-    rows = load_latest_sea_rows(
+    rules = load_active_seg_rules(cursor, key)
+    rows = load_latest_seg_rows(
         cursor, inspection_date, key, from_date=from_date
     )
     rule_ids = [
@@ -607,62 +534,41 @@ def build_sea_crossfield_result(
         (str(correction['record_id']), str(correction['rule_id']))
         for correction in corrections
     }
-    evaluations = {
-        str(row.get('id')): evaluate_sea_row(row)
-        for row in rows
-    }
-    lowes_review_evaluations = {
-        str(row.get('id')): evaluate_lowes_review_body(row)
-        for row in rows
-    }
 
+    evaluations = {
+        str(row.get('id')): evaluate_seg_row(row)
+        for row in rows
+    }
     retailer_rows = {}
     for row in rows:
-        retailer = str(row.get('account_name') or 'Unknown').strip().title()
+        retailer = display_seg_retailer(row.get('account_name')) or 'Unknown'
         row['account_name'] = retailer
         retailer_rows.setdefault(retailer, []).append(row)
 
     rule_results = []
     finding_count = 0
-    review_finding_count = 0
     failed_record_ids = set()
-    review_record_ids = set()
     for rule in rules:
         error_details = []
-        review_details = []
         for row in rows:
-            retailer = str(row.get('account_name') or 'Unknown').strip().title()
+            retailer = display_seg_retailer(
+                row.get('account_name')
+            ) or 'Unknown'
             row_id = str(row.get('id'))
             if not _rule_applies_to_retailer(rule, retailer):
                 continue
+            if rule['rule_key'] not in evaluations[row_id]:
+                continue
             source_rule_ids = {
                 str(rule_id)
-                for rule_id in rule.get('_source_rule_ids', [rule['rule_id']])
+                for rule_id in rule.get(
+                    '_source_rule_ids', [rule['rule_id']]
+                )
             }
             if any((row_id, rule_id) in normal_pairs
                    for rule_id in source_rule_ids):
                 continue
-
-            if rule['rule_key'] == 'review_body_count' and retailer == 'Lowes':
-                issue_code = lowes_review_evaluations.get(row_id)
-                if not issue_code:
-                    continue
-                detail = dict(row)
-                detail.update(_review_body_detail_fields(row, issue_code))
-                detail['validation_tag'] = (
-                    f"확인 필요: {LOWES_REVIEW_ISSUES[issue_code]}"
-                )
-                detail['rule_key'] = rule['rule_key']
-                detail['finding_level'] = 'review_needed'
-                review_details.append(detail)
-                review_record_ids.add(row_id)
-                continue
-
-            if rule['rule_key'] not in evaluations[row_id]:
-                continue
             detail = dict(row)
-            if rule['rule_key'] == 'review_body_count':
-                detail.update(_review_body_detail_fields(row))
             detail['validation_tag'] = rule['error_message']
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
@@ -672,26 +578,14 @@ def build_sea_crossfield_result(
         result = dict(rule)
         result['error_details'] = error_details
         result['error_count'] = len(error_details)
-        result['review_details'] = review_details
-        result['review_count'] = len(review_details)
-        result['review_type_summary'] = {
-            issue_label: sum(
-                detail.get('issue_type') == issue_label
-                for detail in review_details
-            )
-            for issue_label in LOWES_REVIEW_ISSUES.values()
-        }
         rule_results.append(result)
         finding_count += len(error_details)
-        review_finding_count += len(review_details)
 
     retailer_summaries = []
     for retailer, source_rows in sorted(retailer_rows.items()):
         rules_summary = []
-        retailer_failed_records = set()
-        retailer_review_records = set()
         retailer_error_count = 0
-        retailer_review_count = 0
+        retailer_failed_records = set()
         for result in rule_results:
             if not _retailer_supported(result['rule_key'], retailer):
                 continue
@@ -703,30 +597,21 @@ def build_sea_crossfield_result(
             retailer_failed_records.update(
                 str(detail.get('id')) for detail in details
             )
-            review_details = [
-                detail for detail in result['review_details']
-                if detail.get('account_name') == retailer
-            ]
-            retailer_review_count += len(review_details)
-            retailer_review_records.update(
-                str(detail.get('id')) for detail in review_details
-            )
             rules_summary.append({
                 'rule_id': result['rule_id'],
                 'detail_code': result['detail_code'],
                 'detail_name': result['detail_name'],
                 'error_count': len(details),
-                'review_count': len(review_details),
             })
-        batch_ids = sorted({str(row.get('batch_id') or '') for row in source_rows})
+        batch_ids = sorted({
+            str(row.get('batch_id') or '') for row in source_rows
+        })
         retailer_summaries.append({
             'retailer': retailer,
             'batch_id': batch_ids[-1] if batch_ids else '',
             'total_checked': len(source_rows),
             'failed_records': len(retailer_failed_records),
             'total_errors': retailer_error_count,
-            'review_needed_records': len(retailer_review_records),
-            'total_review_needed': retailer_review_count,
             'rules': rules_summary,
         })
 
@@ -737,17 +622,13 @@ def build_sea_crossfield_result(
         'offset_days': contract['offset_days'],
         'configured': bool(rules),
         'product_line': key,
-        'label': f"SEA {source['category']}",
+        'label': source['display_name'],
         'table_name': source['table_name'],
         'date_col': source['date_column'],
         'total_checked': len(rows),
         'failed_records': len(failed_record_ids),
         'total_anomalies': finding_count,
-        'review_needed_records': len(review_record_ids),
-        'total_review_needed': review_finding_count,
-        'passed_records': max(
-            0, len(rows) - len(failed_record_ids | review_record_ids)
-        ),
+        'passed_records': max(0, len(rows) - len(failed_record_ids)),
         'rule_results': rule_results,
         'retailers': retailer_summaries,
         'normal_corrections': corrections,
@@ -758,18 +639,20 @@ def _display_sql_literal(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def build_sea_display_query(
+def build_seg_display_query(
         inspection_date, product_line, rule, days=1, retailer=None,
         retailers=None, retailer_item_pairs=None):
-    """Build a compact copy-only SEA D-1 item-history query."""
-    key = normalize_sea_product_line(product_line)
-    source = _source_for_product_line(key)
+    """Build a compact copy-only SEG item-history query."""
+    key = normalize_seg_product_line(product_line)
+    source = get_seg_source(key)
     day_count = min(30, max(1, int(days)))
     date_column = source['date_column']
 
     select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
-    spec = SEA_RULE_SPECS[rule['rule_key']]
-    for field_group in (*spec['display_fields'], date_column, 'product_url'):
+    spec = SEG_RULE_SPECS[rule['rule_key']]
+    for field_group in (
+        *spec['display_fields'], date_column, 'product_url'
+    ):
         for column in str(field_group or '').split('|'):
             column = column.strip()
             if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
@@ -785,7 +668,9 @@ def build_sea_display_query(
         if isinstance(pair, (list, tuple)) and len(pair) == 2
         and str(pair[0] or '').strip()
     }, key=lambda pair: (pair[0].lower(), pair[1] or ''))
-    retailer_values = [retailer] if retailer is not None else list(retailers or [])
+    retailer_values = [retailer] if retailer is not None else list(
+        retailers or []
+    )
     retailer_values.extend(pair[0] for pair in pair_values)
     retailer_values = sorted({
         str(value).strip() for value in retailer_values
@@ -846,19 +731,26 @@ def build_sea_display_query(
     if filters:
         scope_sql = '\n  AND ' + '\n  AND '.join(filters)
 
-    date_expression = f'LEFT(TRIM({date_column}), 10)'
+    target_day = date.fromisoformat(str(inspection_date))
+    start_day = target_day - timedelta(days=day_count - 1)
+    date_expr = f"LEFT(BTRIM(CAST({date_column} AS TEXT)), 10)"
+    filters.insert(0, "UPPER(BTRIM(CAST(country AS TEXT))) = 'SEG'")
+    if source.get('has_redirect'):
+        filters.append(
+            "(LOWER(BTRIM(CAST(account_name AS TEXT))) <> 'amazon' "
+            "OR redirect IS NOT TRUE)"
+        )
+    scope_sql = '\n  AND ' + '\n  AND '.join(filters)
     return f"""SELECT
 {select_sql}
 FROM {source['table_name']}
-WHERE {date_expression} >= TO_CHAR(
-          CURRENT_DATE - INTERVAL '{day_count} days', 'YYYY-MM-DD'
-      )
-  AND {date_expression} < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD'){scope_sql}
+WHERE {date_expr} >= '{start_day.isoformat()}'
+  AND {date_expr} <= '{target_day.isoformat()}'{scope_sql}
 ORDER BY item, {date_column}, id;"""
 
 
-def get_sea_cross_field_summary(cursor, inspection_date, product_line):
-    result = build_sea_crossfield_result(
+def get_seg_cross_field_summary(cursor, inspection_date, product_line):
+    result = build_seg_crossfield_result(
         cursor, inspection_date, product_line
     )
     rule_summary = []
@@ -868,15 +760,13 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
     ]
     for rule in result['rule_results']:
         error_rows = rule.get('error_details') or []
-        review_rows = rule.get('review_details') or []
-        finding_rows = error_rows + review_rows
         pairs = [
             (
                 str(row.get('account_name')).strip(),
                 None if row.get('item') is None or str(row.get('item')) == ''
                 else str(row.get('item')),
             )
-            for row in finding_rows
+            for row in error_rows
             if str(row.get('account_name') or '').strip()
         ]
         scoped_retailers = sorted({pair[0] for pair in pairs})
@@ -887,26 +777,16 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
             ]
         if not pairs and not scoped_retailers:
             continue
-        detail_name = rule['detail_name']
-        error_message = rule['error_message']
-        if rule['rule_key'] == 'review_body_count' and rule['review_count']:
-            detail_name = '리뷰 수와 리뷰본문 확인'
-            error_message = (
-                'Bestbuy의 리뷰본문 부족은 이상, Lowes의 네 가지 사이트 '
-                '특성 후보는 확인 필요로 구분합니다.'
-            )
         rule_summary.append({
             'rule_id': rule['rule_id'],
             'detail_code': rule['detail_code'],
-            'detail_name': detail_name,
+            'detail_name': rule['detail_name'],
             'field1': rule['field1'],
             'field2': rule.get('field2'),
             'validation_type': rule['rule_key'],
-            'error_message': error_message,
+            'error_message': rule['error_message'],
             'error_count': rule['error_count'],
-            'review_count': rule['review_count'],
-            'review_type_summary': rule['review_type_summary'],
-            'query': build_sea_display_query(
+            'query': build_seg_display_query(
                 inspection_date, result['product_line'], rule,
                 days=3,
                 retailers=[] if pairs else scoped_retailers,
@@ -926,19 +806,20 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
         'total_checked': result['total_checked'],
         'failed_records': result['failed_records'],
         'total_anomalies': result['total_anomalies'],
-        'review_needed_records': result['review_needed_records'],
-        'total_review_needed': result['total_review_needed'],
         'passed_records': result['passed_records'],
         'rule_summary': rule_summary,
         'table_name': result['table_name'],
         'date_col': result['date_col'],
-        'no_review_texts': '',
+        'no_review_texts': SEG_NO_REVIEW_TEXT,
         'retailers': result['retailers'],
     }
 
 
 def _detail_row_source_date(row, date_column):
-    return str(row.get(date_column) or '').strip()[:10]
+    value = row.get(date_column)
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return str(value or '').strip()[:10]
 
 
 def _detail_row_item_key(row):
@@ -957,10 +838,11 @@ def _detail_row_sort_key(row, date_column):
     return retailer, item, source_date, row_id.zfill(20)
 
 
-def get_sea_cross_field_rule_detail(
+def get_seg_cross_field_rule_detail(
         cursor, inspection_date, product_line, rule_id, days=1):
-    from_date = inspection_date - timedelta(days=max(1, int(days)) - 1)
-    result = build_sea_crossfield_result(
+    day_count = min(30, max(1, int(days)))
+    from_date = inspection_date - timedelta(days=day_count - 1)
+    result = build_seg_crossfield_result(
         cursor, inspection_date, product_line, from_date=from_date,
     )
     selected = next((
@@ -970,10 +852,9 @@ def get_sea_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    all_findings = selected['error_details'] + selected['review_details']
     target_source_date = result['source_date']
     target_findings = [
-        row for row in all_findings
+        row for row in selected['error_details']
         if _detail_row_source_date(row, result['date_col'])
         == target_source_date
     ]
@@ -983,11 +864,13 @@ def get_sea_cross_field_rule_detail(
         ) if item_key is not None
     }
     anomalies = []
-    for row in all_findings:
+    for row in selected['error_details']:
         row_source_date = _detail_row_source_date(row, result['date_col'])
-        is_target = row_source_date == target_source_date
         detail = dict(row)
-        if is_target:
+        # PostgreSQL timestamptz는 JSON에서 UTC로 직렬화될 수 있으므로,
+        # 화면에는 KST로 확정한 데이터일을 별도로 전달한다.
+        detail['row_source_date'] = row_source_date
+        if row_source_date == target_source_date:
             detail['row_role'] = 'target'
         elif _detail_row_item_key(row) in target_item_keys:
             detail['row_role'] = 'comparison_history'
@@ -997,14 +880,17 @@ def get_sea_cross_field_rule_detail(
     anomalies.sort(key=lambda row: _detail_row_sort_key(
         row, result['date_col'],
     ))
+
     retailers = sorted({
-        str(row.get('account_name') or 'Unknown').strip().title()
+        display_seg_retailer(row.get('account_name')) or 'Unknown'
         for row in anomalies
     })
     editable_columns = set()
     retailer_columns = {}
     for retailer in retailers:
-        columns = set(get_editable_columns(result['product_line'], retailer))
+        columns = set(get_seg_crossfield_editable_columns(
+            result['product_line'], retailer,
+        ))
         editable_columns.update(columns)
         retailer_columns[retailer] = sorted(columns)
 
@@ -1029,56 +915,47 @@ def get_sea_cross_field_rule_detail(
             'created_id': correction.get('created_id') or '',
             'created_at': str(correction.get('created_at') or ''),
         }
-        normal_reviews[f"{record_id}_{correction['column_name']}"] = payload
+        normal_reviews[
+            f"{record_id}_{correction['column_name']}"
+        ] = payload
         for column in editable_columns:
             normal_reviews.setdefault(f'{record_id}_{column}', payload)
 
     retailer_summary = {}
     for row in anomalies:
-        retailer = str(row.get('account_name') or 'Unknown').strip().title()
-        summary = retailer_summary.setdefault(retailer, {
-            'count': 0,
-            'review_count': 0,
-            'items': [],
-            'review_type_summary': {},
-        })
+        retailer = display_seg_retailer(
+            row.get('account_name')
+        ) or 'Unknown'
+        summary = retailer_summary.setdefault(
+            retailer, {'count': 0, 'items': []}
+        )
         item = str(row.get('item') or '')
         if item and item not in summary['items']:
             summary['items'].append(item)
-        if row.get('row_role') != 'target':
-            continue
-        if str(row.get('id')) not in normal_record_ids:
-            if row.get('finding_level') == 'review_needed':
-                summary['review_count'] += 1
-                issue_type = row.get('issue_type') or '확인 필요'
-                summary['review_type_summary'][issue_type] = (
-                    summary['review_type_summary'].get(issue_type, 0) + 1
-                )
-            else:
-                summary['count'] += 1
+        if (
+            row.get('row_role') == 'target'
+            and str(row.get('id')) not in normal_record_ids
+        ):
+            summary['count'] += 1
 
     retailer_pairs = {retailer: [] for retailer in retailer_summary}
     for row in anomalies:
-        retailer = str(row.get('account_name') or 'Unknown').strip().title()
+        retailer = display_seg_retailer(
+            row.get('account_name')
+        ) or 'Unknown'
         retailer_pairs.setdefault(retailer, []).append((
             retailer,
             None if row.get('item') is None or str(row.get('item')) == ''
             else str(row.get('item')),
         ))
     display_queries = {
-        retailer: build_sea_display_query(
-            inspection_date, result['product_line'], selected, days=days,
-            retailer=retailer,
+        retailer: build_seg_display_query(
+            inspection_date, result['product_line'], selected,
+            days=day_count, retailer=retailer,
             retailer_item_pairs=retailer_pairs.get(retailer, []),
         )
         for retailer in retailer_summary
     }
-    review_type_summary = {}
-    for summary in retailer_summary.values():
-        for issue_type, count in summary['review_type_summary'].items():
-            review_type_summary[issue_type] = (
-                review_type_summary.get(issue_type, 0) + count
-            )
 
     return {
         'found': True,
@@ -1086,7 +963,7 @@ def get_sea_cross_field_rule_detail(
         'inspection_date': result['inspection_date'],
         'source_date': result['source_date'],
         'offset_days': result['offset_days'],
-        'days': days,
+        'days': day_count,
         'product_line': result['product_line'].upper(),
         'rule_id': selected['rule_id'],
         'detail_code': selected['detail_code'],
@@ -1094,15 +971,9 @@ def get_sea_cross_field_rule_detail(
         'field2': selected.get('field2'),
         'validation_type': selected['rule_key'],
         'error_message': selected['error_message'],
-        'total_anomalies': sum(item['count'] for item in retailer_summary.values()),
-        'total_review_needed': sum(
-            item['review_count'] for item in retailer_summary.values()
+        'total_anomalies': sum(
+            item['count'] for item in retailer_summary.values()
         ),
-        'total_findings': sum(
-            item['count'] + item['review_count']
-            for item in retailer_summary.values()
-        ),
-        'review_type_summary': review_type_summary,
         'retailer_summary': retailer_summary,
         'anomalies': anomalies,
         'select_fields': selected.get('select_fields') or '',
@@ -1111,8 +982,9 @@ def get_sea_cross_field_rule_detail(
         'editable_columns': sorted(editable_columns),
         'normal_reviews': normal_reviews,
         'retailer_columns': retailer_columns,
-        'query': build_sea_display_query(
-            inspection_date, result['product_line'], selected, days=days,
+        'query': build_seg_display_query(
+            inspection_date, result['product_line'], selected,
+            days=day_count,
         ),
         'queries': display_queries,
     }

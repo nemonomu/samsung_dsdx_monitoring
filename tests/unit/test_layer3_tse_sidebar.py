@@ -40,6 +40,24 @@ SIEL_SOURCE_CONFIG = {
     },
 }
 
+SEG_SOURCE_CONFIG = {
+    'seg_tv': {
+        'category': 'TV',
+        'section_code': 'seg_tv_retail',
+        'display_name': 'SEG TV',
+    },
+    'seg_ref': {
+        'category': 'REF',
+        'section_code': 'seg_ref_retail',
+        'display_name': 'SEG REF',
+    },
+    'seg_ldy': {
+        'category': 'LDY',
+        'section_code': 'seg_ldy_retail',
+        'display_name': 'SEG LDY',
+    },
+}
+
 SEM_SOURCE_CONFIG = {
     'sem_tv': {
         'category': 'TV',
@@ -70,6 +88,10 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
                 'apps.common.siel_retail': module_stub(
                     'apps.common.siel_retail',
                     SIEL_SOURCE_CONFIG=SIEL_SOURCE_CONFIG,
+                ),
+                'apps.common.seg_retail': module_stub(
+                    'apps.common.seg_retail',
+                    SEG_SOURCE_CONFIG=SEG_SOURCE_CONFIG,
                 ),
                 'apps.common.sem_retail': module_stub(
                     'apps.common.sem_retail',
@@ -215,6 +237,32 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
                 )
                 for child in crossfield_group['items'][0]['children']
             ],
+        )
+
+    def test_seg_rules_are_grouped_below_siel(self):
+        context = self._load_context([
+            {'section_code': 'tv_retail', 'section_name': 'TV Retail'},
+            {'section_code': 'siel_tv_retail', 'section_name': 'SIEL TV'},
+            {'section_code': 'seg_tv_retail', 'section_name': 'SEG TV'},
+            {'section_code': 'seg_ref_retail', 'section_name': 'SEG REF'},
+            {'section_code': 'seg_ldy_retail', 'section_name': 'SEG LDY'},
+            {'section_code': 'tse_tv_retail', 'section_name': 'TSE TV'},
+        ])
+
+        group = context._build_sidebar_groups(
+            'cross_field', detail_code='seg_ref'
+        )[1]
+        self.assertEqual(
+            ['SEA Retail', 'SIEL Retail', 'SEG Retail',
+             'SEM Retail', 'TSE Retail'],
+            [item['name'] for item in group['items']],
+        )
+        seg_parent = group['items'][2]
+        self.assertTrue(seg_parent['active'])
+        self.assertEqual(
+            [('SEG TV', False), ('SEG REF', True), ('SEG LDY', False)],
+            [(child['name'], child['active'])
+             for child in seg_parent['children']],
         )
 
     def test_sea_identity_activates_renamed_item_without_text_inference(self):

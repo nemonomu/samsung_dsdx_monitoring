@@ -16,6 +16,13 @@ from apps.common.siel_retail import (
     get_siel_product_line_for_table,
     get_siel_source,
 )
+from apps.common.seg_retail import (
+    SEG_COUNTRY,
+    SEG_TABLE_TO_PRODUCT_LINE,
+    get_seg_crossfield_editable_columns,
+    get_seg_product_line_for_table,
+    get_seg_source,
+)
 from apps.common.tse_retail import (
     TSE_TABLE_TO_PRODUCT_LINE,
     get_tse_product_line_for_table,
@@ -51,12 +58,18 @@ VALID_TABLES_UPDATE = {
 } - DISABLED_SOURCE_TABLES
 VALID_TABLES_UPDATE.update(TSE_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SIEL_TABLE_TO_PRODUCT_LINE)
+VALID_TABLES_UPDATE.update(SEG_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SEM_TABLE_TO_PRODUCT_LINE)
 
 SIEL_CROSSFIELD_REVIEW_COLUMNS = frozenset({
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
     'detailed_review_content', 'final_sku_price', 'original_sku_price',
     'savings', 'page_type', 'main_rank', 'bsr_rank',
+})
+SEG_CROSSFIELD_REVIEW_COLUMNS = frozenset({
+    'star_rating', 'count_of_star_ratings',
+    'final_sku_price', 'original_sku_price', 'savings',
+    'page_type', 'main_rank', 'bsr_rank',
 })
 
 
@@ -66,6 +79,10 @@ def _is_tse_table(table_name):
 
 def _is_siel_table(table_name):
     return table_name in SIEL_TABLE_TO_PRODUCT_LINE
+
+
+def _is_seg_table(table_name):
+    return table_name in SEG_TABLE_TO_PRODUCT_LINE
 
 
 def _is_sem_table(table_name):
@@ -89,6 +106,13 @@ def _get_siel_edit_context(table_name):
     return get_siel_source(product_line)
 
 
+def _get_seg_edit_context(table_name):
+    if not _is_seg_table(table_name):
+        return None
+    product_line = get_seg_product_line_for_table(table_name)
+    return get_seg_source(product_line)
+
+
 def _get_sem_edit_context(table_name):
     if not _is_sem_table(table_name) or not all((
         get_sem_editable_columns,
@@ -110,6 +134,8 @@ def _get_product_line(table_name):
         return get_tse_product_line_for_table(table_name)
     if _is_siel_table(table_name):
         return get_siel_product_line_for_table(table_name)
+    if _is_seg_table(table_name):
+        return get_seg_product_line_for_table(table_name)
     if _is_sem_table(table_name):
         return get_sem_product_line_for_table(table_name)
     sea_context = _get_sea_edit_context(table_name)
@@ -220,6 +246,43 @@ def _select_sem_record(
     ))
 
 
+def _select_seg_record(
+        cursor, source, select_columns, row_id, inspection_date):
+    mapping = resolve_monitoring_date(
+        inspection_date, SEG_COUNTRY, source['source_key']
+    )
+    table_name = source['table_name']
+    date_column = source['date_column']
+    source_date = mapping['source_date']
+    redirect_scope = (
+        "AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))) <> 'amazon' "
+        "OR source.redirect IS NOT TRUE)"
+        if source.get('has_redirect') else ''
+    )
+    anchor_redirect_scope = redirect_scope.replace('source.', 'anchor.')
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {table_name} source
+        WHERE source.id = %s
+          AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
+              IN ('main', 'bsr')
+          {redirect_scope}
+          AND source.batch_id IS NOT DISTINCT FROM (
+              SELECT anchor.batch_id
+              FROM {table_name} anchor
+              WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+                AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
+                    LOWER(BTRIM(CAST(source.account_name AS TEXT)))
+                AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+                {anchor_redirect_scope}
+              ORDER BY anchor.id DESC
+              LIMIT 1
+          )
+    """, (row_id, source_date, SEG_COUNTRY, source_date))
+
+
 def _validate_edit_target(table_name, column_name):
     """Validate dynamic SQL identifiers at the service boundary as well."""
     if table_name not in VALID_TABLES_UPDATE:
@@ -281,11 +344,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
+    seg_context = _get_seg_edit_context(table_name)
     sem_context = _get_sem_edit_context(table_name)
     if sea_context:
         table_name = sea_context['table_name']
     elif siel_context:
         table_name = siel_context['table_name']
+    elif seg_context:
+        table_name = seg_context['table_name']
     elif sem_context:
         table_name = sem_context['table_name']
 
@@ -297,7 +363,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     select_columns = (
         f"{column_name}, batch_id, account_name, item"
-        if _is_tse_table(table_name) or _is_sem_table(table_name)
+        if (_is_tse_table(table_name) or _is_sem_table(table_name)
+            or _is_seg_table(table_name))
         else f"{column_name}, NULL AS batch_id, account_name, item"
     )
     if _is_tse_table(table_name):
@@ -320,6 +387,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         _select_siel_record(
             cursor, siel_context, select_columns, row_id, crawl_date
         )
+    elif seg_context:
+        _select_seg_record(
+            cursor, seg_context, select_columns, row_id, crawl_date
+        )
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
@@ -338,6 +409,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_cols = sem_context['editable_columns']
     elif siel_context:
         editable_cols = get_siel_crossfield_editable_columns(
+            product_line, retailer
+        )
+    elif seg_context:
+        editable_cols = get_seg_crossfield_editable_columns(
             product_line, retailer
         )
     else:
@@ -393,11 +468,14 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
+    seg_context = _get_seg_edit_context(table_name)
     sem_context = _get_sem_edit_context(table_name)
     if sea_context:
         table_name = sea_context['table_name']
     elif siel_context:
         table_name = siel_context['table_name']
+    elif seg_context:
+        table_name = seg_context['table_name']
     elif sem_context:
         table_name = sem_context['table_name']
     try:
@@ -427,6 +505,11 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     elif siel_context:
         _select_siel_record(
             cursor, siel_context,
+            f'{column_name}, account_name, item', record_id, crawl_date,
+        )
+    elif seg_context:
+        _select_seg_record(
+            cursor, seg_context,
             f'{column_name}, account_name, item', record_id, crawl_date,
         )
     else:
@@ -462,6 +545,26 @@ def save_review(cursor, conn, table_name, record_id, column_name,
                 }
         else:
             editable_cols = get_editable_columns(product_line, retailer)
+            if column_name not in editable_cols:
+                return {
+                    'error': f'{column_name} 컬럼은 수정할 수 없습니다',
+                    'status': 403,
+                }
+
+    if seg_context:
+        is_crossfield_confirmation = (
+            status == 'normal' and correction_type == 'cross_field'
+        )
+        if is_crossfield_confirmation:
+            if column_name not in SEG_CROSSFIELD_REVIEW_COLUMNS:
+                return {
+                    'error': f'{column_name} 컬럼은 정상 확인할 수 없습니다',
+                    'status': 403,
+                }
+        else:
+            editable_cols = get_seg_crossfield_editable_columns(
+                product_line, retailer
+            )
             if column_name not in editable_cols:
                 return {
                     'error': f'{column_name} 컬럼은 수정할 수 없습니다',

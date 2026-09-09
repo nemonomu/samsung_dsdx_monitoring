@@ -10,6 +10,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.siel_retail import SIEL_SOURCE_CONFIG
+from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 from apps.dx.dx_layer3.cross_field import (
@@ -18,6 +19,7 @@ from apps.dx.dx_layer3.cross_field import (
     siel_services,
     tse_services,
 )
+from apps.dx.dx_layer3.cross_field import seg_services
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -422,6 +424,50 @@ def layer_stats(request):
                         'failed': siel_failed,
                         'finding_count': siel_findings,
                         'status': get_status(siel_failed, siel_total),
+                    })
+
+            # SEG TV/REF/LDY는 문자열 수집일의 리테일러별 최신 MAIN
+            # 배치와 같은 MAIN+BSR을 검증하며 Amazon redirect는 제외한다.
+            if run_crossfield:
+                seg_product_lines = (
+                    list(SEG_SOURCE_CONFIG)
+                    if product_line == 'all'
+                    else [product_line]
+                    if product_line in SEG_SOURCE_CONFIG
+                    else []
+                )
+                for seg_product_line in seg_product_lines:
+                    try:
+                        seg_result = seg_services.get_seg_cross_field_summary(
+                            cursor, target_date, seg_product_line,
+                        )
+                        if not seg_result.get('configured'):
+                            continue
+                        seg_total = seg_result['total_checked']
+                        seg_failed = seg_result['failed_records']
+                        seg_findings = seg_result['total_anomalies']
+                        seg_passed = seg_result.get(
+                            'passed_records', max(0, seg_total - seg_failed),
+                        )
+                    except Exception as e:
+                        log_error(e)
+                        continue
+
+                    total_checked += seg_total
+                    total_anomalies += seg_findings
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{seg_result['label']} 논리적 일관성",
+                        'detail_code': seg_product_line,
+                        'description': (
+                            '별점·별점 수, 순위, 원가·판매가·savings '
+                            '논리 검증'
+                        ),
+                        'checked': seg_total,
+                        'passed': seg_passed,
+                        'failed': seg_failed,
+                        'finding_count': seg_findings,
+                        'status': get_status(seg_failed, seg_total),
                     })
 
             if False and run_crossfield and product_line in ['hhp', 'all']:

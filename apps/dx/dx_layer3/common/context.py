@@ -8,6 +8,7 @@ from apps.dx.dx_layer3.dashboard.services import (
     load_category_rules,
 )
 from apps.common.siel_retail import SIEL_SOURCE_CONFIG
+from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 
@@ -59,6 +60,9 @@ def _get_sidebar_items():
     siel_section_codes = {
         source['section_code'] for source in SIEL_SOURCE_CONFIG.values()
     }
+    seg_section_codes = {
+        source['section_code'] for source in SEG_SOURCE_CONFIG.values()
+    }
     sem_section_codes = {
         source['section_code'] for source in SEM_SOURCE_CONFIG.values()
     }
@@ -75,6 +79,7 @@ def _get_sidebar_items():
         if (
             not section_name
             or section_code in siel_section_codes
+            or section_code in seg_section_codes
             or section_code in sem_section_codes
             or section_code in tse_section_codes
         ):
@@ -125,6 +130,29 @@ def _get_sidebar_items():
             'children': siel_children,
         })
 
+    seg_children = []
+    for detail_code, source in SEG_SOURCE_CONFIG.items():
+        if source['section_code'] not in active_sections:
+            continue
+        seg_children.append({
+            'name': source['display_name'],
+            'label': source['category'],
+            'detail_code': detail_code,
+        })
+    seg_item_index = None
+    if seg_children:
+        seg_item_index = (
+            siel_item_index + 1
+            if siel_item_index is not None
+            else sea_item_index + 1
+            if sea_item_index is not None
+            else len(crossfield_items)
+        )
+        crossfield_items.insert(seg_item_index, {
+            'name': 'SEG Retail',
+            'children': seg_children,
+        })
+
     active_tse_sections = active_sections
     tse_children = []
     for detail_code, source in TSE_SOURCE_CONFIG.items():
@@ -141,7 +169,9 @@ def _get_sidebar_items():
             'children': tse_children,
         }
         insert_at = (
-            siel_item_index + 1
+            seg_item_index + 1
+            if seg_item_index is not None
+            else siel_item_index + 1
             if siel_item_index is not None
             else sea_item_index + 1
             if sea_item_index is not None

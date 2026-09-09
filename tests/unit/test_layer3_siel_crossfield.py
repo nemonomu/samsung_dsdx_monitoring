@@ -52,7 +52,7 @@ def _amazon_row(**overrides):
         'bsr_rank': None,
         'final_sku_price': '₹900',
         'original_sku_price': '₹1,000',
-        'savings': None,
+        'savings': '100',
         'redirect': False,
     }
     row.update(overrides)
@@ -135,6 +135,32 @@ class SielCrossfieldEvaluationTests(unittest.TestCase):
             count_of_star_ratings='0',
         ))
         self.assertNotIn('rating_range', allowed_no_review)
+
+    def test_amazon_price_presence_rules_include_savings(self):
+        missing_savings = siel_services.evaluate_siel_row(_amazon_row(
+            final_sku_price='₹900', original_sku_price='₹1,000',
+            savings=None,
+        ))
+        self.assertIn('savings_missing', missing_savings)
+        self.assertNotIn(
+            'savings_missing',
+            siel_services.evaluate_siel_row(_amazon_row(
+                final_sku_price='₹1,000', original_sku_price='₹1,000',
+                savings=None,
+            )),
+        )
+        self.assertIn(
+            'original_missing',
+            siel_services.evaluate_siel_row(_amazon_row(
+                original_sku_price=None, savings='100',
+            )),
+        )
+        self.assertIn(
+            'final_missing',
+            siel_services.evaluate_siel_row(_amazon_row(
+                final_sku_price=None, savings='100',
+            )),
+        )
 
     def test_flipkart_review_body_both_directions(self):
         errors = siel_services.evaluate_siel_row(_flipkart_row(
@@ -370,13 +396,13 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
 
 
 class SielCrossfieldSeedTests(unittest.TestCase):
-    def test_seed_contains_three_sources_and_sixteen_rules_each(self):
+    def test_seed_contains_three_sources_and_twenty_rules_each(self):
         from pathlib import Path
 
         sql = Path('sql/seed_siel_layer3_crossfield.sql').read_text(
             encoding='utf-8'
         )
-        self.assertIn('Expected 48 active SIEL cross-field rules', sql)
+        self.assertIn('Expected 60 active SIEL cross-field rules', sql)
         for section in (
             'siel_tv_retail', 'siel_ref_retail', 'siel_ldy_retail'
         ):

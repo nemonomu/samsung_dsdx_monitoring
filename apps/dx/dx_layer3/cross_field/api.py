@@ -10,6 +10,7 @@ from apps.common.response import safe_error, log_error
 from . import services
 from . import sea_services
 from . import siel_services
+from . import seg_services
 from . import tse_services
 from . import sem_services
 
@@ -24,6 +25,7 @@ def cross_field_detail(request):
         product_line_key in {'tv', 'sea_tv'}
         or product_line_key.startswith('sea_')
         or product_line_key.startswith('siel_')
+        or product_line_key.startswith('seg_')
         or product_line_key.startswith('tse_')
         or product_line_key.startswith('sem_')
     ) else 1
@@ -44,6 +46,7 @@ def cross_field_detail(request):
     is_tse = product_line_key in ('tse_tv', 'tse_ref', 'tse_ldy')
     is_sem = product_line_key in ('sem_tv', 'sem_ref', 'sem_ldy')
     is_siel = product_line_key in ('siel_tv', 'siel_ref', 'siel_ldy')
+    is_seg = product_line_key in ('seg_tv', 'seg_ref', 'seg_ldy')
     is_sea = product_line_key in ('sea_ref', 'sea_ldy')
 
     # product_line을 section으로 변환
@@ -51,6 +54,21 @@ def cross_field_detail(request):
     section = section_map.get(product_line, f'{product_line}_retail')
 
     try:
+        if is_seg:
+            with dx_connection() as (conn, cursor):
+                if rule_id:
+                    result = seg_services.get_seg_cross_field_rule_detail(
+                        cursor, target_date, product_line, rule_id, days,
+                    )
+                else:
+                    result = seg_services.get_seg_cross_field_summary(
+                        cursor, target_date, product_line,
+                    )
+            if rule_id and not result.get('found'):
+                return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})
+            result.pop('found', None)
+            return JsonResponse(result)
+
         if is_sem:
             with dx_connection() as (conn, cursor):
                 if rule_id:

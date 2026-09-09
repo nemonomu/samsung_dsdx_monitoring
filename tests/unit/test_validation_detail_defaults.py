@@ -174,6 +174,12 @@ class ValidationDetailDefaultTests(unittest.TestCase):
                 'apps.dx.dx_layer3.cross_field.sea_services'
             ),
             'apps.dx.dx_layer3.cross_field.siel_services': siel_services,
+            'apps.dx.dx_layer3.cross_field.seg_services': module_stub(
+                'apps.dx.dx_layer3.cross_field.seg_services',
+                get_seg_cross_field_rule_detail=lambda _cursor, _date,
+                _product_line, _rule_id, days: {'found': True, 'days': days},
+                get_seg_cross_field_summary=lambda *_args: {},
+            ),
             'apps.dx.dx_layer3.cross_field.tse_services': tse_services,
             'apps.dx.dx_layer3.cross_field.sem_services': module_stub(
                 'apps.dx.dx_layer3.cross_field.sem_services',
@@ -197,6 +203,12 @@ class ValidationDetailDefaultTests(unittest.TestCase):
         self.assertEqual(3, captured['days'])
 
         for product_line in ('sem_tv', 'sem_ref', 'sem_ldy'):
+            response = api.cross_field_detail(FakeRequest({
+                'date': '2026-09-01', 'type': product_line, 'rule_id': '1',
+            }))
+            self.assertEqual(3, response.data['days'])
+
+        for product_line in ('seg_tv', 'seg_ref', 'seg_ldy'):
             response = api.cross_field_detail(FakeRequest({
                 'date': '2026-09-01', 'type': product_line, 'rule_id': '1',
             }))

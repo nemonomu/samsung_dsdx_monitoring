@@ -4,6 +4,7 @@ from apps.common import (
     inspection_dates,
     retail_validation,
     sea_retail,
+    seg_retail,
     siel_retail,
     tse_retail,
 )
@@ -33,6 +34,7 @@ services = load_module(
         'apps.common.retail_validation': retail_validation,
         'apps.common.sea_retail': sea_retail,
         'apps.common.siel_retail': siel_retail,
+        'apps.common.seg_retail': seg_retail,
         'apps.common.tse_retail': tse_retail,
     },
 )
@@ -154,6 +156,34 @@ class SielLayer3DataEditTests(unittest.TestCase):
 
         self.assertEqual(403, result['status'])
         self.assertIn('정상 확인할 수 없습니다', result['error'])
+
+    def test_seg_price_cell_uses_latest_batch_and_redirect_scope(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('899,99€', 'a_20260909', 'Amazon', 'A-1')},
+            {},
+            {},
+        ])
+        conn = FakeConnection()
+        table = 'dx_seg.dx_seg_tv_retail_com'
+
+        result = services.update_cell_value(
+            cursor, conn, table, 1, 'final_sku_price', '899,00€',
+            '2026-09-09', 'cross_field', 'tester', '가격 수정', 101,
+        )
+
+        self.assertTrue(result['success'])
+        source_sql, source_params = cursor.calls[0]
+        self.assertIn(f'FROM {table} source', source_sql)
+        self.assertIn('source.redirect IS NOT TRUE', source_sql)
+        self.assertIn('source.batch_id IS NOT DISTINCT FROM', source_sql)
+        self.assertEqual(
+            (1, '2026-09-09', 'SEG', '2026-09-09'), source_params,
+        )
+        self.assertIn(
+            f'UPDATE {table} SET final_sku_price = %s',
+            cursor.calls[1][0],
+        )
+        self.assertEqual(1, conn.commits)
 
 
 if __name__ == '__main__':

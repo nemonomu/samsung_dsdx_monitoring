@@ -2,7 +2,7 @@
 -- PostgreSQL only. Review and run manually in DBeaver.
 -- Application code evaluates these allow-listed rule keys; stored query text
 -- is informational and is never executed.
--- Exact expected active seed rows: 48 (16 per product line).
+-- Exact expected active seed rows: 60 (20 per product line).
 
 BEGIN;
 
@@ -64,6 +64,18 @@ VALUES
      'final_sku_price', 'original_sku_price',
      '최종가와 원가로 계산한 할인율이 90% 이상입니다.',
      'final_sku_price|original_sku_price|savings', 60),
+    ('Amazon', 'savings_missing', '할인 가격 존재 시 savings 확인',
+     'savings', 'final_sku_price|original_sku_price',
+     '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.',
+     'final_sku_price|original_sku_price|savings', 110),
+    ('Amazon', 'original_missing', '판매가·savings 존재 시 원가 확인',
+     'original_sku_price', 'final_sku_price|savings',
+     '판매가와 savings가 있는데 original_sku_price가 NULL 또는 빈값입니다.',
+     'final_sku_price|original_sku_price|savings', 120),
+    ('Amazon', 'final_missing', '원가·savings 존재 시 최종가 확인',
+     'final_sku_price', 'original_sku_price|savings',
+     '원가 또는 savings가 있는데 final_sku_price가 NULL 또는 빈값입니다.',
+     'final_sku_price|original_sku_price|savings', 125),
 
     ('Flipkart', 'rating_count_presence', '별점과 별점 수 존재 일치',
      'star_rating', 'count_of_star_ratings',
@@ -93,14 +105,18 @@ VALUES
      'final_sku_price', 'original_sku_price',
      'final_sku_price가 original_sku_price보다 큽니다.',
      'final_sku_price|original_sku_price|savings', 50),
-    ('Flipkart', 'savings_missing', '최종가·원가 존재 시 할인율 확인',
+    ('Flipkart', 'savings_missing', '할인 가격 존재 시 savings 확인',
      'savings', 'final_sku_price|original_sku_price',
-     '최종가와 원가가 있는데 savings가 NULL 또는 빈값입니다.',
+     '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.',
      'final_sku_price|original_sku_price|savings', 110),
     ('Flipkart', 'original_missing', '최종가·할인율 존재 시 원가 확인',
      'original_sku_price', 'final_sku_price|savings',
      '최종가와 savings가 있는데 original_sku_price가 NULL 또는 빈값입니다.',
      'final_sku_price|original_sku_price|savings', 120),
+    ('Flipkart', 'final_missing', '원가·savings 존재 시 최종가 확인',
+     'final_sku_price', 'original_sku_price|savings',
+     '원가 또는 savings가 있는데 final_sku_price가 NULL 또는 빈값입니다.',
+     'final_sku_price|original_sku_price|savings', 125),
     ('Flipkart', 'savings_rate_match', '표시 할인율과 가격 차이 일치',
      'savings', 'original_sku_price|final_sku_price',
      'savings와 (원가-최종가)/원가의 차이가 1%p를 초과합니다.',
@@ -212,16 +228,16 @@ BEGIN
      AND LOWER(BTRIM(target.retailer)) = LOWER(BTRIM(seed.retailer))
     WHERE target.is_active IS TRUE;
 
-    IF active_seed_count <> 48 THEN
+    IF active_seed_count <> 60 THEN
         RAISE EXCEPTION
-            'Expected 48 active SIEL cross-field rules, found %',
+            'Expected 60 active SIEL cross-field rules, found %',
             active_seed_count;
     END IF;
 END $$;
 
 COMMIT;
 
--- Verification: three rows, each with 16 active configured rules.
+-- Verification: three rows, each with 20 active configured rules.
 SELECT
     section_code,
     table_name,
