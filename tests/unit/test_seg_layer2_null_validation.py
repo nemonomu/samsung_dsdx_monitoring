@@ -227,6 +227,35 @@ class SegFormatValidationTests(unittest.TestCase):
         )
         self.assertIn('4,00€', amazon_rule['pattern'])
 
+    def test_amazon_savings_reports_missing_thousands_separator(self):
+        expected_reason = (
+            '1,000€ 이상 금액에 천 단위 구분자(.)가 누락되었습니다.'
+        )
+        for savings in ('4700,00€', '4500,00€', '4498,02€'):
+            with self.subTest(savings=savings):
+                errors = seg_validation.evaluate_format_row(
+                    {'savings': savings}, 'seg_tv', 'Amazon'
+                )
+                self.assertEqual(expected_reason, errors['savings'])
+
+        for savings in ('999,99€', '1.000,00€', '4.700,00€'):
+            with self.subTest(savings=savings):
+                self.assertNotIn(
+                    'savings',
+                    seg_validation.evaluate_format_row(
+                        {'savings': savings}, 'seg_tv', 'Amazon'
+                    ),
+                )
+
+        amazon_rule = next(
+            rule for rule in seg_validation.get_format_rule_details(
+                'seg_tv', 'Amazon'
+            )
+            if rule['field'] == 'savings'
+        )
+        self.assertIn('천 단위 구분자(.) 필수', amazon_rule['description'])
+        self.assertIn('4700,00€는 오류', amazon_rule['pattern'])
+
     def test_csv_variants_are_allowed_and_invalid_values_are_reported(self):
         valid_ref = seg_validation.evaluate_format_row({
             'final_sku_price': '1.099,00 €',
