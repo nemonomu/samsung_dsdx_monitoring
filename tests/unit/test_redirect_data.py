@@ -49,6 +49,25 @@ class RedirectDataRepositoryTests(unittest.TestCase):
         self.assertIn('source.redirect IS TRUE', sql)
         self.assertEqual(['2026-08-31', '2026-08-31'], params)
 
+    def test_seg_query_uses_text_date_and_allow_listed_table(self):
+        source = {
+            'table_name': 'dx_seg.dx_seg_tv_retail_com',
+            'date_mode': 'text_date',
+            'date_column': 'crawl_strdatetime',
+        }
+        cursor = RecordingCursor(one=(4,))
+
+        count = self.repository.get_redirect_count_db(
+            cursor, source, date(2026, 9, 9),
+        )
+
+        self.assertEqual(4, count)
+        sql, params = cursor.calls[0]
+        self.assertIn('FROM dx_seg.dx_seg_tv_retail_com source', sql)
+        self.assertIn('source.crawl_strdatetime AS TEXT', sql)
+        self.assertIn('source.redirect IS TRUE', sql)
+        self.assertEqual(['2026-09-09'], params)
+
     def test_sea_query_preserves_batch_date_scope(self):
         source = {
             'table_name': 'public.tv_retail_com',
@@ -112,6 +131,9 @@ class RedirectDataServiceTests(unittest.TestCase):
                 SEA_RETAIL_SOURCES={
                     'tv': {'table_name': 'public.tv_retail_com'},
                 },
+            ),
+            'apps.common.seg_retail': module_stub(
+                'apps.common.seg_retail', SEG_SOURCE_CONFIG={},
             ),
             'apps.common.siel_retail': module_stub(
                 'apps.common.siel_retail',
@@ -203,8 +225,10 @@ class RedirectDataServiceTests(unittest.TestCase):
 
         self.assertIn('id="redirectCountry"', template)
         self.assertIn('<option value="SIEL">SIEL</option>', template)
+        self.assertIn('<option value="SEG">SEG</option>', template)
         self.assertIn('id="redirectProduct"', template)
         self.assertIn("SIEL: ['TV', 'REF', 'LDY']", script)
+        self.assertIn("SEG: ['TV', 'REF']", script)
         self.assertIn('country: scope.country', script)
         self.assertIn('product: scope.product', script)
 

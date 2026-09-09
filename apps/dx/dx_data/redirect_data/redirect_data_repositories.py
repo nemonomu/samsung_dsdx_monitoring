@@ -6,6 +6,8 @@ _ALLOWED_TABLES = frozenset({
     'dx_siel.dx_siel_tv_retail_com',
     'dx_siel.dx_siel_ref_retail_com',
     'dx_siel.dx_siel_ldy_retail_com',
+    'dx_seg.dx_seg_tv_retail_com',
+    'dx_seg.dx_seg_ref_retail_com',
 })
 
 
@@ -26,6 +28,12 @@ def _source_scope(source):
             "AND source.crawl_datetime < "
             "((%s::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')"
         )
+    elif source['date_mode'] == 'text_date':
+        if source.get('date_column') != 'crawl_strdatetime':
+            raise ValueError('허용되지 않은 redirect 날짜 컬럼')
+        date_where = (
+            "LEFT(BTRIM(CAST(source.crawl_strdatetime AS TEXT)), 10) = %s"
+        )
     else:
         raise ValueError(f"허용되지 않은 redirect 날짜 형식: {source['date_mode']}")
 
@@ -36,6 +44,8 @@ def _date_params(source, target_date):
     date_text = str(target_date)[:10]
     if source['date_mode'] == 'batch':
         return [date_text.replace('-', '')]
+    if source['date_mode'] == 'text_date':
+        return [date_text]
     return [date_text, date_text]
 
 

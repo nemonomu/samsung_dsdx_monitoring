@@ -20,7 +20,10 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
     'tse_ldy_retail',
     'sem_tv_retail',
     'sem_ref_retail',
-    'sem_ldy_retail'
+    'sem_ldy_retail',
+    'seg_tv_retail',
+    'seg_ref_retail',
+    'seg_ldy_retail'
 ]);
 const SIEL_NULL_HISTORY_TABLES = new Set([
     'siel_tv_retail',
@@ -402,14 +405,17 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSeaRetail = isSeaTv || isSeaAppliance;
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || tableParam === 'youtube';
-    const isRetail = isLegacyRetail || isSeaRetail || isSielRetail || isSemRetail;
+    const isRetail = isLegacyRetail || isSeaRetail || isSielRetail
+        || isSemRetail || isSegRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
         || (isSeaAppliance && data.supports_day_history === true)
         || (isSielRetail && data.supports_day_history === true)
         || (isSemRetail && data.supports_day_history === true)
+        || (isSegRetail && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
     const defaultDays = getDefaultNullHistoryDays(tableParam);
     const currentDays = supportsDayHistory
@@ -461,7 +467,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
-            ${(isSeaRetail || isSielRetail || isSemRetail || isTseRetail) ? daysInputHtml : ''}
+            ${(isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isTseRetail) ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL 오류 (${records.length}건)</h4>`;
     }
@@ -545,14 +551,23 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                         + (currentDays > 1 ? 'ORDER BY source.item' : 'ORDER BY item')
                 );
                 const semHistoryQuery = `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(BTRIM(crawl_datetime), 10))\n         LEFT(BTRIM(crawl_datetime), 10) AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE LEFT(BTRIM(crawl_datetime), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND LOWER(BTRIM(account_name)) = LOWER('${retailerName}')\n    AND UPPER(BTRIM(country)) = 'SEM'\n  ORDER BY source_date, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(BTRIM(source.${dateColumn}), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(BTRIM(source.account_name)) = LOWER('${retailerName}')\n  AND UPPER(BTRIM(source.country)) = 'SEM'\n  AND source.item IN (${inClause})\nORDER BY source.item, source.${dateColumn} ASC;`;
+                const segRedirectScope = retailerName.toLowerCase() === 'amazon'
+                    ? '\n  AND source.redirect IS NOT TRUE'
+                    : '';
+                const segAnchorRedirectScope = retailerName.toLowerCase() === 'amazon'
+                    ? '\n    AND redirect IS NOT TRUE'
+                    : '';
+                const segHistoryQuery = `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10))\n         LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10) AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND LOWER(BTRIM(account_name)) = LOWER('${retailerName}')\n    AND UPPER(BTRIM(country)) = 'SEG'\n    AND LOWER(BTRIM(page_type)) = 'main'${segAnchorRedirectScope}\n  ORDER BY source_date, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(BTRIM(CAST(source.${dateColumn} AS TEXT)), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(BTRIM(source.account_name)) = LOWER('${retailerName}')\n  AND UPPER(BTRIM(source.country)) = 'SEG'\n  AND LOWER(BTRIM(source.page_type)) IN ('main', 'bsr')\n  AND source.item IN (${inClause})${segRedirectScope}\nORDER BY source.item, source.${dateColumn} ASC;`;
                 const query3Days = isSielRetail
                     ? scopedSielHistoryQuery
                     : isSemRetail
                     ? semHistoryQuery
+                    : isSegRetail
+                    ? segHistoryQuery
                     : isSeaRetail
                     ? seaHistoryQuery
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
-                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail)
+                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">
@@ -619,7 +634,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         editableCols: data.editable_cols || [],
         actualTable: data.actual_table || '',
         crawlDate: date,
-        editableDate: (isSeaRetail || isSielRetail)
+        editableDate: (isSeaRetail || isSielRetail || isSegRetail)
             ? (data.source_date || date) : date,
         dateColumn: data.date_column || '',
         normalReviews: data.normal_reviews || {},

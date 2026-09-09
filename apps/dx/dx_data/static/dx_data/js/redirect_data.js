@@ -5,7 +5,8 @@
     var pageSize = 20;
     var productsByCountry = {
         SEA: ['TV'],
-        SIEL: ['TV', 'REF', 'LDY']
+        SIEL: ['TV', 'REF', 'LDY'],
+        SEG: ['TV', 'REF']
     };
 
     function escapeHtml(value) {

@@ -40,6 +40,19 @@ def sem_validation_stub():
     )
 
 
+def seg_validation_stub():
+    """No-op SEG dependency for isolated legacy Layer 2 service tests."""
+    return module_stub(
+        'apps.dx.dx_layer2.seg_validation',
+        product_line_for=lambda _value: None,
+        append_null_stats=lambda *_args, **_kwargs: 0,
+        null_detail=lambda *_args, **_kwargs: {},
+        SEG_SOURCE_CONFIG={},
+        get_review_allowed_columns=lambda *_args, **_kwargs: (),
+        fetch_review_record=lambda *_args, **_kwargs: None,
+    )
+
+
 def load_module(relative_path, module_name, stubs=None):
     path = REPO_ROOT / relative_path
     spec = importlib.util.spec_from_file_location(module_name, path)

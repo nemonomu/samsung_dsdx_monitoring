@@ -80,7 +80,7 @@ assert(formatTemplate.includes(
     "dx_layer2/js/format_validation.js' %}?v=20260907-1"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20260904-2"
+    "dx_layer2/js/dashboard.js' %}?v=20260909-1"
 ));
 
 console.log('Layer 2 SIEL format/duplicate UI tests passed.');

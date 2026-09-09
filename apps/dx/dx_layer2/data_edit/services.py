@@ -68,6 +68,25 @@ except (ImportError, AttributeError):
     get_sem_source = None
     resolve_sem_table = None
 
+try:
+    from apps.common.seg_retail import (
+        SEG_COUNTRY,
+        SEG_TABLE_TO_PRODUCT_LINE,
+        get_seg_all_null_columns,
+        get_seg_null_columns,
+        get_seg_product_line,
+        get_seg_source,
+        resolve_seg_table,
+    )
+except (ImportError, AttributeError):
+    SEG_COUNTRY = 'SEG'
+    SEG_TABLE_TO_PRODUCT_LINE = {}
+    get_seg_all_null_columns = None
+    get_seg_null_columns = None
+    get_seg_product_line = None
+    get_seg_source = None
+    resolve_seg_table = None
+
 
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
@@ -79,6 +98,8 @@ VALID_TABLES_UPDATE = ({
     SIEL_TABLE_TO_PRODUCT_LINE
 ) | set(
     SEM_TABLE_TO_PRODUCT_LINE
+) | set(
+    SEG_TABLE_TO_PRODUCT_LINE
 )) - DISABLED_SOURCE_TABLES
 
 
@@ -154,6 +175,27 @@ def _get_sem_edit_context(table_name):
             'product_line': product_line,
             'source': get_sem_source(product_line),
             'max_editable': set(get_sem_editable_columns(product_line)),
+        }
+    except (ImportError, AttributeError, ValueError):
+        return None
+
+
+def _get_seg_edit_context(table_name):
+    if not all((
+        get_seg_all_null_columns,
+        get_seg_product_line,
+        get_seg_source,
+        resolve_seg_table,
+    )):
+        return None
+    try:
+        canonical_table = resolve_seg_table(table_name)
+        product_line = get_seg_product_line(canonical_table)
+        return {
+            'table_name': canonical_table,
+            'product_line': product_line,
+            'source': get_seg_source(product_line),
+            'max_editable': set(get_seg_all_null_columns(product_line)),
         }
     except (ImportError, AttributeError, ValueError):
         return None
@@ -235,6 +277,42 @@ def _select_sem_edit_record(
     ))
 
 
+def _select_seg_edit_record(
+        cursor, context, select_columns, row_id, inspection_date):
+    source = context['source']
+    mapping = resolve_monitoring_date(
+        inspection_date, SEG_COUNTRY, source['source_key']
+    )
+    table_name = context['table_name']
+    date_column = source['date_column']
+    source_date = mapping['source_date']
+    redirect_scope = (
+        ' AND NOT (LOWER(BTRIM(CAST(source.account_name AS TEXT))) = '
+        "'amazon' AND source.redirect IS TRUE)"
+        if source.get('has_redirect') else ''
+    )
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {table_name} source
+        WHERE source.id = %s
+          AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {redirect_scope}
+          AND source.batch_id IS NOT DISTINCT FROM (
+              SELECT anchor.batch_id
+              FROM {table_name} anchor
+              WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+                AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
+                    LOWER(BTRIM(CAST(source.account_name AS TEXT)))
+                AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+                {redirect_scope.replace('source.', 'anchor.')}
+              ORDER BY anchor.id DESC
+              LIMIT 1
+          )
+    """, (row_id, source_date, SEG_COUNTRY, source_date))
+
+
 def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                       crawl_date, correction_type, username, memo):
     """
@@ -253,6 +331,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     # product_line 결정
     tse_context = _get_tse_edit_context(table_name)
     sem_context = _get_sem_edit_context(table_name)
+    seg_context = _get_seg_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
     sea_context = _get_sea_edit_context(table_name)
     if tse_context:
@@ -265,6 +344,13 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         product_line = sem_context['product_line']
         if column_name not in sem_context['max_editable']:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+    elif seg_context:
+        table_name = seg_context['table_name']
+        product_line = seg_context['product_line']
+        if correction_type_value != 'null_check':
+            return {'error': 'SEG는 NULL 검증 값만 수정할 수 있습니다', 'status': 403}
+        if column_name not in seg_context['max_editable']:
+            return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif sea_context:
         table_name = sea_context['table_name']
         product_line = sea_context['product_line']
@@ -276,7 +362,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # 기존 값 + retailer + item 조회
     select_columns = f"{column_name}, account_name, item"
-    if tse_context or sem_context:
+    if tse_context or sem_context or seg_context:
         select_columns += ", batch_id"
     if tse_context:
         cursor.execute(f"""
@@ -293,6 +379,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif sem_context:
         _select_sem_edit_record(
             cursor, sem_context, select_columns, row_id, crawl_date
+        )
+    elif seg_context:
+        _select_seg_edit_record(
+            cursor, seg_context, select_columns, row_id, crawl_date
         )
     elif sea_context:
         date_contract = resolve_monitoring_date(
@@ -338,7 +428,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else ''
-    batch_id = row[3] if tse_context or sem_context else None
+    batch_id = row[3] if tse_context or sem_context or seg_context else None
 
     # editable 컬럼 확인
     editable_retailer = retailer
@@ -348,6 +438,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_retailer = new_value
     if sem_context:
         editable_cols = sem_context['max_editable']
+    elif seg_context:
+        editable_cols = set(get_seg_null_columns(product_line, editable_retailer))
     elif siel_context:
         editable_cols = get_siel_format_editable_columns(
             product_line, editable_retailer

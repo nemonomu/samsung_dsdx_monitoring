@@ -15,6 +15,22 @@ from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import sem_validation
 
 try:
+    from apps.dx.dx_layer2 import seg_validation
+except (ImportError, AttributeError):
+    class _SegValidationFallback:
+        SEG_SOURCE_CONFIG = {}
+
+        @staticmethod
+        def product_line_for(_value):
+            return None
+
+        @staticmethod
+        def append_null_stats(_cursor, _target_date, _validation):
+            return 0
+
+    seg_validation = _SegValidationFallback()
+
+try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
 except (ImportError, AttributeError):
@@ -781,6 +797,9 @@ def get_all_categories():
                 and source['section_code'] not in categories
             ):
                 categories.append(source['section_code'])
+    for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values():
+        if source['section_code'] not in categories:
+            categories.append(source['section_code'])
     return categories
 
 
@@ -2086,7 +2105,10 @@ def get_null_stats(cursor, target_date, include_youtube=True):
     config = load_null_check_config()
 
     for category, cat_info in config.items():
-        if sem_validation.product_line_for(category):
+        if (
+            sem_validation.product_line_for(category)
+            or seg_validation.product_line_for(category)
+        ):
             continue
         if not include_youtube and str(category).lower() == 'youtube':
             continue
@@ -2258,6 +2280,9 @@ def get_null_stats(cursor, target_date, include_youtube=True):
     total_null_issues += _append_tse_null_stats(
         cursor, target_date, null_validation
     )
+    total_null_issues += seg_validation.append_null_stats(
+        cursor, target_date, null_validation
+    )
     if any(sem_validation.product_line_for(category) for category in config):
         total_null_issues += sem_validation.append_null_stats(
             cursor, target_date, null_validation
@@ -2273,6 +2298,11 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     if sem_validation.product_line_for(category):
         return sem_validation.null_detail(
             cursor, target_date, category, column, days=days
+        )
+
+    if seg_validation.product_line_for(category):
+        return seg_validation.null_detail(
+            cursor, target_date, category, retailer, column, days=days
         )
 
     runtime = _get_tse_runtime()
@@ -2627,6 +2657,9 @@ VALID_TABLES_UPDATE = ({
 } | {
     source['table_name']
     for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
+} | {
+    source['table_name']
+    for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
 }) - DISABLED_SOURCE_TABLES
 
 
@@ -2649,6 +2682,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     sea_source = _get_sea_null_source_for_table(table_name)
     siel_source = _get_siel_null_source_for_table(table_name)
     sem_product_line = sem_validation.product_line_for(table_name)
+    seg_product_line = seg_validation.product_line_for(table_name)
     is_siel_format_review = bool(
         siel_source and correction_type_value == 'format_check'
     )
@@ -2686,6 +2720,9 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         if column_name not in sem_allowed_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
+    if seg_product_line and correction_type_value != 'null_check':
+        return {'error': 'SEG는 NULL 검증만 지원합니다', 'status_code': 400}
+
     runtime = _get_tse_runtime()
     tse_product_line = None
     if runtime:
@@ -2720,6 +2757,14 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         except Exception as exc:
             log_error(exc, 'db')
             return {'error': 'SEM 검수 대상 조회 실패', 'status_code': 500}
+    elif seg_product_line:
+        try:
+            row = seg_validation.fetch_review_record(
+                cursor, crawl_date, seg_product_line, record_id, column_name
+            )
+        except Exception as exc:
+            log_error(exc, 'db')
+            return {'error': 'SEG 검증 대상 조회 실패', 'status_code': 500}
     else:
         if tse_product_line:
             country_scope = _build_tse_country_scope()
@@ -2774,6 +2819,14 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     )
     if sem_product_line and not retailer:
         retailer = sem_validation.SEM_RETAILER
+
+    if (
+        seg_product_line
+        and column_name not in seg_validation.get_review_allowed_columns(
+            seg_product_line, retailer
+        )
+    ):
+        return {'error': '허용되지 않은 리테일러별 컬럼', 'status_code': 400}
 
     if tse_product_line:
         try:

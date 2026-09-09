@@ -5,6 +5,7 @@ import re
 from apps.common.db import dx_connection
 from apps.common.retail_columns import get_retailer_columns
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.siel_retail import SIEL_SOURCE_CONFIG
 
 from .redirect_data_repositories import (
@@ -15,7 +16,7 @@ from .redirect_data_repositories import (
 
 _SAFE_COLUMN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _BASE_COLUMNS = [
-    'id', 'country', 'product', 'batch_id', 'crawl_datetime',
+    'id', 'country', 'product', 'batch_id',
     'account_name', 'page_type', 'item', 'sku', 'retailer_sku_name',
     'product_url', 'redirect',
 ]
@@ -31,6 +32,16 @@ _SIEL_AMAZON_COLUMNS = {
         'count_of_star_ratings', 'final_sku_price', 'star_rating',
     ),
 }
+_SEG_AMAZON_COLUMNS = {
+    'TV': (
+        'count_of_star_ratings', 'final_sku_price', 'retailer_sku_name',
+        'screen_size', 'sku', 'star_rating',
+    ),
+    'REF': (
+        'count_of_star_ratings', 'final_sku_price', 'retailer_sku_name',
+        'sku', 'star_rating',
+    ),
+}
 _REDIRECT_SOURCES = {
     'SEA': {
         'TV': {
@@ -39,6 +50,7 @@ _REDIRECT_SOURCES = {
             'product_line': 'tv',
             'table_name': SEA_RETAIL_SOURCES['tv']['table_name'],
             'date_mode': 'batch',
+            'date_column': 'crawl_datetime',
             'display_columns': (),
         },
     },
@@ -49,9 +61,23 @@ _REDIRECT_SOURCES = {
             'product_line': source_key,
             'table_name': source['table_name'],
             'date_mode': 'timestamp_kst',
+            'date_column': source.get('date_column', 'crawl_datetime'),
             'display_columns': _SIEL_AMAZON_COLUMNS[source['category']],
         }
         for source_key, source in SIEL_SOURCE_CONFIG.items()
+    },
+    'SEG': {
+        source['category']: {
+            'country': 'SEG',
+            'product': source['category'],
+            'product_line': source_key,
+            'table_name': source['table_name'],
+            'date_mode': 'text_date',
+            'date_column': source['date_column'],
+            'display_columns': _SEG_AMAZON_COLUMNS[source['category']],
+        }
+        for source_key, source in SEG_SOURCE_CONFIG.items()
+        if source.get('has_redirect')
     },
 }
 
@@ -70,7 +96,9 @@ def get_amazon_redirect_columns(country='SEA', product='TV'):
     configured = get_retailer_columns(source['product_line'], 'Amazon')
     columns = []
     candidates = [
-        *_BASE_COLUMNS,
+        *_BASE_COLUMNS[:4],
+        source['date_column'],
+        *_BASE_COLUMNS[4:],
         *source.get('display_columns', ()),
         *configured,
     ]

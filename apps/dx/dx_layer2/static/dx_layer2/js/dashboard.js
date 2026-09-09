@@ -6,6 +6,9 @@ const LAYER2_TABLE_DISPLAY_NAMES = {
     siel_tv_retail: 'SIEL TV',
     siel_ref_retail: 'SIEL REF',
     siel_ldy_retail: 'SIEL LDY',
+    seg_tv_retail: 'SEG TV',
+    seg_ref_retail: 'SEG REF',
+    seg_ldy_retail: 'SEG LDY',
     sem_tv_retail: 'SEM TV',
     sem_ref_retail: 'SEM REF',
     sem_ldy_retail: 'SEM LDY'
@@ -18,13 +21,16 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     siel_tv_retail: 3,
     siel_ref_retail: 4,
     siel_ldy_retail: 5,
-    sem_tv_retail: 6,
-    sem_ref_retail: 7,
-    sem_ldy_retail: 8,
-    tse_tv_retail: 9,
-    tse_ref_retail: 10,
-    tse_ldy_retail: 11,
-    youtube: 12
+    seg_tv_retail: 6,
+    seg_ref_retail: 7,
+    seg_ldy_retail: 8,
+    sem_tv_retail: 9,
+    sem_ref_retail: 10,
+    sem_ldy_retail: 11,
+    tse_tv_retail: 12,
+    tse_ref_retail: 13,
+    tse_ldy_retail: 14,
+    youtube: 15
 };
 
 const LAYER2_NULL_TABLE_GROUPS = [
@@ -39,6 +45,12 @@ const LAYER2_NULL_TABLE_GROUPS = [
         name: 'SIEL Retail',
         description: 'SIEL TV/REF/LDY NULL 검증',
         tableCodes: ['siel_tv_retail', 'siel_ref_retail', 'siel_ldy_retail']
+    },
+    {
+        key: 'seg',
+        name: 'SEG Retail',
+        description: 'SEG TV/REF/LDY NULL 검증',
+        tableCodes: ['seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail']
     },
     {
         key: 'sem',
