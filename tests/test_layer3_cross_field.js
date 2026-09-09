@@ -79,9 +79,12 @@ assert(layer3Css.includes('.btn-crossfield-guide'));
 assert(layer3Css.includes('margin-left: auto'));
 assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));
 assert(commonSource.includes("{ key: 'siel', title: 'SIEL Retail'"));
+assert(commonSource.includes("{ key: 'seg', title: 'SEG Retail'"));
 assert(commonSource.includes("{ key: 'tse', title: 'TSE Retail'"));
 assert(commonSource.includes("detailCode === 'siel_tv' || checkName.includes('SIEL TV')"));
 assert(commonSource.includes("category = 'siel_ref_retail'"));
+assert(commonSource.includes("detailCode === 'seg_tv' || checkName.includes('SEG TV')"));
+assert(commonSource.includes("category = 'seg_ref_retail'"));
 assert(commonSource.includes("toggleCrossfieldRegion('${groupId}', this)"));
 assert(layer3Css.includes('.crossfield-region-children.show'));
 
@@ -103,7 +106,7 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
         esc(value) { return String(value == null ? '' : value); },
         escJs(value) { return String(value == null ? '' : value); },
         renderCountryFlagLabel(value) {
-            const codes = { SEA: 'us', SIEL: 'in', TSE: 'th' };
+            const codes = { SEA: 'us', SIEL: 'in', SEG: 'de', TSE: 'th' };
             const text = String(value || '');
             const code = codes[text.split(' ')[0]];
             return code ? `<img src="/static/img/flags/${code}.svg"><span>${text}</span>` : text;
@@ -132,6 +135,9 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
             check('SIEL TV 논리적 일관성', 'siel_tv', 35, 0),
             check('SIEL REF 논리적 일관성', 'siel_ref', 36, 1),
             check('SIEL LDY 논리적 일관성', 'siel_ldy', 37, 0),
+            check('SEG TV 논리적 일관성', 'seg_tv', 31, 2),
+            check('SEG REF 논리적 일관성', 'seg_ref', 32, 3),
+            check('SEG LDY 논리적 일관성', 'seg_ldy', 33, 4),
             check('TSE TV 논리적 일관성', 'tse_tv', 40, 0),
             check('TSE REF 논리적 일관성', 'tse_ref', 50, 0),
             check('TSE LDY 논리적 일관성', 'tse_ldy', 60, 0),
@@ -143,21 +149,26 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
     const html = container.innerHTML;
     assert(html.includes('crossfield-region-0-sea'));
     assert(html.includes('crossfield-region-0-siel'));
+    assert(html.includes('crossfield-region-0-seg'));
     assert(html.includes('crossfield-region-0-tse'));
     assert(html.includes('SEA TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('SIEL TV/REF/LDY 크로스필드 검증'));
+    assert(html.includes('SEG TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('TSE TV/REF/LDY 크로스필드 검증'));
     assert(html.includes('/static/img/flags/us.svg'));
     assert(html.includes('/static/img/flags/in.svg'));
+    assert(html.includes('/static/img/flags/de.svg'));
     assert(html.includes('/static/img/flags/th.svg'));
     assert(html.includes('TV Sentiment↔리뷰 일관성'));
     assert(html.includes('확인 필요'));
     assert(html.includes('review-needed-value'));
     assert(html.indexOf('SEA Retail') < html.indexOf('TSE Retail'));
     assert(html.indexOf('SEA Retail') < html.indexOf('SIEL Retail'));
+    assert(html.indexOf('SIEL Retail') < html.indexOf('SEG Retail'));
+    assert(html.indexOf('SEG Retail') < html.indexOf('TSE Retail'));
     assert(html.indexOf('SIEL Retail') < html.indexOf('TSE Retail'));
     assert(html.indexOf('TSE Retail') < html.indexOf('TV Sentiment↔리뷰 일관성'));
-    assert.strictEqual((html.match(/\bcrossfield-region-child\b/g) || []).length, 9);
+    assert.strictEqual((html.match(/\bcrossfield-region-child\b/g) || []).length, 12);
 }
 
 testCrossfieldRetailChecksRenderAsRegionAccordions();
