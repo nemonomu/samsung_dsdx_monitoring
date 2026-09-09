@@ -64,6 +64,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'youtube': 'youtube_services',
             'siel_retail': 'siel_retail_services',
             'sem_retail': 'sem_retail_services',
+            'seg_retail': 'seg_retail_services',
             'tse_retail': 'tse_retail_services',
             'market_trend': 'market_trend_services',
             'market_demand': 'market_demand_services',
@@ -96,6 +97,20 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'layer1_dashboard_service_under_test',
             stubs,
         )
+
+    def test_seg_query_failure_is_rolled_back_locally(self):
+        cursor = RecordingCursor()
+        result = self.service._get_seg_retail_stats_isolated(
+            cursor, StatsService(error=RuntimeError('SEG failed')),
+            date(2026, 9, 9), datetime(2026, 9, 9, 12),
+        )
+        self.assertIsNone(result)
+        self.assertEqual([
+            'SAVEPOINT layer1_seg_retail_monitoring',
+            'ROLLBACK TO SAVEPOINT layer1_seg_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_seg_retail_monitoring',
+        ], [sql for sql, _params in cursor.calls])
+        self.assertIn('seg_retail', self.service._SERVICE_MAP)
 
     def _run_dashboard(self, youtube_service):
         cursor = RecordingCursor()

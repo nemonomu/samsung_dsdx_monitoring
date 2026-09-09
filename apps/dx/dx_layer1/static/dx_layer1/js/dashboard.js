@@ -248,6 +248,9 @@ function formatBackupPrompt(data) {
             Number(data.sem_tv_count || 0) +
             Number(data.sem_ref_count || 0) +
             Number(data.sem_ldy_count || 0) +
+            Number(data.seg_tv_count || 0) +
+            Number(data.seg_ref_count || 0) +
+            Number(data.seg_ldy_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
             Number(data.tse_ldy_count || 0);
@@ -279,6 +282,13 @@ function formatBackupPrompt(data) {
             '  ·  REF ' + formatBackupCount(data.siel_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.siel_ldy_count),
         '',
+        'SEG · D 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['seg_tv', 'seg_ref', 'seg_ldy']
+        ),
+        'TV ' + formatBackupCount(data.seg_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.seg_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.seg_ldy_count),
+        '',
         'TSE · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['tse_tv', 'tse_ref', 'tse_ldy']
         ),
@@ -308,6 +318,9 @@ function renderBackupConfirmContent(data) {
             Number(data.sem_tv_count || 0) +
             Number(data.sem_ref_count || 0) +
             Number(data.sem_ldy_count || 0) +
+            Number(data.seg_tv_count || 0) +
+            Number(data.seg_ref_count || 0) +
+            Number(data.seg_ldy_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
             Number(data.tse_ldy_count || 0);
@@ -321,7 +334,7 @@ function renderBackupConfirmContent(data) {
     }
 
     function countryCard(country, offsetLabel, sourceDate, counts) {
-        var flagCodes = { SEA: 'us', SEM: 'mx', SIEL: 'in', TSE: 'th' };
+        var flagCodes = { SEA: 'us', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th' };
         var card = element('div', null,
             'border:1px solid #e2e8f0;border-radius:10px;padding:13px 14px;background:#fff;');
         var header = element('div', null,
@@ -411,6 +424,15 @@ function renderBackupConfirmContent(data) {
             { label: 'TV', value: data.tse_tv_count },
             { label: 'REF', value: data.tse_ref_count },
             { label: 'LDY', value: data.tse_ldy_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'SEG', 'D',
+        formatBackupSourceDate(sourceDates, ['seg_tv', 'seg_ref', 'seg_ldy']),
+        [
+            { label: 'TV', value: data.seg_tv_count },
+            { label: 'REF', value: data.seg_ref_count },
+            { label: 'LDY', value: data.seg_ldy_count }
         ]
     ));
     container.appendChild(cards);

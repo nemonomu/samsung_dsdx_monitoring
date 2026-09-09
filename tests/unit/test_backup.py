@@ -1,4 +1,5 @@
 import unittest
+from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from datetime import date, timedelta
 
 from tests.unit.support import load_module, module_stub, package_stub
@@ -203,11 +204,35 @@ def load_backup(connection, errors=None):
                 'apps.common.sem_retail',
                 SEM_SOURCE_CONFIG=SEM_SOURCE_CONFIG,
             ),
+            'apps.common.seg_retail': module_stub(
+                'apps.common.seg_retail', SEG_SOURCE_CONFIG=SEG_SOURCE_CONFIG,
+            ),
         },
     )
 
 
 class BackupTests(unittest.TestCase):
+    def test_seg_backup_uses_existing_tables_and_same_day_ids(self):
+        cursor = BackupCursor(
+            pending={'dx_seg_tv_retail_com_backup': 2},
+            inserted={'dx_seg_tv_retail_com_backup': [10, 11]},
+        )
+        backup = load_backup(BackupConnection(cursor))
+        counts = backup.get_backup_count('2026-08-11')
+        self.assertEqual(2, counts['seg_tv_count'])
+        self.assertEqual(2, counts['total_count'])
+        self.assertEqual('2026-08-11', counts['source_dates']['seg_ldy'])
+        result = backup.backup_all_retail('tester', '2026-08-11')
+        self.assertEqual(2, result['seg_tv']['count'])
+        inserts = [(sql, params) for sql, params in cursor.calls
+                   if sql.startswith('INSERT INTO dx_seg.')]
+        self.assertEqual(3, len(inserts))
+        for sql, params in inserts:
+            self.assertIn('ON a.id = b.id', sql)
+            self.assertIn('WHERE b.id IS NULL', sql)
+            self.assertNotIn('redirect', sql)
+            self.assertEqual(('2026-08-11',), params)
+
     def test_pending_count_includes_all_retail_sources(self):
         cursor = BackupCursor(pending={
             'tv_retail_com_backup_all': 5,
@@ -252,7 +277,7 @@ class BackupTests(unittest.TestCase):
             for sql, params in cursor.calls
             if 'SELECT COUNT(*)' in sql
         ]
-        self.assertEqual(len(count_calls), 12)
+        self.assertEqual(len(count_calls), 15)
         self.assertIn(
             'FROM public.tv_retail_com a',
             count_calls[0][0],
@@ -280,7 +305,12 @@ class BackupTests(unittest.TestCase):
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
-            for sql, _ in count_calls[9:]
+            for sql, _ in count_calls[9:12]
+        ))
+        self.assertTrue(all(
+            'LEFT(TRIM(a.crawl_strdatetime), 10) = %s' in sql
+            and 'redirect' not in sql
+            for sql, _ in count_calls[12:]
         ))
         self.assertTrue(all(
             'batch_id' not in sql and 'page_type' not in sql
@@ -291,7 +321,7 @@ class BackupTests(unittest.TestCase):
             [('2026-08-10',)] * 3 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 3,
+            [('2026-08-11',)] * 6,
         )
         self.assertTrue(cursor.closed)
         self.assertTrue(connection.closed)
@@ -358,7 +388,7 @@ class BackupTests(unittest.TestCase):
             if sql.startswith('INSERT INTO')
             and 'monitoring_backup_log' not in sql
         ]
-        self.assertEqual(len(insert_calls), 12)
+        self.assertEqual(len(insert_calls), 15)
         self.assertTrue(all(
             'ON CONFLICT DO NOTHING' in sql
             for sql, _ in insert_calls
@@ -369,7 +399,7 @@ class BackupTests(unittest.TestCase):
             [('2026-08-10',)] * 3 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 3,
+            [('2026-08-11',)] * 6,
         )
         log_calls = [
             params for sql, params in cursor.calls

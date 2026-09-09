@@ -13,6 +13,7 @@ from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
 from apps.dx.dx_layer1.youtube import youtube_services as youtube_svc
 from apps.dx.dx_layer1.siel_retail import siel_retail_services as siel_retail_svc
 from apps.dx.dx_layer1.sem_retail import sem_retail_services as sem_retail_svc
+from apps.dx.dx_layer1.seg_retail import seg_retail_services as seg_retail_svc
 from apps.dx.dx_layer1.tse_retail import tse_retail_services as tse_retail_svc
 from apps.dx.dx_layer1.market_trend import market_trend_services as market_trend_svc
 from apps.dx.dx_layer1.market_demand import market_demand_services as market_demand_svc
@@ -35,6 +36,7 @@ _SERVICE_MAP = {
     'youtube': youtube_svc,
     'siel_retail': siel_retail_svc,
     'sem_retail': sem_retail_svc,
+    'seg_retail': seg_retail_svc,
     'tse_retail': tse_retail_svc,
     'market_trend': market_trend_svc,
     'market_demand': market_demand_svc,
@@ -64,6 +66,7 @@ _DISPLAY_CHECK_PRIORITY = {
     'sem_retail': 2,
     'tse_retail': 3,
     'youtube': 4,
+    'seg_retail': 5,
 }
 
 
@@ -190,6 +193,22 @@ def _get_sem_retail_stats_isolated(cursor, svc, target_date, now):
     return svc_result
 
 
+def _get_seg_retail_stats_isolated(cursor, svc, target_date, now):
+    savepoint = 'layer1_seg_retail_monitoring'
+    cursor.execute(f'SAVEPOINT {savepoint}')
+    try:
+        result = svc.get_layer1_stats(cursor, target_date, now)
+        if not isinstance(result, dict) or not isinstance(result.get('check'), dict):
+            raise ValueError('Invalid SEG Layer1 response')
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
+        cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+        log_error(exc)
+        return None
+    cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
+    return result
+
+
 def _get_active_services(target_date=None):
     """스케줄 DB에서 활성 서비스 목록, daily 여부, target_date 여부를 동적으로 구성"""
     schedules = load_collection_schedules()
@@ -304,6 +323,17 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                             'error_type': '조회 오류',
                             'expected': 'SEM 멕시코 Liverpool 수집 데이터',
                             'actual': 0,
+                            'timestamp': str(target_date),
+                        })
+                        continue
+                elif check_type == 'seg_retail':
+                    svc_result = _get_seg_retail_stats_isolated(
+                        cursor, svc, target_date, datetime.now(_TSE_KST),
+                    )
+                    if svc_result is None:
+                        results['failed_items'].append({
+                            'source': 'SEG Retail', 'error_type': '조회 오류',
+                            'expected': 'SEG 국가 수집 데이터', 'actual': 0,
                             'timestamp': str(target_date),
                         })
                         continue

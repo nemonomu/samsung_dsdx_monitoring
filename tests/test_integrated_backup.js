@@ -59,10 +59,13 @@ async function testIntegratedBackupPromptAndPost() {
         sem_tv_count: 10,
         sem_ref_count: 11,
         sem_ldy_count: 12,
+        seg_tv_count: 13,
+        seg_ref_count: 14,
+        seg_ldy_count: 15,
         tse_tv_count: 2,
         tse_ref_count: 3,
         tse_ldy_count: 4,
-        total_count: 45,
+        total_count: 120,
         inspection_date: '2026-08-11',
         source_dates: {
             sea_tv: '2026-08-10',
@@ -74,6 +77,9 @@ async function testIntegratedBackupPromptAndPost() {
             sem_tv: '2026-08-11',
             sem_ref: '2026-08-11',
             sem_ldy: '2026-08-11',
+            seg_tv: '2026-08-11',
+            seg_ref: '2026-08-11',
+            seg_ldy: '2026-08-11',
             tse_tv: '2026-08-11',
             tse_ref: '2026-08-11',
             tse_ldy: '2026-08-11'
@@ -131,7 +137,7 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(confirms[0].includes('TV 7건  ·  REF 8건  ·  LDY 9건'));
     assert.ok(confirms[0].includes('TSE · D 데이터 · 2026-08-11'));
     assert.ok(confirms[0].includes('TV 2건  ·  REF 3건  ·  LDY 4건'));
-    assert.ok(confirms[0].includes('총 45건'));
+    assert.ok(confirms[0].includes('총 120건'));
     const renderedText = elementText(confirmMessage);
     assert.ok(renderedText.includes('백업 대상 확인'));
     assert.ok(renderedText.includes('검수일'));
@@ -142,7 +148,9 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(renderedText.includes('SIEL'));
     assert.ok(renderedText.includes('TSE'));
     assert.ok(renderedText.includes('총 백업 대상'));
-    assert.ok(renderedText.includes('45건'));
+    assert.ok(renderedText.includes('120건'));
+    assert.ok(renderedText.includes('SEG'));
+    assert.ok(confirms[0].includes('SEG · D 데이터 · 2026-08-11'));
     assert.ok(renderedText.indexOf('SEA') < renderedText.indexOf('SEM'));
     assert.ok(renderedText.indexOf('SEM') < renderedText.indexOf('SIEL'));
     assert.ok(renderedText.indexOf('SIEL') < renderedText.indexOf('TSE'));
@@ -154,6 +162,7 @@ async function testIntegratedBackupPromptAndPost() {
     assert.strictEqual(cards[1].children[0].children[0].children[0].src, '/static/img/flags/mx.svg');
     assert.strictEqual(cards[2].children[0].children[0].children[0].src, '/static/img/flags/in.svg');
     assert.strictEqual(cards[3].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
+    assert.strictEqual(cards[4].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');

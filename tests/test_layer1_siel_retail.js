@@ -86,7 +86,7 @@ assert(checkHtml.includes('<div class="value">1,817</div>'));
 assert(checkHtml.includes('/static/img/flags/in.svg'));
 assert(checkHtml.includes('<span>SIEL Retail</span>'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
-assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=11"));
+assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=12"));
 assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=5"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 

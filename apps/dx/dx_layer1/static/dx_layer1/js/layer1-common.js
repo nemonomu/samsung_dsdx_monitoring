@@ -153,6 +153,7 @@ function onSubitemClick(groupKey, itemName) {
         'Retail': '/dx/layer1/retail/',
         'SIEL Retail': '/dx/layer1/',
         'SEM Retail': '/dx/layer1/',
+        'SEG Retail': '/dx/layer1/',
         'TSE Retail': '/dx/layer1/',
         'Retail 감성분석': '/dx/layer1/sentiment/',
         'YouTube': '/dx/layer1/youtube/',
@@ -343,6 +344,7 @@ function flattenCheckToDetails(sectionType, check) {
             break;
         case 'siel_retail':
         case 'sem_retail':
+        case 'seg_retail':
         case 'tse_retail':
             (check.categories || []).forEach(function(cat) {
                 (cat.retailers || []).forEach(function(ret) {
@@ -353,6 +355,8 @@ function flattenCheckToDetails(sectionType, check) {
                                 ? 'KST 05:30~08:30'
                                 : sectionType === 'sem_retail'
                                 ? 'KST 09:00~11:00'
+                                : sectionType === 'seg_retail'
+                                ? 'KST 07:00~12:00'
                                 : 'KST 09:00~10:30'
                         ),
                         retailer: ret.retailer,
@@ -497,7 +501,7 @@ function getCheckBadgeHtml(sectionType) {
         check = currentStatsData.checks.find(function(c) { return c.check_type === sectionType; });
     }
     var isRetailSection = sectionType === 'retail' ||
-        sectionType === 'siel_retail' || sectionType === 'sem_retail' ||
+        sectionType === 'siel_retail' || sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
         sectionType === 'tse_retail';
     var isFullRate = check && check.rate >= 100 && !isRetailSection;
 
