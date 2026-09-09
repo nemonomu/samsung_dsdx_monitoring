@@ -342,6 +342,8 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             {'check_type': 'sentiment'},
             {'check_type': 'retail'},
             {'check_type': 'siel_retail'},
+            {'check_type': 'sem_retail'},
+            {'check_type': 'seg_retail'},
             {'check_type': 'tse_retail'},
             {'check_type': 'macro_rpi'},
         ]
@@ -350,7 +352,8 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                'retail', 'siel_retail', 'tse_retail', 'youtube',
+                'retail', 'siel_retail', 'seg_retail', 'sem_retail',
+                'tse_retail', 'youtube',
                 'macro_cpi', 'sentiment', 'macro_rpi',
             ],
             [check['check_type'] for check in ordered],
@@ -361,7 +364,8 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
                 check['check_type']
                 for check in ordered
                 if check['check_type'] not in {
-                    'retail', 'siel_retail', 'tse_retail', 'youtube'
+                    'retail', 'siel_retail', 'seg_retail', 'sem_retail',
+                    'tse_retail', 'youtube'
                 }
             ],
         )

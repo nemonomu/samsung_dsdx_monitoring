@@ -63,10 +63,10 @@ _TSE_KST = timezone(timedelta(hours=9))
 _DISPLAY_CHECK_PRIORITY = {
     'retail': 0,
     'siel_retail': 1,
-    'sem_retail': 2,
-    'tse_retail': 3,
-    'youtube': 4,
-    'seg_retail': 5,
+    'seg_retail': 2,
+    'sem_retail': 3,
+    'tse_retail': 4,
+    'youtube': 5,
 }
 
 

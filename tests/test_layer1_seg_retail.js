@@ -23,13 +23,17 @@ const html = render({
 }, 2);
 assert(html.includes('seg-cat-2-0'));
 assert(html.includes('KST 07:00~12:00'));
-assert(html.includes('MAIN 평균'));
-assert(html.includes('최대 7개'));
-assert(html.includes('소수점 버림'));
-assert(html.includes('2026-09-08: 301건'));
+assert(html.includes('수집 시간'));
+assert(html.includes('300/300건'));
+assert(!html.includes('검수일 2026-09-09'));
+assert(!html.includes('MAIN·BSR은'));
+assert(!html.includes('MAIN 평균'));
+assert(!html.includes('평균 대비 차이'));
+assert(!html.includes('2026-09-08: 301건'));
 assert(html.includes('&lt;script&gt;'));
 assert(!html.includes('<script>'));
 assert(html.includes('<td class="rt-total">318</td>'));
+assert(html.includes('<col style="width:28%">'));
 assert(!html.includes('300.0'));
 assert(fs.readFileSync('apps/dx/dx_layer1/templates/dx_layer1_dashboard.html', 'utf8')
     .includes('dx_layer1/js/seg_retail.js'));

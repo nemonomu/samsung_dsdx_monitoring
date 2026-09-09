@@ -8,6 +8,8 @@ class Layer1SidebarContextTests(unittest.TestCase):
         schedules = [
             {'check_type': 'youtube', 'schedule_type': 'daily'},
             {'check_type': 'tse_retail', 'schedule_type': 'daily'},
+            {'check_type': 'sem_retail', 'schedule_type': 'daily'},
+            {'check_type': 'seg_retail', 'schedule_type': 'daily'},
             {'check_type': 'siel_retail', 'schedule_type': 'daily'},
             {'check_type': 'retail', 'schedule_type': 'daily'},
             {'check_type': 'macro_cpi', 'schedule_type': 'monthly'},
@@ -36,7 +38,10 @@ class Layer1SidebarContextTests(unittest.TestCase):
         daily = groups[0]
 
         self.assertEqual(
-            ['SEA Retail', 'SIEL Retail', 'TSE Retail', 'YouTube'],
+            [
+                'SEA Retail', 'SIEL Retail', 'SEG Retail', 'SEM Retail',
+                'TSE Retail', 'YouTube',
+            ],
             [item['name'] for item in daily['items']],
         )
         self.assertTrue(daily['items'][1]['active'])

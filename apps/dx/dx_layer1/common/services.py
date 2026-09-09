@@ -26,7 +26,7 @@ def _detail_long_text(value):
 
 
 ALL_SECTIONS = [
-    'retail', 'siel_retail', 'sem_retail', 'tse_retail', 'seg_retail',
+    'retail', 'siel_retail', 'seg_retail', 'sem_retail', 'tse_retail',
     'sentiment', 'youtube', 'market_trend',
     'market_competitor', 'market_competitor_event',
     'market_demand', 'market_promotion',
