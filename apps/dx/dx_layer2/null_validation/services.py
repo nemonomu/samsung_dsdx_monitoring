@@ -2720,8 +2720,14 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         if column_name not in sem_allowed_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
-    if seg_product_line and correction_type_value != 'null_check':
-        return {'error': 'SEG는 NULL 검증만 지원합니다', 'status_code': 400}
+    if (
+        seg_product_line
+        and correction_type_value not in {'null_check', 'format_check'}
+    ):
+        return {
+            'error': 'SEG는 NULL/형식 검수만 지원합니다',
+            'status_code': 400,
+        }
 
     runtime = _get_tse_runtime()
     tse_product_line = None
@@ -2760,7 +2766,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     elif seg_product_line:
         try:
             row = seg_validation.fetch_review_record(
-                cursor, crawl_date, seg_product_line, record_id, column_name
+                cursor, crawl_date, seg_product_line, record_id, column_name,
+                correction_type_value,
             )
         except Exception as exc:
             log_error(exc, 'db')
@@ -2823,7 +2830,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if (
         seg_product_line
         and column_name not in seg_validation.get_review_allowed_columns(
-            seg_product_line, retailer
+            seg_product_line, retailer, correction_type_value
         )
     ):
         return {'error': '허용되지 않은 리테일러별 컬럼', 'status_code': 400}

@@ -77,6 +77,20 @@ SEG_PRODUCT_TABLE_COLUMNS = {
     'seg_ldy': ('ldy_loading_type', 'ldy_capacity'),
 }
 
+# Format validation intentionally excludes URL, redirect, collection datetime,
+# batch id, and cross-field identity checks. Missing values are handled by the
+# separate NULL validation policy.
+SEG_FORMAT_COMMON_COLUMNS = (
+    'final_sku_price', 'original_sku_price', 'savings',
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+    'main_rank', 'bsr_rank', 'calendar_week',
+)
+SEG_FORMAT_PRODUCT_COLUMNS = {
+    'seg_tv': ('screen_size',),
+    'seg_ref': ('ref_capacity', 'ref_refrigerator_type'),
+    'seg_ldy': ('ldy_capacity', 'ldy_loading_type'),
+}
+
 SEG_SOURCE_CONFIG = {
     f'seg_{product.lower()}': {
         'source_key': f'seg_{product.lower()}',
@@ -158,6 +172,15 @@ def get_seg_table_columns(product_line):
         return ()
     return tuple(dict.fromkeys(
         SEG_COMMON_TABLE_COLUMNS + SEG_PRODUCT_TABLE_COLUMNS[product_key]
+    ))
+
+
+def get_seg_format_columns(product_line, _retailer=None):
+    product_key = get_seg_product_line(product_line)
+    if not product_key:
+        return ()
+    return tuple(dict.fromkeys(
+        SEG_FORMAT_COMMON_COLUMNS + SEG_FORMAT_PRODUCT_COLUMNS[product_key]
     ))
 
 

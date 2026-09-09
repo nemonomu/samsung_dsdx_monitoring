@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 from apps.common.seg_retail import (
     SEG_NULL_COLUMNS,
+    get_seg_format_columns,
     get_seg_null_columns,
 )
 from apps.dx.dx_layer2 import seg_validation
@@ -166,6 +167,108 @@ class SegDuplicateValidationTests(unittest.TestCase):
         )
 
 
+class SegFormatValidationTests(unittest.TestCase):
+    def test_requested_context_fields_are_not_format_rules(self):
+        fields = set(get_seg_format_columns('seg_tv', 'Amazon'))
+
+        self.assertTrue({'final_sku_price', 'screen_size'} <= fields)
+        self.assertTrue({
+            'product_url', 'redirect', 'crawl_strdatetime', 'batch_id',
+            'country', 'product', 'account_name', 'page_type',
+        }.isdisjoint(fields))
+
+    def test_approved_amazon_text_values_are_normal(self):
+        for price in ('Höherer Preis als üblich', 'Derzeit nicht verfügbar.'):
+            with self.subTest(price=price):
+                errors = seg_validation.evaluate_format_row({
+                    'final_sku_price': price,
+                    'star_rating': 'No customer reviews',
+                    'count_of_star_ratings': '0',
+                    'main_rank': '1',
+                    'calendar_week': 'w33',
+                    'screen_size': '55 inches',
+                }, 'seg_tv', 'Amazon')
+                self.assertEqual({}, errors)
+
+        self.assertIn(
+            'final_sku_price',
+            seg_validation.evaluate_format_row({
+                'final_sku_price': 'Höherer Preis als üblich',
+            }, 'seg_tv', 'Mediamarkt'),
+        )
+
+    def test_csv_variants_are_allowed_and_invalid_values_are_reported(self):
+        valid_ref = seg_validation.evaluate_format_row({
+            'final_sku_price': '1.099,00 €',
+            'original_sku_price': '1.099,– €',
+            'star_rating': '4.5',
+            'count_of_star_ratings': '1,018',
+            'count_of_reviews': '1112',
+            'main_rank': '300',
+            'bsr_rank': '100',
+            'calendar_week': 'w33',
+            'ref_capacity': '4,5 Liter',
+            'ref_refrigerator_type': 'Multi-Door',
+        }, 'seg_ref', 'Amazon')
+        invalid_tv = seg_validation.evaluate_format_row({
+            'final_sku_price': 'price unknown',
+            'star_rating': '6.0',
+            'count_of_star_ratings': '-1',
+            'main_rank': '0',
+            'calendar_week': 'week33',
+            'screen_size': 'large',
+        }, 'seg_tv', 'Amazon')
+
+        self.assertEqual({}, valid_ref)
+        self.assertEqual({
+            'final_sku_price', 'star_rating', 'count_of_star_ratings',
+            'main_rank', 'calendar_week', 'screen_size',
+        }, set(invalid_tv))
+
+    @patch('apps.dx.dx_layer2.seg_validation._load_normal_reviews', return_value={})
+    @patch('apps.dx.dx_layer2.seg_validation._history_rows')
+    @patch('apps.dx.dx_layer2.seg_validation._latest_rows')
+    def test_detail_defaults_to_three_days_and_is_editable(
+            self, latest_rows, history_rows, _normal_reviews):
+        mapping = {
+            'inspection_date': '2026-09-09',
+            'source_date': '2026-09-09',
+            'offset_days': 0,
+            'country': 'SEG',
+            'source_key': 'seg_tv',
+            'batch_id': 'batch-1',
+        }
+        latest_rows.return_value = ([{
+            'id': 9, 'item': 'item-1', 'account_name': 'Amazon',
+            'final_sku_price': 'bad price',
+            'crawl_strdatetime': '2026-09-09 10:00:00',
+        }], mapping)
+        history_rows.return_value = [
+            {
+                'id': day, 'item': 'item-1', 'account_name': 'Amazon',
+                'final_sku_price': value,
+                'crawl_strdatetime': f'2026-09-0{day} 10:00:00',
+            }
+            for day, value in (
+                (7, '99,00 €'), (8, 'Höherer Preis als üblich'),
+                (9, 'bad price'),
+            )
+        ]
+
+        result = seg_validation.format_detail(
+            None, date(2026, 9, 9), 'seg_tv_retail', 'Amazon'
+        )
+
+        self.assertEqual(3, result['history_days'])
+        self.assertEqual([7, 8, 9], [row['id'] for row in result['results']])
+        self.assertEqual({'final_sku_price': 1}, result['field_counts'])
+        self.assertIn('final_sku_price', result['editable_cols'])
+        self.assertNotIn('product_url', result['editable_cols'])
+        args = history_rows.call_args.args
+        self.assertEqual(date(2026, 9, 7), args[3])
+        self.assertEqual(date(2026, 9, 9), args[4])
+
+
 class SegLayer2DataEditTests(unittest.TestCase):
     def test_null_cell_update_is_scoped_and_retailer_allowlisted(self):
         cursor = ScriptedCursor([
@@ -198,6 +301,25 @@ class SegLayer2DataEditTests(unittest.TestCase):
 
         self.assertEqual(403, result['status'])
         self.assertEqual(1, len(cursor.calls))
+
+    def test_format_cell_update_uses_seg_scope_and_format_allowlist(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('bad price', 'Amazon', 'item-1', 'batch-1')},
+            {},
+            {},
+        ])
+        conn = Mock()
+
+        result = data_edit_services.update_cell_value(
+            cursor, conn, SEG_TV_TABLE, 11, 'final_sku_price', '99,00 €',
+            date(2026, 9, 9), 'format', 'tester', 'fixed',
+        )
+
+        self.assertTrue(result['success'])
+        self.assertIn('source.redirect IS TRUE', cursor.calls[0][0])
+        self.assertIn('source.batch_id IS NOT DISTINCT FROM', cursor.calls[0][0])
+        self.assertIn('SET final_sku_price = %s', cursor.calls[1][0])
+        self.assertEqual('format_check', cursor.calls[2][1][1])
 
     def test_normal_review_uses_the_same_seg_scope(self):
         cursor = ScriptedCursor([

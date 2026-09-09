@@ -5,7 +5,7 @@ from tests.unit.support import load_module, module_stub, package_stub
 
 
 class Layer2SegSidebarTests(unittest.TestCase):
-    def test_seg_is_below_siel_for_null_and_duplicate_only(self):
+    def test_seg_is_below_siel_in_all_validation_menus(self):
         config = {
             'siel_tv_retail': {'display_name': 'SIEL TV'},
             'sem_tv_retail': {'display_name': 'SEM TV'},
@@ -51,7 +51,8 @@ class Layer2SegSidebarTests(unittest.TestCase):
             duplicate_names,
         )
         self.assertEqual(
-            ['SIEL Retail', 'SEM Retail', 'YouTube'], format_names
+            ['SIEL Retail', 'SEG Retail', 'SEM Retail', 'YouTube'],
+            format_names,
         )
         seg_parent = groups[0]['items'][1]
         self.assertTrue(seg_parent['active'])

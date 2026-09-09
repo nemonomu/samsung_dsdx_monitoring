@@ -24,6 +24,9 @@ RETAIL_DEFAULT_HISTORY_TABLES = frozenset({
     'tse_tv_retail',
     'tse_ref_retail',
     'tse_ldy_retail',
+    'seg_tv_retail',
+    'seg_ref_retail',
+    'seg_ldy_retail',
 })
 
 

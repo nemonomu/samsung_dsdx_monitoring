@@ -51,9 +51,11 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
-        || isSeaRetail || isSielRetail || isSemRetail || isTseRetail;
+        || isSeaRetail || isSielRetail || isSegRetail
+        || isSemRetail || isTseRetail;
     const currentDays = modalState.days
         || (typeof getDefaultFormatHistoryDays === 'function'
             ? getDefaultFormatHistoryDays(tableParam) : 1);
@@ -96,7 +98,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     var selectCols = [];
     if (isRetail && columnNames.length > 0) {
         var retailDateColumn = data.date_column || 'crawl_datetime';
-        var defaultKeys = (isTseRetail || isSeaRetail || isSielRetail || isSemRetail)
+        var defaultKeys = (isTseRetail || isSeaRetail || isSielRetail || isSegRetail || isSemRetail)
             ? ['id', 'item', 'retailer_sku_name', retailDateColumn, fieldName, 'product_url']
             : ['id', 'item', retailDateColumn, fieldName, 'product_url'];
         var _seen = {};
@@ -139,7 +141,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 <input type="date" id="fmt-modal-date" value="${date}"
                     onchange="reloadFormatData(this.value)">
             </div>
-            ${(isTseRetail || isSeaRetail || isSielRetail || isSemRetail) ? `<div class="modal-date-picker">
+            ${(isTseRetail || isSeaRetail || isSielRetail || isSegRetail || isSemRetail) ? `<div class="modal-date-picker">
                 <label>일수:</label>
                 <input type="number" id="fmt-modal-days" value="${currentDays}" min="1" max="30"
                     style="width:58px;" onkeydown="if(event.key==='Enter')reloadFormatDays()">
@@ -213,6 +215,18 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 siel_ldy_retail: {
                     tableName: 'dx_siel.dx_siel_ldy_retail_com',
                     dateColumn: 'crawl_datetime'
+                },
+                seg_tv_retail: {
+                    tableName: 'dx_seg.dx_seg_tv_retail_com',
+                    dateColumn: 'crawl_strdatetime'
+                },
+                seg_ref_retail: {
+                    tableName: 'dx_seg.dx_seg_ref_retail_com',
+                    dateColumn: 'crawl_strdatetime'
+                },
+                seg_ldy_retail: {
+                    tableName: 'dx_seg.dx_seg_ldy_retail_com',
+                    dateColumn: 'crawl_strdatetime'
                 },
                 sem_tv_retail: {
                     tableName: 'dx_sem.dx_sem_tv_retail_com',

@@ -49,7 +49,8 @@ assert(format.includes(
 assert(format.includes(
     'const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam)'
 ));
-assert(format.includes('isSielRetail || isSemRetail || isTseRetail'));
+assert(format.includes('isSielRetail || isSegRetail'));
+assert(format.includes('isSemRetail || isTseRetail'));
 assert(format.includes('isSemRetail && Array.isArray(data.select_cols)'));
 assert(format.includes('return isSemRetail || !contextOnlyKeys.has(key)'));
 assert(format.includes("tableName: 'dx_sem.dx_sem_tv_retail_com'"));
@@ -74,10 +75,10 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260909-2"
+    "dx_layer2/js/layer2-common.js' %}?v=20260909-3"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260907-1"
+    "dx_layer2/js/format_validation.js' %}?v=20260909-1"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260909-2"

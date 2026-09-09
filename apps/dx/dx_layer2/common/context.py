@@ -274,10 +274,9 @@ def build_sidebar_groups(section, focus=''):
     }
     active_categories = set(get_all_categories())
 
-    # SEG rules are currently available for NULL and duplicate validation.
-    # Keep the sidebar in the same country order as the dashboard: SIEL, SEG,
-    # SEM. Format validation is added after its rules are agreed and enabled.
-    for section_name in ('null_validation', 'anomaly_validation'):
+    # Keep SEG in the same country order as the dashboard: SIEL, SEG, SEM.
+    for section_name in (
+            'null_validation', 'format_validation', 'anomaly_validation'):
         items = section_items[section_name]
         seg_children = []
         for child in SEG_RETAIL_SIDEBAR_CHILDREN:

@@ -73,6 +73,7 @@ try:
         SEG_COUNTRY,
         SEG_TABLE_TO_PRODUCT_LINE,
         get_seg_all_null_columns,
+        get_seg_format_columns,
         get_seg_null_columns,
         get_seg_product_line,
         get_seg_source,
@@ -82,6 +83,7 @@ except (ImportError, AttributeError):
     SEG_COUNTRY = 'SEG'
     SEG_TABLE_TO_PRODUCT_LINE = {}
     get_seg_all_null_columns = None
+    get_seg_format_columns = None
     get_seg_null_columns = None
     get_seg_product_line = None
     get_seg_source = None
@@ -183,6 +185,7 @@ def _get_sem_edit_context(table_name):
 def _get_seg_edit_context(table_name):
     if not all((
         get_seg_all_null_columns,
+        get_seg_format_columns,
         get_seg_product_line,
         get_seg_source,
         resolve_seg_table,
@@ -195,7 +198,10 @@ def _get_seg_edit_context(table_name):
             'table_name': canonical_table,
             'product_line': product_line,
             'source': get_seg_source(product_line),
-            'max_editable': set(get_seg_all_null_columns(product_line)),
+            'max_editable': (
+                set(get_seg_all_null_columns(product_line))
+                | set(get_seg_format_columns(product_line))
+            ),
         }
     except (ImportError, AttributeError, ValueError):
         return None
@@ -347,8 +353,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif seg_context:
         table_name = seg_context['table_name']
         product_line = seg_context['product_line']
-        if correction_type_value != 'null_check':
-            return {'error': 'SEG는 NULL 검증 값만 수정할 수 있습니다', 'status': 403}
+        if correction_type_value not in {'null_check', 'format_check'}:
+            return {
+                'error': 'SEG는 NULL/형식 검증 값만 수정할 수 있습니다',
+                'status': 403,
+            }
         if column_name not in seg_context['max_editable']:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif sea_context:
@@ -439,7 +448,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if sem_context:
         editable_cols = sem_context['max_editable']
     elif seg_context:
-        editable_cols = set(get_seg_null_columns(product_line, editable_retailer))
+        editable_cols = set(
+            get_seg_format_columns(product_line, editable_retailer)
+            if correction_type_value == 'format_check'
+            else get_seg_null_columns(product_line, editable_retailer)
+        )
     elif siel_context:
         editable_cols = get_siel_format_editable_columns(
             product_line, editable_retailer

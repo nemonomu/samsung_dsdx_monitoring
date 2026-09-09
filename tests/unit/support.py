@@ -46,11 +46,14 @@ def seg_validation_stub():
         'apps.dx.dx_layer2.seg_validation',
         product_line_for=lambda _value: None,
         append_null_stats=lambda *_args, **_kwargs: 0,
+        append_format_stats=lambda *_args, **_kwargs: 0,
         append_duplicate_stats=lambda *_args, **_kwargs: 0,
         null_detail=lambda *_args, **_kwargs: {},
+        format_detail=lambda *_args, **_kwargs: {},
         duplicate_detail=lambda *_args, **_kwargs: {},
         SEG_SOURCE_CONFIG={},
         get_review_allowed_columns=lambda *_args, **_kwargs: (),
+        get_format_rule_details=lambda *_args, **_kwargs: [],
         fetch_review_record=lambda *_args, **_kwargs: None,
     )
 

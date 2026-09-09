@@ -16,7 +16,7 @@ from apps.common.db import dx_table
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
-from apps.dx.dx_layer2 import sem_validation
+from apps.dx.dx_layer2 import seg_validation, sem_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -162,6 +162,9 @@ VALID_TABLES_FORMAT = {
     'market',
 } | _sea_format_section_codes() | _siel_format_section_codes() | {
     source['section_code'] for source in TSE_SOURCE_CONFIG.values()
+} | {
+    source['section_code']
+    for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',
@@ -169,6 +172,8 @@ VALID_TABLES_RULES = {
     'openai_forecast_results',
 } | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG) | set(
     getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})
+) | set(
+    getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})
 )
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
 
@@ -1771,6 +1776,10 @@ def get_format_detail(cursor, target_date, table, retailer, days):
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if seg_validation.product_line_for(table):
+        return seg_validation.format_detail(
+            cursor, target_date, table, retailer, days=days
+        )
     if sem_validation.product_line_for(table):
         return sem_validation.format_detail(
             cursor, target_date, table, days=days
@@ -2406,6 +2415,13 @@ def get_format_rules(cursor, table_name, retailer):
         return {
             'rules': _get_siel_static_format_rules(table_name, retailer)
         }
+    seg_product_line = seg_validation.product_line_for(table_name)
+    if seg_product_line:
+        return {
+            'rules': seg_validation.get_format_rule_details(
+                seg_product_line, retailer
+            )
+        }
     sem_product_line = sem_validation.product_line_for(table_name)
     if sem_product_line:
         return {
@@ -2895,6 +2911,9 @@ def get_format_stats(cursor, target_date):
     )
 
     total_format_issues += _append_tse_format_stats(
+        cursor, target_date, format_validation
+    )
+    total_format_issues += seg_validation.append_format_stats(
         cursor, target_date, format_validation
     )
     total_format_issues += sem_validation.append_format_stats(

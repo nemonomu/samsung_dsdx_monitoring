@@ -2,12 +2,14 @@
 
 from collections import defaultdict
 from datetime import datetime, timedelta
+import re
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seg_retail import (
     SEG_COUNTRY,
     SEG_SOURCE_CONFIG,
     get_seg_all_null_columns,
+    get_seg_format_columns,
     get_seg_null_columns,
     get_seg_product_line,
     get_seg_table_columns,
@@ -17,6 +19,50 @@ from apps.common.seg_retail import (
 _REVIEW_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
+
+_EURO_PRICE_PATTERN = re.compile(
+    r'(?:0|[1-9]\d{0,2}(?:\.\d{3})*)'
+    r'(?:,(?:\d{2}|–))?\s?€'
+)
+_NON_NEGATIVE_INTEGER_PATTERN = re.compile(
+    r'(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)'
+)
+_POSITIVE_INTEGER_PATTERN = re.compile(r'[1-9]\d*')
+_STAR_RATING_PATTERN = re.compile(r'(?:[0-4](?:\.\d)?|5(?:\.0)?)')
+_SAVINGS_PATTERN = re.compile(r'-?\d+%')
+_CALENDAR_WEEK_PATTERN = re.compile(r'w(?:[1-9]|[1-4]\d|5[0-3])')
+_SCREEN_SIZE_PATTERN = re.compile(
+    r'\d+(?:[.,]\d+)?(?:\s*(?:inches?|Zoll|Zentimeter|cm))?',
+    re.IGNORECASE,
+)
+_REF_CAPACITY_PATTERN = re.compile(
+    r'\d+(?:[.,]\d+)?\s*(?:L|Liter)', re.IGNORECASE
+)
+_LDY_CAPACITY_PATTERN = re.compile(
+    r'\d+(?:[.,]\d+)?\s*kg', re.IGNORECASE
+)
+_LDY_LOADING_VALUES = {
+    'mediamarkt': {'front load', 'top load'},
+    'otto': {'front loader', 'top-loading'},
+}
+_REF_TYPE_VALUES = {
+    'amazon': {
+        'freezer-on-top', 'french door', 'fridge-freezer combination',
+        'multi-door', 'no freezer compartment', 'side-by-side',
+    },
+    'mediamarkt': {
+        'french door', 'fridge-freezer combination', 'side-by-side',
+    },
+    'otto': {
+        'french door', 'fridge-freezer combination', 'multi door',
+        'side by side',
+    },
+}
+_FINAL_PRICE_ALLOWED_TEXT = {
+    'Höherer Preis als üblich',
+    'Derzeit nicht verfügbar.',
+}
+_STAR_RATING_ALLOWED_TEXT = {'No customer reviews'}
 
 
 def product_line_for(value):
@@ -134,6 +180,206 @@ def _missing(value):
     return value is None or str(value).strip() == ''
 
 
+def evaluate_format_row(row, product_line, retailer):
+    """Return SEG format errors for populated fields only."""
+    fields = set(get_seg_format_columns(product_line, retailer))
+    retailer_key = str(retailer or '').strip().casefold()
+    errors = {}
+
+    def check_pattern(field, pattern, reason, allowed=()):
+        value = row.get(field)
+        if _missing(value):
+            return
+        text = str(value).strip()
+        if text not in allowed and not pattern.fullmatch(text):
+            errors[field] = reason
+
+    if 'final_sku_price' in fields:
+        allowed = (
+            _FINAL_PRICE_ALLOWED_TEXT if retailer_key == 'amazon' else ()
+        )
+        check_pattern(
+            'final_sku_price', _EURO_PRICE_PATTERN,
+            '독일 유로 금액 또는 허용된 Amazon 가격 상태가 아닙니다.',
+            allowed,
+        )
+    if 'original_sku_price' in fields:
+        check_pattern(
+            'original_sku_price', _EURO_PRICE_PATTERN,
+            '독일 유로 금액 형식이 아닙니다.',
+        )
+    if 'savings' in fields:
+        check_pattern(
+            'savings', _SAVINGS_PATTERN,
+            '정수 퍼센트 형식이 아닙니다.',
+        )
+    if 'star_rating' in fields:
+        allowed = (
+            _STAR_RATING_ALLOWED_TEXT if retailer_key == 'amazon' else ()
+        )
+        check_pattern(
+            'star_rating', _STAR_RATING_PATTERN,
+            '0~5 숫자 또는 허용된 리뷰 없음 상태가 아닙니다.',
+            allowed,
+        )
+    for field in ('count_of_star_ratings', 'count_of_reviews'):
+        if field in fields:
+            check_pattern(
+                field, _NON_NEGATIVE_INTEGER_PATTERN,
+                '0 이상의 정수 형식이 아닙니다.',
+            )
+    for field in ('main_rank', 'bsr_rank'):
+        if field in fields:
+            check_pattern(
+                field, _POSITIVE_INTEGER_PATTERN,
+                '1 이상의 정수 형식이 아닙니다.',
+            )
+    if 'calendar_week' in fields:
+        check_pattern(
+            'calendar_week', _CALENDAR_WEEK_PATTERN,
+            'w1~w53 형식이 아닙니다.',
+        )
+    if 'screen_size' in fields:
+        check_pattern(
+            'screen_size', _SCREEN_SIZE_PATTERN,
+            '숫자와 허용된 화면 크기 단위 형식이 아닙니다.',
+        )
+    if 'ref_capacity' in fields:
+        check_pattern(
+            'ref_capacity', _REF_CAPACITY_PATTERN,
+            '숫자와 L 또는 Liter 단위 형식이 아닙니다.',
+        )
+    if 'ldy_capacity' in fields:
+        check_pattern(
+            'ldy_capacity', _LDY_CAPACITY_PATTERN,
+            '숫자와 kg 단위 형식이 아닙니다.',
+        )
+
+    refrigerator_type = row.get('ref_refrigerator_type')
+    if (
+        'ref_refrigerator_type' in fields
+        and not _missing(refrigerator_type)
+        and str(refrigerator_type).strip().casefold()
+        not in _REF_TYPE_VALUES.get(retailer_key, set())
+    ):
+        errors['ref_refrigerator_type'] = (
+            'CSV에서 확인된 리테일러별 냉장고 타입이 아닙니다.'
+        )
+
+    loading_type = row.get('ldy_loading_type')
+    if (
+        'ldy_loading_type' in fields
+        and not _missing(loading_type)
+        and str(loading_type).strip().casefold()
+        not in _LDY_LOADING_VALUES.get(retailer_key, set())
+    ):
+        errors['ldy_loading_type'] = (
+            'CSV에서 확인된 리테일러별 세탁기 타입이 아닙니다.'
+        )
+    return errors
+
+
+def _serialize_format_row(row, product_line, retailer):
+    record = {
+        key: (str(value) if value is not None and key != 'id' else value)
+        for key, value in row.items()
+    }
+    error_map = evaluate_format_row(row, product_line, retailer)
+    record['error_fields'] = list(error_map)
+    record['error_details'] = {
+        field: {'rule': 'SEG 형식 검증', 'reason': reason}
+        for field, reason in error_map.items()
+    }
+    return record
+
+
+_FORMAT_RULE_DETAILS = {
+    'final_sku_price': {
+        'field': 'final_sku_price',
+        'description': '독일 유로 금액 또는 허용된 Amazon 가격 상태',
+        'pattern': (
+            '1.099,00 € / 1.099,– € / Höherer Preis als üblich / '
+            'Derzeit nicht verfügbar.'
+        ),
+    },
+    'original_sku_price': {
+        'field': 'original_sku_price',
+        'description': '값이 있으면 독일 유로 금액 형식',
+        'pattern': '1.099,00 € / 1.099,– € / 1.099,00€',
+    },
+    'savings': {
+        'field': 'savings', 'description': '값이 있으면 정수 할인율',
+        'pattern': '-10% / 0%',
+    },
+    'star_rating': {
+        'field': 'star_rating',
+        'description': '0~5 숫자 또는 Amazon 리뷰 없음 상태',
+        'pattern': '0 / 4.5 / 5.0 / No customer reviews',
+    },
+    'count_of_star_ratings': {
+        'field': 'count_of_star_ratings',
+        'description': '값이 있으면 0 이상의 정수',
+        'pattern': '0 / 128 / 1,018',
+    },
+    'count_of_reviews': {
+        'field': 'count_of_reviews',
+        'description': '값이 있으면 0 이상의 정수',
+        'pattern': '0 / 128 / 1,018',
+    },
+    'main_rank': {
+        'field': 'main_rank', 'description': '값이 있으면 1 이상의 정수',
+        'pattern': '1 / 100 / 300',
+    },
+    'bsr_rank': {
+        'field': 'bsr_rank', 'description': '값이 있으면 1 이상의 정수',
+        'pattern': '1 / 50 / 100',
+    },
+    'calendar_week': {
+        'field': 'calendar_week', 'description': '연중 주차 표기',
+        'pattern': 'w1~w53',
+    },
+    'screen_size': {
+        'field': 'screen_size', 'description': '화면 크기와 선택 단위',
+        'pattern': '55 inches / 345 cm / 65',
+    },
+    'ref_capacity': {
+        'field': 'ref_capacity', 'description': '냉장고 용량',
+        'pattern': '160.2L / 4,5 Liter / 1000 l',
+    },
+    'ref_refrigerator_type': {
+        'field': 'ref_refrigerator_type',
+        'description': '리테일러별 냉장고 타입',
+        'pattern': 'French Door / Multi-Door / Side-by-Side 등',
+    },
+    'ldy_capacity': {
+        'field': 'ldy_capacity', 'description': '세탁 용량',
+        'pattern': '10.0kg / 10,5 kg',
+    },
+    'ldy_loading_type': {
+        'field': 'ldy_loading_type',
+        'description': '리테일러별 세탁기 타입',
+        'pattern': 'Front load / Front loader / Top load / Top-loading',
+    },
+}
+
+
+def get_format_rule_details(product_line, retailer):
+    rules = [
+        dict(_FORMAT_RULE_DETAILS[field])
+        for field in get_seg_format_columns(product_line, retailer)
+        if field in _FORMAT_RULE_DETAILS
+    ]
+    if str(retailer or '').strip().casefold() != 'amazon':
+        for rule in rules:
+            if rule['field'] == 'final_sku_price':
+                rule['description'] = '독일 유로 금액 형식'
+                rule['pattern'] = '1.099,00 € / 1.099,– €'
+            elif rule['field'] == 'star_rating':
+                rule['description'] = '0~5 범위 숫자'
+                rule['pattern'] = '0 / 4.5 / 5.0'
+    return rules
+
+
 def _null_detail_columns(column):
     columns = [
         'id', 'crawl_strdatetime', 'item', 'sku', 'retailer_sku_name',
@@ -230,6 +476,48 @@ def append_null_stats(cursor, target_date, validation):
     return total_issues
 
 
+def append_format_stats(cursor, target_date, validation):
+    total_issues = 0
+    for product_line, source in SEG_SOURCE_CONFIG.items():
+        retailer_rows = []
+        table_checked = 0
+        table_issues = 0
+        table_mapping = _mapping(target_date, source)
+        normal_reviews = _load_normal_reviews(
+            cursor, target_date, product_line, 'format_check'
+        )
+
+        for retailer in source['retailers']:
+            rows, mapping = _latest_rows(cursor, target_date, source, retailer)
+            issue_count = sum(
+                1
+                for row in rows
+                for field in evaluate_format_row(row, product_line, retailer)
+                if f"{row.get('id')}_{field}" not in normal_reviews
+            )
+            retailer_rows.append({
+                'retailer': retailer,
+                'total': len(rows),
+                'issue_count': issue_count,
+                'status': 'OK' if issue_count == 0 else 'CRITICAL',
+                **mapping,
+            })
+            table_checked += len(rows)
+            table_issues += issue_count
+
+        validation['tables'].append({
+            'table': source['section_code'],
+            'table_name': source['display_name'],
+            'total_checked': table_checked,
+            'total_issues': table_issues,
+            'status': 'OK' if table_issues == 0 else 'CRITICAL',
+            'retailers': retailer_rows,
+            **table_mapping,
+        })
+        total_issues += table_issues
+    return total_issues
+
+
 def null_detail(cursor, target_date, table, retailer, column, days=3):
     product_line = product_line_for(table)
     source = SEG_SOURCE_CONFIG.get(product_line)
@@ -289,6 +577,83 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
+        'readonly': False,
+        **mapping,
+    }
+
+
+def format_detail(cursor, target_date, table, retailer, days=3):
+    product_line = product_line_for(table)
+    source = SEG_SOURCE_CONFIG.get(product_line)
+    if not source or retailer not in source['retailers']:
+        return {
+            'results': [], 'column_names': [], 'editable_cols': [],
+            'actual_table': '', 'field_counts': {},
+            'total_format_count': 0,
+        }
+
+    rows, mapping = _latest_rows(cursor, target_date, source, retailer)
+    normal_reviews = _load_normal_reviews(
+        cursor, target_date, product_line, 'format_check'
+    )
+    target_records = []
+    for row in rows:
+        record = _serialize_format_row(row, product_line, retailer)
+        record['error_fields'] = [
+            field for field in record['error_fields']
+            if f"{record.get('id')}_{field}" not in normal_reviews
+        ]
+        if record['error_fields']:
+            target_records.append(record)
+
+    history_days = min(max(int(days or 3), 1), 30)
+    results = target_records
+    if history_days > 1 and target_records:
+        items = sorted({
+            str(record.get('item')).strip()
+            for record in target_records if not _missing(record.get('item'))
+        })
+        source_date = datetime.strptime(
+            mapping['source_date'], '%Y-%m-%d'
+        ).date()
+        history_rows = _history_rows(
+            cursor, source, retailer,
+            source_date - timedelta(days=history_days - 1),
+            source_date, items,
+        )
+        if history_rows:
+            results = [
+                _serialize_format_row(row, product_line, retailer)
+                for row in history_rows
+            ]
+
+    field_counts = defaultdict(int)
+    for record in target_records:
+        for field in record['error_fields']:
+            field_counts[field] += 1
+
+    format_fields = list(get_seg_format_columns(product_line, retailer))
+    date_column = source['date_column']
+    column_names = list(dict.fromkeys((
+        'id', date_column, 'item', 'sku', 'retailer_sku_name',
+        *format_fields, 'product_url',
+    )))
+    return {
+        'date': mapping['inspection_date'],
+        'table': source['section_code'],
+        'retailer': retailer,
+        'column_names': column_names,
+        'select_cols': list(get_seg_table_columns(product_line)),
+        'editable_cols': format_fields,
+        'actual_table': source['table_name'],
+        'normal_reviews': normal_reviews,
+        'results': results,
+        'field_counts': dict(field_counts),
+        'total_format_count': sum(field_counts.values()),
+        'supports_day_history': True,
+        'history_days': history_days,
+        'date_column': date_column,
+        'editable_date': mapping['source_date'],
         'readonly': False,
         **mapping,
     }
@@ -452,11 +817,15 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
     }
 
 
-def get_review_allowed_columns(product_line, retailer):
+def get_review_allowed_columns(product_line, retailer,
+                               correction_type='null_check'):
+    if correction_type == 'format_check':
+        return get_seg_format_columns(product_line, retailer)
     return get_seg_null_columns(product_line, retailer)
 
 
-def fetch_review_record(cursor, target_date, product_line, record_id, column):
+def fetch_review_record(cursor, target_date, product_line, record_id, column,
+                        correction_type='null_check'):
     source = SEG_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
     table_name = source['table_name']
@@ -490,6 +859,7 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column):
         mapping['source_date'],
     ))
     row = cursor.fetchone()
-    if row and column not in get_seg_null_columns(product_line, row[1]):
+    if row and column not in get_review_allowed_columns(
+            product_line, row[1], correction_type):
         return None
     return row
