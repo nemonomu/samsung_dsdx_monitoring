@@ -209,9 +209,17 @@ def evaluate_format_row(row, product_line, retailer):
             '독일 유로 금액 형식이 아닙니다.',
         )
     if 'savings' in fields:
+        savings_pattern = (
+            _EURO_PRICE_PATTERN
+            if retailer_key == 'amazon' else _SAVINGS_PATTERN
+        )
+        savings_reason = (
+            '독일 유로 할인금액 형식이 아닙니다.'
+            if retailer_key == 'amazon' else
+            '정수 퍼센트 형식이 아닙니다.'
+        )
         check_pattern(
-            'savings', _SAVINGS_PATTERN,
-            '정수 퍼센트 형식이 아닙니다.',
+            'savings', savings_pattern, savings_reason,
         )
     if 'star_rating' in fields:
         allowed = (
@@ -369,7 +377,13 @@ def get_format_rule_details(product_line, retailer):
         for field in get_seg_format_columns(product_line, retailer)
         if field in _FORMAT_RULE_DETAILS
     ]
-    if str(retailer or '').strip().casefold() != 'amazon':
+    retailer_key = str(retailer or '').strip().casefold()
+    if retailer_key == 'amazon':
+        for rule in rules:
+            if rule['field'] == 'savings':
+                rule['description'] = '값이 있으면 독일 유로 할인금액'
+                rule['pattern'] = '4,00€ / 9,08€ / 35,00€'
+    else:
         for rule in rules:
             if rule['field'] == 'final_sku_price':
                 rule['description'] = '독일 유로 금액 형식'

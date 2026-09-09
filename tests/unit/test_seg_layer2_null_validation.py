@@ -197,6 +197,36 @@ class SegFormatValidationTests(unittest.TestCase):
             }, 'seg_tv', 'Mediamarkt'),
         )
 
+    def test_savings_is_euro_amount_for_amazon_and_percent_elsewhere(self):
+        for savings in ('4,00€', '35,00€', '9,08€', '19,99€', '10,00€'):
+            with self.subTest(savings=savings):
+                self.assertNotIn(
+                    'savings',
+                    seg_validation.evaluate_format_row(
+                        {'savings': savings}, 'seg_tv', 'Amazon'
+                    ),
+                )
+
+        self.assertIn(
+            'savings',
+            seg_validation.evaluate_format_row(
+                {'savings': '-10%'}, 'seg_tv', 'Amazon'
+            ),
+        )
+        self.assertNotIn(
+            'savings',
+            seg_validation.evaluate_format_row(
+                {'savings': '-10%'}, 'seg_tv', 'Mediamarkt'
+            ),
+        )
+        amazon_rule = next(
+            rule for rule in seg_validation.get_format_rule_details(
+                'seg_tv', 'Amazon'
+            )
+            if rule['field'] == 'savings'
+        )
+        self.assertIn('4,00€', amazon_rule['pattern'])
+
     def test_csv_variants_are_allowed_and_invalid_values_are_reported(self):
         valid_ref = seg_validation.evaluate_format_row({
             'final_sku_price': '1.099,00 €',
