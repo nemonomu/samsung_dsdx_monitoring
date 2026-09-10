@@ -70,6 +70,52 @@ class SegLayer1ServiceTests(unittest.TestCase):
         result, _, _ = self.result(now=datetime(2026, 9, 9, 3, tzinfo=timezone.utc))
         self.assertEqual('complete', result['check']['phase'])
 
+    def test_all_collected_is_ok_before_noon(self):
+        rows = [
+            {'retailer': name, 'main_count': 290, 'actual_count': 300}
+            for name in ('Mediamarkt', 'OTTO', 'Amazon')
+        ]
+        for hour in (7, 11, 12):
+            with self.subTest(hour=hour):
+                result, _, _ = self.result(
+                    rows, now=datetime(2026, 9, 9, hour),
+                )
+                self.assertEqual('OK', result['check']['status'])
+                self.assertEqual([], result['failed_items'])
+                for category in result['check']['categories']:
+                    self.assertEqual('OK', category['status'])
+                    self.assertTrue(all(
+                        row['status'] == 'OK' for row in category['retailers']
+                    ))
+
+    def test_only_missing_retailer_keeps_category_and_seg_collecting(self):
+        def counts(_cursor, product_line, _source_date):
+            return [
+                {'retailer': name, 'main_count': 300, 'actual_count': 300}
+                for name in service.SEG_SOURCE_CONFIG[product_line]['retailers']
+                if not (product_line == 'seg_ref' and name == 'Amazon')
+            ]
+
+        with patch.object(service.repo, 'get_latest_main_batch_counts', side_effect=counts):
+            with patch.object(service.repo, 'get_previous_main_counts', return_value=[]):
+                result = service.get_layer1_stats(
+                    None, date(2026, 9, 9), datetime(2026, 9, 9, 10),
+                )
+        check = result['check']
+        self.assertEqual('COLLECTING', check['status'])
+        self.assertEqual([], result['failed_items'])
+        self.assertEqual(['OK', 'COLLECTING', 'OK'], [
+            category['status'] for category in check['categories']
+        ])
+        self.assertEqual(['OK', 'OK', 'COLLECTING'], [
+            row['status'] for row in check['categories'][1]['retailers']
+        ])
+
+    def test_before_start_remains_pending(self):
+        result, _, _ = self.result(now=datetime(2026, 9, 9, 6, 59))
+        self.assertEqual('PENDING', result['check']['status'])
+        self.assertEqual([], result['failed_items'])
+
     def test_no_history_does_not_use_current_day_as_its_own_average(self):
         result, _, _ = self.result([
             {'retailer': 'OTTO', 'main_count': 300, 'actual_count': 300},

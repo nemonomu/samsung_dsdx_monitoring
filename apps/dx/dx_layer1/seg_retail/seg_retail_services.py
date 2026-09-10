@@ -58,8 +58,9 @@ def get_layer1_stats(cursor, target_date, now=None):
             # collection is critical; historical differences remain visible.
             status = (
                 'PENDING' if phase == 'pending'
+                else 'OK' if actual > 0
                 else 'COLLECTING' if phase == 'collecting'
-                else 'OK' if actual > 0 else 'CRITICAL'
+                else 'CRITICAL'
             )
             retailers.append({
                 'retailer': name, 'batch_id': row.get('batch_id') or '',
