@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -196,8 +196,73 @@ class SegReviewHistoryTests(unittest.TestCase):
 
     def row(self, row_id, day, count, **overrides):
         body = ' ||| '.join(f'review{i} - body' for i in range(1, count + 1))
-        return _amazon_row(id=row_id, account_name='Mediamarkt',
-                           crawl_strdatetime=day, detailed_review_content=body, **overrides)
+        values = dict(id=row_id, account_name='Mediamarkt',
+                      crawl_strdatetime=day, detailed_review_content=body,
+                      count_of_reviews='50', count_of_star_ratings='50')
+        values.update(overrides)
+        return _amazon_row(**values)
+
+    def test_decrease_accounts_for_counts_and_twenty_review_limit(self):
+        cases = [
+            # Previous counts/body, current counts/body, anomaly.
+            ('50', '50', 20, '50', '50', 15, True),
+            ('50', '50', 20, '60', '60', 15, True),
+            ('50', '50', 20, '0', '0', 0, False),
+            ('50', '50', 20, '30', '30', 15, True),
+            ('50', '50', 20, '10', '10', 10, False),
+            ('50', '50', 20, '10', '10', 5, True),
+            ('50', '50', 20, '1', '1', 1, False),
+            ('50', '50', 20, '1', '1', 0, True),
+            ('50', '50', 20, '0', '10', 10, True),
+            ('50', '50', 20, '10', '0', 10, True),
+            ('50', '50', 20, '60', '60', 20, False),
+            ('50', '50', 15, '60', '60', 20, False),
+        ]
+        for retailer in ('Mediamarkt', 'OTTO'):
+            for pr, ps, pb, cr, cs, cb, expected in cases:
+                with self.subTest(retailer=retailer, counts=(pr, ps, cr, cs), body=(pb, cb)):
+                    previous = self.row(1, '2026-09-08', pb, account_name=retailer,
+                                        count_of_reviews=pr, count_of_star_ratings=ps)
+                    current = self.row(2, '2026-09-09', cb, account_name=retailer,
+                                       count_of_reviews=cr, count_of_star_ratings=cs)
+                    result, _ = self.result('review_body_decrease', [previous, current])
+                    self.assertEqual(int(expected), result['failed_records'])
+
+    def test_invalid_counts_are_not_treated_as_zero_on_either_day(self):
+        for column in ('count_of_reviews', 'count_of_star_ratings'):
+            for invalid in (None, '', '-', 'unknown', '-1', '1.5'):
+                for index in (0, 1):
+                    rows = [self.row(1, '2026-09-08', 20), self.row(2, '2026-09-09', 0)]
+                    rows[index][column] = invalid
+                    result, _ = self.result('review_body_decrease', rows)
+                    self.assertEqual(0, result['failed_records'])
+
+    def test_zero_counts_with_remaining_body_is_separate_review_finding(self):
+        for retailer in ('Mediamarkt', 'OTTO'):
+            current = self.row(2, '2026-09-09', 5, account_name=retailer,
+                               count_of_reviews='0', count_of_star_ratings='0')
+            result, _ = self.result('review_body_count', [current])
+            self.assertEqual(1, result['review_needed_records'])
+            result, _ = self.result('review_body_decrease', [
+                self.row(1, '2026-09-08', 20, account_name=retailer), current,
+            ])
+            self.assertEqual(0, result['failed_records'])
+            current['detailed_review_content'] = None
+            result, _ = self.result('review_body_count', [current])
+            self.assertEqual(0, result['review_needed_records'])
+
+    def test_collection_cutoff_uses_kst_noon_and_defers_future_dates(self):
+        before = datetime(2026, 9, 9, 2, 59, 59, tzinfo=timezone.utc)
+        noon = datetime(2026, 9, 9, 3, 0, tzinfo=timezone.utc)
+        self.assertFalse(seg_services._review_collection_complete('2026-09-09', before))
+        self.assertTrue(seg_services._review_collection_complete('2026-09-09', noon))
+        self.assertTrue(seg_services._review_collection_complete('2026-09-08', before))
+        self.assertFalse(seg_services._review_collection_complete('2026-09-10', noon))
+        with patch.object(seg_services, '_review_collection_complete', return_value=False):
+            result, _ = self.result('review_body_decrease', [
+                self.row(1, '2026-09-08', 20), self.row(2, '2026-09-09', 0),
+            ])
+        self.assertEqual(0, result['failed_records'])
 
     def test_drop_compares_exact_previous_day_and_not_other_retailer(self):
         rows = [self.row(1, '2026-09-08', 20), self.row(2, '2026-09-09', 15),

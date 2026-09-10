@@ -6,7 +6,7 @@ the exact SEG inspection-day/latest-MAIN-batch scope.
 """
 
 from collections import OrderedDict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import re
 
@@ -15,6 +15,7 @@ from apps.common.seg_retail import (
     SEG_RETAILERS,
     display_seg_retailer,
     get_seg_crossfield_editable_columns,
+    get_seg_collection_phase,
     get_seg_source,
     normalize_seg_product_line,
 )
@@ -22,6 +23,8 @@ from apps.common.seg_retail import (
 
 SEG_NO_REVIEW_TEXT = 'No customer reviews'
 SEG_EQUAL_REVIEW_RETAILERS = ('Mediamarkt', 'OTTO')
+SEG_REVIEW_BODY_LIMIT = 20
+_KST = timezone(timedelta(hours=9))
 
 SEG_PRICE_STATUS_TEXTS = {
     'Höherer Preis als üblich',
@@ -147,18 +150,18 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
     }),
     ('review_body_count', {
-        'detail_name': 'OTTO 리뷰 수와 본문 확인',
+        'detail_name': '리뷰 수와 본문 확인',
         'field1': 'count_of_reviews', 'field2': 'detailed_review_content',
-        'retailers': ('OTTO',),
-        'display_fields': ('count_of_reviews', 'detailed_review_content', 'review_body_count', 'issue_type'),
-        'error_message': '리뷰 수·본문 존재 여부, 본문 번호, review20 누락을 확인합니다.',
+        'retailers': SEG_EQUAL_REVIEW_RETAILERS,
+        'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'detailed_review_content', 'review_body_count', 'issue_type'),
+        'error_message': '두 카운트가 0인데 본문이 남았는지 확인합니다. OTTO는 기존 본문 네 가지 조건도 확인합니다.',
     }),
     ('review_body_decrease', {
         'detail_name': '전날 대비 리뷰본문 감소',
         'field1': 'detailed_review_content', 'field2': None,
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
-        'display_fields': ('detailed_review_content', 'review_body_count', 'previous_review_body_count', 'previous_source_date'),
-        'error_message': '같은 상품의 리뷰본문 개수가 전날보다 감소했습니다.',
+        'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'detailed_review_content', 'review_body_count', 'previous_review_body_count', 'previous_source_date'),
+        'error_message': '수집 완료 후 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 전날 대비 리뷰본문 감소입니다.',
     }),
 ))
 
@@ -341,6 +344,54 @@ def evaluate_otto_review_body(row):
     if count >= 20 and maximum < 20:
         return 'review20 없음'
     return None
+
+
+def _review_counts(row):
+    counts = tuple(parse_seg_number(row.get(column)) for column in (
+        'count_of_reviews', 'count_of_star_ratings',
+    ))
+    if any(value is None or value < 0 or value != value.to_integral_value()
+           for value in counts):
+        return None
+    return counts
+
+
+def evaluate_seg_review_body(row):
+    if display_seg_retailer(row.get('account_name')) not in SEG_EQUAL_REVIEW_RETAILERS:
+        return None
+    if _review_counts(row) == (0, 0) and _has_value(row.get('detailed_review_content')):
+        return '리뷰 수·별점 수 0 · 리뷰본문 있음'
+    return evaluate_otto_review_body(row)
+
+
+def _review_body_decreased(row, previous):
+    if not previous:
+        return False
+    current_body, previous_body = _body_count(row), _body_count(previous)
+    if current_body is None or previous_body is None or current_body >= previous_body:
+        return False
+    current_counts, previous_counts = _review_counts(row), _review_counts(previous)
+    if current_counts is None or previous_counts is None:
+        return False
+    # Zero counts with remaining body belong to the body-consistency rule.
+    if current_counts == (0, 0):
+        return False
+    if current_counts[0] != current_counts[1]:
+        return True
+    if any(current >= prior for current, prior in zip(current_counts, previous_counts)):
+        return True
+    # Both counts fell: allow a smaller body only if today's collection target
+    # is still met (all reviews below 20, otherwise 20).
+    return current_body < min(SEG_REVIEW_BODY_LIMIT, max(current_counts))
+
+
+def _review_collection_complete(source_day, now):
+    local_now = now.astimezone(_KST)
+    today = local_now.date().isoformat()
+    return source_day < today or (
+        source_day == today
+        and get_seg_collection_phase(local_now.time()) == 'complete'
+    )
 
 
 def _previous_body_rows(rows, date_column):
@@ -641,6 +692,7 @@ def build_seg_crossfield_result(
     failed_record_ids = set()
     review_record_ids = set()
     review_finding_count = 0
+    now = datetime.now(_KST)
     for rule in rules:
         error_details = []
         review_details = []
@@ -663,7 +715,7 @@ def build_seg_crossfield_result(
                 continue
             detail = dict(row)
             if rule['rule_key'] == 'review_body_count':
-                issue = evaluate_otto_review_body(row)
+                issue = evaluate_seg_review_body(row)
                 if not issue:
                     continue
                 detail.update({
@@ -676,10 +728,12 @@ def build_seg_crossfield_result(
                 continue
             if rule['rule_key'] == 'review_body_decrease':
                 previous = previous_rows.get(row_id)
+                if not _review_collection_complete(
+                    _detail_row_source_date(row, source['date_column']), now,
+                ) or not _review_body_decreased(row, previous):
+                    continue
                 current_count = _body_count(row)
                 previous_count = _body_count(previous) if previous else None
-                if current_count is None or previous_count is None or current_count >= previous_count:
-                    continue
                 detail.update({
                     'review_body_count': current_count,
                     'previous_review_body_count': previous_count,

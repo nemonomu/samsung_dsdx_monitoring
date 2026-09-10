@@ -82,14 +82,14 @@ VALUES
      'count_of_reviews', 'count_of_star_ratings',
      'count_of_reviews와 count_of_star_ratings가 다릅니다.',
      'count_of_reviews|count_of_star_ratings|star_rating', 110),
-    ('review_body_count', 'OTTO 리뷰 수와 본문 확인',
+    ('review_body_count', '리뷰 수와 본문 확인',
      'count_of_reviews', 'detailed_review_content',
-     '리뷰 수·본문 존재 여부, 본문 번호, review20 누락을 확인합니다.',
-     'count_of_reviews|detailed_review_content|review_body_count|issue_type', 120),
+     '두 카운트가 0인데 본문이 남았는지 확인합니다. OTTO는 기존 본문 네 가지 조건도 확인합니다.',
+     'count_of_reviews|count_of_star_ratings|detailed_review_content|review_body_count|issue_type', 120),
     ('review_body_decrease', '전날 대비 리뷰본문 감소',
      'detailed_review_content', NULL,
-     '같은 상품의 리뷰본문 개수가 전날보다 감소했습니다.',
-     'detailed_review_content|review_body_count|previous_review_body_count|previous_source_date', 130);
+     '수집 완료 후 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 전날 대비 리뷰본문 감소입니다.',
+     'count_of_reviews|count_of_star_ratings|detailed_review_content|review_body_count|previous_review_body_count|previous_source_date', 130);
 
 CREATE TEMP TABLE _seg_crossfield_seed AS
 SELECT
