@@ -71,7 +71,7 @@ def _source(key, country, product, table_name, date_column, date_mode,
 _SEA_TV_RETAILERS = (
     _retailer(
         'Amazon', exclude_redirect=True,
-        email_include_skipped_columns=('sku_popularity',),
+        email_include_skipped_columns=('sku_popularity', 'savings'),
     ),
     _retailer(
         'Bestbuy', 'BestBuy',
@@ -98,11 +98,17 @@ _SEDA_RETAILERS = (
 _SEG_THREE_RETAILERS = (
     _retailer('MediaMarkt', 'Mediamarkt'),
     _retailer('OTTO'),
-    _retailer('Amazon', 'Amazon.de', email_redirect_metric=True),
+    _retailer('Amazon', 'Amazon.de', email_redirect_metric=True,
+              email_include_skipped_columns=(
+                  'savings', 'available_quantity_for_purchase',
+              )),
 )
 _SEG_LDY_RETAILERS = _SEG_THREE_RETAILERS[:2]
 _SIEL_RETAILERS = (
-    _retailer('Amazon', email_redirect_metric=True),
+    _retailer('Amazon', email_redirect_metric=True,
+              email_include_skipped_columns=(
+                  'savings', 'available_quantity_for_purchase',
+              )),
     _retailer('Flipkart'),
 )
 _SEM_RETAILERS = (_retailer('Liverpool'),)

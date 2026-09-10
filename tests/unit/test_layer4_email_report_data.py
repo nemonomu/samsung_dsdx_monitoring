@@ -104,7 +104,7 @@ class EmailRegistryTests(unittest.TestCase):
         }
         self.assertEqual(
             sea_tv_retailers['Amazon']['email_include_skipped_columns'],
-            ('sku_popularity',),
+            ('sku_popularity', 'savings'),
         )
         self.assertEqual(
             sea_tv_retailers['Bestbuy']['email_include_skipped_columns'],
@@ -225,6 +225,49 @@ class EmailRegistryTests(unittest.TestCase):
 
 
 class EmailReportDataTests(unittest.TestCase):
+    def test_amazon_savings_and_purchase_quantity_have_email_counts(self):
+        registry = load_registry()
+        expected = {
+            'sea_tv': ('savings',),
+            'seg_tv': ('savings', 'available_quantity_for_purchase'),
+            'seg_ref': ('savings', 'available_quantity_for_purchase'),
+            'siel_tv': ('savings', 'available_quantity_for_purchase'),
+            'siel_ref': ('savings', 'available_quantity_for_purchase'),
+            'siel_ldy': ('savings', 'available_quantity_for_purchase'),
+        }
+        for key, columns in expected.items():
+            with self.subTest(source=key):
+                configured_source = next(s for s in registry.EMAIL_REPORT_SOURCES if s['key'] == key)
+                amazon = next(r for r in configured_source['retailers'] if r['name'] == 'Amazon')
+                configured_source = {**configured_source, 'retailers': (amazon,)}
+                config_rows = [(c, 'Amazon', True) for c in columns]
+                config_rows.append(('unapproved_skip', 'Amazon', True))
+                steps = [{'fetchall': config_rows}]
+                if configured_source['latest_batch']:
+                    steps.append({'fetchone': ('test-batch',)})
+                # item plus the requested columns; different missing counts
+                # ensure the report reads each aggregate at the right index.
+                counts = [100, 100, 0]
+                for index, _ in enumerate(columns, 1):
+                    counts.extend((100, index * 7))
+                counts.extend((90, 20))
+                steps.extend(({'fetchone': tuple(counts)}, {'fetchone': (0,)}))
+                cursor = ScriptedCursor(steps)
+                service = load_service(cursor)
+                result = service.get_email_report_data(date(2026, 9, 10), sources=(configured_source,))
+                self.assertTrue(result['complete'])
+                metrics = result['sources'][0]['retailers'][0]['columns']
+                self.assertEqual(['item', *columns], [m['column'] for m in metrics])
+                for index, column in enumerate(columns, 1):
+                    self.assertEqual((100, index * 7), (metrics[index]['total_count'], metrics[index]['null_count']))
+                    aggregate_sql = cursor.calls[-2][0]
+                    self.assertIn(f'source.{column} IS NULL', aggregate_sql)
+                    self.assertIn(f"BTRIM(CAST(source.{column} AS TEXT)) = ''", aggregate_sql)
+        for configured_source in registry.EMAIL_REPORT_SOURCES:
+            for retailer in configured_source['retailers']:
+                if configured_source['country'] in ('SEG', 'SIEL') and retailer['name'] != 'Amazon':
+                    self.assertNotIn('available_quantity_for_purchase', retailer['email_include_skipped_columns'])
+
     def test_sea_tv_includes_only_retailer_specific_email_columns(self):
         registry = load_registry()
         sea_tv = next(
