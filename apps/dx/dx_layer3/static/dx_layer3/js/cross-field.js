@@ -43,17 +43,20 @@ function _cfSqlLiteral(value) {
 }
 
 function _cfBuildSeaTvItemQuery(
-    tableName, dateCol, retailer, items, selectFieldsRaw, days
+    tableName, dateCol, retailer, items, selectFieldsRaw, days, sourceDate
 ) {
     const itemValues = [...new Set((items || [])
         .filter(value => value != null && String(value) !== '')
         .map(value => String(value)))];
     if (itemValues.length === 0) return '';
 
-    const selectColumns = ['id', 'item', 'sku', 'retailer_sku_name'];
+    // SEA TV keeps SKU in its master table, not in the collection table.
+    const selectColumns = ['id', 'item', 'retailer_sku_name'];
     String(selectFieldsRaw || '').split('|').forEach(field => {
         const column = field.trim();
-        if (column && !selectColumns.includes(column)) selectColumns.push(column);
+        if (column && column.toLowerCase() !== 'sku' && !selectColumns.includes(column)) {
+            selectColumns.push(column);
+        }
     });
     [dateCol, 'product_url'].forEach(column => {
         if (column && !selectColumns.includes(column)) selectColumns.push(column);
@@ -61,14 +64,20 @@ function _cfBuildSeaTvItemQuery(
     const selectSql = selectColumns.map(column => '    ' + column).join(',\n');
     const itemSql = itemValues.map(_cfSqlLiteral).join(', ');
     const dayCount = Math.min(30, Math.max(1, parseInt(days) || 3));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(sourceDate || ''))) return '';
+    const start = new Date(sourceDate + 'T00:00:00Z');
+    if (!Number.isFinite(start.getTime())) return '';
+    start.setUTCDate(start.getUTCDate() - dayCount + 1);
+    const startDate = start.toISOString().slice(0, 10);
+    const sourceDaySql = `LEFT(BTRIM(CAST(${dateCol} AS TEXT)), 10)`;
 
     return `SELECT
 ${selectSql}
 FROM ${tableName}
 WHERE TRIM(account_name) ILIKE ${_cfSqlLiteral(retailer)}
   AND item IN (${itemSql})
-  AND ${dateCol} >= CURRENT_DATE - INTERVAL '${dayCount} days'
-  AND ${dateCol} < CURRENT_DATE
+  AND ${sourceDaySql} >= ${_cfSqlLiteral(startDate)}
+  AND ${sourceDaySql} <= ${_cfSqlLiteral(sourceDate)}
 ORDER BY item, ${dateCol}, id;`;
 }
 
@@ -196,7 +205,7 @@ function showRetailerDetail(retailer) {
     const seaTvDisplayQuery = productLineDisplay === 'TV'
         ? _cfBuildSeaTvItemQuery(
             tableName, dateCol, retailer, items,
-            window.crossfieldSelectFields || '', displayDays
+            window.crossfieldSelectFields || '', displayDays, sourceDate
         )
         : '';
     const displayQuery = isCanonicalProductLine
@@ -882,7 +891,8 @@ async function reloadCfDays() {
                         currentRetailer,
                         items,
                         window.crossfieldSelectFields || '',
-                        days
+                        days,
+                        data.source_date || window.crossfieldSourceDate || data.date
                     );
                 }
                 var queryEl = document.getElementById('cf-display-query-' + retailerSafe);

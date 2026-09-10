@@ -27,8 +27,8 @@ assert(common.includes("const loadedRules = isSemCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
 assert(dashboard.includes("common.js' %}?v=20260910-1"));
-assert(dashboard.includes("cross-field.js' %}?v=21"));
+assert(dashboard.includes("cross-field.js' %}?v=22"));
 assert(detail.includes("common.js' %}?v=20260910-1"));
-assert(detail.includes("cross-field.js' %}?v=21"));
+assert(detail.includes("cross-field.js' %}?v=22"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');

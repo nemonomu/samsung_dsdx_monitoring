@@ -330,13 +330,12 @@ function testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails() {
 
 testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails();
 
-function testSeaTvUsesCompactCurrentDateItemQuery() {
+function testSeaTvUsesSourceDateWithoutMasterSku() {
     sandbox.window.crossfieldRetailerData = {
         Amazon: {
             rows: [{
                 id: 9,
                 item: "TV'ITEM",
-                sku: 'SKU-9',
                 retailer_sku_name: 'Example TV',
                 account_name: 'Amazon',
                 final_sku_price: '$900',
@@ -353,9 +352,11 @@ function testSeaTvUsesCompactCurrentDateItemQuery() {
     sandbox.window.crossfieldProductLine = 'TV';
     sandbox.window.crossfieldTableName = 'public.tv_retail_com';
     sandbox.window.crossfieldDateCol = 'crawl_datetime';
+    sandbox.window.crossfieldDate = '2026-09-03';
+    sandbox.window.crossfieldSourceDate = '2026-09-02';
     sandbox.window.crossfieldRuleName = '가격 검증';
     sandbox.window.crossfieldSelectFields =
-        'final_sku_price|original_sku_price|savings';
+        'sku|final_sku_price|original_sku_price|savings';
     sandbox.window.crossfieldDisplayQuery = '';
     sandbox.window.crossfieldDisplayQueries = {};
     sandbox.window.crossfieldDays = 3;
@@ -374,13 +375,24 @@ function testSeaTvUsesCompactCurrentDateItemQuery() {
     assert(inlineHtml.includes('savings'));
     assert(inlineHtml.includes("item IN (&#039;TV&#039;&#039;ITEM&#039;)"));
     assert(inlineHtml.includes(
-        "crawl_datetime &gt;= CURRENT_DATE - INTERVAL &#039;3 days&#039;"
+        "LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) &gt;= &#039;2026-08-31&#039;"
     ));
-    assert(inlineHtml.includes('crawl_datetime &lt; CURRENT_DATE'));
+    assert(inlineHtml.includes("LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) &lt;= &#039;2026-09-02&#039;"));
+    const query = sandbox._cfBuildSeaTvItemQuery('tv_retail_com', 'crawl_datetime',
+        'Walmart', ['WALMART-ITEM'], 'sku|final_sku_price', 3, '2026-09-09');
+    assert(!/\bsku\b/i.test(query));
+    assert(!query.includes('CURRENT_DATE'));
+    assert(query.includes(">= '2026-09-07'"));
+    assert(query.includes("<= '2026-09-09'"));
+    const oneDay = sandbox._cfBuildSeaTvItemQuery('tv_retail_com', 'crawl_datetime',
+        'Walmart', ['1'], 'SKU|savings', 1, '2026-09-09');
+    assert(oneDay.includes(">= '2026-09-09'"));
+    assert(oneDay.includes("<= '2026-09-09'"));
+    assert(!/\bsku\b/i.test(oneDay));
     assert(!inlineHtml.includes('WITH main_batches'));
 }
 
-testSeaTvUsesCompactCurrentDateItemQuery();
+testSeaTvUsesSourceDateWithoutMasterSku();
 assert(commonSource.includes('window.crossfieldDisplayQuery = data.query ||'));
 assert(commonSource.includes('window.crossfieldDisplayQueries = data.queries ||'));
 assert(commonSource.includes('placeholder="메모 입력 (선택사항)"'));
