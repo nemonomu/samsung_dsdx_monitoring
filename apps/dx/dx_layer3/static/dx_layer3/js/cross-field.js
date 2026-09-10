@@ -72,6 +72,12 @@ WHERE TRIM(account_name) ILIKE ${_cfSqlLiteral(retailer)}
 ORDER BY item, ${dateCol}, id;`;
 }
 
+function _cfDetailKeys(rows, excludeKeys) {
+    // A history row may precede the finding and lack its comparison fields.
+    return [...new Set(rows.flatMap(row => Object.keys(row)))]
+        .filter(key => !excludeKeys.includes(key));
+}
+
 function _cfOrderReviewDetailKeys(keys) {
     const priority = [
         'issue_type',
@@ -79,6 +85,8 @@ function _cfOrderReviewDetailKeys(keys) {
         'crawl_strdatetime',
         'count_of_reviews',
         'review_body_count',
+        'previous_review_body_count',
+        'previous_source_date',
         'detailed_review_content',
     ];
     return priority.filter(key => keys.includes(key))
@@ -92,6 +100,8 @@ function _cfColumnDefinition(key) {
         crawl_strdatetime: { label: 'crawl_strdatetime', width: 190 },
         count_of_reviews: { label: 'count_of_reviews', width: 130 },
         review_body_count: { label: '리뷰본문 수', width: 105 },
+        previous_review_body_count: { label: '전날 리뷰본문 수', width: 130 },
+        previous_source_date: { label: '비교일', width: 120 },
         detailed_review_content: { label: 'detailed_review_content', width: 240 },
     };
     const definition = definitions[key] || { label: key, width: 140 };
@@ -155,12 +165,7 @@ function showRetailerDetail(retailer) {
         'id', 'item', 'account_name', 'page_type', 'finding_level', 'row_role',
         'row_source_date'
     ];
-    let dynamicKeys = [];
-    if (rows.length > 0) {
-        Object.keys(rows[0]).forEach(key => {
-            if (!excludeKeys.includes(key)) dynamicKeys.push(key);
-        });
-    }
+    let dynamicKeys = _cfDetailKeys(rows, excludeKeys);
     dynamicKeys = _cfOrderReviewDetailKeys(dynamicKeys);
     const urlKey = dynamicKeys.find(k => k === 'product_url');
     const otherKeys = dynamicKeys.filter(k => k !== 'product_url');
@@ -762,12 +767,7 @@ async function reloadCfDays() {
                 'id', 'item', 'account_name', 'page_type', 'finding_level',
                 'row_role', 'row_source_date'
             ];
-            var dynamicKeys = [];
-            if (rows.length > 0) {
-                Object.keys(rows[0]).forEach(function(key) {
-                    if (!excludeKeys.includes(key)) dynamicKeys.push(key);
-                });
-            }
+            var dynamicKeys = _cfDetailKeys(rows, excludeKeys);
             dynamicKeys = _cfOrderReviewDetailKeys(dynamicKeys);
             var urlKey = dynamicKeys.find(function(k) { return k === 'product_url'; });
             var otherKeys = dynamicKeys.filter(function(k) { return k !== 'product_url'; });

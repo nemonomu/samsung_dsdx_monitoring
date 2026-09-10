@@ -77,6 +77,15 @@ def _rule(rule_id, rule_key):
 
 
 class TseCrossfieldEvaluationTests(unittest.TestCase):
+    def test_equal_price_and_review_zero_expand_existing_rules(self):
+        for rating, stars, reviews in (('4.5', '10', '0'), ('0', '0', '10')):
+            errors = tse_services.evaluate_tse_row(_valid_row(
+                star_rating=rating, count_of_star_ratings=stars, count_of_reviews=reviews,
+                final_sku_price='฿11,490', original_sku_price='฿11,490',
+            ))
+            self.assertTrue({'final_original_price', 'review_zero_pair', 'review_count_match'} <= errors)
+            self.assertNotIn('savings_amount_match', errors)
+
     def test_baht_and_negative_floor_percentage_are_valid(self):
         self.assertEqual(tse_services.evaluate_tse_row(_valid_row()), set())
         self.assertEqual(tse_services.parse_tse_money('THB 10,820'), 10820)

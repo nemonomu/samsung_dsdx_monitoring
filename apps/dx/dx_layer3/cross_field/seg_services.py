@@ -21,6 +21,7 @@ from apps.common.seg_retail import (
 
 
 SEG_NO_REVIEW_TEXT = 'No customer reviews'
+SEG_EQUAL_REVIEW_RETAILERS = ('Mediamarkt', 'OTTO')
 
 SEG_PRICE_STATUS_TEXTS = {
     'Höherer Preis als üblich',
@@ -36,10 +37,7 @@ SEG_RULE_SPECS = OrderedDict((
         'display_fields': (
             'star_rating', 'count_of_star_ratings', 'count_of_reviews',
         ),
-        'error_message': (
-            'star_rating의 0 여부와 count_of_star_ratings의 '
-            'NULL·빈값·0 여부가 일치하지 않습니다.'
-        ),
+        'error_message': '별점과 별점 수의 0값 관계 불일치. Mediamarkt·OTTO는 리뷰 수도 비교합니다.',
     }),
     ('no_review_rating_count', {
         'detail_name': '리뷰 없음 문구와 별점 수 일치',
@@ -56,7 +54,7 @@ SEG_RULE_SPECS = OrderedDict((
         'detail_name': '별점 숫자 형식 및 5점 이하',
         'field1': 'star_rating',
         'field2': None,
-        'retailers': SEG_RETAILERS,
+        'retailers': ('Amazon',),
         'display_fields': ('star_rating', 'count_of_star_ratings'),
         'error_message': (
             'star_rating이 숫자가 아니거나 허용 범위 0~5를 벗어났습니다.'
@@ -78,7 +76,7 @@ SEG_RULE_SPECS = OrderedDict((
         'display_fields': (
             'final_sku_price', 'original_sku_price', 'savings',
         ),
-        'error_message': 'final_sku_price가 original_sku_price보다 큽니다.',
+        'error_message': 'final_sku_price가 original_sku_price보다 크거나 같습니다.',
     }),
     ('discount_rate_90', {
         'detail_name': '90% 이상 할인 검증',
@@ -99,7 +97,7 @@ SEG_RULE_SPECS = OrderedDict((
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.'
+            '할인 가격인데 savings가 없습니다. Mediamarkt는 할인율 10% 이하를 제외합니다.'
         ),
     }),
     ('original_missing', {
@@ -141,6 +139,27 @@ SEG_RULE_SPECS = OrderedDict((
             '센트 단위까지 일치하지 않습니다.'
         ),
     }),
+    ('review_count_match', {
+        'detail_name': '리뷰 수와 별점 수 일치',
+        'field1': 'count_of_reviews', 'field2': 'count_of_star_ratings',
+        'retailers': SEG_EQUAL_REVIEW_RETAILERS,
+        'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'star_rating'),
+        'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
+    }),
+    ('review_body_count', {
+        'detail_name': 'OTTO 리뷰 수와 본문 확인',
+        'field1': 'count_of_reviews', 'field2': 'detailed_review_content',
+        'retailers': ('OTTO',),
+        'display_fields': ('count_of_reviews', 'detailed_review_content', 'review_body_count', 'issue_type'),
+        'error_message': '리뷰 수·본문 존재 여부, 본문 번호, review20 누락을 확인합니다.',
+    }),
+    ('review_body_decrease', {
+        'detail_name': '전날 대비 리뷰본문 감소',
+        'field1': 'detailed_review_content', 'field2': None,
+        'retailers': SEG_EQUAL_REVIEW_RETAILERS,
+        'display_fields': ('detailed_review_content', 'review_body_count', 'previous_review_body_count', 'previous_source_date'),
+        'error_message': '같은 상품의 리뷰본문 개수가 전날보다 감소했습니다.',
+    }),
 ))
 
 _RULE_ALIASES = {
@@ -163,6 +182,7 @@ _DISPLAY_QUERY_COLUMNS = {
     'count_of_reviews', 'count_of_star_ratings', 'star_rating',
     'final_sku_price', 'original_sku_price', 'savings',
     'crawl_strdatetime', 'batch_id', 'product_url',
+    'detailed_review_content',
 }
 
 
@@ -210,6 +230,7 @@ def evaluate_seg_row(row):
     rating_text = str(row.get('star_rating') or '').strip()
     rating = parse_seg_number(row.get('star_rating'))
     star_count = parse_seg_number(row.get('count_of_star_ratings'))
+    review_count = parse_seg_number(row.get('count_of_reviews'))
     allowed_no_review = (
         retailer == 'Amazon'
         and rating_text.casefold() == SEG_NO_REVIEW_TEXT.casefold()
@@ -220,10 +241,17 @@ def evaluate_seg_row(row):
                 errors.add('rating_count_presence')
         elif (rating == 0) != (star_count == 0):
             errors.add('rating_count_presence')
-        if rating < 0 or rating > 5:
+        if retailer in SEG_EQUAL_REVIEW_RETAILERS and review_count is not None:
+            if (rating == 0) != (review_count == 0):
+                errors.add('rating_count_presence')
+        if retailer == 'Amazon' and (rating < 0 or rating > 5):
             errors.add('rating_range')
-    elif _has_value(row.get('star_rating')) and not allowed_no_review:
+    elif retailer == 'Amazon' and _has_value(row.get('star_rating')) and not allowed_no_review:
         errors.add('rating_range')
+
+    if retailer in SEG_EQUAL_REVIEW_RETAILERS:
+        if review_count is not None and star_count is not None and review_count != star_count:
+            errors.add('review_count_match')
 
     if allowed_no_review and star_count is not None and star_count > 0:
         errors.add('no_review_rating_count')
@@ -239,7 +267,7 @@ def evaluate_seg_row(row):
     original_present = _has_value(row.get('original_sku_price'))
     savings_present = _has_value(row.get('savings'))
     final_text = str(row.get('final_sku_price') or '').strip()
-    if final_text in SEG_PRICE_STATUS_TEXTS:
+    if retailer == 'Amazon' and final_text in SEG_PRICE_STATUS_TEXTS:
         return errors
 
     final_price = parse_seg_money(row.get('final_sku_price'))
@@ -247,7 +275,7 @@ def evaluate_seg_row(row):
     savings_amount = parse_seg_money(row.get('savings'))
 
     if final_price is not None and original_price is not None:
-        if final_price > original_price:
+        if final_price >= original_price:
             errors.add('final_original_price')
         if (
             retailer == 'Amazon'
@@ -257,7 +285,12 @@ def evaluate_seg_row(row):
         ):
             errors.add('discount_rate_90')
         if original_price > final_price and not savings_present:
-            errors.add('savings_missing')
+            small_mediamarkt_discount = (
+                retailer == 'Mediamarkt' and original_price > 0
+                and (original_price - final_price) * 100 <= original_price * 10
+            )
+            if not small_mediamarkt_discount:
+                errors.add('savings_missing')
 
     if final_price is not None and savings_present and not original_present:
         errors.add('original_missing')
@@ -276,6 +309,59 @@ def evaluate_seg_row(row):
         errors.add('savings_amount_match')
 
     return errors
+
+
+def _review_numbers(value):
+    return sorted({int(n) for n in re.findall(r'(?i)\breview\s*(\d+)\s*-', str(value or ''))})
+
+
+def _body_count(row):
+    body = row.get('detailed_review_content')
+    if not _has_value(body):
+        return 0
+    numbers = _review_numbers(body)
+    # An unrecognized nonempty body is not evidence of zero collected reviews.
+    return len(numbers) if numbers else None
+
+
+def evaluate_otto_review_body(row):
+    if display_seg_retailer(row.get('account_name')) != 'OTTO':
+        return None
+    count = parse_seg_number(row.get('count_of_reviews'))
+    if count is None:
+        return None
+    present = _has_value(row.get('detailed_review_content'))
+    maximum = max(_review_numbers(row.get('detailed_review_content')), default=0)
+    if count > 0 and not present:
+        return '리뷰 수 있음 · 리뷰본문 없음'
+    if count == 0 and present:
+        return '리뷰 수 0 · 리뷰본문 있음'
+    if maximum > count:
+        return '리뷰본문 번호가 리뷰 수보다 큼'
+    if count >= 20 and maximum < 20:
+        return 'review20 없음'
+    return None
+
+
+def _previous_body_rows(rows, date_column):
+    daily = {}
+    for row in rows:
+        identity = _detail_row_item_key(row)
+        if identity is None:
+            continue
+        key = (identity, _detail_row_source_date(row, date_column))
+        priority = (str(row.get('page_type') or '').strip().lower() == 'main', int(row.get('id') or 0))
+        if key not in daily or priority > daily[key][0]:
+            daily[key] = (priority, row)
+    previous = {}
+    for row in rows:
+        if display_seg_retailer(row.get('account_name')) not in SEG_EQUAL_REVIEW_RETAILERS:
+            continue
+        day = date.fromisoformat(_detail_row_source_date(row, date_column))
+        candidate = daily.get((_detail_row_item_key(row), str(day - timedelta(days=1))))
+        if candidate:
+            previous[str(row['id'])] = candidate[1]
+    return previous
 
 
 def _rows_as_dicts(cursor):
@@ -519,9 +605,14 @@ def build_seg_crossfield_result(
     source = get_seg_source(key)
     contract = _date_contract(inspection_date, source)
     rules = load_active_seg_rules(cursor, key)
+    start_day = from_date or inspection_date
+    needs_previous = any(rule['rule_key'] == 'review_body_decrease' for rule in rules)
     rows = load_latest_seg_rows(
-        cursor, inspection_date, key, from_date=from_date
+        cursor, inspection_date, key,
+        from_date=start_day - timedelta(days=1) if needs_previous else from_date,
     )
+    previous_rows = _previous_body_rows(rows, source['date_column']) if needs_previous else {}
+    rows = [row for row in rows if _detail_row_source_date(row, source['date_column']) >= str(start_day)]
     rule_ids = [
         rule_id
         for rule in rules
@@ -548,16 +639,18 @@ def build_seg_crossfield_result(
     rule_results = []
     finding_count = 0
     failed_record_ids = set()
+    review_record_ids = set()
+    review_finding_count = 0
     for rule in rules:
         error_details = []
+        review_details = []
+        comparison_rows = {}
         for row in rows:
             retailer = display_seg_retailer(
                 row.get('account_name')
             ) or 'Unknown'
             row_id = str(row.get('id'))
             if not _rule_applies_to_retailer(rule, retailer):
-                continue
-            if rule['rule_key'] not in evaluations[row_id]:
                 continue
             source_rule_ids = {
                 str(rule_id)
@@ -569,6 +662,34 @@ def build_seg_crossfield_result(
                    for rule_id in source_rule_ids):
                 continue
             detail = dict(row)
+            if rule['rule_key'] == 'review_body_count':
+                issue = evaluate_otto_review_body(row)
+                if not issue:
+                    continue
+                detail.update({
+                    'issue_type': issue, 'review_body_count': _body_count(row),
+                    'validation_tag': f'확인 필요: {issue}',
+                    'rule_key': rule['rule_key'], 'finding_level': 'review_needed',
+                })
+                review_details.append(detail)
+                review_record_ids.add(row_id)
+                continue
+            if rule['rule_key'] == 'review_body_decrease':
+                previous = previous_rows.get(row_id)
+                current_count = _body_count(row)
+                previous_count = _body_count(previous) if previous else None
+                if current_count is None or previous_count is None or current_count >= previous_count:
+                    continue
+                detail.update({
+                    'review_body_count': current_count,
+                    'previous_review_body_count': previous_count,
+                    'previous_source_date': _detail_row_source_date(previous, source['date_column']),
+                })
+                comparison_rows[str(previous['id'])] = {
+                    **previous, 'review_body_count': previous_count,
+                }
+            elif rule['rule_key'] not in evaluations[row_id]:
+                continue
             detail['validation_tag'] = rule['error_message']
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
@@ -578,14 +699,20 @@ def build_seg_crossfield_result(
         result = dict(rule)
         result['error_details'] = error_details
         result['error_count'] = len(error_details)
+        result['review_details'] = review_details
+        result['review_count'] = len(review_details)
+        result['comparison_rows'] = list(comparison_rows.values())
         rule_results.append(result)
         finding_count += len(error_details)
+        review_finding_count += len(review_details)
 
     retailer_summaries = []
     for retailer, source_rows in sorted(retailer_rows.items()):
         rules_summary = []
         retailer_error_count = 0
         retailer_failed_records = set()
+        retailer_review_records = set()
+        retailer_review_count = 0
         for result in rule_results:
             if not _retailer_supported(result['rule_key'], retailer):
                 continue
@@ -597,11 +724,16 @@ def build_seg_crossfield_result(
             retailer_failed_records.update(
                 str(detail.get('id')) for detail in details
             )
+            review_details = [detail for detail in result['review_details']
+                              if detail.get('account_name') == retailer]
+            retailer_review_count += len(review_details)
+            retailer_review_records.update(str(detail['id']) for detail in review_details)
             rules_summary.append({
                 'rule_id': result['rule_id'],
                 'detail_code': result['detail_code'],
                 'detail_name': result['detail_name'],
                 'error_count': len(details),
+                'review_count': len(review_details),
             })
         batch_ids = sorted({
             str(row.get('batch_id') or '') for row in source_rows
@@ -612,6 +744,8 @@ def build_seg_crossfield_result(
             'total_checked': len(source_rows),
             'failed_records': len(retailer_failed_records),
             'total_errors': retailer_error_count,
+            'review_needed_records': len(retailer_review_records - retailer_failed_records),
+            'total_review_needed': retailer_review_count,
             'rules': rules_summary,
         })
 
@@ -628,7 +762,9 @@ def build_seg_crossfield_result(
         'total_checked': len(rows),
         'failed_records': len(failed_record_ids),
         'total_anomalies': finding_count,
-        'passed_records': max(0, len(rows) - len(failed_record_ids)),
+        'review_needed_records': len(review_record_ids - failed_record_ids),
+        'total_review_needed': review_finding_count,
+        'passed_records': max(0, len(rows) - len(failed_record_ids | review_record_ids)),
         'rule_results': rule_results,
         'retailers': retailer_summaries,
         'normal_corrections': corrections,
@@ -759,7 +895,7 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
         if summary.get('retailer')
     ]
     for rule in result['rule_results']:
-        error_rows = rule.get('error_details') or []
+        error_rows = (rule.get('error_details') or []) + (rule.get('review_details') or [])
         pairs = [
             (
                 str(row.get('account_name')).strip(),
@@ -786,6 +922,7 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
             'validation_type': rule['rule_key'],
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
+            'review_count': rule['review_count'],
             'query': build_seg_display_query(
                 inspection_date, result['product_line'], rule,
                 days=3,
@@ -806,6 +943,8 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
         'total_checked': result['total_checked'],
         'failed_records': result['failed_records'],
         'total_anomalies': result['total_anomalies'],
+        'review_needed_records': result['review_needed_records'],
+        'total_review_needed': result['total_review_needed'],
         'passed_records': result['passed_records'],
         'rule_summary': rule_summary,
         'table_name': result['table_name'],
@@ -852,9 +991,14 @@ def get_seg_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
+    all_findings = selected['error_details'] + selected['review_details']
+    # Include the actual previous row even if it had no finding of its own.
+    finding_ids = {str(row['id']) for row in all_findings}
+    comparison_rows = [row for row in selected['comparison_rows'] if str(row['id']) not in finding_ids]
+    comparison_ids = {str(row['id']) for row in comparison_rows}
     target_source_date = result['source_date']
     target_findings = [
-        row for row in selected['error_details']
+        row for row in all_findings
         if _detail_row_source_date(row, result['date_col'])
         == target_source_date
     ]
@@ -864,7 +1008,7 @@ def get_seg_cross_field_rule_detail(
         ) if item_key is not None
     }
     anomalies = []
-    for row in selected['error_details']:
+    for row in all_findings + comparison_rows:
         row_source_date = _detail_row_source_date(row, result['date_col'])
         detail = dict(row)
         # PostgreSQL timestamptz는 JSON에서 UTC로 직렬화될 수 있으므로,
@@ -872,7 +1016,7 @@ def get_seg_cross_field_rule_detail(
         detail['row_source_date'] = row_source_date
         if row_source_date == target_source_date:
             detail['row_role'] = 'target'
-        elif _detail_row_item_key(row) in target_item_keys:
+        elif str(row['id']) in comparison_ids or _detail_row_item_key(row) in target_item_keys:
             detail['row_role'] = 'comparison_history'
         else:
             detail['row_role'] = 'past_finding'
@@ -927,7 +1071,7 @@ def get_seg_cross_field_rule_detail(
             row.get('account_name')
         ) or 'Unknown'
         summary = retailer_summary.setdefault(
-            retailer, {'count': 0, 'items': []}
+            retailer, {'count': 0, 'review_count': 0, 'items': []}
         )
         item = str(row.get('item') or '')
         if item and item not in summary['items']:
@@ -936,7 +1080,8 @@ def get_seg_cross_field_rule_detail(
             row.get('row_role') == 'target'
             and str(row.get('id')) not in normal_record_ids
         ):
-            summary['count'] += 1
+            count_key = 'review_count' if row.get('finding_level') == 'review_needed' else 'count'
+            summary[count_key] += 1
 
     retailer_pairs = {retailer: [] for retailer in retailer_summary}
     for row in anomalies:
@@ -974,6 +1119,8 @@ def get_seg_cross_field_rule_detail(
         'total_anomalies': sum(
             item['count'] for item in retailer_summary.values()
         ),
+        'total_review_needed': sum(item['review_count'] for item in retailer_summary.values()),
+        'total_findings': sum(item['count'] + item['review_count'] for item in retailer_summary.values()),
         'retailer_summary': retailer_summary,
         'anomalies': anomalies,
         'select_fields': selected.get('select_fields') or '',

@@ -6,6 +6,15 @@ from apps.dx.dx_layer3.cross_field import sem_services
 
 
 class SemCrossfieldHistoryTests(unittest.TestCase):
+    def test_equal_price_and_review_zero_share_existing_rule_ids(self):
+        for rating, stars, reviews in (('4.5', '10', '0'), ('0', '0', '10'), ('0', '10', '10')):
+            failures = sem_services._failed_rules({
+                'star_rating': rating, 'count_of_star_ratings': stars, 'count_of_reviews': reviews,
+                'final_sku_price': '$100', 'original_sku_price': '$100',
+            })
+            self.assertIn('final_original_price', failures)
+            self.assertEqual(1, failures.count('rating_count_consistency'))
+
     def setUp(self):
         self.target = {
             'id': 30, 'item': '123', 'country': 'SEM',

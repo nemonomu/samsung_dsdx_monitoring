@@ -79,7 +79,7 @@ SIEL_RULE_SPECS = OrderedDict((
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            'final_sku_price가 original_sku_price보다 큽니다.'
+            'final_sku_price가 original_sku_price보다 크거나 같습니다.'
         ),
     }),
     ('discount_rate_90', {
@@ -321,7 +321,7 @@ def evaluate_siel_row(row):
     original_price = parse_siel_money(row.get('original_sku_price'))
 
     if final_price is not None and original_price is not None:
-        if final_price > original_price:
+        if final_price >= original_price:
             errors.add('final_original_price')
         if (
             retailer == 'Amazon'

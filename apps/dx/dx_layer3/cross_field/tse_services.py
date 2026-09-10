@@ -47,7 +47,7 @@ TSE_RULE_SPECS = OrderedDict((
             'crawl_datetime',
         ),
         'error_message': (
-            'star_rating과 count_of_star_ratings의 0 여부가 다르거나 '
+            'star_rating과 별점 수 또는 리뷰 수의 0 여부가 다르거나 '
             'star_rating과 count_of_reviews의 존재 여부가 다릅니다.'
         ),
     }),
@@ -55,7 +55,7 @@ TSE_RULE_SPECS = OrderedDict((
         'detail_name': '최종가와 원가 순서',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
-        'error_message': 'final_sku_price가 original_sku_price보다 큽니다.',
+        'error_message': 'final_sku_price가 original_sku_price보다 크거나 같습니다.',
     }),
     ('savings_requires_original', {
         'detail_name': '할인 정보와 원가 존재',
@@ -204,6 +204,9 @@ def evaluate_tse_row(row):
     if rating is not None and star_count is not None:
         if (rating == 0) != (star_count == 0):
             errors.add('review_zero_pair')
+    if rating is not None and review_count is not None:
+        if (rating == 0) != (review_count == 0):
+            errors.add('review_zero_pair')
     if rating_present != review_count_present:
         errors.add('review_zero_pair')
 
@@ -229,7 +232,7 @@ def evaluate_tse_row(row):
 
     if final_price is None or original_price is None:
         return errors
-    if final_price > original_price:
+    if final_price >= original_price:
         errors.add('final_original_price')
         return errors
 

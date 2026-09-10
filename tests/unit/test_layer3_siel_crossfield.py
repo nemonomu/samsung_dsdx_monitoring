@@ -102,6 +102,16 @@ def _rule(rule_id, rule_key, retailer, product_line='siel_tv'):
 
 
 class SielCrossfieldEvaluationTests(unittest.TestCase):
+    def test_equal_price_is_anomaly_but_flipkart_zero_reviews_are_valid(self):
+        for factory in (_amazon_row, _flipkart_row):
+            with self.subTest(retailer=factory()['account_name']):
+                errors = siel_services.evaluate_siel_row(factory(
+                    final_sku_price='900', original_sku_price='900',
+                ))
+                self.assertIn('final_original_price', errors)
+        errors = siel_services.evaluate_siel_row(_flipkart_row(count_of_reviews='0'))
+        self.assertNotIn('rating_count_presence', errors)
+
     def test_valid_amazon_and_flipkart_rows_have_no_findings(self):
         self.assertEqual(set(), siel_services.evaluate_siel_row(_amazon_row()))
         self.assertEqual(set(), siel_services.evaluate_siel_row(_flipkart_row()))

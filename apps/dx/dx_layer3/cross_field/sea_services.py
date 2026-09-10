@@ -47,7 +47,7 @@ SEA_RULE_SPECS = OrderedDict((
         'display_fields': (
             'star_rating', 'count_of_star_ratings', 'count_of_reviews',
         ),
-        'error_message': 'star_rating의 0 여부와 count_of_star_ratings의 0 여부가 다릅니다.',
+        'error_message': 'star_rating과 별점 수 또는 리뷰 수의 0 여부가 다릅니다.',
     }),
     ('rank_page_type', {
         'detail_name': '페이지 유형과 순위 필드 일치',
@@ -304,6 +304,9 @@ def evaluate_sea_row(row):
     if rating is not None and star_count is not None:
         if (rating == 0) != (star_count == 0):
             errors.add('rating_count_presence')
+    if rating is not None and review_count is not None:
+        if (rating == 0) != (review_count == 0):
+            errors.add('rating_count_presence')
 
     if retailer == 'Bestbuy':
         page_type = str(row.get('page_type') or '').strip().upper()
@@ -320,9 +323,7 @@ def evaluate_sea_row(row):
     savings = parse_sea_money(row.get('savings'))
 
     if final_price is not None and original_price is not None:
-        if retailer == 'Lowes' and final_price >= original_price:
-            errors.add('final_original_price')
-        elif retailer == 'Bestbuy' and final_price > original_price:
+        if final_price >= original_price:
             errors.add('final_original_price')
 
         if (

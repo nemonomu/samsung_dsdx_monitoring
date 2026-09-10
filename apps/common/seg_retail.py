@@ -161,7 +161,10 @@ def get_seg_crossfield_editable_columns(product_line, retailer):
     retailer_name = display_seg_retailer(retailer)
     if retailer_name not in source['retailers']:
         return []
-    return list(SEG_CROSSFIELD_COMMON_EDITABLE_COLUMNS)
+    columns = list(SEG_CROSSFIELD_COMMON_EDITABLE_COLUMNS)
+    if retailer_name in ('Mediamarkt', 'OTTO'):
+        columns.extend(('count_of_reviews', 'detailed_review_content'))
+    return columns
 
 
 def get_seg_product_line(value):

@@ -95,6 +95,18 @@ def _rule(rule_id, rule_key, retailer='ALL', product_line='sea_ref'):
 
 
 class SeaCrossfieldEvaluationTests(unittest.TestCase):
+    def test_equal_prices_and_review_zero_pair_use_existing_rules(self):
+        for factory in (_bestbuy_row, _lowes_row):
+            errors = sea_services.evaluate_sea_row(factory(
+                final_sku_price='$1,000', original_sku_price='$1,000',
+                star_rating='4.5', count_of_star_ratings='2', count_of_reviews='0',
+            ))
+            self.assertTrue({'final_original_price', 'rating_count_presence', 'review_count_match'} <= errors)
+            reverse = sea_services.evaluate_sea_row(factory(
+                star_rating='0', count_of_star_ratings='0', count_of_reviews='2',
+            ))
+            self.assertIn('rating_count_presence', reverse)
+
     def test_rating_zero_pair_is_bidirectional_for_both_retailers(self):
         for row_factory in (_bestbuy_row, _lowes_row):
             with self.subTest(retailer=row_factory.__name__, direction='rating_zero'):

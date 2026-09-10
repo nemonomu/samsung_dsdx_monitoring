@@ -1134,9 +1134,9 @@ function showSeaCrossfieldGuide() {
                     </div>
                     <ol class="sea-guide-rule-list">
                         <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
-                        <li><strong>별점 0과 별점 수 0 일치</strong><p>한쪽만 0이면 이상입니다. 둘 다 0이거나 둘 다 양수이면 정상입니다.</p></li>
+                        <li><strong>별점 0과 별점 수·리뷰 수 0 일치</strong><p>별점과 별점 수, 별점과 리뷰 수를 각각 비교해 한쪽만 0이면 이상입니다.</p></li>
                         <li><strong>페이지 유형과 순위 일치</strong><p>MAIN이면 <code>main_rank</code>, BSR이면 <code>bsr_rank</code>가 있어야 합니다.</p></li>
-                        <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt; original_sku_price → 이상</code></li>
+                        <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt;= original_sku_price → 이상</code></li>
                         <li><strong>90% 이상 할인</strong><code>(원가-최종가)/원가 &gt;= 90% → 이상</code></li>
                         <li><strong>리뷰본문 개수</strong><p>리뷰 수가 20개 이하면 해당 수까지, 20개 이상이면 <code>review20</code>까지 있어야 합니다.</p></li>
                         <li><strong>추천 의향 형식</strong><p>리뷰가 있으면 <code>NN% would recommend to a friend</code>, 0~100% 범위여야 합니다. 리뷰가 0이면 값도 비어 있어야 합니다.</p></li>
@@ -1148,7 +1148,7 @@ function showSeaCrossfieldGuide() {
                     </div>
                     <ol class="sea-guide-rule-list">
                         <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
-                        <li><strong>별점 0과 별점 수 0 일치</strong><p>한쪽만 0이면 이상입니다. 둘 다 0이거나 둘 다 양수이면 정상입니다.</p></li>
+                        <li><strong>별점 0과 별점 수·리뷰 수 0 일치</strong><p>별점과 별점 수, 별점과 리뷰 수를 각각 비교해 한쪽만 0이면 이상입니다.</p></li>
                         <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt;= original_sku_price → 이상</code></li>
                         <li>
                             <strong>리뷰 수·본문 확인</strong>
@@ -1646,7 +1646,7 @@ function getValidationRules(checkName) {
             },
             {
                 title: 'final_sku_price ↔ original_sku_price 비교',
-                description: '할인 가격이 원래 가격보다 높은 경우 오류입니다. 월 할부 가격($X/month)은 제외합니다.',
+                description: '최종 가격이 원가보다 높거나 같으면 오류입니다. 월 할부 가격($X/month)은 제외합니다.',
                 example: '오류: final=$1,299, original=$999'
             },
             {

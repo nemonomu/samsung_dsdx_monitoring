@@ -67,7 +67,7 @@ for (const label of [
 }
 assert(commonSource.includes('검수 기준 안내'));
 assert(commonSource.includes('SEA REF/LDY 크로스필드 검수 기준'));
-assert(commonSource.includes('별점 0과 별점 수 0 일치'));
+assert(commonSource.includes('별점 0과 별점 수·리뷰 수 0 일치'));
 assert(commonSource.includes('<h3>Bestbuy</h3><span>7개</span>'));
 assert(commonSource.includes('<h3>Lowes</h3><span>9개</span>'));
 assert(commonSource.includes('function showCrossfieldGuide()'));
@@ -210,6 +210,16 @@ const sandbox = {
 
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox);
+
+const decreaseKeys = sandbox._cfDetailKeys([
+    { id: 1, review_body_count: 20 },
+    { id: 2, review_body_count: 15, previous_review_body_count: 20,
+      previous_source_date: '2026-09-08' },
+], ['id']);
+assert.deepStrictEqual(Array.from(decreaseKeys), [
+    'review_body_count', 'previous_review_body_count', 'previous_source_date',
+]);
+assert.strictEqual(sandbox._cfColumnDefinition('previous_review_body_count').label, '전날 리뷰본문 수');
 
 sandbox.showRetailerDetail('Homepro');
 assert(inlineHtml.includes('상세 데이터를 찾을 수 없습니다'));

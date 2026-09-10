@@ -15,12 +15,12 @@ from apps.dx.dx_layer2.sem_validation import _history_rows, _latest_rows, produc
 _RULES = (
     ('rating_count_consistency', '평점과 평가 수 일치', 'star_rating',
      'count_of_star_ratings',
-     '평점과 평가 수의 0 여부가 다르거나 평점과 리뷰 수의 존재 여부가 다릅니다.'),
+     '평점과 평가 수 또는 리뷰 수의 0 여부가 다르거나 평점과 리뷰 수의 존재 여부가 다릅니다.'),
     ('review_rating_count', '리뷰 수와 평가 수 일치', 'count_of_reviews',
      'count_of_star_ratings',
      'Liverpool 리뷰 수와 평가 수가 일치하지 않습니다.'),
     ('final_original_price', '최종가와 원가 순서', 'final_sku_price',
-     'original_sku_price', '최종 판매가가 원가보다 큽니다.'),
+     'original_sku_price', '최종 판매가가 원가보다 크거나 같습니다.'),
     ('original_price_zero', '원가 0 검사', 'original_sku_price',
      None, 'original_sku_price가 0입니다.'),
 )
@@ -63,6 +63,12 @@ def _failed_rules(row):
     if rating_present != review_count_present:
         if 'rating_count_consistency' not in failed:
             failed.append('rating_count_consistency')
+    rating_value = _number(rating)
+    review_count_value = _number(review_count)
+    if rating_value is not None and review_count_value is not None:
+        if (rating_value == 0) != (review_count_value == 0):
+            if 'rating_count_consistency' not in failed:
+                failed.append('rating_count_consistency')
     if rating_count_present and review_count_present:
         rating_count_value = _number(rating_count)
         review_count_value = _number(review_count)
@@ -72,7 +78,7 @@ def _failed_rules(row):
     original_price = _number(row.get('original_sku_price'))
     if original_price == 0:
         failed.append('original_price_zero')
-    elif final_price is not None and original_price is not None and final_price > original_price:
+    elif final_price is not None and original_price is not None and final_price >= original_price:
         failed.append('final_original_price')
     return failed
 

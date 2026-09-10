@@ -446,6 +446,7 @@ def layer_stats(request):
                         seg_total = seg_result['total_checked']
                         seg_failed = seg_result['failed_records']
                         seg_findings = seg_result['total_anomalies']
+                        seg_review_needed = seg_result.get('review_needed_records', 0)
                         seg_passed = seg_result.get(
                             'passed_records', max(0, seg_total - seg_failed),
                         )
@@ -467,7 +468,11 @@ def layer_stats(request):
                         'passed': seg_passed,
                         'failed': seg_failed,
                         'finding_count': seg_findings,
-                        'status': get_status(seg_failed, seg_total),
+                        'review_needed': seg_review_needed,
+                        'status': (
+                            get_status(seg_failed, seg_total) if seg_failed
+                            else 'REVIEW_NEEDED' if seg_review_needed else 'OK'
+                        ),
                     })
 
             if False and run_crossfield and product_line in ['hhp', 'all']:

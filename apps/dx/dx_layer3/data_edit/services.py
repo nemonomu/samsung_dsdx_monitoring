@@ -68,6 +68,7 @@ SIEL_CROSSFIELD_REVIEW_COLUMNS = frozenset({
 })
 SEG_CROSSFIELD_REVIEW_COLUMNS = frozenset({
     'star_rating', 'count_of_star_ratings',
+    'count_of_reviews', 'detailed_review_content',
     'final_sku_price', 'original_sku_price', 'savings',
     'page_type', 'main_rank', 'bsr_rank',
 })

@@ -185,6 +185,40 @@ class SielLayer3DataEditTests(unittest.TestCase):
         )
         self.assertEqual(1, conn.commits)
 
+    def test_seg_review_fields_can_be_edited_and_confirmed(self):
+        table = 'dx_seg.dx_seg_tv_retail_com'
+        for retailer in ('Mediamarkt', 'OTTO'):
+            for column in ('count_of_reviews', 'detailed_review_content'):
+                with self.subTest(retailer=retailer, column=column):
+                    cursor = ScriptedCursor([
+                        {'fetchone': ('old', 'batch', retailer, 'item-1')}, {}, {},
+                    ])
+                    result = services.update_cell_value(
+                        cursor, FakeConnection(), table, 1, column, 'new',
+                        '2026-09-09', 'cross_field', 'tester', '수정', 101,
+                    )
+                    self.assertTrue(result['success'])
+                    cursor = ScriptedCursor([
+                        {'fetchone': ('old', retailer, 'item-1')},
+                        {'fetchone': None}, {},
+                    ])
+                    result = services.save_review(
+                        cursor, FakeConnection(), table, 1, column, 'normal',
+                        '', '정상 데이터', '2026-09-09', 'cross_field', 'tester', 101,
+                    )
+                    self.assertTrue(result['success'])
+
+    def test_seg_amazon_review_body_edit_is_not_enabled(self):
+        cursor = ScriptedCursor([
+            {'fetchone': ('old', 'batch', 'Amazon', 'item-1')},
+        ])
+        result = services.update_cell_value(
+            cursor, FakeConnection(), 'dx_seg.dx_seg_tv_retail_com', 1,
+            'detailed_review_content', 'new', '2026-09-09', 'cross_field',
+            'tester', '', 101,
+        )
+        self.assertEqual(403, result['status'])
+
 
 if __name__ == '__main__':
     unittest.main()

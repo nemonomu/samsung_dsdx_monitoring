@@ -2,7 +2,7 @@
 -- PostgreSQL only. Review and run manually in DBeaver.
 -- Application code evaluates these allow-listed rule keys; stored query text
 -- is informational and is never executed.
--- Exact expected active seed rows: 30 (10 per product line).
+-- Exact expected active seed rows: 39 (13 per product line).
 
 BEGIN;
 
@@ -40,7 +40,7 @@ INSERT INTO _seg_crossfield_rule_seed
 VALUES
     ('rating_count_presence', '별점과 별점 수 존재 일치',
      'star_rating', 'count_of_star_ratings',
-     'star_rating의 0 여부와 count_of_star_ratings의 NULL·빈값·0 여부가 일치하지 않습니다.',
+     '별점과 별점 수의 0값 관계 불일치. Mediamarkt·OTTO는 리뷰 수도 비교합니다.',
      'star_rating|count_of_star_ratings|count_of_reviews', 10),
     ('no_review_rating_count', '리뷰 없음 문구와 별점 수 일치',
      'star_rating', 'count_of_star_ratings',
@@ -56,7 +56,7 @@ VALUES
      'page_type|main_rank|bsr_rank', 40),
     ('final_original_price', '최종가와 원가 순서',
      'final_sku_price', 'original_sku_price',
-     'final_sku_price가 original_sku_price보다 큽니다.',
+     'final_sku_price가 original_sku_price보다 크거나 같습니다.',
      'final_sku_price|original_sku_price|savings', 50),
     ('discount_rate_90', '90% 이상 할인 검증',
      'final_sku_price', 'original_sku_price',
@@ -64,7 +64,7 @@ VALUES
      'final_sku_price|original_sku_price|savings', 60),
     ('savings_missing', '할인 가격 존재 시 savings 확인',
      'savings', 'final_sku_price|original_sku_price',
-     '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.',
+     '할인 가격인데 savings가 없습니다. Mediamarkt는 할인율 10% 이하를 제외합니다.',
      'final_sku_price|original_sku_price|savings', 70),
     ('original_missing', '판매가·savings 존재 시 원가 확인',
      'original_sku_price', 'final_sku_price|savings',
@@ -77,7 +77,19 @@ VALUES
     ('savings_amount_match', 'Amazon 할인 금액 일치',
      'savings', 'original_sku_price|final_sku_price',
      'savings가 original_sku_price-final_sku_price와 센트 단위까지 일치하지 않습니다.',
-     'final_sku_price|original_sku_price|savings', 100);
+     'final_sku_price|original_sku_price|savings', 100),
+    ('review_count_match', '리뷰 수와 별점 수 일치',
+     'count_of_reviews', 'count_of_star_ratings',
+     'count_of_reviews와 count_of_star_ratings가 다릅니다.',
+     'count_of_reviews|count_of_star_ratings|star_rating', 110),
+    ('review_body_count', 'OTTO 리뷰 수와 본문 확인',
+     'count_of_reviews', 'detailed_review_content',
+     '리뷰 수·본문 존재 여부, 본문 번호, review20 누락을 확인합니다.',
+     'count_of_reviews|detailed_review_content|review_body_count|issue_type', 120),
+    ('review_body_decrease', '전날 대비 리뷰본문 감소',
+     'detailed_review_content', NULL,
+     '같은 상품의 리뷰본문 개수가 전날보다 감소했습니다.',
+     'detailed_review_content|review_body_count|previous_review_body_count|previous_source_date', 130);
 
 CREATE TEMP TABLE _seg_crossfield_seed AS
 SELECT
@@ -157,9 +169,9 @@ BEGIN
      AND UPPER(BTRIM(target.retailer)) = 'ALL'
     WHERE target.is_active IS TRUE;
 
-    IF active_seed_count <> 30 THEN
+    IF active_seed_count <> 39 THEN
         RAISE EXCEPTION
-            'Expected 30 active SEG cross-field rules, found %',
+            'Expected 39 active SEG cross-field rules, found %',
             active_seed_count;
     END IF;
 END $$;
