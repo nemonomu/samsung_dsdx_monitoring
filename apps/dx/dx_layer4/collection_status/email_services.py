@@ -156,6 +156,15 @@ def _configured_retailers(cursor, source):
             raise EmailConfigurationError(
                 f"No active columns for {source['key']}/{retailer['name']}"
             )
+        # Explicit email-only fields must not depend on a shared Layer 1-3
+        # configuration row being present or active.
+        for column in retailer.get('email_required_columns', ()):
+            if not _IDENTIFIER.fullmatch(column) or column in unsupported_columns:
+                raise EmailConfigurationError(
+                    f"Invalid required email column for {source['key']}"
+                )
+            if column not in columns:
+                columns.append(column)
         # Every email Missing table includes the physical item identifier.
         # Keep it email-only so shared Layer 1-3 DB column settings are not
         # changed just to satisfy this report layout.

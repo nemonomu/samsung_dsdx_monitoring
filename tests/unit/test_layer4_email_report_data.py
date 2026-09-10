@@ -225,6 +225,36 @@ class EmailRegistryTests(unittest.TestCase):
 
 
 class EmailReportDataTests(unittest.TestCase):
+    def test_required_amazon_columns_are_counted_without_active_config_rows(self):
+        for original in load_registry().EMAIL_REPORT_SOURCES:
+            for retailer in original['retailers']:
+                required = retailer.get('email_required_columns', ())
+                if not required:
+                    continue
+                for present_in_config in (False, True):
+                    with self.subTest(source=original['key'], configured=present_in_config):
+                        configured_source = {**original, 'retailers': (retailer,)}
+                        config = [('item', retailer['name'], False)]
+                        if present_in_config:
+                            config.extend((c, retailer['name'], True) for c in required)
+                        steps = [{'fetchall': config}]
+                        if original['latest_batch']:
+                            steps.append({'fetchone': ('test-batch',)})
+                        counts = [336, 336, 0]
+                        for index, _ in enumerate(required, 1):
+                            counts.extend((336, index * 9))
+                        counts.extend((294, 100))
+                        steps.extend(({'fetchone': tuple(counts)}, {'fetchone': (0,)}))
+                        cursor = ScriptedCursor(steps)
+                        result = load_service(cursor).get_email_report_data(
+                            date(2026, 9, 10), sources=(configured_source,))
+                        self.assertTrue(result['complete'])
+                        columns = result['sources'][0]['retailers'][0]['columns']
+                        self.assertEqual(['item', *required], [c['column'] for c in columns])
+                        for index, column in enumerate(columns[1:], 1):
+                            self.assertEqual((336, index * 9), (column['total_count'], column['null_count']))
+                        self.assertTrue(all(sql.lstrip().startswith('SELECT') for sql, _ in cursor.calls))
+
     def test_amazon_savings_and_purchase_quantity_have_email_counts(self):
         registry = load_registry()
         expected = {
@@ -297,7 +327,7 @@ class EmailReportDataTests(unittest.TestCase):
 
         self.assertEqual(
             retailer_columns['Amazon'],
-            ('item', 'sku_popularity'),
+            ('item', 'sku_popularity', 'savings'),
         )
         self.assertEqual(
             retailer_columns['Bestbuy'],
@@ -554,7 +584,7 @@ class EmailReportDataTests(unittest.TestCase):
         cursor = ScriptedCursor([
             {'fetchall': [('sku', 'amazon', False)]},
             {'fetchone': ('a_20260811_000011',)},
-            {'fetchone': (305, 305, 0, 305, 0, 300, 100)},
+            {'fetchone': (305, 305, 0, 305, 0, 305, 7, 305, 11, 300, 100)},
             {'fetchone': (5,)},
         ])
         service = load_service(cursor)

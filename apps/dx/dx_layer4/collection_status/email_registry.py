@@ -4,7 +4,8 @@ Collection columns normally do not live in application code.  Each source's
 ``product_line`` selects the active rows in
 ``public.monitoring_retail_columns`` at request time.  The one exception is an
 explicit email-only allow-list for fields which remain excluded from shared
-Layer 1-3 Missing checks (``skip_missing_check = TRUE``).
+Layer 1-3 Missing checks (``skip_missing_check = TRUE``). Explicitly required
+email fields are also counted when their shared configuration row is absent.
 """
 
 import re
@@ -20,7 +21,7 @@ def _retailer(name, *aliases, exclude_redirect=False,
               include_unassigned=None, unsupported_columns=(),
               conditional_columns=(), optional_if_unconfigured=False,
               email_redirect_metric=False,
-              email_include_skipped_columns=()):
+              email_include_skipped_columns=(), email_required_columns=()):
     retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
@@ -32,6 +33,7 @@ def _retailer(name, *aliases, exclude_redirect=False,
         'email_include_skipped_columns': tuple(
             email_include_skipped_columns
         ),
+        'email_required_columns': tuple(email_required_columns),
     }
     if include_unassigned is not None:
         retailer['include_unassigned'] = bool(include_unassigned)
@@ -72,6 +74,7 @@ _SEA_TV_RETAILERS = (
     _retailer(
         'Amazon', exclude_redirect=True,
         email_include_skipped_columns=('sku_popularity', 'savings'),
+        email_required_columns=('savings',),
     ),
     _retailer(
         'Bestbuy', 'BestBuy',
@@ -99,6 +102,7 @@ _SEG_THREE_RETAILERS = (
     _retailer('MediaMarkt', 'Mediamarkt'),
     _retailer('OTTO'),
     _retailer('Amazon', 'Amazon.de', email_redirect_metric=True,
+              email_required_columns=('savings', 'available_quantity_for_purchase'),
               email_include_skipped_columns=(
                   'savings', 'available_quantity_for_purchase',
               )),
@@ -106,6 +110,7 @@ _SEG_THREE_RETAILERS = (
 _SEG_LDY_RETAILERS = _SEG_THREE_RETAILERS[:2]
 _SIEL_RETAILERS = (
     _retailer('Amazon', email_redirect_metric=True,
+              email_required_columns=('savings', 'available_quantity_for_purchase'),
               email_include_skipped_columns=(
                   'savings', 'available_quantity_for_purchase',
               )),
@@ -268,7 +273,8 @@ def _validate_registry():
             for identifier in (
                     *retailer.get('unsupported_columns', ()),
                     *retailer.get('conditional_columns', ()),
-                    *retailer.get('email_include_skipped_columns', ())):
+                    *retailer.get('email_include_skipped_columns', ()),
+                    *retailer.get('email_required_columns', ())):
                 if not _IDENTIFIER.fullmatch(identifier):
                     raise ValueError(
                         f"Unsafe retailer column: {source['key']}"
