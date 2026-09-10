@@ -6,6 +6,12 @@
 
 BEGIN;
 
+-- Clean up this connection's staging tables left by older/partial runs.
+-- pg_temp is intentional: never drop a permanent table with the same name.
+DROP TABLE IF EXISTS pg_temp._seg_crossfield_seed;
+DROP TABLE IF EXISTS pg_temp._seg_crossfield_rule_seed;
+DROP TABLE IF EXISTS pg_temp._seg_crossfield_source_seed;
+
 CREATE TEMP TABLE _seg_crossfield_source_seed (
     product_line text PRIMARY KEY,
     section_code text NOT NULL,
@@ -91,7 +97,7 @@ VALUES
      '수집 완료 후 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 전날 대비 리뷰본문 감소입니다.',
      'count_of_reviews|count_of_star_ratings|detailed_review_content|review_body_count|previous_review_body_count|previous_source_date', 130);
 
-CREATE TEMP TABLE _seg_crossfield_seed AS
+CREATE TEMP TABLE _seg_crossfield_seed ON COMMIT DROP AS
 SELECT
     source.product_line,
     source.section_code,
