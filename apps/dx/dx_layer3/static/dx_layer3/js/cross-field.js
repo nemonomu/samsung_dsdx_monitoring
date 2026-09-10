@@ -78,12 +78,23 @@ function _cfDetailKeys(rows, excludeKeys) {
         .filter(key => !excludeKeys.includes(key));
 }
 
+function _cfUsesEqualReviewCounts(productLine, retailer) {
+    const product = String(productLine || '').toUpperCase();
+    const account = String(retailer || '').trim().toLowerCase();
+    return ((product === 'TV' || product.startsWith('SEA_')) && account === 'bestbuy')
+        || (/^SEA_(REF|LDY)$/.test(product) && account === 'lowes')
+        || (product.startsWith('SEG_') && ['mediamarkt', 'otto'].includes(account))
+        || (product.startsWith('TSE_') && account === 'homepro')
+        || (product.startsWith('SEM_') && account === 'liverpool');
+}
+
 function _cfOrderReviewDetailKeys(keys) {
     const priority = [
         'issue_type',
         'crawl_datetime',
         'crawl_strdatetime',
         'count_of_reviews',
+        'count_of_star_ratings',
         'review_body_count',
         'previous_review_body_count',
         'previous_source_date',
@@ -281,6 +292,9 @@ function showRetailerDetail(retailer) {
         'crawl_strdatetime', 'count_of_reviews', 'review_body_count',
         'retailer_sku_name', 'page_type'
     ];
+    if (_cfUsesEqualReviewCounts(productLine, retailer)) {
+        fixedKeys.push('count_of_star_ratings');
+    }
     const defaultDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
 
     // 전체 컬럼 정의 (기본 표시 + 나머지 수집 컬럼)

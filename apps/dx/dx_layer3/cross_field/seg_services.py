@@ -364,25 +364,29 @@ def evaluate_seg_review_body(row):
     return evaluate_otto_review_body(row)
 
 
-def _review_body_decreased(row, previous):
+def _review_body_decrease_level(row, previous):
     if not previous:
-        return False
+        return None
     current_body, previous_body = _body_count(row), _body_count(previous)
     if current_body is None or previous_body is None or current_body >= previous_body:
-        return False
+        return None
+    if (current_body == 0 and parse_seg_number(row.get('count_of_reviews')) == 0
+            or parse_seg_number(previous.get('count_of_reviews')) == 0):
+        return 'review_needed'
     current_counts, previous_counts = _review_counts(row), _review_counts(previous)
     if current_counts is None or previous_counts is None:
-        return False
+        return None
     # Zero counts with remaining body belong to the body-consistency rule.
     if current_counts == (0, 0):
-        return False
+        return None
     if current_counts[0] != current_counts[1]:
-        return True
+        return 'anomaly'
     if any(current >= prior for current, prior in zip(current_counts, previous_counts)):
-        return True
+        return 'anomaly'
     # Both counts fell: allow a smaller body only if today's collection target
     # is still met (all reviews below 20, otherwise 20).
-    return current_body < min(SEG_REVIEW_BODY_LIMIT, max(current_counts))
+    return ('anomaly' if current_body < min(SEG_REVIEW_BODY_LIMIT, max(current_counts))
+            else None)
 
 
 def _review_collection_complete(source_day, now):
@@ -728,9 +732,10 @@ def build_seg_crossfield_result(
                 continue
             if rule['rule_key'] == 'review_body_decrease':
                 previous = previous_rows.get(row_id)
+                finding_level = _review_body_decrease_level(row, previous)
                 if not _review_collection_complete(
                     _detail_row_source_date(row, source['date_column']), now,
-                ) or not _review_body_decreased(row, previous):
+                ) or not finding_level:
                     continue
                 current_count = _body_count(row)
                 previous_count = _body_count(previous) if previous else None
@@ -742,6 +747,17 @@ def build_seg_crossfield_result(
                 comparison_rows[str(previous['id'])] = {
                     **previous, 'review_body_count': previous_count,
                 }
+                if finding_level == 'review_needed':
+                    issue = ('리뷰 수 0 · 리뷰본문 0으로 감소' if current_count == 0
+                             and parse_seg_number(row.get('count_of_reviews')) == 0
+                             else '비교일 리뷰 수 0 · 본문 감소 확인')
+                    detail.update({
+                        'issue_type': issue, 'validation_tag': f'확인 필요: {issue}',
+                        'rule_key': rule['rule_key'], 'finding_level': finding_level,
+                    })
+                    review_details.append(detail)
+                    review_record_ids.add(row_id)
+                    continue
             elif rule['rule_key'] not in evaluations[row_id]:
                 continue
             detail['validation_tag'] = rule['error_message']

@@ -299,6 +299,37 @@ function testSeaCorrectionQueryUsesInspectionAndSourceDates() {
 
 testSeaCorrectionQueryUsesInspectionAndSourceDates();
 
+function testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails() {
+    for (const [product, retailer, expected] of [
+        ['TV', 'Bestbuy', true], ['SEA_REF', 'Bestbuy', true],
+        ['SEA_LDY', 'Lowes', true], ['SEG_TV', 'Mediamarkt', true],
+        ['SEG_REF', 'OTTO', true], ['TSE_TV', 'Homepro', true],
+        ['SEM_LDY', 'Liverpool', true], ['TV', 'Walmart', false],
+        ['SEG_TV', 'Amazon', false], ['SIEL_TV', 'Flipkart', false],
+    ]) {
+        sandbox.window.crossfieldProductLine = product;
+        sandbox.window.crossfieldSelectFields = 'final_sku_price';
+        sandbox.window.crossfieldRetailerData = { [retailer]: { rows: [{
+            id: 1, item: 'test', account_name: retailer, final_sku_price: '100',
+            count_of_reviews: '0', count_of_star_ratings: '50',
+            crawl_datetime: '2026-09-09',
+        }] } };
+        sandbox.window.crossfieldRetailerSummary = { [retailer]: { count: 1, items: ['test'] } };
+        sandbox.isCrossFieldInline = () => true;
+        sandbox.showRetailerDetail(retailer);
+        const state = sandbox.window._cfDetailState;
+        assert(state.visibleKeys.includes('count_of_reviews'));
+        assert.strictEqual(state.visibleKeys.includes('count_of_star_ratings'), expected);
+        assert.strictEqual(state.allData[0].count_of_star_ratings, '50');
+        if (expected) {
+            assert.strictEqual(state.visibleKeys.indexOf('count_of_star_ratings'),
+                state.visibleKeys.indexOf('count_of_reviews') + 1);
+        }
+    }
+}
+
+testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails();
+
 function testSeaTvUsesCompactCurrentDateItemQuery() {
     sandbox.window.crossfieldRetailerData = {
         Amazon: {

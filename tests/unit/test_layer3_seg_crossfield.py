@@ -251,6 +251,37 @@ class SegReviewHistoryTests(unittest.TestCase):
             result, _ = self.result('review_body_count', [current])
             self.assertEqual(0, result['review_needed_records'])
 
+    def test_zero_reviews_and_body_drop_need_review_even_with_remaining_stars(self):
+        for stars in ('0', '50', None):
+            for retailer in ('Mediamarkt', 'OTTO'):
+                rows = [self.row(1, '2026-09-08', 16, account_name=retailer),
+                        self.row(2, '2026-09-09', 0, account_name=retailer,
+                                 count_of_reviews='0', count_of_star_ratings=stars)]
+                result, _ = self.result('review_body_decrease', rows)
+                self.assertEqual((0, 1), (result['failed_records'], result['review_needed_records']))
+                detail, _ = self.result('review_body_decrease', rows, detail=True)
+                self.assertEqual((0, 1), (detail['total_anomalies'], detail['total_review_needed']))
+                self.assertEqual('comparison_history', detail['anomalies'][0]['row_role'])
+                self.assertEqual('review_needed', detail['anomalies'][1]['finding_level'])
+                self.assertEqual(stars, detail['anomalies'][1]['count_of_star_ratings'])
+                confirmed, _ = self.result('review_body_decrease', rows,
+                                           corrections=[{'record_id': 2, 'rule_id': 1}])
+                self.assertEqual(0, confirmed['review_needed_records'])
+
+    def test_zero_review_count_on_comparison_day_is_not_an_anomaly(self):
+        result, _ = self.result('review_body_decrease', [
+            self.row(1, '2026-09-08', 16, count_of_reviews='0'),
+            self.row(2, '2026-09-09', 12),
+        ])
+        self.assertEqual((0, 1), (result['failed_records'], result['review_needed_records']))
+
+    def test_no_body_decrease_does_not_create_zero_count_review(self):
+        result, _ = self.result('review_body_decrease', [
+            self.row(1, '2026-09-08', 0, count_of_reviews='0'),
+            self.row(2, '2026-09-09', 0, count_of_reviews='0'),
+        ])
+        self.assertEqual((0, 0), (result['failed_records'], result['review_needed_records']))
+
     def test_collection_cutoff_uses_kst_noon_and_defers_future_dates(self):
         before = datetime(2026, 9, 9, 2, 59, 59, tzinfo=timezone.utc)
         noon = datetime(2026, 9, 9, 3, 0, tzinfo=timezone.utc)
