@@ -26,7 +26,8 @@
             '<div class="sentiment-category-header" onclick="toggleSegCategory(this,' + checkIdx + ',' + catIdx + ')">' +
                 '<div class="sentiment-category-info"><span class="toggle-icon-small">▶</span>' +
                 '<span class="sentiment-category-name">' + esc(cat.category) + '</span></div>' +
-                '<div class="sentiment-category-stats"><span class="sentiment-category-count">' +
+                '<div class="sentiment-category-stats">' + L1.retailQuery.button('SEG', cat, checkIdx, catIdx) +
+                '<span class="sentiment-category-count">' +
                 countLabel + '</span>' + getStatusBadge(cat.status) + '</div></div>' +
             '<div class="sentiment-two-column retail-single-column" id="seg-cat-' + checkIdx + '-' + catIdx + '">' +
                 '<div class="sentiment-column"><div class="retail-rank-wrap">' +

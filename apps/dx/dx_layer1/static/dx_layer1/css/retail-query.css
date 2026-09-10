@@ -1,0 +1,10 @@
+.l1-retail-query-button { margin-right: 8px; padding: 5px 10px; border: 1px solid #dbe3ef; border-radius: 5px; background: #fff; color: #64748b; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.l1-retail-query-button:hover { color: #1d3b60; border-color: #94a3b8; }
+.l1-retail-query-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 18px; }
+.l1-retail-query-controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.l1-retail-query-controls select, .l1-retail-query-controls input { padding: 6px 8px; border: 1px solid #dbe3ef; border-radius: 5px; background: #fff; color: #1e293b; max-width: 100%; }
+.l1-retail-query-box { background: #f8fafc; padding: 12px; border: 1px solid #dbe3ef; border-radius: 8px; }
+.l1-retail-query-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: #334155; }
+.l1-retail-query-header button { background: #4f80ff; color: #fff; padding: 4px 12px; border: 0; border-radius: 4px; cursor: pointer; }
+.l1-retail-query-header button:disabled { opacity: .45; cursor: default; }
+#l1-query-sql { background: #1e293b; color: #f1f5f9; font-size: 12px; line-height: 1.65; padding: 14px; border-radius: 6px; margin: 0; max-height: 340px; overflow: auto; white-space: pre; }

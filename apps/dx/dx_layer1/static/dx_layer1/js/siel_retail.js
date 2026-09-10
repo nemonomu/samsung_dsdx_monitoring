@@ -60,6 +60,7 @@ function renderSielCategory(cat, checkIdx, catIdx) {
                 '<span class="sentiment-category-name">' + esc(cat.name || cat.category || '') + '</span>' +
             '</div>' +
             '<div class="sentiment-category-stats">' +
+                L1.retailQuery.button('SIEL', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + actual.toLocaleString() + '건</span>' +
                 getStatusBadge(cat.status) +
             '</div>' +

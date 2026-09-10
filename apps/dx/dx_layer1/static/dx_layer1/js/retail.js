@@ -104,6 +104,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
                 renderRetailDateContract(cat) +
             '</div>' +
             '<div class="sentiment-category-stats">' +
+                L1.retailQuery.button('SEA', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + retailCount(cat.total).toLocaleString() + '</span>' +
                 getStatusBadge(cat.status) +
             '</div>' +

@@ -50,7 +50,7 @@ function renderTseTotalRow(retailers) {
     '</tr>';
 }
 
-function renderTseCategory(cat, checkIdx, catIdx) {
+function renderTseCategory(cat, checkIdx, catIdx, country) {
     var expected = tseNumber(cat.expected);
     var actual = tseNumber(cat.actual !== undefined ? cat.actual : cat.total);
     var retailers = cat.retailers || [];
@@ -72,6 +72,7 @@ function renderTseCategory(cat, checkIdx, catIdx) {
                 '<span class="sentiment-category-name">' + esc(cat.name || cat.category || '') + '</span>' +
             '</div>' +
             '<div class="sentiment-category-stats">' +
+                L1.retailQuery.button(country || 'TSE', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + countLabel + '</span>' +
                 getStatusBadge(cat.status) +
             '</div>' +
@@ -109,7 +110,8 @@ function renderTseRetailCheck(check, checkIdx) {
         ? 'KST 09:00~11:00'
         : 'KST 09:00~10:30';
     var categoriesHtml = categories.map(function(cat, catIdx) {
-        return renderTseCategory(cat, checkIdx, catIdx);
+        return renderTseCategory(cat, checkIdx, catIdx,
+            check.check_type === 'sem_retail' ? 'SEM' : 'TSE');
     }).join('');
 
     return '<div class="check-item">' +

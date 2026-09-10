@@ -52,6 +52,7 @@ const context = {
     Number,
 };
 
+vm.runInNewContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-query.js', 'utf8'), context);
 vm.runInNewContext(source, context);
 
 const html = context.renderTseCategory({
@@ -88,7 +89,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=11"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=12"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
