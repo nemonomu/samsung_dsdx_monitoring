@@ -48,8 +48,9 @@ for (const country of ['SEA', 'SIEL', 'SEG', 'TSE', 'SEM']) {
         assert(sql.startsWith('SELECT *\nFROM ' + table + '\n'));
         assert(sql.includes("AND batch_id = 'a_batch'"));
         assert(sql.endsWith('ORDER BY ' + date + ';'));
-        assert(sql.includes(country === 'SIEL' ? "::date::timestamp AT TIME ZONE 'Asia/Seoul'"
-            : `LEFT(BTRIM(CAST(${date} AS TEXT)), 10) >= '2026-09-09'`));
+        assert(sql.includes(country === 'SIEL'
+            ? `AND ${date} >= ('2026-09-09'::date::timestamp AT TIME ZONE 'Asia/Seoul')\n`
+            : `AND ${date} >= '2026-09-09'\n`));
         assert(!sql.includes('redirect') && !sql.includes('sku,'));
     }
 }

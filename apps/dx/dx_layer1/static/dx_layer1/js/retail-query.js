@@ -31,7 +31,7 @@
             : 'IN (' + batches.map(literal).join(', ') + ')';
         var dateFilter = config.timestamp
             ? config.dateColumn + ' >= (' + literal(day) + "::date::timestamp AT TIME ZONE 'Asia/Seoul')"
-            : 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) >= ' + literal(day);
+            : config.dateColumn + ' >= ' + literal(day);
         return 'SELECT *\nFROM ' + config.table + '\nWHERE LOWER(BTRIM(account_name)) = ' +
             literal(retailer.trim().toLowerCase()) + '\n  AND ' + dateFilter +
             '\n  AND batch_id ' + batchFilter + '\nORDER BY ' + config.dateColumn + ';';
