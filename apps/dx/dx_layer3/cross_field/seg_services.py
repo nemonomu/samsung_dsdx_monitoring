@@ -24,6 +24,7 @@ from apps.common.seg_retail import (
 SEG_NO_REVIEW_TEXT = 'No customer reviews'
 SEG_EQUAL_REVIEW_RETAILERS = ('Mediamarkt', 'OTTO')
 SEG_REVIEW_BODY_LIMIT = 20
+SEG_REVIEW_LOOKBACK_DAYS = 5
 _KST = timezone(timedelta(hours=9))
 
 SEG_PRICE_STATUS_TEXTS = {
@@ -157,11 +158,11 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': '두 카운트가 0인데 본문이 남았는지 확인합니다. OTTO는 기존 본문 네 가지 조건도 확인합니다.',
     }),
     ('review_body_decrease', {
-        'detail_name': '전날 대비 리뷰본문 감소',
+        'detail_name': '최근 5일 내 직전 수집 대비 리뷰본문 감소',
         'field1': 'detailed_review_content', 'field2': None,
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
         'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'detailed_review_content', 'review_body_count', 'previous_review_body_count', 'previous_source_date'),
-        'error_message': '수집 완료 후 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 전날 대비 리뷰본문 감소입니다.',
+        'error_message': '수집 완료 후 당일을 제외한 이전 5일 중 같은 상품의 가장 최근 수집 기록과 비교합니다. 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 리뷰본문 감소입니다.',
     }),
 ))
 
@@ -413,9 +414,11 @@ def _previous_body_rows(rows, date_column):
         if display_seg_retailer(row.get('account_name')) not in SEG_EQUAL_REVIEW_RETAILERS:
             continue
         day = date.fromisoformat(_detail_row_source_date(row, date_column))
-        candidate = daily.get((_detail_row_item_key(row), str(day - timedelta(days=1))))
-        if candidate:
-            previous[str(row['id'])] = candidate[1]
+        for offset in range(1, SEG_REVIEW_LOOKBACK_DAYS + 1):
+            candidate = daily.get((_detail_row_item_key(row), str(day - timedelta(days=offset))))
+            if candidate:
+                previous[str(row['id'])] = candidate[1]
+                break
     return previous
 
 
@@ -526,6 +529,9 @@ def load_active_seg_rules(cursor, product_line):
                 else [configured_retailer]
             ),
         })
+        if rule_key == 'review_body_decrease':
+            row['detail_name'] = spec['detail_name']
+            row['error_message'] = spec['error_message']
         existing = rules_by_key.get(rule_key)
         if existing is None:
             rules_by_key[rule_key] = row
@@ -559,7 +565,7 @@ def _date_contract(inspection_date, source):
 
 
 def load_latest_seg_rows(
-        cursor, inspection_date, product_line, from_date=None):
+        cursor, inspection_date, product_line, from_date=None, review_items=None):
     """Load each source day's latest retailer MAIN batch and MAIN+BSR rows."""
     key = normalize_seg_product_line(product_line)
     source = get_seg_source(key)
@@ -572,14 +578,48 @@ def load_latest_seg_rows(
     source_date_sql = (
         f"LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10)"
     )
+    retailers = source['retailers']
+    select_sql = 'source.*'
+    order_sql = (f'{source_date_sql}, '
+                 'LOWER(BTRIM(CAST(source.account_name AS TEXT))), source.id')
+    item_scope = ''
+    params = [start_date, end_date, start_date, end_date]
+    if review_items is not None:
+        identities = sorted({
+            (str(retailer).strip().casefold(), str(item).strip())
+            for retailer, item in review_items
+            if display_seg_retailer(retailer) in SEG_EQUAL_REVIEW_RETAILERS
+            and item is not None and str(item).strip()
+        })
+        if not identities:
+            return []
+        if not 0 <= (date.fromisoformat(end_date) - date.fromisoformat(start_date)).days < SEG_REVIEW_LOOKBACK_DAYS:
+            raise ValueError('SEG review comparison query must be limited to five days')
+        retailers = sorted({retailer for retailer, _ in identities})
+        select_sql = ', '.join(f'source.{column}' for column in (
+            'id', 'account_name', 'item', 'sku', 'retailer_sku_name',
+            'page_type', 'batch_id', date_column, 'count_of_reviews',
+            'count_of_star_ratings', 'detailed_review_content', 'product_url',
+        ))
+        identity_sql = ('LOWER(BTRIM(CAST(source.account_name AS TEXT))), '
+                        'BTRIM(CAST(source.item AS TEXT))')
+        select_sql = f'DISTINCT ON ({identity_sql}) ' + select_sql
+        order_sql = (f'{identity_sql}, {source_date_sql} DESC, '
+                     "(LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main') DESC, source.id DESC")
+        placeholders = ', '.join(['(%s, %s)'] * len(identities))
+        item_scope = (
+            'AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))), '
+            f'BTRIM(CAST(source.item AS TEXT))) IN ({placeholders})'
+        )
+        params.extend(value for identity in identities for value in identity)
     retailers_sql = ', '.join(
         "'" + retailer.casefold().replace("'", "''") + "'"
-        for retailer in source['retailers']
+        for retailer in retailers
     )
     redirect_scope = (
         "AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))) <> 'amazon' "
         "OR source.redirect IS NOT TRUE)"
-        if source.get('has_redirect') else ''
+        if source.get('has_redirect') and review_items is None else ''
     )
     cursor.execute(f"""
         WITH main_batches AS (
@@ -606,7 +646,7 @@ def load_latest_seg_rows(
                    ) AS batch_rank
             FROM main_batches
         )
-        SELECT source.*
+        SELECT {select_sql}
         FROM {table_name} source
         JOIN ranked_batches latest
           ON latest.source_date = {source_date_sql}
@@ -619,10 +659,25 @@ def load_latest_seg_rows(
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
           AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
           {redirect_scope}
-        ORDER BY {source_date_sql},
-                 LOWER(BTRIM(CAST(source.account_name AS TEXT))), source.id
-    """, (start_date, end_date, start_date, end_date))
+          {item_scope}
+        ORDER BY {order_sql}
+    """, tuple(params))
     return _rows_as_dicts(cursor)
+
+
+def load_seg_review_history(cursor, target_date, product_line, rows):
+    identities = {
+        identity for row in rows
+        if display_seg_retailer(row.get('account_name')) in SEG_EQUAL_REVIEW_RETAILERS
+        for identity in [_detail_row_item_key(row)] if identity is not None
+    }
+    if not identities:
+        return []
+    return load_latest_seg_rows(
+        cursor, target_date - timedelta(days=1), product_line,
+        from_date=target_date - timedelta(days=SEG_REVIEW_LOOKBACK_DAYS),
+        review_items=identities,
+    )
 
 
 def _load_normal_corrections(
@@ -655,19 +710,23 @@ def _load_normal_corrections(
 
 
 def build_seg_crossfield_result(
-        cursor, inspection_date, product_line, from_date=None):
+        cursor, inspection_date, product_line, from_date=None, rule_id=None):
     key = normalize_seg_product_line(product_line)
     source = get_seg_source(key)
     contract = _date_contract(inspection_date, source)
     rules = load_active_seg_rules(cursor, key)
+    if rule_id is not None:
+        rules = [rule for rule in rules if str(rule['rule_id']) == str(rule_id)]
     start_day = from_date or inspection_date
     needs_previous = any(rule['rule_key'] == 'review_body_decrease' for rule in rules)
     rows = load_latest_seg_rows(
         cursor, inspection_date, key,
-        from_date=start_day - timedelta(days=1) if needs_previous else from_date,
+        from_date=from_date,
     )
-    previous_rows = _previous_body_rows(rows, source['date_column']) if needs_previous else {}
-    rows = [row for row in rows if _detail_row_source_date(row, source['date_column']) >= str(start_day)]
+    rows = [row for row in rows
+            if str(start_day) <= _detail_row_source_date(row, source['date_column']) <= str(inspection_date)]
+    comparison_data = load_seg_review_history(cursor, start_day, key, rows) if needs_previous else []
+    previous_rows = _previous_body_rows(comparison_data + rows, source['date_column']) if needs_previous else {}
     rule_ids = [
         rule_id
         for rule in rules
@@ -701,6 +760,7 @@ def build_seg_crossfield_result(
         error_details = []
         review_details = []
         comparison_rows = {}
+        missing_comparison_count = 0
         for row in rows:
             retailer = display_seg_retailer(
                 row.get('account_name')
@@ -735,7 +795,12 @@ def build_seg_crossfield_result(
                 finding_level = _review_body_decrease_level(row, previous)
                 if not _review_collection_complete(
                     _detail_row_source_date(row, source['date_column']), now,
-                ) or not finding_level:
+                ):
+                    continue
+                if not previous:
+                    missing_comparison_count += 1
+                    continue
+                if not finding_level:
                     continue
                 current_count = _body_count(row)
                 previous_count = _body_count(previous) if previous else None
@@ -772,6 +837,7 @@ def build_seg_crossfield_result(
         result['review_details'] = review_details
         result['review_count'] = len(review_details)
         result['comparison_rows'] = list(comparison_rows.values())
+        result['missing_comparison_count'] = missing_comparison_count
         rule_results.append(result)
         finding_count += len(error_details)
         review_finding_count += len(review_details)
@@ -847,7 +913,7 @@ def _display_sql_literal(value):
 
 def build_seg_display_query(
         inspection_date, product_line, rule, days=1, retailer=None,
-        retailers=None, retailer_item_pairs=None):
+        retailers=None, retailer_item_pairs=None, comparison_record_ids=None):
     """Build a compact copy-only SEG item-history query."""
     key = normalize_seg_product_line(product_line)
     source = get_seg_source(key)
@@ -947,11 +1013,17 @@ def build_seg_display_query(
             "OR redirect IS NOT TRUE)"
         )
     scope_sql = '\n  AND ' + '\n  AND '.join(filters)
+    date_filter = (f"{date_expr} >= '{start_day.isoformat()}'\n"
+                   f"  AND {date_expr} <= '{target_day.isoformat()}'")
+    comparison_ids = sorted({int(value) for value in (comparison_record_ids or [])
+                             if re.fullmatch(r'[0-9]+', str(value))})
+    if comparison_ids:
+        date_filter = ('((' + date_filter + ') OR id IN ('
+                       + ', '.join(str(value) for value in comparison_ids) + '))')
     return f"""SELECT
 {select_sql}
 FROM {source['table_name']}
-WHERE {date_expr} >= '{start_day.isoformat()}'
-  AND {date_expr} <= '{target_day.isoformat()}'{scope_sql}
+WHERE {date_filter}{scope_sql}
 ORDER BY item, {date_column}, id;"""
 
 
@@ -993,11 +1065,13 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
             'review_count': rule['review_count'],
+            'missing_comparison_count': rule['missing_comparison_count'],
             'query': build_seg_display_query(
                 inspection_date, result['product_line'], rule,
                 days=3,
                 retailers=[] if pairs else scoped_retailers,
                 retailer_item_pairs=pairs,
+                comparison_record_ids=[row['id'] for row in rule['comparison_rows']],
             ),
             'select_fields': rule.get('select_fields') or '',
         })
@@ -1052,7 +1126,7 @@ def get_seg_cross_field_rule_detail(
     day_count = min(30, max(1, int(days)))
     from_date = inspection_date - timedelta(days=day_count - 1)
     result = build_seg_crossfield_result(
-        cursor, inspection_date, product_line, from_date=from_date,
+        cursor, inspection_date, product_line, from_date=from_date, rule_id=rule_id,
     )
     selected = next((
         rule for rule in result['rule_results']
@@ -1168,6 +1242,8 @@ def get_seg_cross_field_rule_detail(
             inspection_date, result['product_line'], selected,
             days=day_count, retailer=retailer,
             retailer_item_pairs=retailer_pairs.get(retailer, []),
+            comparison_record_ids=[row['id'] for row in comparison_rows
+                                   if display_seg_retailer(row.get('account_name')) == retailer],
         )
         for retailer in retailer_summary
     }
@@ -1190,6 +1266,7 @@ def get_seg_cross_field_rule_detail(
             item['count'] for item in retailer_summary.values()
         ),
         'total_review_needed': sum(item['review_count'] for item in retailer_summary.values()),
+        'missing_comparison_count': selected['missing_comparison_count'],
         'total_findings': sum(item['count'] + item['review_count'] for item in retailer_summary.values()),
         'retailer_summary': retailer_summary,
         'anomalies': anomalies,
@@ -1202,6 +1279,7 @@ def get_seg_cross_field_rule_detail(
         'query': build_seg_display_query(
             inspection_date, result['product_line'], selected,
             days=day_count,
+            comparison_record_ids=[row['id'] for row in comparison_rows],
         ),
         'queries': display_queries,
     }

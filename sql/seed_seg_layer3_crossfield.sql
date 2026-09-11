@@ -92,9 +92,9 @@ VALUES
      'count_of_reviews', 'detailed_review_content',
      '두 카운트가 0인데 본문이 남았는지 확인합니다. OTTO는 기존 본문 네 가지 조건도 확인합니다.',
      'count_of_reviews|count_of_star_ratings|detailed_review_content|review_body_count|issue_type', 120),
-    ('review_body_decrease', '전날 대비 리뷰본문 감소',
+    ('review_body_decrease', '최근 5일 내 직전 수집 대비 리뷰본문 감소',
      'detailed_review_content', NULL,
-     '수집 완료 후 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 전날 대비 리뷰본문 감소입니다.',
+     '수집 완료 후 당일을 제외한 이전 5일 중 같은 상품의 가장 최근 수집 기록과 비교합니다. 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 리뷰본문 감소입니다.',
      'count_of_reviews|count_of_star_ratings|detailed_review_content|review_body_count|previous_review_body_count|previous_source_date', 130);
 
 CREATE TEMP TABLE _seg_crossfield_seed ON COMMIT DROP AS

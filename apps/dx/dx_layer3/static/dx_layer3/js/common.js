@@ -1022,6 +1022,9 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                                 <button class="btn-show-query" onclick="event.stopPropagation(); toggleCrossfieldQuery('${escJs(queryId)}')" title="검증 쿼리 보기">SQL</button>
                             </div>
                             <div class="rule-desc">${esc(rule.error_message)}</div>
+                            ${Number(rule.missing_comparison_count || 0) > 0
+                                ? `<div class="rule-desc">이전 5일 내 비교 기록 없음 ${Number(rule.missing_comparison_count).toLocaleString()}건</div>`
+                                : ''}
                             ${renderCrossfieldReviewTypes(rule.review_type_summary)}
                         </div>
                         <div class="rule-count-group">${countBadges}</div>

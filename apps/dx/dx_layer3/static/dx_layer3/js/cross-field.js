@@ -120,7 +120,7 @@ function _cfColumnDefinition(key) {
         crawl_strdatetime: { label: 'crawl_strdatetime', width: 190 },
         count_of_reviews: { label: 'count_of_reviews', width: 130 },
         review_body_count: { label: '리뷰본문 수', width: 105 },
-        previous_review_body_count: { label: '전날 리뷰본문 수', width: 130 },
+        previous_review_body_count: { label: '비교일 리뷰본문 수', width: 140 },
         previous_source_date: { label: '비교일', width: 120 },
         detailed_review_content: { label: 'detailed_review_content', width: 240 },
     };

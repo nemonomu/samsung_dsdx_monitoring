@@ -219,7 +219,7 @@ const decreaseKeys = sandbox._cfDetailKeys([
 assert.deepStrictEqual(Array.from(decreaseKeys), [
     'review_body_count', 'previous_review_body_count', 'previous_source_date',
 ]);
-assert.strictEqual(sandbox._cfColumnDefinition('previous_review_body_count').label, '전날 리뷰본문 수');
+assert.strictEqual(sandbox._cfColumnDefinition('previous_review_body_count').label, '비교일 리뷰본문 수');
 
 sandbox.showRetailerDetail('Homepro');
 assert(inlineHtml.includes('상세 데이터를 찾을 수 없습니다'));
@@ -588,6 +588,15 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     );
     assert(detailModal.body.includes('rule-count review-needed'));
     assert(detailModal.body.includes('리뷰 수 있음 · 리뷰본문 없음'));
+
+    commonSandbox.renderCrossfieldSummaryContent('SEG TV', '크로스 필드 검증', {
+        date: '2026-09-10', source_date: '2026-09-10', product_line: 'SEG_TV',
+        total_anomalies: 0, total_review_needed: 0,
+        rule_summary: [{rule_id: 130, field1: 'detailed_review_content',
+            error_message: '최근 5일 내 직전 수집 대비 리뷰본문 감소',
+            error_count: 0, review_count: 0, missing_comparison_count: 2, query: 'SELECT 1'}],
+    });
+    assert(detailModal.body.includes('이전 5일 내 비교 기록 없음 2건'));
 
     await commonSandbox.loadCrossfieldRuleDetail(
         'tse_tv', 'rule-1', '2026-08-11', 'TSE 규칙'
