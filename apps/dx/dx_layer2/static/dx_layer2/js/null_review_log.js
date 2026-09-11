@@ -18,6 +18,13 @@ function _renderNullReviewLogs(data) {
     var body = document.getElementById('review-log-body');
     var count = document.getElementById('review-log-count');
     var logs = Array.isArray(data.logs) ? data.logs : [];
+    var heading = document.getElementById('review-log-heading');
+    var policy = document.getElementById('review-log-policy');
+    if (heading) heading.textContent = data.supports_null_auto_review
+        ? 'NULL 확인 이력' : '해당값 정상 처리 이력';
+    if (policy) policy.textContent = data.supports_null_auto_review
+        ? '9/12 이후 새로 수동확인한 건만 근거로 사용합니다. 같은 상품·항목·값의 자동확인 사유는 NULL 검증 조회에서도 볼 수 있습니다.'
+        : '같은 item + retailer_sku_name 조합은 확인 후 14일 단위로 재검수하며, 자동 제외된 날짜도 이력에 표시됩니다.';
     count.textContent = logs.length.toLocaleString() + '건';
 
     if (!logs.length) {

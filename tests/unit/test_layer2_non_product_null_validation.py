@@ -5,6 +5,7 @@ from tests.unit.support import (
     ScriptedCursor, load_module, module_stub, package_stub,
     sem_validation_stub,
     seg_validation_stub,
+    null_review_dependency_stubs,
 )
 
 
@@ -12,6 +13,7 @@ class Layer2NonProductNullValidationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         stubs = {
+            **null_review_dependency_stubs(),
             'apps': package_stub('apps'),
             'apps.common': package_stub('apps.common'),
             'apps.common.db': module_stub(

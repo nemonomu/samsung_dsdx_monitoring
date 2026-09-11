@@ -44,8 +44,8 @@
 <div class="review-log-card">
     <div class="review-log-summary">
         <div>
-            <h3>해당값 정상 처리 이력</h3>
-            <p>같은 item + retailer_sku_name 조합은 확인 후 14일 단위로 재검수하며, 자동 제외된 날짜도 이력에 표시됩니다.</p>
+            <h3 id="review-log-heading">NULL 확인 이력</h3>
+            <p id="review-log-policy">선택한 날짜의 확인 이력을 불러옵니다.</p>
         </div>
         <div class="review-log-count" id="review-log-count">-</div>
     </div>
@@ -54,6 +54,6 @@
 {% endblock %}
 
 {% block layer2_js %}
-<script src="{% static 'dx_layer2/js/layer2-common.js' %}?v=20260909-3"></script>
-<script src="{% static 'dx_layer2/js/null_review_log.js' %}?v=20260824-2"></script>
+<script src="{% static 'dx_layer2/js/layer2-common.js' %}?v=20260912-3"></script>
+<script src="{% static 'dx_layer2/js/null_review_log.js' %}?v=20260912-1"></script>
 {% endblock %}

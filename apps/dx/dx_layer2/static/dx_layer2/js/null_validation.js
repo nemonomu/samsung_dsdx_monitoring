@@ -211,8 +211,12 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
     if (count === 0) { showToast('조회된 데이터가 없습니다.', 'info'); return; }
 
     const typeNames = { 'null': 'NULL 검증', 'format': '형식 검증', 'duplicate': '중복 검증' };
-    const titleText = `${retailer} - ${typeNames[type]} 오류`;
-    const subtitleText = `${renderCountryFlagLabel(tableName)} | ${count}건의 오류 데이터`;
+    const fieldsPayload = type === 'null' && fieldsDetailJson
+        ? (typeof fieldsDetailJson === 'string' ? JSON.parse(fieldsDetailJson) : fieldsDetailJson)
+        : null;
+    const supportsReview = fieldsPayload && fieldsPayload.supports_null_auto_review === true;
+    const titleText = `${retailer} - ${typeNames[type]}${supportsReview ? '' : ' 오류'}`;
+    const subtitleText = `${renderCountryFlagLabel(tableName)} | ${count}건의 ${supportsReview ? 'NULL 조회 데이터' : '오류 데이터'}`;
 
     const date = getSelectedDate();
     const tableParam = tableCode || (tableName === 'YouTube' ? 'youtube' :
@@ -273,8 +277,9 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
 
     // NULL 검증: fieldsDetail이 있으면 API 호출 없이 바로 요약 표시
     if (type === 'null' && fieldsDetailJson) {
-        const fieldCounts = typeof fieldsDetailJson === 'string' ? JSON.parse(fieldsDetailJson) : fieldsDetailJson;
-        renderNullFieldSummary({ field_counts: fieldCounts, date: date });
+        renderNullFieldSummary(supportsReview
+            ? Object.assign({}, fieldsPayload, { date: date })
+            : { field_counts: fieldsPayload, date: date });
         return;
     }
 
@@ -326,6 +331,11 @@ function renderNullFieldSummary(data) {
 
     // 백엔드에서 계산한 필드별 건수 사용
     const fieldCounts = data.field_counts || {};
+    const supportsReview = data.supports_null_auto_review === true;
+    const reviewedFields = data.reviewed_fields_detail || {};
+    const rawFields = data.raw_fields_detail || {};
+    const automaticFields = data.auto_reviewed_fields_detail || {};
+    const manualFields = data.manual_reviewed_fields_detail || {};
 
     modalState.nullFieldsData = data;
     modalState.selectedField = null;
@@ -342,17 +352,36 @@ function renderNullFieldSummary(data) {
         </div>`;
     }
 
-    const sortedFields = Object.entries(fieldCounts).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
+    const queryFields = Object.assign({}, fieldCounts);
+    if (supportsReview) {
+        Object.keys(reviewedFields).concat(Object.keys(rawFields)).forEach(function(field) {
+            queryFields[field] = Number(rawFields[field] || 0)
+                || (Number(fieldCounts[field] || 0) + Number(reviewedFields[field] || 0));
+        });
+        html += '<div class="null-review-summary">'
+            + '<span class="null-review-status automatic">자동확인 ' + Number(data.auto_reviewed_count || 0) + '건</span>'
+            + '<span class="null-review-status manual">수동확인 ' + Number(data.manual_reviewed_count || 0) + '건</span>'
+            + '<span>확인된 NULL도 조회할 수 있습니다.</span></div>';
+    }
+    const sortedFields = Object.entries(queryFields).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
 
     if (sortedFields.length === 0) {
         html += '<p style="text-align: center; color: var(--text-secondary);">NULL 오류 데이터가 없습니다.</p>';
     } else {
         html += '<div class="null-field-summary-container">';
         sortedFields.forEach(([field, count]) => {
+            const pending = Number(fieldCounts[field] || 0);
+            const automatic = Number(automaticFields[field] || 0);
+            const manual = Number(manualFields[field] || 0);
+            const state = pending > 0 ? 'unreviewed' : (automatic > 0 ? 'automatic' : 'manual');
+            const countLabel = pending > 0 ? `확인 필요 ${pending}건`
+                : (automatic > 0 ? `자동확인 ${automatic}건` : `확인 완료 ${Number(reviewedFields[field] || 0)}건`);
             html += `
-                <div class="null-field-card" onclick="showNullFieldDetail('${field}')">
+                <div class="null-field-card${supportsReview ? ' null-review-' + state : ''}" onclick="showNullFieldDetail('${field}')">
                     <div class="null-field-card-name">${field}</div>
-                    <div class="null-field-card-count">${count}건</div>
+                    <div class="null-field-card-count">${supportsReview ? countLabel : count + '건'}</div>
+                    ${supportsReview ? `<div class="null-review-counts">${automatic > 0 ? `<span class="null-review-status automatic">자동확인 ${automatic}건</span>` : ''} ${manual > 0 ? `<span class="null-review-status manual">수동확인 ${manual}건</span>` : ''}</div>` : ''}
+                    ${supportsReview ? `<div class="null-review-counts">확인 완료 ${Number(reviewedFields[field] || 0)}건 · 전체 조회 ${count}건</div>` : ''}
                 </div>
             `;
         });
@@ -394,6 +423,26 @@ function showNullFieldDetail(fieldName, pushStack = true) {
         });
 }
 
+async function refreshNullReviewDetail() {
+    const fieldName = modalState.selectedField;
+    const date = modalState.nullFieldsData?.date || getSelectedDate();
+    const query = new URLSearchParams({
+        type: 'null', table: modalState.tableParam,
+        retailer: modalState.retailer || '', date: date
+    });
+    try {
+        const response = await fetch('/dx/layer2/api/detail/?' + query.toString());
+        const summary = await parseLayer2DetailResponse(response);
+        if (summary.supports_null_auto_review === true) {
+            modalState.nullFieldsData = Object.assign({}, summary, { date: date });
+        }
+    } catch (error) {
+        showToast('확인은 저장됐지만 요약 갱신에 실패했습니다. 다시 조회해주세요.', 'error');
+    }
+    if (isInlineMode()) ViewStack.nullReviewStatsDirty = true;
+    return showNullFieldDetail(fieldName, false);
+}
+
 // NULL 필드별 상세 데이터 렌더링 (API 응답 기반)
 function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const body = getDetailBody();
@@ -403,6 +452,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const dateColumn = data.date_column || 'crawl_datetime';
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
+    const supportsReview = data.supports_null_auto_review === true;
     const isSeaTv = tableParam === 'tv_retail';
     const isSeaAppliance = /^sea_(ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = isSeaTv || isSeaAppliance;
@@ -472,7 +522,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             </div>
             ${(isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isTseRetail) ? daysInputHtml : ''}
         </div>`;
-        itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL 오류 (${records.length}건)</h4>`;
+        itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL ${supportsReview ? '검수 조회' : '오류'} (${records.length}건)</h4>`;
     }
 
     if (records.length === 0) {
@@ -605,13 +655,33 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         );
     }
 
+    if (supportsReview) {
+        const counts = { pending: 0, manual: 0, automatic: 0 };
+        const reviews = data.normal_reviews || {};
+        const targetDate = data.source_date || date;
+        records.forEach(function(row) {
+            if (row[dateColumn] && String(row[dateColumn]).substring(0, 10) !== targetDate) return;
+            if (!(row.null_fields || []).includes(fieldName)) return;
+            const review = reviews[row.id + '_' + fieldName];
+            if (review) counts[review.auto_applied ? 'automatic' : 'manual']++;
+            else counts.pending++;
+        });
+        itemQueryHtml += '<div class="null-review-summary">'
+            + '<span class="null-review-status ' + (counts.pending > 0 ? 'unreviewed' : 'history') + '">확인 필요 ' + counts.pending + '건</span>'
+            + '<span class="null-review-status manual">수동확인 ' + counts.manual + '건</span>'
+            + '<span class="null-review-status automatic">자동확인 ' + counts.automatic + '건</span>'
+            + '<span>선택한 검수일 기준 · 확인된 NULL은 이상치 건수에서 제외됩니다.</span></div>';
+    }
+
     // 컨테이너 HTML 생성
     var containerHtml = buildDetailContainerHtml({ itemQueryHtml: itemQueryHtml });
 
     if (isInlineMode()) {
         var _dn = new Date(date + 'T00:00:00');
         var _wn = ['일','월','화','수','목','금','토'][_dn.getDay()];
-        const fieldTitle = currentDays > 1
+        const fieldTitle = supportsReview
+            ? `${fieldName} NULL 검수 조회 (${records.length}건${currentDays > 1 ? ' / ' + currentDays + '일치' : ''})`
+            : currentDays > 1
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
         const fieldSubtitle = `${renderCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}${sourceScope}`;
@@ -622,7 +692,12 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             </div><div style="display:flex;align-items:center;">${daysInputHtml}<div class="inline-detail-date">${date}(${_wn})</div></div></div>
             <div id="detail-body">${containerHtml}</div>
         </div>`;
-        if (pushStack) ViewStack.push(wrapper); else { var c = ViewStack.getContainer(); if (c) c.innerHTML = wrapper; }
+        if (pushStack) {
+            ViewStack.push(wrapper);
+            if (supportsReview && ViewStack.stack && ViewStack.stack.length) {
+                ViewStack.stack[ViewStack.stack.length - 1].nullReviewSummary = true;
+            }
+        } else { var c = ViewStack.getContainer(); if (c) c.innerHTML = wrapper; }
     } else {
         body.innerHTML = containerHtml;
     }
@@ -641,6 +716,8 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             ? (data.source_date || date) : date,
         dateColumn: data.date_column || '',
         normalReviews: data.normal_reviews || {},
+        supportsNullAutoReview: supportsReview,
+        nullReviewField: fieldName,
         enableModalColumnSelector: isTseRetail
     });
 }

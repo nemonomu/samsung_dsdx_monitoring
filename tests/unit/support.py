@@ -8,6 +8,16 @@ from unittest.mock import patch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def null_review_dependency_stubs():
+    """Use the real, database-independent review modules in isolated services."""
+    from apps.common import null_review_evidence
+    from apps.dx.dx_layer2 import null_review_state
+    return {
+        'apps.common.null_review_evidence': null_review_evidence,
+        'apps.dx.dx_layer2.null_review_state': null_review_state,
+    }
+
+
 def package_stub(name):
     module = ModuleType(name)
     module.__path__ = []

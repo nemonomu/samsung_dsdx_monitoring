@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 import re
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.null_review_evidence import uses_new_policy
+from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.common.seg_retail import (
     SEG_COUNTRY,
     SEG_SOURCE_CONFIG,
@@ -473,6 +475,15 @@ def append_null_stats(cursor, target_date, validation):
                 cursor, target_date, product_line, 'null_check'
             )
             fields = list(get_seg_null_columns(product_line, retailer))
+            review_stats = {}
+            if uses_new_policy(target_date, SEG_COUNTRY):
+                normal_reviews, review_stats, auto_logs = review_state(
+                    cursor, target_date, rows, fields, normal_reviews,
+                    table_name=source['table_name'], country=SEG_COUNTRY,
+                    product_line=product_line, retailer=retailer,
+                    is_null=lambda value, _field: _missing(value),
+                )
+                validation.setdefault('auto_null_reviews', []).extend(auto_logs)
             for field in fields:
                 if field not in table_fields:
                     table_fields.append(field)
@@ -492,6 +503,7 @@ def append_null_stats(cursor, target_date, validation):
                 'fields_detail': field_counts,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
                 **mapping,
+                **review_stats,
             })
             table_records += len(rows)
             table_issues += issue_count
@@ -506,6 +518,7 @@ def append_null_stats(cursor, target_date, validation):
             'retailers': table_retailers,
             **table_mapping,
         })
+        add_review_totals(validation['tables'][-1], table_retailers)
         total_issues += table_issues
     return total_issues
 
@@ -563,6 +576,14 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     normal_reviews = _load_normal_reviews(
         cursor, target_date, product_line, 'null_check', column
     )
+    review_stats = {}
+    if uses_new_policy(target_date, SEG_COUNTRY):
+        normal_reviews, review_stats, _auto_logs = review_state(
+            cursor, target_date, rows, [column], normal_reviews,
+            table_name=source['table_name'], country=SEG_COUNTRY,
+            product_line=product_line, retailer=retailer,
+            is_null=lambda value, _field: _missing(value),
+        )
     target_results = []
     for row in rows:
         null_fields = [field for field in allowed if _missing(row.get(field))]
@@ -608,6 +629,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         'query_config': {column: display},
         'query_retailer': retailer,
         'normal_reviews': normal_reviews,
+        **review_stats,
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],

@@ -9,6 +9,7 @@ from tests.unit.support import (
     load_module,
     module_stub,
     package_stub,
+    null_review_dependency_stubs,
     sem_validation_stub,
     seg_validation_stub,
 )
@@ -143,6 +144,7 @@ def common_stubs():
         )
 
     return {
+        **null_review_dependency_stubs(),
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
         'apps.common.db': module_stub(

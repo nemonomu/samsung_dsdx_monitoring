@@ -848,6 +848,37 @@ td.cell-normal:hover {
     vertical-align: middle;
 }
 
+.null-review-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; margin-bottom: 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 6px; color: var(--text-secondary); font-size: 12px; }
+.null-review-status { display: inline-block; padding: 3px 7px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.null-review-status.automatic { color: #1d4ed8; background: #eff6ff; }
+.null-review-status.manual { color: #475569; background: #eef2f6; }
+.null-review-status.unreviewed { color: var(--color-critical, #dc2626); background: #fff0f0; }
+.null-review-status.history { color: var(--text-secondary); background: var(--bg-secondary, #f8fafc); }
+.null-review-counts { margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
+td.null-review-reason, td.null-review-basis { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.null-review-note { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 11px; }
+td.null-review-value { cursor: default; }
+td.cell-normal.null-review-value.automatic,
+td.cell-normal.null-review-value.automatic:hover { color: #1d4ed8; background: #eff6ff !important; font-weight: 600; }
+.retailer-card.null-review-automatic { border-left: 4px solid #2563eb; }
+.retailer-card.null-review-unreviewed { border-left: 4px solid var(--color-critical, #dc2626); }
+.retailer-card.null-review-manual { border-left: 4px solid #64748b; }
+.retailer-card.null-review-clear { border-left: 4px solid var(--color-ok, #16a34a); }
+.retailer-issue-count.null-review-automatic { color: #1d4ed8; }
+.retailer-issue-count.null-review-unreviewed { color: var(--color-critical, #dc2626); }
+.retailer-issue-count.null-review-manual { color: #475569; }
+.retailer-issue-count.null-review-clear { color: var(--color-ok, #16a34a); }
+.retailer-issue-count[class*="null-review-"] { font-size: 16px; text-align: right; }
+.field-badge.automatic { color: #1d4ed8; background: #eff6ff; }
+.field-badge.manual { color: #475569; background: #eef2f6; }
+.null-field-card.null-review-automatic { border-color: #93c5fd; background: #eff6ff; }
+.null-field-card.null-review-automatic .null-field-card-count { color: #1d4ed8; }
+.null-field-card.null-review-manual .null-field-card-count { color: #475569; }
+.null-field-card.null-review-unreviewed { border-color: #fca5a5; }
+.null-review-cancel { display: block; margin-top: 5px; padding: 2px 6px; border: 1px solid var(--border-color, #cbd5e1); border-radius: 4px; color: var(--text-secondary); background: var(--bg-primary, #fff); font-size: 11px; cursor: pointer; }
+.null-review-cancel:disabled { opacity: 0.5; cursor: default; }
+.null-review-dialog-note { margin: 0 0 12px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+
 .null-review-bar {
     display: flex;
     justify-content: space-between;

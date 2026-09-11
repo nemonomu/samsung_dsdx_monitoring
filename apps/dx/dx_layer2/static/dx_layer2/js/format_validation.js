@@ -349,6 +349,7 @@ async function reloadNullData(date) {
     body.innerHTML = '<div class="modal-loading">데이터를 불러오는 중...</div>';
 
     const { selectedField } = modalState;
+    if (modalState.nullFieldsData) modalState.nullFieldsData.date = date;
 
     if (selectedField) {
         // 필드 상세 화면: 해당 컬럼만 재조회
@@ -367,7 +368,17 @@ async function reloadNullData(date) {
             const retailerData = (table?.retailers || []).find(r => r.retailer === modalState.retailer);
             const fieldCounts = retailerData?.fields_detail || {};
 
-            modalState.nullFieldsData = { field_counts: fieldCounts, date: date };
+            modalState.nullFieldsData = {
+                field_counts: fieldCounts, date: date,
+                supports_null_auto_review: retailerData?.supports_null_auto_review === true
+                    || table?.supports_null_auto_review === true,
+                raw_fields_detail: retailerData?.raw_fields_detail || {},
+                reviewed_fields_detail: retailerData?.reviewed_fields_detail || {},
+                manual_reviewed_fields_detail: retailerData?.manual_reviewed_fields_detail || {},
+                auto_reviewed_fields_detail: retailerData?.auto_reviewed_fields_detail || {},
+                manual_reviewed_count: retailerData?.manual_reviewed_count || 0,
+                auto_reviewed_count: retailerData?.auto_reviewed_count || 0
+            };
             renderNullFieldSummary(modalState.nullFieldsData);
         } catch (error) {
             console.error('Error:', error);

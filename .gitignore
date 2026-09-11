@@ -42,6 +42,7 @@ config/create_admin.py
 *.sql
 !sql/disable_tse_lazada_powerbuy_monitoring.sql
 !sql/setup_sem_liverpool_monitoring.sql
+!sql/create_null_review_evidence.sql
 
 # Nginx (서버에서 직접 설정)
 nginx/

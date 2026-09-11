@@ -7,6 +7,9 @@ from tests.unit.support import (
     load_module,
     module_stub,
     package_stub,
+    sem_validation_stub,
+    seg_validation_stub,
+    null_review_dependency_stubs,
 )
 
 
@@ -48,6 +51,9 @@ def tse_columns_config():
 
 def common_stubs():
     return {
+        **null_review_dependency_stubs(),
+        'apps.dx.dx_layer2.sem_validation': sem_validation_stub(),
+        'apps.dx.dx_layer2.seg_validation': seg_validation_stub(),
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
         'apps.common.db': module_stub(

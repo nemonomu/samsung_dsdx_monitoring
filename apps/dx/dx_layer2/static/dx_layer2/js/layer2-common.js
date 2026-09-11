@@ -330,9 +330,76 @@ function _reviewAttr(row, key) {
     return ' data-row-id="' + rowId + '" data-col="' + esc(key) + '"';
 }
 
+function _nullReviewForRow(row) {
+    var isNullReview = detailViewState.type === 'null' && detailViewState.supportsNullAutoReview;
+    if (!isNullReview) return null;
+    if (!(row.null_fields || []).includes(detailViewState.nullReviewField)) return null;
+    var rowId = row.id || (row._parent && row._parent.id);
+    return (detailViewState.normalReviews || {})[
+        rowId + '_' + detailViewState.nullReviewField
+    ] || null;
+}
+
+function _annotateNullReviewRows(rows) {
+    rows.forEach(function(row) {
+        var review = _nullReviewForRow(row);
+        var dateColumn = detailViewState.dateColumn;
+        var isHistory = dateColumn && row[dateColumn]
+            && String(row[dateColumn]).substring(0, 10) !== detailViewState.editableDate;
+        var hasNull = (row.null_fields || []).includes(detailViewState.nullReviewField);
+        row._null_review_status = review
+            ? (review.auto_applied ? '자동확인' : '수동확인')
+            : (isHistory ? '비교 이력' : (hasNull ? '확인 필요' : '정상'));
+        row._null_review_reason = review ? (review.reason || '-') : '-';
+        row._null_review_basis = review
+            ? [review.original_crawl_date || detailViewState.crawlDate,
+                review.created_id || '', review.revoked_at ? '근거 취소됨' : '']
+                .filter(Boolean).join(' · ')
+            : '-';
+    });
+}
+
+function _nullReviewStatusClass(row) {
+    var review = _nullReviewForRow(row);
+    return review ? (review.auto_applied ? 'automatic' : 'manual')
+        : (row._null_review_status === '확인 필요' ? 'unreviewed' : 'history');
+}
+
 function getCellHtml(row, col, tableParam) {
     var key = col.key;
     var val;
+
+    if (detailViewState.supportsNullAutoReview && key.indexOf('_null_review_') === 0) {
+        var review = _nullReviewForRow(row);
+        if (key === '_null_review_status') {
+            return '<td><span class="null-review-status ' + _nullReviewStatusClass(row) + '">'
+                + esc(row[key] || '-') + '</span></td>';
+        }
+        if (key === '_null_review_reason') {
+            return '<td class="null-review-reason">' + esc(row[key] || '-')
+                + (review && review.memo ? '<span class="null-review-note">메모: ' + esc(review.memo) + '</span>' : '')
+                + '</td>';
+        }
+        var basisHtml = '<td class="null-review-basis">' + esc(row[key] || '-');
+        if (review) {
+            var confirmedAt = review.original_created_at || review.created_at;
+            if (confirmedAt) basisHtml += '<span class="null-review-note">수동확인 ' + esc(confirmedAt) + '</span>';
+            if (review.auto_eligible === false) {
+                basisHtml += '<span class="null-review-note">자동확인 제외'
+                    + (review.auto_exclusion_reason ? ' · ' + esc(review.auto_exclusion_reason) : '')
+                    + '</span>';
+            }
+            var correctionId = Number(review.correction_id);
+            if (!review.revoked_at && Number.isSafeInteger(correctionId) && correctionId > 0) {
+                var reviewKey = (row.id || (row._parent && row._parent.id))
+                    + '_' + detailViewState.nullReviewField;
+                basisHtml += '<button type="button" class="null-review-cancel" data-review-key="'
+                    + esc(reviewKey) + '" onclick="event.stopPropagation();cancelNullReviewEvidence(this)">'
+                    + (review.auto_applied ? '자동확인 중단' : '확인 취소') + '</button>';
+            }
+        }
+        return basisHtml + '</td>';
+    }
 
     // 특수 키 처리
     if (key === '_no') {
@@ -399,6 +466,16 @@ function getCellHtml(row, col, tableParam) {
     // comment_text_display → word-break
     if (key === 'comment_text_display') {
         return '<td style="white-space:normal;word-break:break-word;">' + esc(String(val || '-')) + '</td>';
+    }
+
+    // 확인된 원본 NULL은 그대로 표시하고 상태·이유는 같은 표의 별도 열에 둔다.
+    if (detailViewState.supportsNullAutoReview && key === detailViewState.nullReviewField) {
+        var nullReview = _nullReviewForRow(row);
+        if (nullReview) {
+            return '<td class="cell-normal null-review-value '
+                + (nullReview.auto_applied ? 'automatic' : 'manual') + '">'
+                + esc(val === null || val === undefined || val === '' ? 'NULL' : String(val)) + '</td>';
+        }
     }
 
     // NULL 필드 하이라이트 (해당 필드가 record의 null_fields에 포함된 경우)
@@ -472,7 +549,7 @@ function renderDetailWithTable(options) {
     var isRowspan = !Array.isArray(config);
     // Retail inspection details must expose the source link whenever the
     // backend selected product_url, even if an older DB display rule omitted it.
-    var defaultCols = ensureProductUrlColumn(getAllColumns(config), selectCols);
+    var defaultCols = ensureProductUrlColumn(getAllColumns(config), selectCols).slice();
     if (type === 'null' || type === 'format') {
         defaultCols = normalizeRetailSourceDateColumns(defaultCols);
     }
@@ -485,6 +562,21 @@ function renderDetailWithTable(options) {
     detailViewState.crawlDate = crawlDate;
     detailViewState.editableDate = editableDate;
     detailViewState.dateColumn = dateColumn;
+    detailViewState.supportsNullAutoReview = type === 'null'
+        && options.supportsNullAutoReview === true;
+    detailViewState.nullReviewField = options.nullReviewField || '';
+    if (detailViewState.supportsNullAutoReview) {
+        var reviewColumns = [
+            { key: '_null_review_status', label: '검수 상태', width: 100 },
+            { key: '_null_review_reason', label: '확인 사유', width: 200 },
+            { key: '_null_review_basis', label: '확인 근거', width: 210 }
+        ];
+        var fieldIndex = defaultCols.findIndex(function(col) {
+            return col.key === detailViewState.nullReviewField;
+        });
+        defaultCols.splice.apply(defaultCols, [fieldIndex >= 0 ? fieldIndex + 1 : defaultCols.length, 0]
+            .concat(reviewColumns));
+    }
 
     // flat 데이터 생성
     var flatData;
@@ -493,6 +585,7 @@ function renderDetailWithTable(options) {
     } else {
         flatData = data;
     }
+    if (detailViewState.supportsNullAutoReview) _annotateNullReviewRows(flatData);
     detailViewState.allData = flatData;
     detailViewState.originalData = flatData.slice();
     detailViewState.filteredData = null;
@@ -1060,7 +1153,8 @@ function _showNullReviewBar(cells) {
             _submitNullReviews(cells, 'normal', memo, reason);
         }, {
             title: cells.length > 1 ? cells.length + '건 일괄 확인' : '확인',
-            defaultReason: cells.length > 1 ? '해당값정상 확인' : '',
+            defaultReason: cells.length > 1 && !detailViewState.supportsNullAutoReview
+                ? '해당값정상 확인' : '',
             requireMemo: false
         });
     });
@@ -1085,6 +1179,8 @@ function _showReviewDialog(callback, options) {
         + '<div class="memo-dialog-title">' + esc(options.title || '확인') + '</div>'
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">이유 <span style="color:#dc2626;">*</span></label>'
         + '<select class="memo-dialog-select" id="review-reason-select"><option value="">불러오는 중...</option></select></div>'
+        + (detailViewState.type === 'null' && detailViewState.supportsNullAutoReview
+            ? '<p class="null-review-dialog-note">수집 대상 제품 아님, 상품페이지 내 항목 부재, 해당값 정상 확인은 같은 국가·리테일러·제품군의 상품·NULL 항목·값이 일치할 때 실제 확인일 다음 검수일부터 자동 적용됩니다. item·제품명 정보가 부족한 건은 이번 검수만 수동확인합니다.</p>' : '')
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모'
         + (memoRequired ? ' <span style="color:#dc2626;">*</span>' : '')
         + '</label>'
@@ -1188,16 +1284,22 @@ function _submitNullReview(td, status, memo, reason) {
     return _submitNullReviews([td], status, memo, reason);
 }
 
-function _markNullReviewSuccess(td, rowId, colName, memo, reason) {
+function _markNullReviewSuccess(td, rowId, colName, memo, reason, reviewMetadata) {
     var nrKey = rowId + '_' + colName;
     if (!detailViewState.normalReviews) detailViewState.normalReviews = {};
-    detailViewState.normalReviews[nrKey] = {
+    detailViewState.normalReviews[nrKey] = reviewMetadata || {
         memo: memo,
         reason: reason || '',
         created_id: '',
         created_at: ''
     };
-    td.className = 'cell-normal';
+    if (detailViewState.supportsNullAutoReview) {
+        _annotateNullReviewRows(detailViewState.allData || []);
+    }
+    td.className = detailViewState.supportsNullAutoReview
+        ? 'cell-normal null-review-value '
+            + (detailViewState.normalReviews[nrKey].auto_applied ? 'automatic' : 'manual')
+        : 'cell-normal';
     td.dataset.normalKey = nrKey;
     td.removeAttribute('data-editable');
     var badge = td.querySelector('.normal-badge');
@@ -1261,7 +1363,8 @@ function _submitNullReviews(cells, status, memo, reason) {
                 successCount++;
                 if (status === 'normal') {
                     _markNullReviewSuccess(
-                        result.td, result.rowId, result.colName, memo, reason
+                        result.td, result.rowId, result.colName, memo, reason,
+                        result.response.normal_review
                     );
                 }
             } else {
@@ -1283,8 +1386,43 @@ function _submitNullReviews(cells, status, memo, reason) {
                 ? ': ' + failureMessages.join(' / ') : '';
             showToast(failCount + '건 처리 실패' + failureDetail, 'error');
         }
+        if (successCount > 0 && detailViewState.supportsNullAutoReview
+            && typeof refreshNullReviewDetail === 'function') {
+            return refreshNullReviewDetail().then(function() { return results; });
+        }
         return results;
     });
+}
+
+async function cancelNullReviewEvidence(button) {
+    var isNullReview = detailViewState.type === 'null' && detailViewState.supportsNullAutoReview;
+    if (!isNullReview) return;
+    var review = (detailViewState.normalReviews || {})[button.dataset.reviewKey];
+    var correctionId = review && Number(review.correction_id);
+    if (!review || review.revoked_at || !Number.isSafeInteger(correctionId) || correctionId <= 0) return;
+    var confirmation = await showConfirm(
+        '원래 수동확인을 취소하면 이 근거를 사용하는 현재·이후 자동확인이 중단됩니다. 이미 남긴 이력과 사유는 유지됩니다. 취소하시겠습니까?',
+        'warning', { input: { placeholder: '취소 사유 (선택)' } }
+    );
+    if (!confirmation.confirmed) return;
+    button.disabled = true;
+    try {
+        var response = await fetch('/dx/layer4/api/corrections/cancel/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+            body: JSON.stringify({ ids: [correctionId], cancel_memo: confirmation.value || '' })
+        });
+        var result = await response.json();
+        if (!response.ok || !result.success || !result.cancelled) {
+            throw new Error(result.error || '확인 취소에 실패했습니다.');
+        }
+        showToast('확인을 취소하고 자동확인 적용을 중단했습니다.', 'success');
+        await refreshNullReviewDetail();
+    } catch (error) {
+        showToast(error.message || '확인 취소에 실패했습니다.', 'error');
+    } finally {
+        button.disabled = false;
+    }
 }
 
 function handleDetailSort(sortCols) {
@@ -1529,6 +1667,13 @@ const ViewStack = {
         const c = this.getContainer();
         if (c) { c.innerHTML = s.html; window.scrollTo(0, s.scrollTop); }
         this._updateBackBtn();
+        if (s.nullReviewSummary && typeof renderNullFieldSummary === 'function') {
+            renderNullFieldSummary(modalState.nullFieldsData || {});
+        } else if (this.nullReviewStatsDirty && this.stack.length <= 1
+            && typeof fetchDXStats === 'function') {
+            this.nullReviewStatsDirty = false;
+            fetchDXStats();
+        }
         return true;
     },
     depth() { return this.stack.length; },

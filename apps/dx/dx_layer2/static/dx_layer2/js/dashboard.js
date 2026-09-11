@@ -583,23 +583,50 @@ function renderDXTableDetail(vType, table) {
             const hasIssue = (retailer.total_null_count || 0) > 0;
             const totalCount = retailer.total || 0;
             const nullCount = retailer.total_null_count || 0;
-
-            const fieldsJson = JSON.stringify(retailer.fields_detail || {}).replace(/'/g, '&#39;');
+            const supportsReview = retailer.supports_null_auto_review === true
+                || table.supports_null_auto_review === true;
+            const reviewedCount = Number(retailer.reviewed_null_count || 0);
+            const automaticCount = Number(retailer.auto_reviewed_count || 0);
+            const manualCount = Number(retailer.manual_reviewed_count || 0);
+            const reviewState = hasIssue ? 'unreviewed'
+                : (automaticCount > 0 ? 'automatic' : (reviewedCount > 0 ? 'manual' : 'clear'));
+            const loadError = String(retailer.status || '').toUpperCase() === 'ERROR';
+            const cardClass = loadError ? 'error'
+                : (supportsReview ? 'null-review-' + reviewState : (retailer.status || 'ok').toLowerCase());
+            const countLabel = loadError ? '조회 실패' : hasIssue ? `확인 필요 ${nullCount}건`
+                : (automaticCount > 0 ? `자동확인 ${automaticCount}건`
+                    : (reviewedCount > 0 ? `수동확인 ${manualCount}건` : 'NULL 없음'));
+            const queryCount = supportsReview
+                ? Number(retailer.raw_null_count || (nullCount + reviewedCount))
+                : nullCount;
+            const fieldsPayload = supportsReview ? {
+                field_counts: retailer.fields_detail || {},
+                raw_fields_detail: retailer.raw_fields_detail || {},
+                reviewed_fields_detail: retailer.reviewed_fields_detail || {},
+                manual_reviewed_fields_detail: retailer.manual_reviewed_fields_detail || {},
+                auto_reviewed_fields_detail: retailer.auto_reviewed_fields_detail || {},
+                supports_null_auto_review: true,
+                manual_reviewed_count: Number(retailer.manual_reviewed_count || 0),
+                auto_reviewed_count: Number(retailer.auto_reviewed_count || 0)
+            } : (retailer.fields_detail || {});
+            const fieldsJson = JSON.stringify(fieldsPayload)
+                .replace(/&/g, '&amp;').replace(/'/g, '&#39;');
             html += `
-                <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}">
+                <div class="retailer-card ${cardClass}">
                     <div class="retailer-card-main"
                          data-fields='${fieldsJson}'
-                         onclick="openDetailModal('null', '${tableName}', '${retailer.retailer}', ${nullCount}, 1, this.dataset.fields, '${tableCode}')"
-                         ${!hasIssue ? 'style="cursor: default;"' : 'style="cursor: pointer;"'}>
+                         onclick="openDetailModal('null', '${tableName}', '${retailer.retailer}', ${queryCount}, 1, this.dataset.fields, '${tableCode}')"
+                         ${!(hasIssue || queryCount > 0) ? 'style="cursor: default;"' : 'style="cursor: pointer;"'}>
                         <div class="retailer-header">
                             <span class="retailer-name">${retailer.retailer}</span>
-                            <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${nullCount}건</span>
+                            <span class="retailer-issue-count ${cardClass}">${supportsReview ? countLabel : nullCount + '건'}</span>
                         </div>
                         <div class="retailer-detail">
-                            총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드
+                            ${supportsReview ? `총 ${totalCount.toLocaleString()}건 검사 · 필수값 NULL 항목` : `총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드`}
                         </div>
+                        ${supportsReview ? `<div class="null-review-counts">${hasIssue ? `<span class="null-review-status unreviewed">확인 필요 ${nullCount}건</span>` : ''} ${automaticCount > 0 ? `<span class="null-review-status automatic">자동확인 ${automaticCount}건</span>` : ''} ${manualCount > 0 ? `<span class="null-review-status manual">수동확인 ${manualCount}건</span>` : ''}</div>` : ''}
                         <div class="retailer-fields">
-                            ${renderNullFieldsDetail(retailer.fields_detail)}
+                            ${renderNullFieldsDetail(retailer.fields_detail, supportsReview ? fieldsPayload : null)}
                         </div>
                     </div>
                 </div>
@@ -705,7 +732,23 @@ function getStatusClass(count) {
     return 'critical';
 }
 
-function renderNullFieldsDetail(fieldsDetail) {
+function renderNullFieldsDetail(fieldsDetail, reviewData) {
+    if (reviewData && reviewData.supports_null_auto_review) {
+        const fields = Object.assign({}, reviewData.raw_fields_detail, fieldsDetail);
+        return Object.keys(fields).map(function(field) {
+            const pending = Number((fieldsDetail || {})[field] || 0);
+            const automatic = Number((reviewData.auto_reviewed_fields_detail || {})[field] || 0);
+            const manual = Number((reviewData.manual_reviewed_fields_detail || {})[field] || 0);
+            const otherReviewed = Math.max(0, Number((reviewData.reviewed_fields_detail || {})[field] || 0) - automatic - manual);
+            const safeField = String(field).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const badges = [];
+            if (pending) badges.push(`<span class="field-badge has-issue">${safeField}: 확인 필요 ${pending}건</span>`);
+            if (automatic) badges.push(`<span class="field-badge automatic">${safeField}: 자동확인 ${automatic}건</span>`);
+            if (manual) badges.push(`<span class="field-badge manual">${safeField}: 수동확인 ${manual}건</span>`);
+            if (otherReviewed) badges.push(`<span class="field-badge manual">${safeField}: 확인 완료 ${otherReviewed}건</span>`);
+            return badges.length ? badges.join('') : `<span class="field-badge ok">${safeField}: 0</span>`;
+        }).join('');
+    }
     if (!fieldsDetail) return '';
     return Object.entries(fieldsDetail).map(([field, count]) => {
         const safeCount = count || 0;

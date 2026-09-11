@@ -22,6 +22,28 @@ from apps.dx.dx_layer2.anomaly_validation.services import get_anomaly_stats
 
 # ── 화이트리스트 상수 ──────────────────────────────────────────
 VALID_TABLES_RETAILER = {'TV Retail'}
+NULL_REVIEW_TABLES = {
+    'TV Retail': 'tv_retail',
+    'tv_retail': 'tv_retail',
+    'sea_ref_retail': 'sea_ref_retail',
+    'sea_ldy_retail': 'sea_ldy_retail',
+    **{
+        f'{country}_{product}_retail': f'{country}_{product}_retail'
+        for country in ('sem', 'siel', 'tse', 'seg')
+        for product in ('tv', 'ref', 'ldy')
+    },
+}
+
+
+def supports_null_auto_detail(validation_type, table_name, target_date):
+    """Allow only configured retail sections under the new NULL policy."""
+    if validation_type != 'null' or table_name not in NULL_REVIEW_TABLES:
+        return False
+    from apps.common.null_review_evidence import uses_new_policy
+
+    table_code = NULL_REVIEW_TABLES[table_name]
+    country = 'SEA' if table_code == 'tv_retail' else table_code.split('_')[0].upper()
+    return uses_new_policy(target_date, country)
 
 
 def _run_with_youtube_fallback(
@@ -84,6 +106,9 @@ def get_layer_stats(cursor, target_date, section=''):
             get_null_stats,
             'layer2_youtube_null_stats',
         )
+        # Full automatic-review details belong to the report, not dashboard counts.
+        null_validation = dict(null_validation)
+        null_validation.pop('auto_null_reviews', None)
         results['validation_types'].append(null_validation)
 
     if section in ('', 'format_validation'):
@@ -128,6 +153,36 @@ def get_retailer_detail(cursor, validation_type, table_name, retailer, target_da
         'records': [],
         'total': 0
     }
+
+    if supports_null_auto_detail(validation_type, table_name, target_date):
+        validation, _total_issues = get_null_stats(
+            cursor, target_date, include_youtube=False,
+        )
+        table_code = NULL_REVIEW_TABLES[table_name]
+        for table in validation.get('tables', []):
+            if table.get('table') != table_code:
+                continue
+            for row in table.get('retailers', []):
+                if str(row.get('retailer') or '').strip().casefold() != str(retailer).strip().casefold():
+                    continue
+                field_counts = dict(row.get('fields_detail') or {})
+                results.update({
+                    'field_counts': field_counts,
+                    'raw_fields_detail': dict(row.get('raw_fields_detail') or {}),
+                    'reviewed_fields_detail': dict(row.get('reviewed_fields_detail') or {}),
+                    'manual_reviewed_fields_detail': dict(row.get('manual_reviewed_fields_detail') or {}),
+                    'auto_reviewed_fields_detail': dict(row.get('auto_reviewed_fields_detail') or {}),
+                    'raw_null_count': row.get('raw_null_count', 0),
+                    'reviewed_null_count': row.get('reviewed_null_count', 0),
+                    'manual_reviewed_count': row.get('manual_reviewed_count', 0),
+                    'auto_reviewed_count': row.get('auto_reviewed_count', 0),
+                    'supports_null_auto_review': row.get('supports_null_auto_review', False),
+                    'total': row.get('total_null_count', sum(field_counts.values())),
+                    'total_records': row.get('total', 0),
+                })
+                return results
+        results['error'] = '조회 가능한 NULL 검수 리테일러를 찾을 수 없습니다.'
+        return results
 
     # 테이블명 및 날짜 필드 결정
     if table_name == 'TV Retail':

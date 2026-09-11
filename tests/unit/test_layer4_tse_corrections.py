@@ -1,13 +1,14 @@
 import unittest
 from contextlib import contextmanager
+from unittest.mock import Mock, patch
 
 from tests.unit.support import ScriptedCursor, load_module, module_stub
 
 
-def load_service(cursor):
+def load_service(cursor, connection=None):
     @contextmanager
     def dx_connection():
-        yield object(), cursor
+        yield connection or object(), cursor
 
     return load_module(
         'apps/dx/dx_layer4/corrections/services.py',
@@ -34,6 +35,64 @@ def load_service(cursor):
 
 
 class Layer4TseCorrectionTests(unittest.TestCase):
+    def test_cancel_revokes_only_changed_records_before_commit(self):
+        cursor = ScriptedCursor([{'fetchall': [(11,), (12,)], 'rowcount': 2}])
+        events = []
+        connection = Mock()
+        connection.commit.side_effect = lambda: events.append('commit')
+        revoke = Mock(side_effect=lambda *_args, **_kwargs: events.append('revoke'))
+        service = load_service(cursor, connection)
+        module_name = 'apps.common.null_review_evidence'
+
+        with patch.dict('sys.modules', {
+            module_name: module_stub(module_name, revoke_evidence=revoke),
+        }):
+            result = service.cancel_corrections([11, 12, 13], '재검수 필요', 'reviewer')
+
+        self.assertEqual({'success': True, 'cancelled': 2}, result)
+        revoke.assert_called_once_with(
+            cursor, [11, 12], reviewer='reviewer', memo='재검수 필요',
+        )
+        self.assertEqual(['revoke', 'commit'], events)
+        self.assertIn("AND status = 'normal' RETURNING id", cursor.calls[0][0])
+
+    def test_cancel_does_not_commit_if_evidence_revoke_fails(self):
+        cursor = ScriptedCursor([{'fetchall': [(11,)], 'rowcount': 1}])
+        connection = Mock()
+        service = load_service(cursor, connection)
+        module_name = 'apps.common.null_review_evidence'
+        revoke = Mock(side_effect=RuntimeError('revocation failed'))
+
+        with patch.dict('sys.modules', {
+            module_name: module_stub(module_name, revoke_evidence=revoke),
+        }), self.assertRaisesRegex(RuntimeError, 'revocation failed'):
+            service.cancel_corrections([11], '재검수', 'reviewer')
+
+        connection.commit.assert_not_called()
+
+    def test_cancel_with_no_changed_records_does_not_revoke_evidence(self):
+        cursor = ScriptedCursor([{'fetchall': [], 'rowcount': 0}])
+        connection = Mock()
+        service = load_service(cursor, connection)
+        module_name = 'apps.common.null_review_evidence'
+        revoke = Mock()
+
+        with patch.dict('sys.modules', {
+            module_name: module_stub(module_name, revoke_evidence=revoke),
+        }):
+            result = service.cancel_corrections([11], '', 'reviewer')
+
+        self.assertEqual(0, result['cancelled'])
+        revoke.assert_not_called()
+        connection.commit.assert_called_once_with()
+
+    def test_cancel_empty_selection_does_not_open_a_connection(self):
+        service = load_service(ScriptedCursor([]))
+        with patch.object(service, 'dx_connection') as connection:
+            result = service.cancel_corrections([], '', 'reviewer')
+        self.assertEqual({'success': True, 'cancelled': 0}, result)
+        connection.assert_not_called()
+
     def test_tse_tables_are_supported_for_crawl_time_and_history(self):
         cursor = ScriptedCursor([
             {

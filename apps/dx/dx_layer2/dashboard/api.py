@@ -44,12 +44,17 @@ def retailer_detail(request):
     """리테일러별 상세 오류 데이터 조회 API"""
     validation_type = request.GET.get('type', 'null')
     table_name = request.GET.get('table', '')
-    if table_name not in services.VALID_TABLES_RETAILER:
-        return JsonResponse({'error': '잘못된 테이블 파라미터'}, status=400)
     retailer = request.GET.get('retailer', '')
     target_date = parse_date(request.GET.get('date'))
     if target_date is None:
         return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
+    if (
+        table_name not in services.VALID_TABLES_RETAILER
+        and not services.supports_null_auto_detail(
+            validation_type, table_name, target_date,
+        )
+    ):
+        return JsonResponse({'error': '잘못된 테이블 파라미터'}, status=400)
 
     try:
         with dx_connection() as (conn, cursor):

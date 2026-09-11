@@ -11,6 +11,8 @@ from apps.common.response import log_error
 from apps.common.retail_columns import load_retail_columns, get_editable_columns
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
+from apps.common.null_review_evidence import uses_new_policy
+from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import sem_validation
 
@@ -171,6 +173,35 @@ SIEL_NULL_COLUMNS = {
 
 def _table_basename(table_name):
     return str(table_name or '').strip().lower().split('.')[-1]
+
+
+def _load_current_null_reviews(cursor, table_name, target_date, columns,
+                               retailer=None):
+    """Load exact-day manual approvals without legacy carry-forward rules."""
+    if not columns:
+        return {}
+    placeholders = ', '.join(['%s'] * len(columns))
+    retailer_clause = ' AND LOWER(retailer) = LOWER(%s)' if retailer else ''
+    params = [table_name, str(target_date), *columns]
+    if retailer:
+        params.append(retailer)
+    cursor.execute(f"""
+        SELECT record_id, column_name, memo, created_id, created_at, reason
+        FROM monitoring_corrections
+        WHERE table_name = %s AND crawl_date = %s
+          AND correction_type = 'null_check' AND status = 'normal'
+          AND column_name IN ({placeholders}) {retailer_clause}
+        ORDER BY id
+    """, params)
+    return {
+        f'{row[0]}_{row[1]}': {
+            'memo': row[2], 'created_id': row[3],
+            'created_at': (row[4].isoformat() if hasattr(row[4], 'isoformat')
+                           else str(row[4] or '')),
+            'reason': row[5],
+        }
+        for row in cursor.fetchall()
+    }
 
 
 def _get_sea_null_source_for_table(table_name):
@@ -1117,6 +1148,8 @@ def _is_tse_review_suppressed(record, column, row_date, reviews):
 
 def get_tse_auto_applied_null_reviews(cursor, target_date):
     """Return prior normal reviews automatically applied to today's NULLs."""
+    if uses_new_policy(target_date, 'TSE'):
+        return []
     runtime = _get_tse_runtime()
     if not runtime:
         return []
@@ -1260,13 +1293,24 @@ def get_tse_auto_applied_null_reviews(cursor, target_date):
     return auto_logs
 
 
+def get_auto_applied_null_reviews(cursor, target_date):
+    """Use the same current-cell decisions as the NULL worklist and counts."""
+    if not uses_new_policy(target_date, 'TSE'):
+        return get_tse_auto_applied_null_reviews(cursor, target_date)
+    validation, _issue_count = get_null_stats(
+        cursor, target_date, include_youtube=False,
+    )
+    return validation.get('auto_null_reviews', [])
+
+
 def get_tse_null_review_logs(cursor, target_date):
     """Return TSE NULL reviews accepted as normal on the selected date."""
     runtime = _get_tse_runtime()
+    new_policy = uses_new_policy(target_date, 'TSE')
     if not runtime:
         return {
             'logs': [], 'total': 0, 'date': str(target_date),
-            'recheck_days': TSE_NORMAL_REVIEW_RECHECK_DAYS,
+            'recheck_days': None if new_policy else TSE_NORMAL_REVIEW_RECHECK_DAYS,
         }
 
     table_sources = {
@@ -1276,10 +1320,60 @@ def get_tse_null_review_logs(cursor, target_date):
     if not table_sources:
         return {
             'logs': [], 'total': 0, 'date': str(target_date),
-            'recheck_days': TSE_NORMAL_REVIEW_RECHECK_DAYS,
+            'recheck_days': None if new_policy else TSE_NORMAL_REVIEW_RECHECK_DAYS,
         }
 
     table_placeholders = ', '.join(['%s'] * len(table_sources))
+    if new_policy:
+        cursor.execute(f"""
+            SELECT correction.id, correction.table_name, correction.record_id,
+                   correction.retailer, correction.item, correction.column_name,
+                   correction.reason, correction.memo, correction.crawl_date,
+                   correction.created_id, correction.created_at,
+                   evidence.id, evidence.product_name, evidence.reviewed_at,
+                   evidence.auto_apply_from, evidence.revoked_at
+            FROM monitoring_corrections correction
+            LEFT JOIN public.monitoring_null_review_evidence evidence
+              ON evidence.correction_id = correction.id
+            WHERE correction.layer = 2
+              AND correction.correction_type = 'null_check'
+              AND correction.status = 'normal'
+              AND correction.crawl_date = %s
+              AND correction.table_name IN ({table_placeholders})
+            ORDER BY correction.created_at DESC, correction.id DESC
+        """, (str(target_date), *table_sources.keys()))
+        logs = []
+        for row in cursor.fetchall():
+            created_at = row[13] or row[10]
+            created_text = (
+                created_at.isoformat() if hasattr(created_at, 'isoformat')
+                else str(created_at or '')
+            )
+            logs.append({
+                'id': row[0], 'correction_id': row[0],
+                'application_type': '수동 확인',
+                'table_name': row[1], 'record_id': row[2],
+                'product_line': table_sources[row[1]].get('display_name', row[1]),
+                'retailer': row[3] or '', 'item': row[4] or '',
+                'column_name': row[5], 'reason': row[6], 'memo': row[7] or '',
+                'crawl_date': str(row[8]), 'applied_date': str(row[8]),
+                'created_id': row[9] or '', 'created_at': created_text,
+                'original_crawl_date': str(row[8]),
+                'original_created_at': created_text,
+                'evidence_id': row[11], 'retailer_sku_name': row[12] or '',
+                'auto_apply_from': str(row[14]) if row[14] else None,
+                'revoked_at': str(row[15]) if row[15] else None,
+                'handling': '수동 확인', 'auto_applied': False,
+            })
+        logs.extend(
+            dict(review, handling='동일 상품·항목·값 자동확인')
+            for review in get_auto_applied_null_reviews(cursor, target_date)
+            if review['table_name'] in table_sources
+        )
+        return {
+            'logs': logs, 'total': len(logs), 'date': str(target_date),
+            'recheck_days': None, 'supports_null_auto_review': True,
+        }
     reason_placeholders = ', '.join(
         ['%s'] * len(TSE_NORMAL_VALUE_REASON_ALIASES)
     )
@@ -1384,6 +1478,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
 
     for product_line, source in runtime['sources'].items():
         retailer_rows = []
+        table_auto_logs = []
         table_total = 0
         table_issues = 0
         table_fields = []
@@ -1453,9 +1548,48 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 for index, column in enumerate(required_columns)
             }
 
-            # Carry a normal review forward for the same item and
-            # retailer_sku_name. The identity is exposed again on day 14.
-            if latest_batch_id is not None and any(fields_detail.values()):
+            review_stats = {}
+            if uses_new_policy(target_date, 'TSE'):
+                current_rows = []
+                manual_reviews = {}
+                if total and any(fields_detail.values()):
+                    review_columns = list(dict.fromkeys((
+                        'id', 'item', 'retailer_sku_name', *required_columns,
+                    )))
+                    review_select_sql = ', '.join(
+                        f'source.{name}' for name in review_columns
+                    )
+                    cursor.execute(f"""
+                        SELECT {review_select_sql}
+                        FROM {canonical_table} source
+                        WHERE LEFT(TRIM(source.crawl_datetime), 10) = %s
+                          AND {account_scope} AND {country_scope}
+                          AND source.batch_id IS NOT DISTINCT FROM %s
+                    """, (target_date_text, retailer_value, TSE_COUNTRY,
+                           latest_batch_id))
+                    current_rows = [
+                        dict(zip(review_columns, current_row))
+                        for current_row in cursor.fetchall()
+                    ]
+                    manual_reviews = _load_current_null_reviews(
+                        cursor, canonical_table, target_date,
+                        required_columns, retailer_value,
+                    )
+                normal_reviews, review_stats, auto_logs = review_state(
+                    cursor, target_date, current_rows, required_columns,
+                    manual_reviews, table_name=canonical_table,
+                    country='TSE', product_line=product_line,
+                    retailer=retailer_value,
+                    is_null=lambda value, _column: _is_field_null(value, 'both'),
+                )
+                fields_detail = {
+                    field: (review_stats['raw_fields_detail'][field]
+                            - review_stats['reviewed_fields_detail'][field])
+                    for field in required_columns
+                }
+                table_auto_logs.extend(auto_logs)
+            # Earlier inspection dates keep their original fourteen-day rule.
+            elif latest_batch_id is not None and any(fields_detail.values()):
                 recent_reviews = _load_tse_recent_normal_reviews(
                     cursor,
                     canonical_table,
@@ -1516,6 +1650,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 'status': get_status(issue_count),
                 'fields_detail': fields_detail,
                 'latest_batch_id': latest_batch_id,
+                **review_stats,
             })
             table_total += total
             table_issues += issue_count
@@ -1558,6 +1693,17 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
             (unassigned_row[0] or 0) if unassigned_row else 0
         )
         if unassigned_total:
+            unassigned_review_stats = ({
+                'supports_null_auto_review': True,
+                'raw_null_count': unassigned_total,
+                'manual_reviewed_count': 0,
+                'auto_reviewed_count': 0,
+                'reviewed_null_count': 0,
+                'raw_fields_detail': {'account_name': unassigned_total},
+                'reviewed_fields_detail': {'account_name': 0},
+                'manual_reviewed_fields_detail': {'account_name': 0},
+                'auto_reviewed_fields_detail': {'account_name': 0},
+            } if uses_new_policy(target_date, 'TSE') else {})
             retailer_rows.append({
                 'retailer': TSE_UNASSIGNED_DISPLAY_NAME,
                 'total': unassigned_total,
@@ -1567,6 +1713,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 'latest_batch_id': (
                     unassigned_row[1] if unassigned_row else None
                 ),
+                **unassigned_review_stats,
             })
             table_total += unassigned_total
             table_issues += unassigned_total
@@ -1582,7 +1729,9 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
                 'status': get_status(table_issues),
                 'retailers': retailer_rows,
                 'fields': table_fields,
+                'auto_null_reviews': table_auto_logs,
             })
+            add_review_totals(tables[-1], retailer_rows)
             total_issues += table_issues
 
     return tables, total_issues
@@ -1611,10 +1760,16 @@ def _append_tse_null_stats(cursor, target_date, validation):
         cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
         cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
         log_error(exc, 'db')
+        if uses_new_policy(target_date, 'TSE'):
+            raise
         return 0
 
     cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
     validation['tables'].extend(tables)
+    for table in tables:
+        validation.setdefault('auto_null_reviews', []).extend(
+            table.pop('auto_null_reviews', [])
+        )
     return issue_count
 
 
@@ -1702,15 +1857,12 @@ def _get_tse_null_detail(
     column_index = {
         column_name: index for index, column_name in enumerate(select_columns)
     }
-    recent_reviews = _load_tse_recent_normal_reviews(
-        cursor,
-        canonical_table,
-        retailer_value,
-        related_columns,
+    new_policy = uses_new_policy(target_date, 'TSE')
+    recent_reviews = [] if new_policy else _load_tse_recent_normal_reviews(
+        cursor, canonical_table, retailer_value, related_columns,
         target_date - timedelta(
             days=history_days + TSE_NORMAL_REVIEW_RECHECK_DAYS - 2
-        ),
-        target_date,
+        ), target_date,
     )
     normal_reviews = {}
     for review in recent_reviews:
@@ -1733,9 +1885,28 @@ def _get_tse_null_detail(
             for column_name, index in column_index.items()
         }
 
+    review_stats = {}
+    if new_policy:
+        current_rows = [row_as_mapping(row) for row in raw_rows]
+        manual_reviews = _load_current_null_reviews(
+            cursor, canonical_table, target_date, related_columns,
+            retailer_value,
+        )
+        normal_reviews, review_stats, _auto_logs = review_state(
+            cursor, target_date, current_rows, related_columns, manual_reviews,
+            table_name=canonical_table, country='TSE',
+            product_line=product_line, retailer=retailer_value,
+            is_null=lambda value, _column: _is_field_null(value, 'both'),
+        )
+
     def active_null_fields(row):
         row_record = row_as_mapping(row)
         crawl_date = row_record.get('crawl_datetime') or target_date
+        if new_policy:
+            return [
+                related for related in related_columns
+                if _is_field_null(row_record.get(related), 'both')
+            ]
         return [
             related for related in related_columns
             if _is_field_null(row_record.get(related), 'both')
@@ -1748,6 +1919,8 @@ def _get_tse_null_detail(
         ]
 
     def row_is_suppressed(row):
+        if new_policy:
+            return False
         row_record = row_as_mapping(row)
         has_group_null = any(
             _is_field_null(row_record.get(related), 'both')
@@ -1874,6 +2047,7 @@ def _get_tse_null_detail(
         'query_include_unassigned': include_unassigned,
         'supports_day_history': True,
         'normal_reviews': normal_reviews,
+        **review_stats,
         'date_column': 'crawl_datetime',
         'date': target_date_text,
         'history_days': history_days,
@@ -2239,12 +2413,57 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                         fields_detail[correction_col] = max(0, fields_detail[correction_col] - correction_count)
                         total_null_count = max(0, total_null_count - correction_count)
 
+                review_stats = {}
+                review_source = siel_source or sea_source
+                review_country = 'SIEL' if siel_source else 'SEA'
+                if review_source and uses_new_policy(target_date, review_country):
+                    columns = query_parts['column_names']
+                    record_columns = list(dict.fromkeys((
+                        'id', 'item', 'retailer_sku_name', *columns,
+                    )))
+                    cursor.execute(f"""
+                        SELECT {', '.join(record_columns)}
+                        FROM {query_parts['table_name']}
+                        WHERE {date_where}
+                    """, params)
+                    current_rows = [
+                        dict(zip(record_columns, source_row))
+                        for source_row in cursor.fetchall()
+                    ]
+                    manual_reviews = _load_current_null_reviews(
+                        cursor, query_parts['table_name'], target_date,
+                        columns, retailer_name,
+                    )
+                    column_config = get_null_check_config(
+                        category, check_name,
+                    )['columns']
+                    normal_reviews, review_stats, auto_logs = review_state(
+                        cursor, target_date, current_rows, columns,
+                        manual_reviews, table_name=query_parts['table_name'],
+                        country=review_country,
+                        product_line=review_source['source_key'],
+                        retailer=retailer_name,
+                        is_null=lambda value, field: _is_field_null(
+                            value, column_config[field].get('check_type', 'both'),
+                        ),
+                    )
+                    fields_detail = {
+                        field: (review_stats['raw_fields_detail'][field]
+                                - review_stats['reviewed_fields_detail'][field])
+                        for field in columns
+                    }
+                    total_null_count = sum(fields_detail.values())
+                    null_validation.setdefault('auto_null_reviews', []).extend(
+                        auto_logs,
+                    )
+
                 retailer_stats = {
                     'retailer': retailer_name,
                     'total': total,
                     'total_null_count': total_null_count,
                     'status': get_status(total_null_count),
-                    'fields_detail': fields_detail
+                    'fields_detail': fields_detail,
+                    **review_stats,
                 }
                 if monitoring_date:
                     retailer_stats.update({
@@ -2275,6 +2494,7 @@ def get_null_stats(cursor, target_date, include_youtube=True):
                 'source_key': monitoring_date['source_key'],
             })
         null_validation['tables'].append(table_stats)
+        add_review_totals(table_stats, cat_retailers)
         total_null_issues += cat_total_issues
 
     total_null_issues += _append_tse_null_stats(
@@ -2289,6 +2509,7 @@ def get_null_stats(cursor, target_date, include_youtube=True):
         )
     null_validation['total_issues'] = total_null_issues
     null_validation['status'] = get_status(total_null_issues)
+    add_review_totals(null_validation, null_validation['tables'])
     return null_validation, total_null_issues
 
 
@@ -2476,6 +2697,23 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             'reason': nr_row[5]
         }
 
+    review_stats = {}
+    review_source = siel_source or sea_source
+    review_country = 'SIEL' if siel_source else 'SEA'
+    new_review_policy = bool(
+        review_source and uses_new_policy(target_date, review_country)
+    )
+    if new_review_policy:
+        normal_reviews, review_stats, _auto_logs = review_state(
+            cursor, target_date,
+            [dict(zip(select_cols, row)) for row in rows], [column],
+            normal_reviews, table_name=actual_table, country=review_country,
+            product_line=review_source['source_key'],
+            retailer=retailer or category_config.get('display_name'),
+            is_null=lambda value, _field: _is_field_null(value, check_type),
+        )
+    current_null_rows = list(rows) if new_review_policy else []
+
     # retail + days > 1: 오류 item 추출 후 N일치 확장 조회
     is_expanded = False
     id_idx = col_index['id']
@@ -2486,7 +2724,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         item_idx = select_cols.index('item') if 'item' in select_cols else None
         if item_idx is not None:
             # 정상처리 건 제외 후 에러 item 추출
-            error_items = list(set(r[item_idx] for r in rows if r[item_idx] and r[id_idx] not in normal_set))
+            error_items = list(set(
+                r[item_idx] for r in rows if r[item_idx]
+                and (new_review_policy or r[id_idx] not in normal_set)
+            ))
             if error_items:
                 placeholders = ', '.join(['%s'] * len(error_items))
                 if siel_source and siel_date:
@@ -2561,13 +2802,19 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                     expand_params = [str(start_date), str(next_date), retailer] + error_items
                 cursor.execute(expand_query, expand_params)
                 rows = cursor.fetchall()
+                if new_review_policy:
+                    expanded_ids = {row[id_idx] for row in rows}
+                    rows.extend(
+                        row for row in current_null_rows
+                        if row[id_idx] not in expanded_ids
+                    )
                 is_expanded = True
 
     results = []
     col_idx = col_index.get(column)
     for row in rows:
         # 정상처리 건이면 스킵
-        if row[id_idx] in normal_set:
+        if not new_review_policy and row[id_idx] in normal_set:
             continue
 
         # 확장 조회(days > 1)면 전체 이력 표시, 1일치면 NULL만 필터
@@ -2628,7 +2875,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         'query_config': query_config,
         'normal_reviews': normal_reviews,
         'date_column': date_col,
-        'date': str(target_date)
+        'date': str(target_date),
+        **review_stats,
     }
     if monitoring_date:
         supports_day_history = bool(has_retailer)
@@ -2661,6 +2909,54 @@ VALID_TABLES_UPDATE = ({
     source['table_name']
     for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
 }) - DISABLED_SOURCE_TABLES
+
+
+def _null_evidence_save_source(table_name):
+    """Resolve evidence scope only from the fixed retail source allowlists."""
+    basename = _table_basename(table_name)
+    groups = (
+        ('SEA', SEA_RETAIL_SOURCES),
+        ('SIEL', SIEL_SOURCE_CONFIG),
+        ('SEM', getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})),
+        ('SEG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})),
+        ('TSE', TSE_SOURCE_CONFIG or {}),
+    )
+    for country, sources in groups:
+        for key, source in sources.items():
+            if _table_basename(source.get('table_name')) != basename:
+                continue
+            product = source.get('category') or source.get('product_key') or key.split('_')[-1]
+            return country, str(product).upper(), source
+    return None
+
+
+def _capture_null_review_record(cursor, table_name, record_id, column_name,
+                                inspection_date, evidence_source):
+    """Lock and capture the value plus identity from the validated source row."""
+    country, _product, source = evidence_source
+    day = datetime.strptime(str(inspection_date), '%Y-%m-%d').date()
+    source_day = day - timedelta(days=1) if country == 'SEA' else day
+    if country == 'SIEL':
+        date_where, date_params = _siel_date_bounds(source, str(source_day))
+    else:
+        date_column = source.get('date_column', 'crawl_datetime')
+        date_where = f"LEFT(TRIM(CAST({date_column} AS TEXT)), 10) = %s"
+        date_params = [str(source_day)]
+    # table_name and column_name have already passed the normal-review
+    # allowlists; the source/date identifiers above are server-owned constants.
+    cursor.execute(f"""
+        SELECT id, item, retailer_sku_name, {column_name}, account_name
+        FROM {table_name}
+        WHERE id = %s AND {date_where}
+        FOR UPDATE
+    """, (record_id, *date_params))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    record = {'id': row[0], 'item': row[1], 'retailer_sku_name': row[2],
+              'account_name': row[4]}
+    record[column_name] = row[3]
+    return record
 
 
 def save_null_review(cursor, conn, table_name, record_id, column_name, status, memo, reason, crawl_date, correction_type, username):
@@ -2870,6 +3166,41 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     ):
         return {'error': '허용되지 않는 리테일러별 컬럼', 'status_code': 400}
 
+    evidence_source = (
+        _null_evidence_save_source(table_name)
+        if correction_type_value == 'null_check' else None
+    )
+    capture_evidence = bool(evidence_source and str(crawl_date) >= '2026-09-12')
+    evidence_record = None
+    if capture_evidence:
+        try:
+            inspection_day = datetime.strptime(str(crawl_date), '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return {'error': '검수일 형식이 올바르지 않습니다', 'status_code': 400}
+        if inspection_day > datetime.now(ZoneInfo('Asia/Seoul')).date():
+            return {'error': '미래 검수일의 확인은 저장할 수 없습니다', 'status_code': 400}
+        evidence_record = _capture_null_review_record(
+            cursor, table_name, record_id, column_name, crawl_date, evidence_source,
+        )
+        if not evidence_record or not _is_field_null(evidence_record[column_name], 'both'):
+            conn.rollback()
+            return {
+                'error': '현재 NULL 검수 대상이 아닙니다. 다시 조회해 주세요.',
+                'status_code': 409,
+            }
+        if evidence_record[column_name] != old_value:
+            conn.rollback()
+            return {'error': '확인 대상 값이 변경됐습니다. 다시 조회해 주세요.', 'status_code': 409}
+        previous_item = '' if row[2] is None else str(row[2])
+        captured_item = '' if evidence_record.get('item') is None else str(evidence_record['item'])
+        if previous_item != captured_item:
+            conn.rollback()
+            return {'error': '확인 대상 상품이 변경됐습니다. 다시 조회해 주세요.', 'status_code': 409}
+        current_account = str(evidence_record.get('account_name') or '').strip()
+        if current_account and current_account.casefold() != str(retailer or '').strip().casefold():
+            conn.rollback()
+            return {'error': '리테일러가 변경됐습니다. 다시 조회해 주세요.', 'status_code': 409}
+
     # 중복 정상처리 체크
     cursor.execute("""
         SELECT id FROM monitoring_corrections
@@ -2877,24 +3208,49 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
           AND correction_type = %s AND status = 'normal' AND crawl_date = %s
     """, (table_name, record_id, column_name, correction_type_value, str(crawl_date)))
     if cursor.fetchone():
+        if capture_evidence:
+            conn.rollback()
         return {'error': '이미 정상처리된 항목입니다', 'status_code': 400}
 
     now = datetime.now()
 
     # monitoring_corrections에 이력 저장 (실제 데이터는 수정하지 않음)
-    cursor.execute("""
+    insert_sql = """
         INSERT INTO monitoring_corrections
             (layer, correction_type, table_name, record_id, column_name,
              old_value, new_value, crawl_date, created_id, created_at, status, memo, reason, retailer, item)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
+    """
+    insert_params = (
         2, correction_type_value, table_name, record_id, column_name,
         str(old_value) if old_value is not None else None,
         None,
         crawl_date, username, now, status, memo or None,
         reason or None, retailer or None, item_value
-    ))
+    )
+    if not capture_evidence:
+        cursor.execute(insert_sql, insert_params)
+        conn.commit()
+        return {'success': True, 'status': status}
 
-    conn.commit()
-
-    return {'success': True, 'status': status}
+    from apps.common.null_review_evidence import save_manual_evidence
+    country, product_line, _source = evidence_source
+    try:
+        cursor.execute(insert_sql + ' RETURNING id', insert_params)
+        correction_row = cursor.fetchone()
+        if not correction_row:
+            raise ValueError('NULL 확인 이력을 저장하지 못했습니다.')
+        normal_review = save_manual_evidence(
+            cursor, correction_id=correction_row[0], inspection_date=crawl_date,
+            record=evidence_record, column_name=column_name, reason=reason,
+            reviewer=username, memo=memo, table_name=table_name,
+            country=country, product_line=product_line, retailer=retailer,
+        )
+        if normal_review is None:
+            raise ValueError('NULL 확인 근거를 저장하지 못했습니다.')
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return {'success': True, 'status': status, 'normal_review': normal_review,
+            'supports_null_auto_review': True}

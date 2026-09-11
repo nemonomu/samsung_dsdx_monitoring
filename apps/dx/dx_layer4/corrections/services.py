@@ -206,6 +206,9 @@ def get_corrections(target_date, correction_type='all', status='all',
 
 def cancel_corrections(ids, cancel_memo, username):
     """정상처리 일괄 취소"""
+    if not ids:
+        return {'success': True, 'cancelled': 0}
+
     now = datetime.now()
     with dx_connection() as (conn, cursor):
         placeholders = ','.join(['%s'] * len(ids))
@@ -213,8 +216,15 @@ def cancel_corrections(ids, cancel_memo, username):
             UPDATE monitoring_corrections
             SET status = 'reverted', updated_id = %s, updated_at = %s, cancel_memo = %s
             WHERE id IN ({placeholders}) AND status = 'normal'
+            RETURNING id
         """, [username, now, cancel_memo or None] + ids)
-        cancelled = cursor.rowcount
+        cancelled_ids = [row[0] for row in cursor.fetchall()]
+        cancelled = len(cancelled_ids)
+        if cancelled_ids:
+            from apps.common.null_review_evidence import revoke_evidence
+            revoke_evidence(
+                cursor, cancelled_ids, reviewer=username, memo=cancel_memo,
+            )
         conn.commit()
 
     return {'success': True, 'cancelled': cancelled}

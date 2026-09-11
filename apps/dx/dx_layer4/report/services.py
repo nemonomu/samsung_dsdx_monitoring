@@ -58,37 +58,63 @@ def _fill_sea_retailer_names(cursor, details):
             detail['retailer'] = retailer
 
 
-def _merge_tse_auto_null_reviews(
-        auto_reviews, type_summary, reason_summary, table_summary, details):
+def _null_review_cell(review):
+    table_name = str(review.get('table_name') or '').strip().lower()
+    table_name = _SEA_REPORT_SOURCE_TABLES.get(table_name, table_name)
+    return (
+        table_name,
+        str(review.get('record_id')),
+        review.get('column_name'),
+    )
+
+
+def _merge_auto_null_reviews(
+        auto_reviews, type_summary, reason_summary, table_summary, details,
+        *, legacy=False):
     """Merge virtual daily carry-forward records into the report payload."""
     if not auto_reviews:
         return
 
-    null_summary = type_summary.setdefault('null_check', {})
-    null_summary['normal'] = null_summary.get('normal', 0) + len(auto_reviews)
-
-    auto_reason = '해당값정상 확인 (자동 적용)'
-    reason_row = next((
-        row for row in reason_summary
-        if row['reason'] == auto_reason
-        and row['correction_type'] == 'null_check'
-    ), None)
-    if reason_row is None:
-        reason_row = {
-            'reason': auto_reason,
-            'correction_type': 'null_check',
-            'count': 0,
-        }
-        reason_summary.append(reason_row)
-    reason_row['count'] += len(auto_reviews)
-
+    seen = {
+        _null_review_cell(detail)
+        for detail in details
+        if detail.get('correction_type') == 'null_check'
+        and detail.get('status') in ('normal', 'corrected')
+    }
     for review in auto_reviews:
+        cell = _null_review_cell(review)
+        if not legacy and cell in seen:
+            continue
+        seen.add(cell)
+
+        null_summary = type_summary.setdefault('null_check', {})
+        null_summary['normal'] = null_summary.get('normal', 0) + 1
+        original_reason = (
+            '해당값정상 확인' if legacy
+            else review.get('reason') or '해당값정상 확인'
+        )
+        auto_reason = f'{original_reason} (자동 적용)'
+        reason_row = next((
+            row for row in reason_summary
+            if row['reason'] == auto_reason
+            and row['correction_type'] == 'null_check'
+        ), None)
+        if reason_row is None:
+            reason_row = {
+                'reason': auto_reason,
+                'correction_type': 'null_check',
+                'count': 0,
+            }
+            reason_summary.append(reason_row)
+        reason_row['count'] += 1
+
         table_name = review['table_name']
         table_null = table_summary.setdefault(
             table_name, {}
         ).setdefault('null_check', {})
         table_null['normal'] = table_null.get('normal', 0) + 1
         details.append({
+            **review,
             'correction_type': 'null_check',
             'table_name': table_name,
             'column_name': review['column_name'],
@@ -98,6 +124,7 @@ def _merge_tse_auto_null_reviews(
             'status': 'normal',
             'memo': review.get('memo', ''),
             'reason': auto_reason,
+            'original_reason': original_reason,
             'created_id': review.get('created_id', ''),
             'retailer': review.get('retailer', ''),
             'item': review.get('item', ''),
@@ -108,6 +135,34 @@ def _merge_tse_auto_null_reviews(
             'original_crawl_date': review.get('original_crawl_date', ''),
             'original_created_at': review.get('original_created_at', ''),
         })
+
+
+def _merge_tse_auto_null_reviews(
+        auto_reviews, type_summary, reason_summary, table_summary, details):
+    """Preserve the historical TSE report's count and reason semantics."""
+    _merge_auto_null_reviews(
+        auto_reviews, type_summary, reason_summary, table_summary, details,
+        legacy=True,
+    )
+
+
+def _uses_new_null_review_policy(target_date):
+    from apps.common.null_review_evidence import POLICY_START
+
+    return str(target_date)[:10] >= POLICY_START.isoformat()
+
+
+def _load_auto_null_reviews(cursor, target_date):
+    if _uses_new_null_review_policy(target_date):
+        from apps.dx.dx_layer2.null_validation.services import (
+            get_auto_applied_null_reviews,
+        )
+        return get_auto_applied_null_reviews(cursor, target_date)
+
+    from apps.dx.dx_layer2.null_validation.services import (
+        get_tse_auto_applied_null_reviews,
+    )
+    return get_tse_auto_applied_null_reviews(cursor, target_date)
 
 
 def get_report_data(target_date):
@@ -232,18 +287,14 @@ def get_report_data(target_date):
 
         _fill_sea_retailer_names(cursor, details)
 
-        from apps.dx.dx_layer2.null_validation.services import (
-            get_tse_auto_applied_null_reviews,
-        )
-        auto_null_reviews = get_tse_auto_applied_null_reviews(
-            cursor, target_date
-        )
-        _merge_tse_auto_null_reviews(
+        auto_null_reviews = _load_auto_null_reviews(cursor, target_date)
+        _merge_auto_null_reviews(
             auto_null_reviews,
             type_summary,
             reason_summary,
             table_summary,
             details,
+            legacy=not _uses_new_null_review_policy(target_date),
         )
 
         cursor.execute("""

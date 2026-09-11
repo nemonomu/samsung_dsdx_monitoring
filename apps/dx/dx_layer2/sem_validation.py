@@ -5,6 +5,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.null_review_evidence import uses_new_policy
+from apps.dx.dx_layer2.null_review_state import review_state
 from apps.common.sem_retail import (
     SEM_COUNTRY,
     SEM_RETAILER,
@@ -374,6 +376,15 @@ def append_null_stats(cursor, target_date, validation):
             cursor, target_date, product_line, 'null_check'
         )
         fields = list(get_sem_required_columns(product_line))
+        review_stats = {}
+        if uses_new_policy(target_date, SEM_COUNTRY):
+            normal_reviews, review_stats, auto_logs = review_state(
+                cursor, target_date, rows, fields, normal_reviews,
+                table_name=source['table_name'], country=SEM_COUNTRY,
+                product_line=product_line, retailer=SEM_RETAILER,
+                is_null=lambda value, _field: _missing(value),
+            )
+            validation.setdefault('auto_null_reviews', []).extend(auto_logs)
         field_counts = {
             field: sum(
                 1 for row in rows
@@ -396,8 +407,10 @@ def append_null_stats(cursor, target_date, validation):
                 'total_null_count': issue_count,
                 'fields_detail': field_counts,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
+                **review_stats,
             }],
             **mapping,
+            **review_stats,
         })
         total_issues += issue_count
     return total_issues
@@ -412,6 +425,14 @@ def null_detail(cursor, target_date, table, column, days=1):
     normal_reviews = _load_normal_reviews(
         cursor, target_date, product_line, 'null_check', column
     )
+    review_stats = {}
+    if uses_new_policy(target_date, SEM_COUNTRY):
+        normal_reviews, review_stats, _auto_logs = review_state(
+            cursor, target_date, rows, [column], normal_reviews,
+            table_name=source['table_name'], country=SEM_COUNTRY,
+            product_line=product_line, retailer=SEM_RETAILER,
+            is_null=lambda value, _field: _missing(value),
+        )
     target_results = []
     for row in rows:
         null_fields = [
@@ -464,6 +485,7 @@ def null_detail(cursor, target_date, table, column, days=1):
         'query_config': {column: display},
         'query_retailer': SEM_RETAILER,
         'normal_reviews': normal_reviews,
+        **review_stats,
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
