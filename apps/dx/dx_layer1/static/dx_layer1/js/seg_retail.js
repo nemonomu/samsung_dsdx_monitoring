@@ -42,10 +42,11 @@
     }
 
     function render(check, checkIdx) {
-        return '<div class="check-item"><div class="check-main" onclick="toggleTimeSlots(this,' + checkIdx + ')">' +
+        return '<div class="check-item"><div class="check-main retail-check-main" onclick="L1.retailStatus.toggle(this,' + checkIdx + ')">' +
             '<div class="check-info"><div class="check-name"><span class="toggle-icon">▶</span>' +
             renderCountryFlagLabel(check.name || 'SEG Retail') + '</div><div class="check-description">' +
-            esc(check.description || '') + '</div></div><div class="check-stats"><div class="check-stat">' +
+            esc(check.description || '') + '</div></div>' + L1.retailStatus.render(check, checkIdx, 'seg_retail') +
+            '<div class="check-stats"><div class="check-stat">' +
             '<div class="value">' + count(check.raw_count) + '</div><div class="label">총 수집량</div></div>' +
             getStatusBadge(check.status) + '</div></div>' +
             '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +

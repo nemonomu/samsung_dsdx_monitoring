@@ -476,6 +476,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
                 for retailer in categories[1]['time_slots'][0]['retailers']
             ],
         )
+
         self.assertEqual(
             [250, 300, 300],
             [
@@ -483,6 +484,62 @@ class SeaLayer1ServiceTests(unittest.TestCase):
                 for retailer in categories[0]['time_slots'][0]['retailers']
             ],
         )
+
+    def test_completed_retailer_is_missing_while_later_retailer_is_collecting(self):
+        repo = self._all_ok_repo()
+        repo.tv_rows = [repo.tv_rows[0]]
+
+        def schedules(category, target_date, now=None):
+            self.assertEqual(date(2026, 8, 19), target_date)
+            return [{
+                'time_status': None,
+                'retailers': [{'name': name} for name in ('Amazon', 'BESTBUY', 'Lowes')],
+            }, {
+                'time_status': 'COLLECTING',
+                'retailers': [{'name': 'Walmart'}],
+            }]
+
+        service = load_service(repo, schedules)
+        result = service.get_layer1_stats(
+            object(), date(2026, 8, 20), datetime(2026, 8, 20, 10, 0)
+        )
+        tv = result['check']['categories'][0]
+        statuses = {
+            row['retailer']: row['status']
+            for row in tv['time_slots'][0]['retailers']
+        }
+        self.assertEqual({
+            'Amazon': 'OK', 'Bestbuy': 'CRITICAL', 'Walmart': 'COLLECTING',
+        }, statuses)
+        self.assertEqual('CRITICAL', tv['status'])
+        self.assertEqual('CRITICAL', result['check']['status'])
+        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual('SEA TV Retail - Bestbuy', result['failed_items'][0]['source'])
+        self.assertEqual('수집 없음', result['failed_items'][0]['error_type'])
+
+    def test_retailer_with_another_pending_slot_is_not_yet_missing(self):
+        repo = self._all_ok_repo()
+        repo.tv_rows = [repo.tv_rows[0]]
+
+        def schedules(category, target_date, now=None):
+            return [{
+                'time_status': None,
+                'retailers': [{'name': name} for name in ('Amazon', 'Bestbuy', 'Lowes')],
+            }, {
+                'time_status': 'PENDING',
+                'retailers': [{'name': name} for name in ('Bestbuy', 'Walmart')],
+            }]
+
+        service = load_service(repo, schedules)
+        result = service.get_layer1_stats(
+            object(), date(2026, 8, 20), datetime(2026, 8, 20, 10, 0)
+        )
+        tv = result['check']['categories'][0]
+        self.assertEqual('COLLECTING', tv['status'])
+        self.assertEqual([], result['failed_items'])
+        self.assertEqual(['OK', 'COLLECTING', 'COLLECTING'], [
+            row['status'] for row in tv['time_slots'][0]['retailers']
+        ])
 
     def test_appliance_summary_returns_anchor_and_date_contract(self):
         repo = RepoStub()

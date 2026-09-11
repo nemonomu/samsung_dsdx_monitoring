@@ -115,11 +115,13 @@ function renderTseRetailCheck(check, checkIdx) {
     }).join('');
 
     return '<div class="check-item">' +
-        '<div class="check-main" onclick="toggleTimeSlots(this, ' + checkIdx + ')">' +
+        '<div class="check-main retail-check-main" onclick="L1.retailStatus.toggle(this, ' + checkIdx + ')">' +
             '<div class="check-info">' +
                 '<div class="check-name"><span class="toggle-icon">▶</span>' + renderCountryFlagLabel(check.name || 'TSE Retail') + '</div>' +
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +
             '</div>' +
+            L1.retailStatus.render(check, checkIdx,
+                check.check_type === 'sem_retail' ? 'sem_retail' : 'tse_retail') +
             '<div class="check-stats">' +
                 '<div class="check-stat">' +
                     '<div class="value">' + actual.toLocaleString() + '</div>' +

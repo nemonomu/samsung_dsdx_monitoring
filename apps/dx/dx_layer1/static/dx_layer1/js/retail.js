@@ -412,7 +412,7 @@ function renderRetailCheck(check, checkIdx) {
     '</div>';
 
     return '<div class="check-item">' +
-        '<div class="check-main" onclick="toggleTimeSlots(this, ' + checkIdx + ')">' +
+        '<div class="check-main retail-check-main" onclick="L1.retailStatus.toggle(this, ' + checkIdx + ')">' +
             '<div class="check-info">' +
                 '<div class="check-name">' +
                     '<span class="toggle-icon">▶</span>' +
@@ -420,6 +420,7 @@ function renderRetailCheck(check, checkIdx) {
                 '</div>' +
                 '<div class="check-description">' + check.description + '</div>' +
             '</div>' +
+            L1.retailStatus.render(check, checkIdx, 'retail') +
             '<div class="check-criteria">' +
                 '<button class="btn-columns-info" onclick="event.stopPropagation(); openColumnsModal()">수집 항목 정보</button>' +
             '</div>' +

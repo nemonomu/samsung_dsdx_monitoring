@@ -45,6 +45,7 @@ const context = {
 };
 
 vm.runInNewContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-query.js', 'utf8'), context);
+vm.runInNewContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-status.js', 'utf8'), context);
 vm.runInNewContext(source, context);
 
 const categoryHtml = context.renderSielCategory({
@@ -88,7 +89,7 @@ assert(checkHtml.includes('/static/img/flags/in.svg'));
 assert(checkHtml.includes('<span>SIEL Retail</span>'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
 assert(baseSource.includes("{% static 'dx_layer1/js/layer1-common.js' %}?v=12"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=6"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=7"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 
 const commonContext = {

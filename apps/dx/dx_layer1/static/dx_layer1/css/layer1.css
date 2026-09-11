@@ -122,6 +122,15 @@
     .check-stat .value { font-size: 18px; font-weight: 700; }
     .check-stat .label { font-size: 11px; color: var(--text-secondary); }
 
+    .retail-check-main { flex-wrap: wrap; gap: 12px 20px; }
+    .retail-check-main .check-info { flex: 1 1 200px; }
+    .retail-check-main .check-stats { flex-shrink: 0; margin-left: auto; }
+    .retail-check-main .check-criteria { margin-right: 0; }
+    .retail-missing-summary { display: flex; flex: 0 1 390px; flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; font-size: 12px; }
+    .retail-missing-item { padding: 4px 8px; border-radius: 4px; color: var(--color-critical); background: rgba(239, 68, 68, 0.08); white-space: nowrap; }
+    .retail-missing-item a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+    .retail-missing-item a:hover { text-decoration-thickness: 2px; }
+
     .time-slots-container { display: none; background: var(--bg-primary); padding: 16px 24px; }
     .time-slots-container.show { display: block; }
     .time-slot-item { background: white; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--border-color); overflow: hidden; }

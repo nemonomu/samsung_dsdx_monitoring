@@ -35,6 +35,7 @@ const context = {
 };
 context.window = context;
 vm.runInNewContext(fs.readFileSync(base + 'retail-query.js', 'utf8'), context);
+vm.runInNewContext(fs.readFileSync(base + 'retail-status.js', 'utf8'), context);
 const query = context.L1.retailQuery;
 
 // Every country/product routes to its real table and date type.

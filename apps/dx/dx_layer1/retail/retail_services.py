@@ -286,24 +286,29 @@ def _build_category(cursor, source, inspection_date, now):
     rows = _source_rows(
         cursor, source, source_date, slot_start, slot_end, slot_retailers,
     )
-    retailer_details, total, count_status = check_retailer_data(
+    retailer_details, total, _count_status = check_retailer_data(
         rows, source['category'], slot_retailers,
     )
 
-    schedule_status = _daily_schedule_status(schedule_slots)
-    if schedule_status:
-        for retailer in retailer_details:
-            if retailer['status'] != 'OK':
-                retailer['status'] = 'COLLECTING'
-        status = (
-            'OK'
-            if retailer_details and all(
-                retailer['status'] == 'OK' for retailer in retailer_details
+    for retailer in retailer_details:
+        retailer_slots = [
+            slot for slot in schedule_slots
+            if any(
+                str(item.get('name') or '').strip().lower()
+                == retailer['retailer'].lower()
+                for item in slot.get('retailers', [])
             )
-            else 'COLLECTING'
-        )
-    else:
-        status = count_status
+        ]
+        # Other retailers' later schedules must not hide an overdue collection.
+        schedule_status = _daily_schedule_status(retailer_slots or schedule_slots)
+        if schedule_status and retailer['status'] != 'OK':
+            retailer['status'] = 'COLLECTING'
+    statuses = [retailer['status'] for retailer in retailer_details]
+    status = (
+        'CRITICAL' if 'CRITICAL' in statuses
+        else 'COLLECTING' if 'COLLECTING' in statuses
+        else 'OK'
+    )
     expected = sum(
         retailer.get('expected_count', 0) for retailer in slot_retailers
     )
@@ -332,26 +337,25 @@ def _build_category(cursor, source, inspection_date, now):
     }
 
     failed_items = []
-    if schedule_status is None:
-        for retailer in retailer_details:
-            if retailer['status'] == 'OK':
-                continue
-            failed_items.append({
-                'source': (
-                    f"SEA {source['category']} Retail - "
-                    f"{retailer['retailer']}"
-                ),
-                'error_type': (
-                    '수집 없음' if retailer['count'] == 0
-                    else '수집량 부족'
-                ),
-                'expected': _criteria_expected(retailer['criteria']),
-                'actual': retailer['count'],
-                'actual_detail': _criteria_actual_detail(
-                    retailer['criteria_actual']
-                ),
-                'timestamp': f"{source['category']} 일일",
-            })
+    for retailer in retailer_details:
+        if retailer['status'] != 'CRITICAL':
+            continue
+        failed_items.append({
+            'source': (
+                f"SEA {source['category']} Retail - "
+                f"{retailer['retailer']}"
+            ),
+            'error_type': (
+                '수집 없음' if retailer['count'] == 0
+                else '수집량 부족'
+            ),
+            'expected': _criteria_expected(retailer['criteria']),
+            'actual': retailer['count'],
+            'actual_detail': _criteria_actual_detail(
+                retailer['criteria_actual']
+            ),
+            'timestamp': f"{source['category']} 일일",
+        })
 
     return category, failed_items, contract
 

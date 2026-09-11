@@ -9,6 +9,7 @@ const context = {
     renderCountryFlagLabel: value => value,
 };
 vm.runInNewContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-query.js', 'utf8'), context);
+vm.runInNewContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-status.js', 'utf8'), context);
 vm.runInNewContext(source, context);
 const render = context.L1.renderers.seg_retail;
 const html = render({
