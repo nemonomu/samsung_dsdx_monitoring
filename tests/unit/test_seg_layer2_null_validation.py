@@ -98,6 +98,61 @@ class SegNullPolicyTests(unittest.TestCase):
 
 
 class SegDuplicateValidationTests(unittest.TestCase):
+    def test_only_otto_separates_option_skus_and_keeps_repeated_skus(self):
+        rows = [
+            {'id': 1, 'page_type': 'main', 'item': 'item-1',
+             'sku': 'SKU-1', 'retailer_sku_name': 'Option 1'},
+            {'id': 2, 'page_type': 'main', 'item': 'item-1',
+             'sku': 'SKU-2', 'retailer_sku_name': 'Option 2'},
+        ]
+        self.assertEqual([], seg_validation.build_duplicate_groups(rows, 'OTTO'))
+        for retailer in ('Amazon', 'Mediamarkt'):
+            with self.subTest(retailer=retailer):
+                groups = seg_validation.build_duplicate_groups(rows, retailer)
+                self.assertEqual(1, len(groups))
+                self.assertEqual('상품 매핑 충돌', groups[0]['duplicate_type'])
+
+        rows.extend([
+            {'id': 3, 'page_type': ' MAIN ', 'item': ' ITEM-1 ',
+             'sku': ' sku-1 ', 'retailer_sku_name': 'Option 1'},
+            {'id': 4, 'page_type': 'bsr', 'item': 'item-1',
+             'sku': 'SKU-1', 'retailer_sku_name': 'Option 1'},
+        ])
+        groups = seg_validation.build_duplicate_groups(rows, ' otto ')
+        self.assertEqual(1, len(groups))
+        self.assertEqual([1, 3], [row['id'] for row in groups[0]['records']])
+        self.assertEqual('완전 중복', groups[0]['duplicate_type'])
+        rows[2]['retailer_sku_name'] = 'Changed name'
+        groups = seg_validation.build_duplicate_groups(rows, 'OTTO')
+        self.assertEqual('상품 매핑 충돌', groups[0]['duplicate_type'])
+
+    @patch('apps.dx.dx_layer2.seg_validation._latest_rows')
+    def test_otto_option_policy_is_used_by_stats_and_detail(self, latest_rows):
+        rows = [
+            {'id': 1, 'page_type': 'main', 'item': 'item-1', 'sku': 'SKU-1'},
+            {'id': 2, 'page_type': 'main', 'item': 'item-1', 'sku': 'SKU-2'},
+        ]
+        latest_rows.return_value = (rows, {'inspection_date': '2026-09-09'})
+        for product_line in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            with self.subTest(product_line=product_line):
+                result = seg_validation.duplicate_detail(
+                    None, date(2026, 9, 9), product_line, 'OTTO',
+                )
+                self.assertEqual(0, result['results']['total_groups'])
+                self.assertTrue(result['readonly'])
+        validation = {'tables': []}
+        seg_validation.append_duplicate_stats(None, date(2026, 9, 9), validation)
+        for table in validation['tables']:
+            for retailer in table['retailers']:
+                with self.subTest(table=table['table'], retailer=retailer['retailer']):
+                    is_otto = retailer['retailer'] == 'OTTO'
+                    self.assertEqual(0 if is_otto else 1, retailer['duplicate_groups'])
+                    self.assertEqual('OK' if is_otto else 'CRITICAL', retailer['status'])
+                    self.assertEqual(
+                        ['page_type + item + sku' if is_otto else 'page_type + item'],
+                        retailer['duplicate_keys'],
+                    )
+
     def test_groups_within_page_type_and_classifies_mapping_conflicts(self):
         rows = [
             {
@@ -178,7 +233,10 @@ class SegFormatValidationTests(unittest.TestCase):
         }.isdisjoint(fields))
 
     def test_approved_amazon_text_values_are_normal(self):
-        for price in ('Höherer Preis als üblich', 'Derzeit nicht verfügbar.'):
+        for price in (
+            'Höherer Preis als üblich', 'Derzeit nicht verfügbar.',
+            'Derzeit nicht auf Lager.',
+        ):
             with self.subTest(price=price):
                 errors = seg_validation.evaluate_format_row({
                     'final_sku_price': price,
@@ -196,6 +254,59 @@ class SegFormatValidationTests(unittest.TestCase):
                 'final_sku_price': 'Höherer Preis als üblich',
             }, 'seg_tv', 'Mediamarkt'),
         )
+
+    def test_amazon_unavailable_price_status_scope(self):
+        for product_line in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            with self.subTest(product_line=product_line):
+                self.assertNotIn(
+                    'final_sku_price',
+                    seg_validation.evaluate_format_row(
+                        {'final_sku_price': 'Derzeit nicht auf Lager.'},
+                        product_line, 'Amazon',
+                    ),
+                )
+                self.assertIn(
+                    'final_sku_price',
+                    seg_validation.evaluate_format_row(
+                        {'final_sku_price': 'Keine hervorgehobenen Angebote verfügbar'},
+                        product_line, 'Amazon',
+                    ),
+                )
+
+        for retailer in ('Mediamarkt', 'OTTO'):
+            with self.subTest(retailer=retailer):
+                self.assertIn(
+                    'final_sku_price',
+                    seg_validation.evaluate_format_row(
+                        {'final_sku_price': 'Derzeit nicht auf Lager.'},
+                        'seg_ref', retailer,
+                    ),
+                )
+        self.assertIn(
+            'original_sku_price',
+            seg_validation.evaluate_format_row(
+                {'original_sku_price': 'Derzeit nicht auf Lager.'},
+                'seg_ref', 'Amazon',
+            ),
+        )
+
+    def test_ref_capacity_accepts_german_cubic_feet_with_valid_numbers(self):
+        for capacity in ('3,1 Kubikfuß', '3.1 Kubikfuß', '3 Kubikfuß', '4,5 Liter', '160.2L'):
+            with self.subTest(capacity=capacity):
+                self.assertNotIn(
+                    'ref_capacity',
+                    seg_validation.evaluate_format_row(
+                        {'ref_capacity': capacity}, 'seg_ref', 'Amazon',
+                    ),
+                )
+        for capacity in ('Kubikfuß', '3,1,2 Kubikfuß', '-3,1 Kubikfuß', '3,1 Kubikfuß extra'):
+            with self.subTest(capacity=capacity):
+                self.assertIn(
+                    'ref_capacity',
+                    seg_validation.evaluate_format_row(
+                        {'ref_capacity': capacity}, 'seg_ref', 'Amazon',
+                    ),
+                )
 
     def test_savings_is_euro_amount_for_amazon_and_percent_elsewhere(self):
         for savings in ('4,00€', '35,00€', '9,08€', '19,99€', '10,00€'):

@@ -39,7 +39,7 @@ _SCREEN_SIZE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _REF_CAPACITY_PATTERN = re.compile(
-    r'\d+(?:[.,]\d+)?\s*(?:L|Liter)', re.IGNORECASE
+    r'\d+(?:[.,]\d+)?\s*(?:L|Liter|Kubikfuß)', re.IGNORECASE
 )
 _LDY_CAPACITY_PATTERN = re.compile(
     r'\d+(?:[.,]\d+)?\s*kg', re.IGNORECASE
@@ -64,6 +64,7 @@ _REF_TYPE_VALUES = {
 _FINAL_PRICE_ALLOWED_TEXT = {
     'Höherer Preis als üblich',
     'Derzeit nicht verfügbar.',
+    'Derzeit nicht auf Lager.',
 }
 _STAR_RATING_ALLOWED_TEXT = {'No customer reviews'}
 
@@ -268,7 +269,7 @@ def evaluate_format_row(row, product_line, retailer):
     if 'ref_capacity' in fields:
         check_pattern(
             'ref_capacity', _REF_CAPACITY_PATTERN,
-            '숫자와 L 또는 Liter 단위 형식이 아닙니다.',
+            '숫자와 L, Liter 또는 Kubikfuß 단위 형식이 아닙니다.',
         )
     if 'ldy_capacity' in fields:
         check_pattern(
@@ -320,7 +321,7 @@ _FORMAT_RULE_DETAILS = {
         'description': '독일 유로 금액 또는 허용된 Amazon 가격 상태',
         'pattern': (
             '1.099,00 € / 1.099,– € / Höherer Preis als üblich / '
-            'Derzeit nicht verfügbar.'
+            'Derzeit nicht verfügbar. / Derzeit nicht auf Lager.'
         ),
     },
     'original_sku_price': {
@@ -365,7 +366,7 @@ _FORMAT_RULE_DETAILS = {
     },
     'ref_capacity': {
         'field': 'ref_capacity', 'description': '냉장고 용량',
-        'pattern': '160.2L / 4,5 Liter / 1000 l',
+        'pattern': '160.2L / 4,5 Liter / 1000 l / 3,1 Kubikfuß',
     },
     'ref_refrigerator_type': {
         'field': 'ref_refrigerator_type',
@@ -707,14 +708,18 @@ def _serialize_duplicate_row(row):
     }
 
 
-def build_duplicate_groups(rows):
-    """Group duplicates within the same page_type and item."""
+def build_duplicate_groups(rows, retailer=None):
+    """Group by page_type/item, keeping OTTO option SKUs separate."""
+    is_otto = _duplicate_key(retailer) == 'otto'
     grouped = defaultdict(list)
     for row in rows:
         page_type_key = _duplicate_key(row.get('page_type'))
         item_key = _duplicate_key(row.get('item'))
         if page_type_key and item_key:
-            grouped[(page_type_key, item_key)].append(row)
+            key = (page_type_key, item_key)
+            if is_otto:
+                key += (_duplicate_key(row.get('sku')),)
+            grouped[key].append(row)
 
     groups = []
     for duplicate_rows in grouped.values():
@@ -731,6 +736,8 @@ def build_duplicate_groups(rows):
         mapping_conflict = len(sku_values) > 1 or len(name_values) > 1
         page_type = _duplicate_text(first.get('page_type')).upper()
         item = _duplicate_text(first.get('item'))
+        identity = 'item + SKU' if is_otto else 'item'
+        conflict_fields = '상품명' if is_otto else 'SKU/상품명'
         groups.append({
             'duplicate_type': (
                 '상품 매핑 충돌' if mapping_conflict else '완전 중복'
@@ -744,10 +751,10 @@ def build_duplicate_groups(rows):
             })),
             'dup_count': len(duplicate_rows),
             'reason': (
-                f'{page_type}의 동일 item에 서로 다른 SKU/상품명이 '
+                f'{page_type}의 동일 {identity}에 서로 다른 {conflict_fields}이 '
                 f'{len(duplicate_rows)}건 연결됨'
                 if mapping_conflict else
-                f'{page_type}의 동일 item이 최신 배치에 '
+                f'{page_type}의 동일 {identity} 조합이 최신 배치에 '
                 f'{len(duplicate_rows)}건 수집됨'
             ),
             'records': [
@@ -772,13 +779,16 @@ def append_duplicate_stats(cursor, target_date, validation):
             rows, mapping = _latest_rows(
                 cursor, target_date, source, retailer
             )
-            groups = build_duplicate_groups(rows)
+            groups = build_duplicate_groups(rows, retailer)
             issue_count = len(groups)
             retailer_rows.append({
                 'retailer': retailer,
                 'total': len(rows),
                 'duplicate_groups': issue_count,
-                'duplicate_keys': ['page_type + item'],
+                'duplicate_keys': [
+                    'page_type + item + sku' if _duplicate_key(retailer) == 'otto'
+                    else 'page_type + item'
+                ],
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
                 **mapping,
             })
@@ -791,7 +801,7 @@ def append_duplicate_stats(cursor, target_date, validation):
             'total_records': table_records,
             'total_issues': table_issues,
             'duplicate_groups': table_issues,
-            'duplicate_keys': ['page_type + item'],
+            'duplicate_keys': ['page_type + item (OTTO: page_type + item + sku)'],
             'status': 'OK' if table_issues == 0 else 'CRITICAL',
             'retailers': retailer_rows,
             **table_mapping,
@@ -814,7 +824,7 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
         }
 
     rows, mapping = _latest_rows(cursor, target_date, source, retailer)
-    groups = build_duplicate_groups(rows)
+    groups = build_duplicate_groups(rows, retailer)
     start = (page - 1) * page_size
     total_pages = (
         (len(groups) + page_size - 1) // page_size if groups else 0
