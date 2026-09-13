@@ -40,6 +40,7 @@ config/create_admin.py
 *.p12
 *.pfx
 *.sql
+!sql/update_lowes_ref_capacity_liter.sql
 !sql/disable_tse_lazada_powerbuy_monitoring.sql
 !sql/setup_sem_liverpool_monitoring.sql
 !sql/create_null_review_evidence.sql

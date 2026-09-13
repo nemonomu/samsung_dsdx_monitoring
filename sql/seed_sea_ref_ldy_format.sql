@@ -46,7 +46,10 @@ WITH seed (name, description, check_type, pattern) AS (
          '^(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+) cubic feet$'),
         ('SEA_APPLIANCE_LOWES_CAPACITY',
          'Lowes capacity, for example 22.9 Cu.Feet', 'regex',
-         E'^(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) Cu\\.Feet$')
+         E'^(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+) Cu\\.Feet$'),
+        ('SEA_APPLIANCE_LOWES_REF_CAPACITY',
+         'Lowes refrigerator capacity: Cu.Feet or Liter (optional spacing)', 'regex',
+         $capacity$^(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?: Cu\.Feet|\s*[Ll][Ii][Tt][Ee][Rr][Ss]?)$$capacity$)
 ), updated AS (
     UPDATE public.monitoring_format_templates target
     SET description = seed.description,
@@ -180,12 +183,20 @@ WITH products (
         product.table_name,
         retailer.account_name,
         product.capacity_column,
-        retailer.capacity_template,
+        CASE
+            WHEN product.table_name = 'ref_retail_com'
+             AND retailer.account_name = 'Lowes'
+            THEN 'SEA_APPLIANCE_LOWES_REF_CAPACITY'
+            ELSE retailer.capacity_template
+        END,
         NULL,
         NULL,
         CASE retailer.account_name
             WHEN 'Bestbuy' THEN '용량은 "숫자 cubic feet" 형식이어야 합니다.'
-            ELSE '용량은 "숫자 Cu.Feet" 형식이어야 합니다.'
+            ELSE CASE WHEN product.table_name = 'ref_retail_com'
+                THEN '용량은 "숫자 Cu.Feet" 또는 "숫자 Liter" 형식이어야 합니다.'
+                ELSE '용량은 "숫자 Cu.Feet" 형식이어야 합니다.'
+            END
         END
     FROM products product
     CROSS JOIN retailers retailer
