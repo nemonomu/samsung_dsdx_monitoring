@@ -13,6 +13,64 @@ from tests.unit import test_layer3_seg_crossfield as seg
 
 
 class CrossfieldHistoryTests(unittest.TestCase):
+    def test_generic_sea_d1_keeps_findings_when_history_lookup_misses_them(self):
+        for source_timestamp in ('2026-09-12 08:00:00', ' 2026-09-12 08:00:00 ', None):
+            for include_current in (False, True):
+                for reviewed in (False, True):
+                    with self.subTest(timestamp=source_timestamp, current=include_current,
+                                      reviewed=reviewed):
+                        finding = dict(id=43, account_name='Bestbuy', item='example',
+                                       crawl_datetime=source_timestamp, value='100')
+                        rule = dict(rule_id=43, detail_code='price_combination', field1='value',
+                                    validation_type='price', error_message='bad value',
+                                    select_fields='value', error_details=[finding])
+                        validated_dates = []
+
+                        def validate(source_date, section):
+                            validated_dates.append(source_date)
+                            return dict(rule_results=[rule], table_name='tv_retail_com',
+                                        date_col='crawl_datetime')
+
+                        service = load_module('apps/dx/dx_layer3/cross_field/services.py',
+                            'generic_d1_history_under_test', {
+                                'apps.common.retail_columns': module_stub('apps.common.retail_columns',
+                                    get_editable_columns=lambda *_: ['value'],
+                                    get_retailer_columns=lambda *_: ['value']),
+                                'apps.dx.dx_layer3.dashboard.services': module_stub(
+                                    'apps.dx.dx_layer3.dashboard.services',
+                                    validate_crossfield=validate,
+                                    validate_review_detail_match=lambda *_: {},
+                                    get_crossfield_normal_counts=lambda *_: {},
+                                    get_all_no_review_texts=lambda *_: '',
+                                    load_crossfield_rules=lambda *_: []),
+                            })
+                        cols = ['id', 'account_name', 'item', 'page_type',
+                                'crawl_datetime', 'value', 'product_url']
+                        rows = [(i, 'Bestbuy', 'example', 'MAIN', f'2026-09-{i:02d}',
+                                 'normal', '') for i in (10, 11)]
+                        if include_current:
+                            rows.append((43, 'Bestbuy', 'example', 'MAIN',
+                                         source_timestamp or '2026-09-12', '100', ''))
+                        # Another current-day row must not become an anomaly by item alone.
+                        rows.append((44, 'Bestbuy', 'example', 'MAIN', '2026-09-12', 'normal', ''))
+                        reviews = [(43, 'value', '', '', None, None)] if reviewed else []
+                        cursor = ScriptedCursor([
+                            {'description': [(col,) for col in cols], 'fetchall': rows},
+                            {'fetchall': reviews},
+                        ])
+                        result = service.get_cross_field_rule_detail(
+                            cursor, date(2026, 9, 12), 'tv', 'sea_tv', 43, 3,
+                            inspection_date=date(2026, 9, 13))
+                        self.assertEqual([date(2026, 9, 12)], validated_dates)
+                        self.assertEqual('2026-09-13', result['inspection_date'])
+                        self.assertEqual('2026-09-12', result['source_date'])
+                        self.assertEqual(['10', '11', '43'], [r['id'] for r in result['anomalies']])
+                        self.assertEqual(['comparison_history', 'comparison_history', 'target'],
+                                         [r['row_role'] for r in result['anomalies']])
+                        self.assertEqual('2026-09-12', result['anomalies'][-1]['row_source_date'])
+                        self.assertEqual(0 if reviewed else 1, result['total_anomalies'])
+                        self.assertEqual('2026-09-13', cursor.calls[-1][1][0])
+
     def test_generic_route_supports_new_retailer_and_rules_without_date(self):
         for days in (3, 4):
             for include_id in (False, True):

@@ -37,7 +37,9 @@ def get_cross_field_rule_detail(
                 if acct and item:
                     error_pairs.add((acct, item))
                     error_detail_map[(acct, item)] = detail
-                elif detail.get('id') is not None:
+                # Keep every identified finding as a fallback. The history
+                # lookup enriches rows; it must not erase validation results.
+                if detail.get('id') is not None:
                     direct_error_details.append(detail)
 
             if (not error_pairs and not direct_error_details) or not table_name or not date_col:
@@ -101,7 +103,7 @@ def get_cross_field_rule_detail(
                         pair_key = (anomaly.get('account_name', ''), anomaly.get('item', ''))
                         if (validation_type == 'cross_detail_mismatch'
                                 and pair_key in error_detail_map
-                                and str(anomaly.get(date_col) or '')[:10] == str(target_date)):
+                                and str(anomaly.get(date_col) or '').strip()[:10] == str(target_date)):
                             detail = error_detail_map[pair_key]
                             validation_info = validate_review_detail_match(detail, product_line, return_detail=True)
                             anomaly['validation_tag'] = validation_info.get('reason', '')
@@ -116,7 +118,8 @@ def get_cross_field_rule_detail(
                     anomaly = {}
                     for key, val in detail.items():
                         anomaly[key] = str(val) if val is not None else None
-                    anomaly.setdefault(date_col, str(target_date))
+                    if not str(anomaly.get(date_col) or '').strip():
+                        anomaly[date_col] = str(target_date)
                     if validation_type == 'cross_detail_mismatch':
                         validation_info = validate_review_detail_match(detail, product_line, return_detail=True)
                         anomaly['validation_tag'] = validation_info.get('reason', '')
@@ -124,14 +127,15 @@ def get_cross_field_rule_detail(
                     anomalies.append(anomaly)
 
             # Stored rules may omit the source date (or ID) from their SELECT.
-            # Hydrate current findings from the original rows before expanding.
+            # Use hydrated rows when available and retain the findings above
+            # when the history lookup did not return their IDs.
             target_ids = {str(row['id']) for row in rule_result['error_details']
                           if row.get('id') is not None}
             target_pairs = {(row.get('account_name'), row.get('item'))
                             for row in rule_result['error_details']
                             if row.get('id') is None}
             target_findings = [row for row in anomalies
-                               if str(row.get(date_col) or '')[:10] == str(target_date)
+                               if str(row.get(date_col) or '').strip()[:10] == str(target_date)
                                and (str(row.get('id')) in target_ids
                                     or (row.get('account_name'), row.get('item')) in target_pairs)]
             anomalies = build_detail_history(
