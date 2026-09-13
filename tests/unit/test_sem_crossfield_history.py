@@ -6,6 +6,20 @@ from apps.dx.dx_layer3.cross_field import sem_services
 
 
 class SemCrossfieldHistoryTests(unittest.TestCase):
+    def test_summary_provides_inspection_date_for_rule_detail_links(self):
+        for product in ('sem_tv', 'sem_ref', 'sem_ldy'):
+            with self.subTest(product=product), patch.object(
+                sem_services, '_latest_rows',
+                return_value=([self.target], self.mapping),
+            ):
+                summary = sem_services.get_sem_cross_field_summary(
+                    None, date(2026, 9, 8), product,
+                )
+            self.assertEqual('2026-09-08', summary['date'])
+            self.assertEqual(summary['inspection_date'], summary['date'])
+            rule = next(r for r in summary['rule_summary'] if r['error_count'])
+            self.assertEqual(product + ':original_price_zero', rule['rule_id'])
+
     def test_equal_price_and_review_zero_share_existing_rule_ids(self):
         for rating, stars, reviews in (('4.5', '10', '0'), ('0', '0', '10'), ('0', '10', '10')):
             failures = sem_services._failed_rules({

@@ -325,7 +325,7 @@ async function reloadFormatData(date) {
     try {
         const days = modalState.days || 1;
         const response = await fetch(`/dx/layer2/api/format-detail/?table=${tableParam}&retailer=${retailer}&date=${date}&days=${days}`);
-        const data = await response.json();
+        const data = await parseLayer2DetailResponse(response);
 
         modalState.formatFieldsData = data;
 

@@ -120,6 +120,7 @@ def get_sem_cross_field_summary(cursor, target_date, product_line):
     )
     return {
         'configured': True,
+        'date': mapping['inspection_date'],
         'label': source['display_name'],
         'product_line': source['source_key'],
         'table_name': source['table_name'],

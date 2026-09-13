@@ -364,6 +364,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
 
             passed = len([s for s in completed_statuses if s == 'OK'])
             failed = len([s for s in completed_statuses if s == 'CRITICAL'])
+            needs_review = 'REVIEW' in completed_statuses
 
             results['summary'] = {
                 'total_checked': len(target_items),
@@ -371,7 +372,10 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                 'passed': passed,
                 'failed': failed,
                 'pass_rate': round((passed / len(target_items) * 100), 1) if target_items else 0,
-                'status': 'CRITICAL' if failed > 0 else 'OK'
+                'status': (
+                    'CRITICAL' if failed > 0
+                    else 'REVIEW' if needs_review else 'OK'
+                )
             }
 
     except Exception as e:

@@ -9,7 +9,7 @@ SEM_RETAILER = 'Liverpool'
 SEM_COLLECTION_START = time(9, 0)
 SEM_COLLECTION_END = time(11, 0)
 SEM_HISTORY_DAYS = 7
-SEM_CRITICAL_DEVIATION = 20
+SEM_REVIEW_DEVIATION = 50
 
 SEM_COMMON_REQUIRED_COLUMNS = (
     'country',
@@ -177,9 +177,11 @@ def get_sem_count_status(main_count, history_counts):
     if not history:
         return ('ok', float(current)) if current > 0 else ('critical', None)
     baseline = sum(history) / len(history)
+    if current <= 0:
+        return 'critical', baseline
     status = (
-        'critical'
-        if abs(current - baseline) >= SEM_CRITICAL_DEVIATION
+        'review'
+        if abs(current - baseline) >= SEM_REVIEW_DEVIATION
         else 'ok'
     )
     return status, baseline

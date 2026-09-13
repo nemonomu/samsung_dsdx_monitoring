@@ -6,7 +6,7 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.sem_retail import (
     SEM_CHECK_TYPE,
     SEM_COUNTRY,
-    SEM_CRITICAL_DEVIATION,
+    SEM_REVIEW_DEVIATION,
     SEM_HISTORY_DAYS,
     SEM_RETAILER,
     SEM_SOURCE_CONFIG,
@@ -17,7 +17,9 @@ from apps.common.sem_retail import (
 from . import sem_retail_repositories as repo
 
 
-_STATUS_PRIORITY = {'OK': 0, 'PENDING': 1, 'COLLECTING': 2, 'CRITICAL': 3}
+_STATUS_PRIORITY = {
+    'OK': 0, 'PENDING': 1, 'COLLECTING': 2, 'REVIEW': 3, 'CRITICAL': 4,
+}
 _KST = timezone(timedelta(hours=9))
 
 
@@ -65,8 +67,10 @@ def _category(cursor, product_line, source, target_date, phase):
         state, baseline = get_sem_count_status(current['main_count'], history)
         if state == 'ok':
             status = 'OK'
+        elif phase == 'collecting':
+            status = 'COLLECTING'
         else:
-            status = 'COLLECTING' if phase == 'collecting' else 'CRITICAL'
+            status = 'REVIEW' if current['actual_count'] > 0 else 'CRITICAL'
     expected = int(baseline) if baseline is not None else None
     main_count = current['main_count']
     retailer = {
@@ -83,7 +87,7 @@ def _category(cursor, product_line, source, target_date, phase):
         'status': status,
         'status_basis': 'previous_main_average',
         'history_day_count': len(history),
-        'allowed_deviation': SEM_CRITICAL_DEVIATION,
+        'allowed_deviation': SEM_REVIEW_DEVIATION,
     }
     return {
         'name': source['category'],
@@ -116,7 +120,7 @@ def get_layer1_stats(cursor, target_date, now=None):
                 continue
             failed.append({
                 'source': f"SEM {category['category']} ({SEM_RETAILER})",
-                'error_type': '최근 MAIN 평균 대비 수집 건수 차이',
+                'error_type': '수집 데이터 없음',
                 'expected': retailer['expected'],
                 'actual': retailer['actual'],
                 'timestamp': category['source_date'],

@@ -1,6 +1,7 @@
 import unittest
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch
 
 from tests.unit.support import load_module, module_stub, package_stub
 
@@ -150,6 +151,36 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'ROLLBACK TO SAVEPOINT layer1_youtube_monitoring',
             'RELEASE SAVEPOINT layer1_youtube_monitoring',
         ], [sql for sql, _params in cursor.calls])
+
+    def test_collected_sem_review_is_not_a_collection_failure(self):
+        @contextmanager
+        def connection():
+            yield object(), RecordingCursor()
+
+        for retail_status, summary_status, failed in (
+            ('OK', 'REVIEW', 0), ('CRITICAL', 'CRITICAL', 1),
+        ):
+            with self.subTest(retail_status=retail_status):
+                active = [
+                    (check_type, StatsService({
+                        'check': {'check_type': check_type, 'status': status},
+                        'failed_items': [],
+                    }))
+                    for check_type, status in (
+                        ('sem_retail', 'REVIEW'), ('retail', retail_status),
+                    )
+                ]
+                with patch.object(self.service, 'dx_connection', connection), patch.object(
+                    self.service, '_get_active_services',
+                    return_value=(active, {'sem_retail', 'retail'}, {'sem_retail', 'retail'}),
+                ):
+                    result = self.service.get_dashboard_stats(date(2026, 9, 13))
+                self.assertNotIn('error', result)
+                self.assertEqual(summary_status, result['summary']['status'])
+                self.assertEqual(failed, result['summary']['failed'])
+                self.assertEqual(2, result['summary']['total_completed'])
+                self.assertEqual(1 if retail_status == 'OK' else 0, result['summary']['passed'])
+                self.assertEqual([], result['failed_items'])
 
     def test_youtube_exception_rolls_back_and_preserves_tv(self):
         result, cursor = self._run_dashboard(StatsService(

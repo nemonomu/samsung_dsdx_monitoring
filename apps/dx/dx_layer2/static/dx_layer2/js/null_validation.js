@@ -293,7 +293,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
     }
 
     fetch(apiUrl)
-        .then(response => response.json())
+        .then(parseLayer2DetailResponse)
         .then(data => {
             // 중복 검증: 메타데이터가 data.results 안에 있음
             var dupResults = (type === 'duplicate' && data.results) ? data.results : null;

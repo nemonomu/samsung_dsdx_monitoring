@@ -165,6 +165,9 @@ VALID_TABLES_FORMAT = {
 } | {
     source['section_code']
     for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
+} | {
+    source['section_code']
+    for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',

@@ -21,7 +21,9 @@ from apps.dx.dx_layer2.sem_validation import (
     product_line_for,
 )
 from apps.dx.dx_layer2.format_validation.services import (
+    VALID_TABLES_FORMAT,
     VALID_TABLES_RULES,
+    get_format_detail,
     get_format_rules,
 )
 from apps.dx.dx_layer3.cross_field.sem_services import (
@@ -30,7 +32,8 @@ from apps.dx.dx_layer3.cross_field.sem_services import (
     get_sem_cross_field_summary,
 )
 from apps.dx.dx_layer1.sem_retail import sem_retail_services
-from tests.unit.support import ScriptedCursor
+from tests.unit.support import ScriptedCursor, load_module, module_stub, package_stub
+from tests.unit.test_validation_detail_defaults import common_stubs, FakeRequest
 
 
 class SemRetailConfigurationTests(unittest.TestCase):
@@ -190,8 +193,146 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertEqual('COLLECTING', check['categories'][2]['status'])
         self.assertEqual('COLLECTING', check['status'])
 
+    def _count_stats(self, main_count, history, *, raw_count=None, hour=12):
+        current = {
+            'retailer': 'Liverpool', 'batch_id': 'batch',
+            'actual_count': main_count if raw_count is None else raw_count,
+            'main_count': main_count, 'bsr_count': 100,
+        }
+        with patch.object(
+            sem_retail_services.repo, 'get_latest_batch_counts',
+            return_value=current,
+        ), patch.object(
+            sem_retail_services.repo, 'get_previous_main_counts',
+            return_value=[{'main_count': count} for count in history],
+        ):
+            return sem_retail_services.get_layer1_stats(
+                object(), date(2026, 9, 13), datetime(2026, 9, 13, hour, 0),
+            )
+
+    def test_layer1_count_deviation_uses_fifty_count_review_boundary(self):
+        for main_count, expected_status in (
+            (300, 'OK'), (313, 'OK'), (314, 'REVIEW'),
+            (215, 'OK'), (214, 'REVIEW'),
+        ):
+            with self.subTest(main_count=main_count):
+                result = self._count_stats(main_count, [264])
+                self.assertEqual(expected_status, result['check']['status'])
+                self.assertEqual([], result['failed_items'])
+                for category in result['check']['categories']:
+                    self.assertEqual(expected_status, category['status'])
+                    self.assertEqual(264, category['expected'])
+                    retailer = category['retailers'][0]
+                    self.assertEqual(expected_status, retailer['status'])
+                    self.assertEqual(50, retailer['allowed_deviation'])
+
+    def test_layer1_review_uses_precise_average_before_display_truncation(self):
+        result = self._count_stats(314, [264, 265])
+        category = result['check']['categories'][0]
+        self.assertEqual('OK', category['status'])
+        self.assertEqual(264, category['expected'])
+        self.assertEqual(264.5, category['expected_precise'])
+
+    def test_layer1_zero_collection_stays_critical_even_with_small_baseline(self):
+        for history in ([264], [10], []):
+            with self.subTest(history=history):
+                result = self._count_stats(0, history, raw_count=0)
+                self.assertEqual('CRITICAL', result['check']['status'])
+                self.assertEqual(3, len(result['failed_items']))
+                self.assertTrue(all(
+                    item['error_type'] == '수집 데이터 없음'
+                    for item in result['failed_items']
+                ))
+
+    def test_layer1_collected_rows_without_main_rank_need_review(self):
+        result = self._count_stats(0, [264], raw_count=100)
+        self.assertEqual('REVIEW', result['check']['status'])
+        self.assertEqual([], result['failed_items'])
+
+    def test_layer1_review_respects_collection_window(self):
+        for hour, status in ((8, 'PENDING'), (10, 'COLLECTING'), (12, 'REVIEW')):
+            with self.subTest(hour=hour):
+                result = self._count_stats(314, [264], hour=hour)
+                self.assertEqual(status, result['check']['status'])
+                self.assertEqual([], result['failed_items'])
+
+    def test_layer1_first_collection_without_history_is_ok(self):
+        result = self._count_stats(300, [])
+        self.assertEqual('OK', result['check']['status'])
+        self.assertEqual([], result['failed_items'])
+
+    def test_layer1_missing_category_takes_priority_over_review(self):
+        def current_counts(_cursor, product_line, _target_date):
+            count = {'sem_tv': 314, 'sem_ref': 0, 'sem_ldy': 264}[product_line]
+            return {
+                'retailer': 'Liverpool', 'batch_id': product_line,
+                'actual_count': count, 'main_count': count, 'bsr_count': 0,
+            }
+
+        with patch.object(
+            sem_retail_services.repo, 'get_latest_batch_counts',
+            side_effect=current_counts,
+        ), patch.object(
+            sem_retail_services.repo, 'get_previous_main_counts',
+            return_value=[{'main_count': 264}],
+        ):
+            result = sem_retail_services.get_layer1_stats(
+                object(), date(2026, 9, 13), datetime(2026, 9, 13, 12, 0),
+            )
+        self.assertEqual('CRITICAL', result['check']['status'])
+        self.assertEqual(
+            ['REVIEW', 'CRITICAL', 'OK'],
+            [category['status'] for category in result['check']['categories']],
+        )
+        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual('SEM REF (Liverpool)', result['failed_items'][0]['source'])
+
 
 class SemRetailValidationTests(unittest.TestCase):
+    def test_format_api_accepts_all_sem_sections_and_returns_error_rows(self):
+        stubs = common_stubs()
+        stubs.update({
+            'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
+            'apps.dx.dx_layer2.format_validation': package_stub(
+                'apps.dx.dx_layer2.format_validation'
+            ),
+            'apps.dx.dx_layer2.format_validation.services': module_stub(
+                'apps.dx.dx_layer2.format_validation.services',
+                VALID_TABLES_FORMAT=VALID_TABLES_FORMAT,
+                VALID_TABLES_RULES=VALID_TABLES_RULES,
+                get_format_detail=get_format_detail,
+                get_format_rules=get_format_rules,
+            ),
+        })
+        api = load_module(
+            'apps/dx/dx_layer2/format_validation/api.py',
+            'apps.dx.dx_layer2.format_validation.api_sem_routing_test', stubs,
+        )
+        for product_line, source in SEM_SOURCE_CONFIG.items():
+            with self.subTest(product_line=product_line), patch(
+                'apps.dx.dx_layer2.sem_validation._latest_rows',
+                return_value=([{
+                    **self.row, 'id': 1, 'final_sku_price': 'invalid-price',
+                }], {
+                    'inspection_date': '2026-09-13',
+                    'source_date': '2026-09-13', 'offset_days': 0,
+                }),
+            ), patch(
+                'apps.dx.dx_layer2.sem_validation._load_normal_reviews',
+                return_value={},
+            ):
+                response = api.format_detail(FakeRequest({
+                    'date': '2026-09-13', 'table': source['section_code'],
+                    'retailer': 'Liverpool', 'days': '1',
+                }))
+                self.assertEqual(200, response.status_code)
+                self.assertEqual(source['table_name'], response.data['actual_table'])
+                self.assertEqual(1, response.data['field_counts']['final_sku_price'])
+                self.assertEqual(1, response.data['results'][0]['id'])
+        self.assertEqual(400, api.format_detail(FakeRequest({
+            'date': '2026-09-13', 'table': 'unregistered_table',
+        })).status_code)
+
     def setUp(self):
         self.row = {
             'country': 'SEM',
@@ -582,9 +723,10 @@ class SemRetailValidationTests(unittest.TestCase):
 
     def test_main_count_uses_previous_valid_average(self):
         self.assertEqual(('ok', 100.0), get_sem_count_status(85, [90, 110]))
+        self.assertEqual(('ok', 100.0), get_sem_count_status(80, [90, 110]))
         self.assertEqual(
-            ('critical', 100.0),
-            get_sem_count_status(80, [90, 110]),
+            ('review', 100.0),
+            get_sem_count_status(50, [90, 110]),
         )
 
 

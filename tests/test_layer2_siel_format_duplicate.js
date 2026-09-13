@@ -78,7 +78,7 @@ assert(formatTemplate.includes(
     "dx_layer2/js/layer2-common.js' %}?v=20260912-3"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260912-2"
+    "dx_layer2/js/format_validation.js' %}?v=20260913-1"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260912-2"
