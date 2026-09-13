@@ -41,7 +41,7 @@ assert(html.includes('&lt;batch&gt;'));
 assert(!html.includes('<batch>'));
 assert(html.includes("L1.retailQuery.open('SEDA-2-0')"));
 assert(fs.readFileSync('apps/dx/dx_layer1/templates/dx_layer1_dashboard.html', 'utf8')
-    .includes('dx_layer1/js/seda_retail.js'));
+    .includes("dx_layer1/js/seda_retail.js' %}?v=2"));
 assert(fs.readFileSync('static/js/country-flags.js', 'utf8')
     .includes("if (/^SEDA(?:\\s|$)/.test(text)) return 'br';"));
 assert(fs.existsSync('static/img/flags/br.svg'));
