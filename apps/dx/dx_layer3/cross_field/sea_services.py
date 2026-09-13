@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 import re
 
+from apps.common.crossfield_history import build_detail_history
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_columns import get_editable_columns
 from apps.common.sea_retail import get_sea_retail_source
@@ -751,6 +752,7 @@ def build_sea_crossfield_result(
         ),
         'rule_results': rule_results,
         'retailers': retailer_summaries,
+        'source_rows': rows,
         'normal_corrections': corrections,
     }
 
@@ -971,33 +973,14 @@ def get_sea_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    all_findings = selected['error_details'] + selected['review_details']
-    target_source_date = result['source_date']
-    target_findings = [
-        row for row in all_findings
-        if _detail_row_source_date(row, result['date_col'])
-        == target_source_date
-    ]
-    target_item_keys = {
-        item_key for item_key in (
-            _detail_row_item_key(row) for row in target_findings
-        ) if item_key is not None
-    }
-    anomalies = []
-    for row in all_findings:
-        row_source_date = _detail_row_source_date(row, result['date_col'])
-        is_target = row_source_date == target_source_date
-        detail = dict(row)
-        if is_target:
-            detail['row_role'] = 'target'
-        elif _detail_row_item_key(row) in target_item_keys:
-            detail['row_role'] = 'comparison_history'
-        else:
-            detail['row_role'] = 'past_finding'
-        anomalies.append(detail)
-    anomalies.sort(key=lambda row: _detail_row_sort_key(
-        row, result['date_col'],
-    ))
+    anomalies = build_detail_history(
+        result['source_rows'], selected['error_details'] + selected.get('review_details', []),
+        result['source_date'], result['date_col'], days,
+        date_of=_detail_row_source_date,
+    )
+    if selected['rule_key'] == 'review_body_count':
+        for row in anomalies:
+            row['review_body_count'] = len(_review_body_numbers(row.get('detailed_review_content')))
     retailers = sorted({
         str(row.get('account_name') or 'Unknown').strip().title()
         for row in anomalies

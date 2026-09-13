@@ -524,7 +524,7 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
         assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('sem_' + product), 3);
     }
     assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('tse_ldy'), 3);
-    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('hhp'), 1);
+    assert.strictEqual(commonSandbox.getDefaultCrossfieldHistoryDays('hhp'), 3);
     assert.ok(source.includes('pageSize: 100'));
     assert.ok(source.includes('getPageSize() : 100'));
 

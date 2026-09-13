@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 
+from apps.common.crossfield_history import build_detail_history
 from apps.common.sem_retail import (
     SEM_COUNTRY,
     SEM_RETAILER,
@@ -149,32 +150,17 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         str(row['item']) for row in target_anomalies
         if not _blank(row.get('item'))
     })
-    anomalies = []
+    history = []
     if days > 1 and items:
         history = _history_rows(
             cursor, source, source_date - timedelta(days=days - 1),
             source_date - timedelta(days=1), items,
         )
-        start_date = str(source_date - timedelta(days=days - 1))
-        for row in history:
-            row_date = str(row.get(source['date_column']) or '').strip()[:10]
-            if (
-                start_date <= row_date < str(source_date)
-                and str(row.get('item')) in items
-                and str(row.get('account_name') or '').strip().casefold()
-                    == SEM_RETAILER.casefold()
-                and str(row.get('country') or '').strip().upper() == SEM_COUNTRY
-            ):
-                anomalies.append({
-                    **row, 'row_source_date': row_date,
-                    'row_role': 'comparison_history',
-                })
-    anomalies.extend({
-        **row, 'row_source_date': str(source_date), 'row_role': 'target',
-    } for row in target_anomalies)
-    anomalies.sort(key=lambda row: (
-        str(row.get('item') or ''), row['row_source_date'], row.get('id') or 0,
-    ))
+        history = [row for row in history
+                   if str(row.get('country') or '').strip().upper() == SEM_COUNTRY]
+    anomalies = build_detail_history(
+        history, target_anomalies, source_date, source['date_column'], days,
+    )
     editable_columns = list(get_sem_editable_columns(source['source_key']))
     table_columns = list(get_sem_table_columns(source['source_key']))
     return {

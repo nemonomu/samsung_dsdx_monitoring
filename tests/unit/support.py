@@ -1,3 +1,5 @@
+from apps.common import crossfield_history
+
 import importlib.util
 import sys
 from pathlib import Path

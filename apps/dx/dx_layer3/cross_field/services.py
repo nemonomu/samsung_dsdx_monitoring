@@ -3,6 +3,7 @@ Layer 3 크로스 필드 검증 서비스 레이어
 """
 
 from datetime import timedelta
+from apps.common.crossfield_history import build_detail_history
 from apps.common.retail_columns import get_editable_columns, get_retailer_columns
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import (
@@ -98,7 +99,9 @@ def get_cross_field_rule_detail(
                             anomaly[col_name] = str(val) if val is not None else None
                         # 검증 태그 추가 (1일치 에러 항목에만)
                         pair_key = (anomaly.get('account_name', ''), anomaly.get('item', ''))
-                        if validation_type == 'cross_detail_mismatch' and pair_key in error_detail_map:
+                        if (validation_type == 'cross_detail_mismatch'
+                                and pair_key in error_detail_map
+                                and str(anomaly.get(date_col) or '')[:10] == str(target_date)):
                             detail = error_detail_map[pair_key]
                             validation_info = validate_review_detail_match(detail, product_line, return_detail=True)
                             anomaly['validation_tag'] = validation_info.get('reason', '')
@@ -113,18 +116,27 @@ def get_cross_field_rule_detail(
                     anomaly = {}
                     for key, val in detail.items():
                         anomaly[key] = str(val) if val is not None else None
+                    anomaly.setdefault(date_col, str(target_date))
                     if validation_type == 'cross_detail_mismatch':
                         validation_info = validate_review_detail_match(detail, product_line, return_detail=True)
                         anomaly['validation_tag'] = validation_info.get('reason', '')
                         anomaly['expected_pattern'] = validation_info.get('expected_pattern', '')
                     anomalies.append(anomaly)
 
-            # account_name, item, crawl_datetime 순으로 정렬
-            anomalies.sort(key=lambda x: (
-                x.get('account_name', '') or '',
-                x.get('item', '') or '',
-                str(x.get('crawl_datetime', '') or x.get('crawl_strdatetime', '') or '')
-            ))
+            # Stored rules may omit the source date (or ID) from their SELECT.
+            # Hydrate current findings from the original rows before expanding.
+            target_ids = {str(row['id']) for row in rule_result['error_details']
+                          if row.get('id') is not None}
+            target_pairs = {(row.get('account_name'), row.get('item'))
+                            for row in rule_result['error_details']
+                            if row.get('id') is None}
+            target_findings = [row for row in anomalies
+                               if str(row.get(date_col) or '')[:10] == str(target_date)
+                               and (str(row.get('id')) in target_ids
+                                    or (row.get('account_name'), row.get('item')) in target_pairs)]
+            anomalies = build_detail_history(
+                anomalies, target_findings, target_date, date_col, days,
+            )
 
             # editable 컬럼 수집 (리테일러별 합집합)
             editable_columns = []
@@ -170,7 +182,7 @@ def get_cross_field_rule_detail(
                 retailer = a.get('account_name', 'Unknown')
                 if retailer not in retailer_summary:
                     retailer_summary[retailer] = {'count': 0, 'items': []}
-                if str(a.get('id', '')) not in normal_record_ids:
+                if a['row_role'] == 'target' and str(a.get('id', '')) not in normal_record_ids:
                     retailer_summary[retailer]['count'] += 1
                 item = a.get('item', '')
                 if item and item not in retailer_summary[retailer]['items']:
@@ -202,6 +214,7 @@ def get_cross_field_rule_detail(
                 'anomalies': anomalies,
                 'select_fields': rule_result.get('select_fields', ''),
                 'table_name': table_name,
+                'date_col': date_col,
                 'editable_columns': editable_columns,
                 'normal_reviews': normal_reviews,
                 'retailer_columns': retailer_columns,

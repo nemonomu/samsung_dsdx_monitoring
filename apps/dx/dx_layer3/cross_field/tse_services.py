@@ -12,6 +12,7 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 import re
 
+from apps.common.crossfield_history import build_detail_history
 from apps.common.retail_columns import (
     get_editable_columns,
     get_tse_retailer_columns,
@@ -744,6 +745,7 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
         'total_anomalies': finding_count,
         'rule_results': rule_results,
         'retailers': retailer_summaries,
+        'source_rows': rows,
         'normal_corrections': corrections,
     }
 
@@ -845,7 +847,10 @@ def get_tse_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    anomalies = selected['error_details']
+    anomalies = build_detail_history(
+        result['source_rows'], selected['error_details'] + selected.get('review_details', []),
+        str(target_date), result['date_col'], days,
+    )
     retailers = sorted({
         display_tse_retailer(row.get('account_name')) or 'Unknown'
         for row in anomalies
@@ -898,7 +903,7 @@ def get_tse_cross_field_rule_detail(
     for row in anomalies:
         retailer = display_tse_retailer(row.get('account_name')) or 'Unknown'
         summary = retailer_summary.setdefault(retailer, {'count': 0, 'items': []})
-        if str(row.get('id')) not in normal_record_ids:
+        if row['row_role'] == 'target' and str(row.get('id')) not in normal_record_ids:
             summary['count'] += 1
         item = str(row.get('item') or '')
         if item and item not in summary['items']:

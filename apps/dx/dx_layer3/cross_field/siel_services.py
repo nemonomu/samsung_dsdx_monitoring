@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 import re
 from zoneinfo import ZoneInfo
 
+from apps.common.crossfield_history import build_detail_history
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.siel_retail import (
@@ -737,6 +738,7 @@ def build_siel_crossfield_result(
         'passed_records': max(0, len(rows) - len(failed_record_ids)),
         'rule_results': rule_results,
         'retailers': retailer_summaries,
+        'source_rows': rows,
         'normal_corrections': corrections,
     }
 
@@ -951,35 +953,11 @@ def get_siel_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    target_source_date = result['source_date']
-    target_findings = [
-        row for row in selected['error_details']
-        if _detail_row_source_date(row, result['date_col'])
-        == target_source_date
-    ]
-    target_item_keys = {
-        item_key for item_key in (
-            _detail_row_item_key(row) for row in target_findings
-        ) if item_key is not None
-    }
-    anomalies = []
-    for row in selected['error_details']:
-        row_source_date = _detail_row_source_date(row, result['date_col'])
-        detail = dict(row)
-        # PostgreSQL timestamptz는 JSON에서 UTC로 직렬화될 수 있으므로,
-        # 화면에는 KST로 확정한 데이터일을 별도로 전달한다.
-        detail['row_source_date'] = row_source_date
-        if row_source_date == target_source_date:
-            detail['row_role'] = 'target'
-        elif _detail_row_item_key(row) in target_item_keys:
-            detail['row_role'] = 'comparison_history'
-        else:
-            detail['row_role'] = 'past_finding'
-        anomalies.append(detail)
-    anomalies.sort(key=lambda row: _detail_row_sort_key(
-        row, result['date_col'],
-    ))
-
+    anomalies = build_detail_history(
+        result['source_rows'], selected['error_details'] + selected.get('review_details', []),
+        result['source_date'], result['date_col'], days,
+        date_of=_detail_row_source_date,
+    )
     retailers = sorted({
         display_siel_retailer(row.get('account_name')) or 'Unknown'
         for row in anomalies

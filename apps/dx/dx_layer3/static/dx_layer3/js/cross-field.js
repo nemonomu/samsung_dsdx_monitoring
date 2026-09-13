@@ -1,15 +1,6 @@
 // 크로스필드 검증 유형 목록으로 돌아가기
 function getDefaultCrossfieldHistoryDays(productLine) {
-    const key = String(productLine || '').toLowerCase();
-    return key === 'tv'
-        || key === 'sea_tv'
-        || key.startsWith('sea_')
-        || key.startsWith('siel_')
-        || key.startsWith('seg_')
-        || key.startsWith('sem_')
-        || key.startsWith('tse_')
-        ? 3
-        : 1;
+    return 3;
 }
 
 function backToCrossfieldSummary() {
@@ -519,19 +510,6 @@ function _cfSortAndRender() {
     var st = window._cfDetailState;
     if (!st) return;
     var dataArr = st.filteredData || st.allData;
-
-    // 정상 처리된 행 제외
-    if (st.editableCols && st.editableCols.size > 0 && st.normalReviews) {
-        dataArr = dataArr.filter(function(row) {
-            var rowId = row._rowId;
-            if (!rowId) return true;
-            var hasNormal = false;
-            st.editableCols.forEach(function(col) {
-                if (st.normalReviews[rowId + '_' + col]) hasNormal = true;
-            });
-            return !hasNormal;
-        });
-    }
 
     if (st.sortState && st.sortState.length > 0) {
         dataArr = dataArr.slice().sort(function(a, b) {
@@ -1458,6 +1436,7 @@ function _cfUpdateRuleCardCount() {
     var activeReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
         retailerData[retailer].rows.forEach(function(row) {
+            if (row.row_role && row.row_role !== 'target') return;
             var rowId = row.id;
             if (!rowId) {
                 if (row.finding_level === 'review_needed') activeReviews++;
@@ -1517,6 +1496,7 @@ function _cfUpdateRetailerCounts() {
     Object.keys(retailerData).forEach(function(retailer) {
         var rows = retailerData[retailer].rows;
         var activeRows = rows.filter(function(row) {
+            if (row.row_role && row.row_role !== 'target') return false;
             var rowId = row.id;
             if (!rowId) return true;
             var hasNormal = false;

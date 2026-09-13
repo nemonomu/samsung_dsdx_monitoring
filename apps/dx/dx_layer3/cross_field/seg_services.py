@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import re
 
+from apps.common.crossfield_history import build_detail_history
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seg_retail import (
     SEG_RETAILERS,
@@ -903,6 +904,7 @@ def build_seg_crossfield_result(
         'passed_records': max(0, len(rows) - len(failed_record_ids | review_record_ids)),
         'rule_results': rule_results,
         'retailers': retailer_summaries,
+        'source_rows': rows,
         'normal_corrections': corrections,
     }
 
@@ -1135,40 +1137,16 @@ def get_seg_cross_field_rule_detail(
     if not selected:
         return {'found': False}
 
-    all_findings = selected['error_details'] + selected['review_details']
-    # Include the actual previous row even if it had no finding of its own.
-    finding_ids = {str(row['id']) for row in all_findings}
-    comparison_rows = [row for row in selected['comparison_rows'] if str(row['id']) not in finding_ids]
-    comparison_ids = {str(row['id']) for row in comparison_rows}
-    target_source_date = result['source_date']
-    target_findings = [
-        row for row in all_findings
-        if _detail_row_source_date(row, result['date_col'])
-        == target_source_date
-    ]
-    target_item_keys = {
-        item_key for item_key in (
-            _detail_row_item_key(row) for row in target_findings
-        ) if item_key is not None
-    }
-    anomalies = []
-    for row in all_findings + comparison_rows:
-        row_source_date = _detail_row_source_date(row, result['date_col'])
-        detail = dict(row)
-        # PostgreSQL timestamptz는 JSON에서 UTC로 직렬화될 수 있으므로,
-        # 화면에는 KST로 확정한 데이터일을 별도로 전달한다.
-        detail['row_source_date'] = row_source_date
-        if row_source_date == target_source_date:
-            detail['row_role'] = 'target'
-        elif str(row['id']) in comparison_ids or _detail_row_item_key(row) in target_item_keys:
-            detail['row_role'] = 'comparison_history'
-        else:
-            detail['row_role'] = 'past_finding'
-        anomalies.append(detail)
-    anomalies.sort(key=lambda row: _detail_row_sort_key(
-        row, result['date_col'],
-    ))
-
+    anomalies = build_detail_history(
+        result['source_rows'], selected['error_details'] + selected.get('review_details', []),
+        result['source_date'], result['date_col'], days,
+        date_of=_detail_row_source_date,
+        comparison_rows=selected['comparison_rows'],
+    )
+    comparison_rows = [row for row in anomalies if row['row_role'] == 'comparison_history']
+    if selected['rule_key'] in ('review_body_count', 'review_body_decrease'):
+        for row in anomalies:
+            row['review_body_count'] = _body_count(row)
     retailers = sorted({
         display_seg_retailer(row.get('account_name')) or 'Unknown'
         for row in anomalies
