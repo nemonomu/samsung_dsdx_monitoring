@@ -46,4 +46,29 @@ assert.strictEqual(context.getStatusClass('REVIEW'), 'warning');
 assert.strictEqual(context.getRetailerStatusClass('REVIEW'), 'warning');
 assert(context.getStatusBadge('WARNING').includes('주의'));
 assert(context.getStatusBadge('CRITICAL').includes('심각'));
+
+const multiRetailerHtml = context.L1.renderers.sem_retail({
+    name: 'SEM Retail', check_type: 'sem_retail', actual: 600, status: 'OK',
+    categories: [{
+        name: 'REF', actual: 600, expected: 528, status: 'OK',
+        inspection_date: '2026-09-13',
+        retailers: [
+            {
+                retailer: 'Liverpool', batch_id: 'liv-ref', main_count: 300,
+                bsr_count: 100, actual: 300, raw_count: 300,
+                expected: 264, status: 'OK',
+                status_basis: 'previous_main_average',
+            },
+            {
+                retailer: 'HomeDepot', batch_id: 'hd-ref', main_count: 300,
+                bsr_count: 100, actual: 300, raw_count: 300,
+                expected: 264, status: 'OK',
+                status_basis: 'previous_main_average',
+            },
+        ],
+    }],
+}, 1);
+assert(multiRetailerHtml.includes('Liverpool'));
+assert(multiRetailerHtml.includes('HomeDepot'));
+assert(multiRetailerHtml.includes('600/528건'));
 console.log('Layer1 SEM review status rendering tests passed.');

@@ -1,4 +1,4 @@
-"""SEM (Mexico) Liverpool retail monitoring constants and allowlists."""
+"""SEM (Mexico) retail monitoring constants and allowlists."""
 
 from datetime import time
 
@@ -6,6 +6,12 @@ from datetime import time
 SEM_CHECK_TYPE = 'sem_retail'
 SEM_COUNTRY = 'SEM'
 SEM_RETAILER = 'Liverpool'
+SEM_HOMEDEPOT_RETAILER = 'HomeDepot'
+SEM_LAYER1_RETAILERS = {
+    'sem_tv': (SEM_RETAILER,),
+    'sem_ref': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
+    'sem_ldy': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
+}
 SEM_COLLECTION_START = time(9, 0)
 SEM_COLLECTION_END = time(11, 0)
 SEM_HISTORY_DAYS = 7

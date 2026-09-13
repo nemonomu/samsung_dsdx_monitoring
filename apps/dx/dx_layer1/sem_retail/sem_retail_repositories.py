@@ -1,8 +1,8 @@
-"""Read-only queries for Layer 1 SEM Liverpool monitoring."""
+"""Read-only queries for Layer 1 SEM retailer monitoring."""
 
 from collections.abc import Mapping
 
-from apps.common.sem_retail import SEM_RETAILER, get_sem_source
+from apps.common.sem_retail import get_sem_source
 
 
 def _rows(cursor):
@@ -13,7 +13,7 @@ def _rows(cursor):
     ]
 
 
-def get_latest_batch_counts(cursor, product_line, target_date):
+def get_latest_batch_counts(cursor, product_line, retailer, target_date):
     source = get_sem_source(product_line)
     table_name = source['table_name']
     cursor.execute(f"""
@@ -36,14 +36,14 @@ def get_latest_batch_counts(cursor, product_line, target_date):
           AND LOWER(BTRIM(source.account_name)) = LOWER(%s)
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
         GROUP BY source.account_name, source.batch_id
-    """, (str(target_date)[:10], SEM_RETAILER,
-          str(target_date)[:10], SEM_RETAILER))
+    """, (str(target_date)[:10], retailer,
+          str(target_date)[:10], retailer))
     rows = _rows(cursor)
     if not rows:
         return None
     row = rows[0]
     return {
-        'retailer': row.get('retailer') or SEM_RETAILER,
+        'retailer': row.get('retailer') or retailer,
         'batch_id': row.get('batch_id'),
         'actual_count': int(row.get('actual_count') or 0),
         'main_count': int(row.get('main_count') or 0),
@@ -51,7 +51,9 @@ def get_latest_batch_counts(cursor, product_line, target_date):
     }
 
 
-def get_previous_main_counts(cursor, product_line, target_date, limit=7):
+def get_previous_main_counts(
+    cursor, product_line, retailer, target_date, limit=7,
+):
     source = get_sem_source(product_line)
     table_name = source['table_name']
     cursor.execute(f"""
@@ -78,7 +80,7 @@ def get_previous_main_counts(cursor, product_line, target_date, limit=7):
         HAVING COUNT(rows.main_rank) > 0
         ORDER BY latest.collection_date DESC
         LIMIT %s
-    """, (SEM_RETAILER, str(target_date)[:10], int(limit)))
+    """, (retailer, str(target_date)[:10], int(limit)))
     return [
         {
             'collection_date': str(row['collection_date'])[:10],

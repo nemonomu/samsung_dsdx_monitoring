@@ -1,4 +1,4 @@
-"""Layer 1 statistics for SEM Mexico Liverpool TV/REF/LDY."""
+"""Layer 1 statistics for SEM Mexico TV/REF/LDY retailers."""
 
 from datetime import date, datetime, timedelta, timezone
 
@@ -8,7 +8,7 @@ from apps.common.sem_retail import (
     SEM_COUNTRY,
     SEM_REVIEW_DEVIATION,
     SEM_HISTORY_DAYS,
-    SEM_RETAILER,
+    SEM_LAYER1_RETAILERS,
     SEM_SOURCE_CONFIG,
     get_sem_collection_phase,
     get_sem_count_status,
@@ -44,21 +44,18 @@ def _worst(statuses):
     return max(statuses, key=lambda value: _STATUS_PRIORITY[value])
 
 
-def _category(cursor, product_line, source, target_date, phase):
-    mapping = resolve_monitoring_date(
-        _as_date(target_date), SEM_COUNTRY, source['source_key']
-    )
+def _retailer(cursor, product_line, retailer_name, source_date, phase):
     current = repo.get_latest_batch_counts(
-        cursor, product_line, mapping['source_date']
+        cursor, product_line, retailer_name, source_date
     ) or {
-        'retailer': SEM_RETAILER,
+        'retailer': retailer_name,
         'batch_id': None,
         'actual_count': 0,
         'main_count': 0,
         'bsr_count': 0,
     }
     history_rows = repo.get_previous_main_counts(
-        cursor, product_line, mapping['source_date'], SEM_HISTORY_DAYS
+        cursor, product_line, retailer_name, source_date, SEM_HISTORY_DAYS
     )
     history = [row['main_count'] for row in history_rows]
     if phase == 'pending':
@@ -73,8 +70,9 @@ def _category(cursor, product_line, source, target_date, phase):
             status = 'REVIEW' if current['actual_count'] > 0 else 'CRITICAL'
     expected = int(baseline) if baseline is not None else None
     main_count = current['main_count']
-    retailer = {
+    return {
         **current,
+        'retailer': retailer_name,
         'expected': expected,
         'expected_precise': baseline,
         'actual': main_count,
@@ -89,18 +87,50 @@ def _category(cursor, product_line, source, target_date, phase):
         'history_day_count': len(history),
         'allowed_deviation': SEM_REVIEW_DEVIATION,
     }
+
+
+def _category(cursor, product_line, source, target_date, phase):
+    mapping = resolve_monitoring_date(
+        _as_date(target_date), SEM_COUNTRY, source['source_key']
+    )
+    retailers = [
+        _retailer(
+            cursor, product_line, retailer_name, mapping['source_date'], phase
+        )
+        for retailer_name in SEM_LAYER1_RETAILERS[product_line]
+    ]
+    expected_values = [row['expected'] for row in retailers]
+    precise_values = [row['expected_precise'] for row in retailers]
+    expected = (
+        sum(expected_values)
+        if all(value is not None for value in expected_values)
+        else None
+    )
+    precise_expected = (
+        sum(precise_values)
+        if all(value is not None for value in precise_values)
+        else None
+    )
+    main_count = sum(row['main_count'] for row in retailers)
+    raw_count = sum(row['raw_count'] for row in retailers)
     return {
         'name': source['category'],
         'category': source['category'],
         'product_line': product_line,
         'table_name': source['table_name'],
         'expected': expected,
-        'expected_precise': baseline,
+        'expected_precise': precise_expected,
         'actual': main_count,
         'total': main_count,
-        'rate': retailer['rate'],
-        'status': status,
-        'retailers': [retailer],
+        'raw_count': raw_count,
+        'main_count': main_count,
+        'bsr_count': sum(row['bsr_count'] for row in retailers),
+        'rate': (
+            round(main_count / precise_expected * 100, 1)
+            if precise_expected else None
+        ),
+        'status': _worst([row['status'] for row in retailers]),
+        'retailers': retailers,
         **mapping,
     }
 
@@ -115,27 +145,36 @@ def get_layer1_stats(cursor, target_date, now=None):
     failed = []
     if phase == 'complete':
         for category in categories:
-            retailer = category['retailers'][0]
-            if retailer['status'] != 'CRITICAL':
-                continue
-            failed.append({
-                'source': f"SEM {category['category']} ({SEM_RETAILER})",
-                'error_type': '수집 데이터 없음',
-                'expected': retailer['expected'],
-                'actual': retailer['actual'],
-                'timestamp': category['source_date'],
-            })
+            for retailer in category['retailers']:
+                if retailer['status'] != 'CRITICAL':
+                    continue
+                failed.append({
+                    'source': (
+                        f"SEM {category['category']} "
+                        f"({retailer['retailer']})"
+                    ),
+                    'error_type': '수집 데이터 없음',
+                    'expected': retailer['expected'],
+                    'actual': retailer['actual'],
+                    'timestamp': category['source_date'],
+                })
     expected_values = [
         category['expected'] for category in categories
         if category['expected'] is not None
     ]
-    expected_total = sum(expected_values) if expected_values else None
+    expected_total = (
+        sum(expected_values)
+        if len(expected_values) == len(categories)
+        else None
+    )
     precise_expected_values = [
         category['expected_precise'] for category in categories
         if category['expected_precise'] is not None
     ]
     precise_expected_total = (
-        sum(precise_expected_values) if precise_expected_values else None
+        sum(precise_expected_values)
+        if len(precise_expected_values) == len(categories)
+        else None
     )
     actual_total = sum(category['actual'] for category in categories)
     return {
