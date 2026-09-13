@@ -22,8 +22,8 @@ _ALLOWED_TABLES = {
     'openai_forecast_results',
 } - DISABLED_SOURCE_TABLES
 
-EXCLUDED_RETAIL_TABLES = {'hhp_retail_com', 'hhp_item_mst'}
-EXCLUDED_RETAIL_SECTIONS = {'hhp_retail'}
+EXCLUDED_RETAIL_TABLES = {'hhp_retail_com', 'hhp_item_mst', 'hhp_retail_sentiment'}
+EXCLUDED_RETAIL_SECTIONS = {'hhp_retail', 'hhp_sentiment'}
 
 
 def is_excluded_retail_rule(rule):
