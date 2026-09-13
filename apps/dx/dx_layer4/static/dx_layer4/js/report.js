@@ -47,6 +47,15 @@
         'dx_siel.dx_siel_ldy_retail_com': 'LDY'
     };
 
+    var SEG_TABLE_CATEGORY = {
+        'dx_seg_tv_retail_com': 'TV',
+        'dx_seg.dx_seg_tv_retail_com': 'TV',
+        'dx_seg_ref_retail_com': 'REF',
+        'dx_seg.dx_seg_ref_retail_com': 'REF',
+        'dx_seg_ldy_retail_com': 'LDY',
+        'dx_seg.dx_seg_ldy_retail_com': 'LDY'
+    };
+
     var SEM_TABLE_CATEGORY = {
         'dx_sem.dx_sem_tv_retail_com': 'TV',
         'dx_sem.dx_sem_ref_retail_com': 'REF',
@@ -100,6 +109,10 @@
     }
 
     function reportRetailerName(tableName, retailer, fallbackCategory) {
+        var segCategory = SEG_TABLE_CATEGORY[tableName];
+        if (segCategory) {
+            return marketRetailerName('SEG', retailer, segCategory);
+        }
         var semCategory = SEM_TABLE_CATEGORY[tableName];
         if (semCategory) {
             var semRetailer = String(retailer || '').trim();
@@ -573,6 +586,7 @@
                             TSE_TABLE_CATEGORY[tn] || SEA_TABLE_CATEGORY[tn]
                             || SIEL_TABLE_CATEGORY[tn]
                             || SEM_TABLE_CATEGORY[tn]
+                            || SEG_TABLE_CATEGORY[tn]
                         );
                         var sName = isRetailTable
                             ? reportRetailerName(tn, d.retailer, tn)

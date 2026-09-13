@@ -67,16 +67,39 @@ const reportData = {
             ],
             'dx_sem.dx_sem_ldy_retail_com': [
                 { retailer: 'Liverpool', status: 'corrected', column_name: 'sku', item: 'ML1' }
+            ],
+            'dx_seg.dx_seg_ref_retail_com': [
+                ...['ref_capacity', 'sku'].flatMap(column_name =>
+                    ['R1', 'R2', 'R3', 'R4'].map(item => ({
+                        retailer: 'OTTO', status: 'normal', column_name, item
+                    }))
+                )
+            ],
+            'dx_seg.dx_seg_ldy_retail_com': [
+                { retailer: 'Mediamarkt', status: 'normal', column_name: 'ldy_capacity', item: 'L1' },
+                ...['L2', 'L3', 'L4', 'L5', 'L6'].map(item => ({
+                    retailer: 'Mediamarkt', status: 'normal', column_name: 'ldy_loading_type', item
+                })),
+                ...['O1', 'O2', 'O3'].map(item => ({
+                    retailer: 'OTTO', status: 'normal', column_name: 'ldy_loading_type', item
+                })),
+                { retailer: 'OTTO', status: 'normal', column_name: 'sku', item: 'O3' }
             ]
         },
         duplicate_check: {
             'dx_tse.dx_tse_ref_retail_com': [
                 { retailer: 'Homepro', status: 'corrected', item: 'C', memo: '확인' }
+            ],
+            'dx_seg_ref_retail_com': [
+                { retailer: 'Mediamarkt', status: 'corrected', item: 'G1', memo: '중복 삭제' }
             ]
         },
         format_check: {
             'dx_tse.dx_tse_tv_retail_com': [
                 { retailer: 'Homepro', status: 'normal', column_name: 'savings', item: 'D', reason: '확인' }
+            ],
+            'dx_seg_tv_retail_com': [
+                { retailer: 'Amazon', status: 'corrected', column_name: 'sku', item: 'G2' }
             ]
         },
         cross_field: {
@@ -88,6 +111,9 @@ const reportData = {
             ],
             'dx_siel.dx_siel_ldy_retail_com': [
                 { retailer: 'Flipkart', status: 'normal', item: 'SL1', detail_code: 'price', rule_name: '가격 일치' }
+            ],
+            'dx_seg.dx_seg_ref_retail_com': [
+                { retailer: 'OTTO', status: 'normal', item: 'R1', detail_code: 'price', rule_name: '가격 일치' }
             ]
         }
     }
@@ -145,6 +171,19 @@ setImmediate(() => {
     assert(html.includes('SEM Liverpool TV'));
     assert(html.includes('SEM Liverpool REF'));
     assert(html.includes('SEM Liverpool LDY'));
+    const nullSummary = renderedRows.find(row => row.includes('NULL 검증'));
+    assert(nullSummary.includes('SEG OTTO REF 확인 8건'));
+    assert(nullSummary.includes('SEG MEDIAMARKT LDY 확인 6건'));
+    assert(nullSummary.includes('SEG OTTO LDY 확인 4건'));
+    const crossSummary = renderedRows.find(row => row.includes('크로스필드 검증'));
+    assert(crossSummary.includes('SEG OTTO REF 확인 1건'));
+    assert(renderedRows.find(row => row.includes('형식 검증')).includes('SEG AMAZON TV 수정 1건'));
+    assert(renderedRows.find(row => row.includes('중복 검증')).includes('SEG MEDIAMARKT REF 수정 1건'));
+    const detailRows = renderedRows.filter(row => !row.includes('확인 8건') && !row.includes('확인 1건'));
+    for (const label of ['SEG OTTO REF', 'SEG MEDIAMARKT LDY', 'SEG OTTO LDY', 'SEG AMAZON TV', 'SEG MEDIAMARKT REF']) {
+        assert(detailRows.some(row => row.includes('>' + label + '</td>')), label);
+    }
+    assert(!html.includes('dx_seg'));
     assert(!html.includes('dx_tse.dx_tse_tv_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ref_retail_com'));
     assert(!html.includes('dx_tse.dx_tse_ldy_retail_com'));
@@ -156,6 +195,6 @@ setImmediate(() => {
     assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=7"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=8"));
     console.log('Layer 4 retail report label tests passed');
 });
