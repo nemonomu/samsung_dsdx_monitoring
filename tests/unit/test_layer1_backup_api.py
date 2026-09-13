@@ -17,6 +17,9 @@ def date_payload():
         'sea_tv': '2026-08-10',
         'sea_ref': '2026-08-10',
         'sea_ldy': '2026-08-10',
+        'seda_tv': '2026-08-10',
+        'seda_ref': '2026-08-10',
+        'seda_ldy': '2026-08-10',
         'siel_tv': '2026-08-11',
         'siel_ref': '2026-08-11',
         'siel_ldy': '2026-08-11',
@@ -101,6 +104,9 @@ class Layer1BackupApiTests(unittest.TestCase):
                 'tv_count': 1,
                 'sea_ref_count': 5,
                 'sea_ldy_count': 6,
+                'seda_tv_count': 16,
+                'seda_ref_count': 17,
+                'seda_ldy_count': 18,
                 'siel_tv_count': 7,
                 'siel_ref_count': 8,
                 'siel_ldy_count': 9,
@@ -113,7 +119,7 @@ class Layer1BackupApiTests(unittest.TestCase):
                 'tse_tv_count': 2,
                 'tse_ref_count': 3,
                 'tse_ldy_count': 4,
-                'total_count': 120,
+                'total_count': 171,
                 **date_payload(),
             },
             lambda username, date: {},
@@ -124,6 +130,9 @@ class Layer1BackupApiTests(unittest.TestCase):
         self.assertEqual(response['tv_count'], 1)
         self.assertEqual(response['sea_ref_count'], 5)
         self.assertEqual(response['sea_ldy_count'], 6)
+        self.assertEqual(response['seda_tv_count'], 16)
+        self.assertEqual(response['seda_ref_count'], 17)
+        self.assertEqual(response['seda_ldy_count'], 18)
         self.assertEqual(response['siel_tv_count'], 7)
         self.assertEqual(response['siel_ref_count'], 8)
         self.assertEqual(response['siel_ldy_count'], 9)
@@ -136,7 +145,7 @@ class Layer1BackupApiTests(unittest.TestCase):
         self.assertEqual(response['tse_tv_count'], 2)
         self.assertEqual(response['tse_ref_count'], 3)
         self.assertEqual(response['tse_ldy_count'], 4)
-        self.assertEqual(response['total_count'], 120)
+        self.assertEqual(response['total_count'], 171)
         self.assertEqual(response['hhp_count'], 0)
         self.assertEqual(response['inspection_date'], '2026-08-11')
         self.assertEqual(response['source_dates']['sea_tv'], '2026-08-10')
@@ -150,6 +159,9 @@ class Layer1BackupApiTests(unittest.TestCase):
                 'tv': {'count': 1},
                 'sea_ref': {'count': 5},
                 'sea_ldy': {'count': 6},
+                'seda_tv': {'count': 16},
+                'seda_ref': {'count': 17},
+                'seda_ldy': {'count': 18},
                 'siel_tv': {'count': 7},
                 'siel_ref': {'count': 8},
                 'siel_ldy': {'count': 9},
@@ -169,10 +181,13 @@ class Layer1BackupApiTests(unittest.TestCase):
         response = call_backup_api(api, request('POST'))
 
         self.assertTrue(response['success'])
-        self.assertEqual(response['total_count'], 120)
+        self.assertEqual(response['total_count'], 171)
         self.assertIn('SEA TV: 1건', response['message'])
         self.assertIn('SEA REF: 5건', response['message'])
         self.assertIn('SEA LDY: 6건', response['message'])
+        self.assertIn('SEDA TV: 16건', response['message'])
+        self.assertIn('SEDA REF: 17건', response['message'])
+        self.assertIn('SEDA LDY: 18건', response['message'])
         self.assertIn('SIEL TV: 7건', response['message'])
         self.assertIn('SIEL REF: 8건', response['message'])
         self.assertIn('SIEL LDY: 9건', response['message'])

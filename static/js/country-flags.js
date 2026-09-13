@@ -12,6 +12,7 @@
 
     function getFlagCode(text) {
         if (/^SEA(?:\s|$)/.test(text)) return 'us';
+        if (/^SEDA(?:\s|$)/.test(text)) return 'br';
         if (/^SIEL(?:\s|$)/.test(text)) return 'in';
         if (/^SEM(?:\s|$)/.test(text)) return 'mx';
         if (/^SEG(?:\s|$)/.test(text)) return 'de';

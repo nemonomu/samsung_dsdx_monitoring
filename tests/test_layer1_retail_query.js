@@ -39,13 +39,14 @@ vm.runInNewContext(fs.readFileSync(base + 'retail-status.js', 'utf8'), context);
 const query = context.L1.retailQuery;
 
 // Every country/product routes to its real table and date type.
-for (const country of ['SEA', 'SIEL', 'SEG', 'TSE', 'SEM']) {
+for (const country of ['SEA', 'SEDA', 'SIEL', 'SEG', 'TSE', 'SEM']) {
     for (const product of ['TV', 'REF', 'LDY']) {
         const sql = query.buildQuery(country, product, 'Amazon', 'a_batch', '2026-09-09');
         const prefix = country.toLowerCase();
         const table = country === 'SEA' ? 'public.' + product.toLowerCase() + '_retail_com'
             : `dx_${prefix}.dx_${prefix}_${product.toLowerCase()}_retail_com`;
-        const date = country === 'SEG' || (country === 'SEA' && product !== 'TV') ? 'crawl_strdatetime' : 'crawl_datetime';
+        const date = country === 'SEG' || country === 'SEDA' ||
+            (country === 'SEA' && product !== 'TV') ? 'crawl_strdatetime' : 'crawl_datetime';
         assert(sql.startsWith('SELECT *\nFROM ' + table + '\n'));
         assert(sql.includes("AND batch_id = 'a_batch'"));
         assert(sql.endsWith('ORDER BY ' + date + ';'));
@@ -112,5 +113,5 @@ assert.strictEqual(nodes['l1-query-date'].value, '2026-03-01');
     await query.copy();
     assert.strictEqual(copied, nodes['l1-query-sql'].textContent);
     assert(copied.includes(">= '2026-02-28'"));
-    console.log('Layer1 retail query tests passed (15 sources, batch/date selection, SEM routing, copy).');
+    console.log('Layer1 retail query tests passed (18 sources, batch/date selection, SEDA/SEM routing, copy).');
 })().catch(error => {console.error(error); process.exitCode = 1;});

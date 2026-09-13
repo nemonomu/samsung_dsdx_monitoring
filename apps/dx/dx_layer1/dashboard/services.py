@@ -14,6 +14,7 @@ from apps.dx.dx_layer1.youtube import youtube_services as youtube_svc
 from apps.dx.dx_layer1.siel_retail import siel_retail_services as siel_retail_svc
 from apps.dx.dx_layer1.sem_retail import sem_retail_services as sem_retail_svc
 from apps.dx.dx_layer1.seg_retail import seg_retail_services as seg_retail_svc
+from apps.dx.dx_layer1.seda_retail import seda_retail_services as seda_retail_svc
 from apps.dx.dx_layer1.tse_retail import tse_retail_services as tse_retail_svc
 from apps.dx.dx_layer1.market_trend import market_trend_services as market_trend_svc
 from apps.dx.dx_layer1.market_demand import market_demand_services as market_demand_svc
@@ -37,6 +38,7 @@ _SERVICE_MAP = {
     'siel_retail': siel_retail_svc,
     'sem_retail': sem_retail_svc,
     'seg_retail': seg_retail_svc,
+    'seda_retail': seda_retail_svc,
     'tse_retail': tse_retail_svc,
     'market_trend': market_trend_svc,
     'market_demand': market_demand_svc,
@@ -58,15 +60,17 @@ _SERVICE_MAP = {
 _YOUTUBE_SAVEPOINT = 'layer1_youtube_monitoring'
 _SIEL_RETAIL_SAVEPOINT = 'layer1_siel_retail_monitoring'
 _SEM_RETAIL_SAVEPOINT = 'layer1_sem_retail_monitoring'
+_SEDA_RETAIL_SAVEPOINT = 'layer1_seda_retail_monitoring'
 _TSE_RETAIL_SAVEPOINT = 'layer1_tse_retail_monitoring'
 _TSE_KST = timezone(timedelta(hours=9))
 _DISPLAY_CHECK_PRIORITY = {
     'retail': 0,
-    'siel_retail': 1,
-    'seg_retail': 2,
-    'sem_retail': 3,
-    'tse_retail': 4,
-    'youtube': 5,
+    'seda_retail': 1,
+    'siel_retail': 2,
+    'seg_retail': 3,
+    'sem_retail': 4,
+    'tse_retail': 5,
+    'youtube': 6,
 }
 
 
@@ -98,6 +102,10 @@ def _get_siel_kst_now():
 
 
 def _get_sem_kst_now():
+    return datetime.now(_TSE_KST)
+
+
+def _get_seda_kst_now():
     return datetime.now(_TSE_KST)
 
 
@@ -209,6 +217,23 @@ def _get_seg_retail_stats_isolated(cursor, svc, target_date, now):
     return result
 
 
+def _get_seda_retail_stats_isolated(cursor, svc, target_date, now):
+    cursor.execute(f'SAVEPOINT {_SEDA_RETAIL_SAVEPOINT}')
+    try:
+        result = svc.get_layer1_stats(cursor, target_date, now)
+        if not isinstance(result, dict) or not isinstance(
+            result.get('check'), dict
+        ):
+            raise ValueError('Invalid SEDA Layer1 response')
+    except Exception as exc:
+        cursor.execute(f'ROLLBACK TO SAVEPOINT {_SEDA_RETAIL_SAVEPOINT}')
+        cursor.execute(f'RELEASE SAVEPOINT {_SEDA_RETAIL_SAVEPOINT}')
+        log_error(exc)
+        return None
+    cursor.execute(f'RELEASE SAVEPOINT {_SEDA_RETAIL_SAVEPOINT}')
+    return result
+
+
 def _get_active_services(target_date=None):
     """스케줄 DB에서 활성 서비스 목록, daily 여부, target_date 여부를 동적으로 구성"""
     schedules = load_collection_schedules()
@@ -240,6 +265,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
     now = datetime.now()
     siel_now = _get_siel_kst_now()
     sem_now = _get_sem_kst_now()
+    seda_now = _get_seda_kst_now()
     tse_now = _get_tse_kst_now()
     today = now.date()
 
@@ -334,6 +360,17 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                         results['failed_items'].append({
                             'source': 'SEG Retail', 'error_type': '조회 오류',
                             'expected': 'SEG 국가 수집 데이터', 'actual': 0,
+                            'timestamp': str(target_date),
+                        })
+                        continue
+                elif check_type == 'seda_retail':
+                    svc_result = _get_seda_retail_stats_isolated(
+                        cursor, svc, target_date, seda_now,
+                    )
+                    if svc_result is None:
+                        results['failed_items'].append({
+                            'source': 'SEDA Retail', 'error_type': '조회 오류',
+                            'expected': 'SEDA 브라질 수집 데이터', 'actual': 0,
                             'timestamp': str(target_date),
                         })
                         continue

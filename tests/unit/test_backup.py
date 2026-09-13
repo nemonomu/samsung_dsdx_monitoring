@@ -1,5 +1,6 @@
 import unittest
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
+from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from datetime import date, timedelta
 
 from tests.unit.support import load_module, module_stub, package_stub
@@ -18,7 +19,7 @@ def resolve_monitoring_date(inspection_date, country, source_key):
         raise MonitoringDateError('검수일은 YYYY-MM-DD 형식으로 입력해야 합니다.') from error
     if parsed_date.isoformat() != inspection_date:
         raise MonitoringDateError('검수일은 YYYY-MM-DD 형식으로 입력해야 합니다.')
-    offset_days = -1 if country == 'SEA' else 0
+    offset_days = -1 if country in ('SEA', 'SEDA') else 0
     return {
         'inspection_date': inspection_date,
         'source_date': (parsed_date + timedelta(days=offset_days)).isoformat(),
@@ -87,6 +88,9 @@ def backup_date_payload():
         'sea_tv': '2026-08-10',
         'sea_ref': '2026-08-10',
         'sea_ldy': '2026-08-10',
+        'seda_tv': '2026-08-10',
+        'seda_ref': '2026-08-10',
+        'seda_ldy': '2026-08-10',
         'siel_tv': '2026-08-11',
         'siel_ref': '2026-08-11',
         'siel_ldy': '2026-08-11',
@@ -207,6 +211,9 @@ def load_backup(connection, errors=None):
             'apps.common.seg_retail': module_stub(
                 'apps.common.seg_retail', SEG_SOURCE_CONFIG=SEG_SOURCE_CONFIG,
             ),
+            'apps.common.seda_retail': module_stub(
+                'apps.common.seda_retail', SEDA_SOURCE_CONFIG=SEDA_SOURCE_CONFIG,
+            ),
         },
     )
 
@@ -238,6 +245,9 @@ class BackupTests(unittest.TestCase):
             'tv_retail_com_backup_all': 5,
             'public.ref_retail_com_backup': 6,
             'public.ldy_retail_com_backup': 7,
+            'dx_seda_tv_retail_com_backup': 14,
+            'dx_seda_ref_retail_com_backup': 15,
+            'dx_seda_ldy_retail_com_backup': 16,
             'dx_tse_tv_retail_com_backup': 4,
             'dx_tse_ref_retail_com_backup': 3,
             'dx_tse_ldy_retail_com_backup': 2,
@@ -256,6 +266,9 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(result['tv_count'], 5)
         self.assertEqual(result['sea_ref_count'], 6)
         self.assertEqual(result['sea_ldy_count'], 7)
+        self.assertEqual(result['seda_tv_count'], 14)
+        self.assertEqual(result['seda_ref_count'], 15)
+        self.assertEqual(result['seda_ldy_count'], 16)
         self.assertEqual(result['siel_tv_count'], 8)
         self.assertEqual(result['siel_ref_count'], 9)
         self.assertEqual(result['siel_ldy_count'], 10)
@@ -265,11 +278,12 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(result['sem_tv_count'], 11)
         self.assertEqual(result['sem_ref_count'], 12)
         self.assertEqual(result['sem_ldy_count'], 13)
-        self.assertEqual(result['total_count'], 90)
+        self.assertEqual(result['total_count'], 135)
         self.assertEqual(result['inspection_date'], '2026-08-11')
         self.assertEqual(result['source_dates']['sea_tv'], '2026-08-10')
         self.assertEqual(result['source_dates']['sea_ref'], '2026-08-10')
         self.assertEqual(result['source_dates']['sea_ldy'], '2026-08-10')
+        self.assertEqual(result['source_dates']['seda_tv'], '2026-08-10')
         self.assertEqual(result['source_dates']['siel_tv'], '2026-08-11')
         self.assertEqual(result['source_dates']['tse_tv'], '2026-08-11')
         count_calls = [
@@ -277,7 +291,7 @@ class BackupTests(unittest.TestCase):
             for sql, params in cursor.calls
             if 'SELECT COUNT(*)' in sql
         ]
-        self.assertEqual(len(count_calls), 15)
+        self.assertEqual(len(count_calls), 18)
         self.assertIn(
             'FROM public.tv_retail_com a',
             count_calls[0][0],
@@ -293,24 +307,31 @@ class BackupTests(unittest.TestCase):
             for sql, _ in count_calls[1:3]
         ))
         self.assertTrue(all(
-            'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
+            'LEFT(TRIM(a.crawl_strdatetime), 10) = %s' in sql
             for sql, _ in count_calls[3:6]
         ))
         self.assertIn(
-            'FROM dx_siel.dx_siel_tv_retail_com a', count_calls[6][0],
+            'FROM dx_seda.dx_seda_tv_retail_com a', count_calls[3][0],
+        )
+        self.assertTrue(all(
+            'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
+            for sql, _ in count_calls[6:9]
+        ))
+        self.assertIn(
+            'FROM dx_siel.dx_siel_tv_retail_com a', count_calls[9][0],
         )
         self.assertTrue(all(
             "AT TIME ZONE 'Asia/Seoul'" in sql
-            for sql, _ in count_calls[6:9]
+            for sql, _ in count_calls[9:12]
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
-            for sql, _ in count_calls[9:12]
+            for sql, _ in count_calls[12:15]
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_strdatetime), 10) = %s' in sql
             and 'redirect' not in sql
-            for sql, _ in count_calls[12:]
+            for sql, _ in count_calls[15:]
         ))
         self.assertTrue(all(
             'batch_id' not in sql and 'page_type' not in sql
@@ -318,7 +339,7 @@ class BackupTests(unittest.TestCase):
         ))
         self.assertEqual(
             [params for _, params in count_calls],
-            [('2026-08-10',)] * 3 +
+            [('2026-08-10',)] * 6 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
             [('2026-08-11',)] * 6,
@@ -353,6 +374,9 @@ class BackupTests(unittest.TestCase):
             'tv_retail_com_backup_all': [10, 11],
             'public.ref_retail_com_backup': [12, 13],
             'public.ldy_retail_com_backup': [14],
+            'dx_seda_tv_retail_com_backup': [15],
+            'dx_seda_ref_retail_com_backup': [],
+            'dx_seda_ldy_retail_com_backup': [16],
             'dx_tse_tv_retail_com_backup': [20],
             'dx_tse_ref_retail_com_backup': [],
             'dx_tse_ldy_retail_com_backup': [30, 31, 32],
@@ -372,6 +396,9 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(result['tv']['count'], 2)
         self.assertEqual(result['sea_ref']['count'], 2)
         self.assertEqual(result['sea_ldy']['count'], 1)
+        self.assertEqual(result['seda_tv']['count'], 1)
+        self.assertEqual(result['seda_ref']['count'], 0)
+        self.assertEqual(result['seda_ldy']['count'], 1)
         self.assertEqual(result['siel_tv']['count'], 1)
         self.assertEqual(result['siel_ref']['count'], 2)
         self.assertEqual(result['siel_ldy']['count'], 0)
@@ -388,7 +415,7 @@ class BackupTests(unittest.TestCase):
             if sql.startswith('INSERT INTO')
             and 'monitoring_backup_log' not in sql
         ]
-        self.assertEqual(len(insert_calls), 15)
+        self.assertEqual(len(insert_calls), 18)
         self.assertTrue(all(
             'ON CONFLICT DO NOTHING' in sql
             for sql, _ in insert_calls
@@ -396,7 +423,7 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(all('RETURNING id' in sql for sql, _ in insert_calls))
         self.assertEqual(
             [params for _, params in insert_calls],
-            [('2026-08-10',)] * 3 +
+            [('2026-08-10',)] * 6 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
             [('2026-08-11',)] * 6,
@@ -405,21 +432,23 @@ class BackupTests(unittest.TestCase):
             params for sql, params in cursor.calls
             if 'INSERT INTO monitoring_backup_log' in sql
         ]
-        self.assertEqual(len(log_calls), 9)
+        self.assertEqual(len(log_calls), 11)
         self.assertEqual(
             [params[0] for params in log_calls],
             [
-                'tv', 'sea_ref', 'sea_ldy', 'tse_tv', 'tse_ldy',
+                'tv', 'sea_ref', 'sea_ldy', 'seda_tv', 'seda_ldy',
+                'tse_tv', 'tse_ldy',
                 'siel_tv', 'siel_ref',
                 'sem_tv', 'sem_ldy',
             ],
         )
         self.assertEqual(
             [params[2] for params in log_calls],
-            ['2026-08-10'] * 3 + ['2026-08-11'] * 6,
+            ['2026-08-10'] * 5 + ['2026-08-11'] * 6,
         )
         self.assertEqual(result['inspection_date'], '2026-08-11')
         self.assertEqual(result['tv']['source_date'], '2026-08-10')
+        self.assertEqual(result['seda_tv']['source_date'], '2026-08-10')
         self.assertEqual(result['siel_tv']['source_date'], '2026-08-11')
         self.assertEqual(result['tse_tv']['source_date'], '2026-08-11')
         self.assertEqual(result['sem_tv']['source_date'], '2026-08-11')
@@ -461,6 +490,9 @@ class BackupTests(unittest.TestCase):
             'tv_count': 0,
             'sea_ref_count': 0,
             'sea_ldy_count': 0,
+            'seda_tv_count': 0,
+            'seda_ref_count': 0,
+            'seda_ldy_count': 0,
             'siel_tv_count': 0,
             'siel_ref_count': 0,
             'siel_ldy_count': 0,
@@ -493,6 +525,9 @@ class BackupTests(unittest.TestCase):
             'tv_count': 1,
             'sea_ref_count': 5,
             'sea_ldy_count': 6,
+            'seda_tv_count': 10,
+            'seda_ref_count': 11,
+            'seda_ldy_count': 12,
             'siel_tv_count': 7,
             'siel_ref_count': 8,
             'siel_ldy_count': 9,
@@ -500,7 +535,7 @@ class BackupTests(unittest.TestCase):
             'tse_tv_count': 2,
             'tse_ref_count': 3,
             'tse_ldy_count': 4,
-            'total_count': 45,
+            'total_count': 78,
             **backup_date_payload(),
         }
 
@@ -508,10 +543,13 @@ class BackupTests(unittest.TestCase):
 
         self.assertTrue(result['success'])
         self.assertTrue(result['has_backup'])
-        self.assertEqual(result['pending_count'], 45)
+        self.assertEqual(result['pending_count'], 78)
         self.assertEqual(result['tv_count'], 1)
         self.assertEqual(result['sea_ref_count'], 5)
         self.assertEqual(result['sea_ldy_count'], 6)
+        self.assertEqual(result['seda_tv_count'], 10)
+        self.assertEqual(result['seda_ref_count'], 11)
+        self.assertEqual(result['seda_ldy_count'], 12)
         self.assertEqual(result['siel_tv_count'], 7)
         self.assertEqual(result['siel_ref_count'], 8)
         self.assertEqual(result['siel_ldy_count'], 9)

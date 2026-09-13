@@ -9,13 +9,14 @@
     }
 
     function source(country, product) {
-        if (!['SEA', 'SIEL', 'SEG', 'TSE', 'SEM'].includes(country) ||
+        if (!['SEA', 'SEDA', 'SIEL', 'SEG', 'TSE', 'SEM'].includes(country) ||
                 !['TV', 'REF', 'LDY'].includes(product)) return null;
         var key = product.toLowerCase();
         return {
             table: country === 'SEA' ? 'public.' + key + '_retail_com'
                 : 'dx_' + country.toLowerCase() + '.dx_' + country.toLowerCase() + '_' + key + '_retail_com',
-            dateColumn: country === 'SEG' || (country === 'SEA' && product !== 'TV')
+            dateColumn: country === 'SEG' || country === 'SEDA' ||
+                (country === 'SEA' && product !== 'TV')
                 ? 'crawl_strdatetime' : 'crawl_datetime',
             timestamp: country === 'SIEL'
         };

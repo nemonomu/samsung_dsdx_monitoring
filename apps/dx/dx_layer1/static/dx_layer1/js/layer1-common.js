@@ -151,6 +151,7 @@ function onSubitemClick(groupKey, itemName) {
     var urls = {
         'SEA Retail': '/dx/layer1/retail/',
         'Retail': '/dx/layer1/retail/',
+        'SEDA Retail': '/dx/layer1/',
         'SIEL Retail': '/dx/layer1/',
         'SEM Retail': '/dx/layer1/',
         'SEG Retail': '/dx/layer1/',
@@ -344,6 +345,7 @@ function flattenCheckToDetails(sectionType, check) {
                     expected_count: 0, actual_count: cat.comment_count || 0, rate: 0, status: cat.status });
             });
             break;
+        case 'seda_retail':
         case 'siel_retail':
         case 'sem_retail':
         case 'seg_retail':
@@ -503,7 +505,8 @@ function getCheckBadgeHtml(sectionType) {
         check = currentStatsData.checks.find(function(c) { return c.check_type === sectionType; });
     }
     var isRetailSection = sectionType === 'retail' ||
-        sectionType === 'siel_retail' || sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
+        sectionType === 'seda_retail' || sectionType === 'siel_retail' ||
+        sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
         sectionType === 'tse_retail';
     var isFullRate = check && check.rate >= 100 && !isRetailSection;
 

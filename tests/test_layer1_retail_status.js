@@ -16,7 +16,7 @@ const context = {
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
 };
 context.window = context;
-for (const name of ['retail-status', 'retail-query', 'retail', 'siel_retail', 'seg_retail', 'tse_retail', 'sem_retail']) {
+for (const name of ['retail-status', 'retail-query', 'retail', 'seda_retail', 'siel_retail', 'seg_retail', 'tse_retail', 'sem_retail']) {
     vm.runInNewContext(fs.readFileSync(path.join(base, name + '.js'), 'utf8'), context);
 }
 const status = context.L1.retailStatus;
@@ -65,6 +65,7 @@ assert(unsafe.includes('&lt;script&gt;&quot;&amp;'));
 
 const countries = [
     ['retail', 'SEA', 'retail', 'Bestbuy'],
+    ['seda_retail', 'SEDA', 'seda', 'Magalu'],
     ['siel_retail', 'SIEL', 'siel', 'Flipkart'],
     ['seg_retail', 'SEG', 'seg', 'Mediamarkt'],
     ['sem_retail', 'SEM', 'sem', 'Liverpool'],

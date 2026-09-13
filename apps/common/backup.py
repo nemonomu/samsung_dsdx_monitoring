@@ -1,4 +1,4 @@
-"""SEA/SIEL/TSE Retail 데이터 백업 유틸리티."""
+"""Retail source-to-backup utilities for the monitored countries."""
 
 from datetime import datetime
 from collections.abc import Mapping
@@ -15,6 +15,7 @@ from apps.common.siel_retail import (
 )
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
+from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 
 
 def _sea_backup_source(product_key):
@@ -77,9 +78,27 @@ def _seg_backup_source(source_key):
     }
 
 
+def _seda_backup_source(source_key):
+    source = SEDA_SOURCE_CONFIG[source_key]
+    return {
+        'key': source_key,
+        'source_key': source_key,
+        'country': 'SEDA',
+        'category': f"SEDA {source['category']}",
+        'product_line': source_key,
+        'source_table': source['table_name'],
+        'backup_table': source['backup_table_name'],
+        'date_column': f"a.{source['date_column']}",
+        'date_mode': 'text_prefix',
+    }
+
+
 _BACKUP_SOURCES = tuple(
     _sea_backup_source(product_key)
     for product_key in ('tv', 'ref', 'ldy')
+) + tuple(
+    _seda_backup_source(source_key)
+    for source_key in ('seda_tv', 'seda_ref', 'seda_ldy')
 ) + (
     {
         'key': 'tse_tv',
@@ -409,7 +428,7 @@ def get_backup_status(target_date):
 
 
 def backup_all_retail(username='', target_date=None):
-    """Back up all SEA/SIEL/TSE retail sources for one inspection date."""
+    """Back up every fixed retail source for one inspection date."""
     try:
         date_mappings = _resolve_date_mappings(target_date)
     except MonitoringDateError as error:

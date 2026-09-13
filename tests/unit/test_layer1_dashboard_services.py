@@ -66,6 +66,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'siel_retail': 'siel_retail_services',
             'sem_retail': 'sem_retail_services',
             'seg_retail': 'seg_retail_services',
+            'seda_retail': 'seda_retail_services',
             'tse_retail': 'tse_retail_services',
             'market_trend': 'market_trend_services',
             'market_demand': 'market_demand_services',
@@ -112,6 +113,20 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'RELEASE SAVEPOINT layer1_seg_retail_monitoring',
         ], [sql for sql, _params in cursor.calls])
         self.assertIn('seg_retail', self.service._SERVICE_MAP)
+
+    def test_seda_query_failure_is_rolled_back_locally(self):
+        cursor = RecordingCursor()
+        result = self.service._get_seda_retail_stats_isolated(
+            cursor, StatsService(error=RuntimeError('SEDA failed')),
+            date(2026, 9, 9), datetime(2026, 9, 9, 12),
+        )
+        self.assertIsNone(result)
+        self.assertEqual([
+            'SAVEPOINT layer1_seda_retail_monitoring',
+            'ROLLBACK TO SAVEPOINT layer1_seda_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_seda_retail_monitoring',
+        ], [sql for sql, _params in cursor.calls])
+        self.assertIn('seda_retail', self.service._SERVICE_MAP)
 
     def _run_dashboard(self, youtube_service):
         cursor = RecordingCursor()
@@ -366,12 +381,30 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         self.assertEqual({'retail'}, daily_types)
         self.assertEqual({'retail'}, target_types)
 
+    def test_seda_daily_schedule_activates_layer1_service(self):
+        self.service.load_collection_schedules = lambda: [
+            {'check_type': 'seda_retail', 'schedule_type': 'daily'},
+        ]
+        self.service.check_target_date = lambda *_: True
+
+        service_order, daily_types, target_types = self.service._get_active_services(
+            date(2026, 8, 11)
+        )
+
+        self.assertEqual(
+            ['seda_retail'],
+            [check_type for check_type, _service in service_order],
+        )
+        self.assertEqual({'seda_retail'}, daily_types)
+        self.assertEqual({'seda_retail'}, target_types)
+
     def test_primary_cards_are_sorted_without_reordering_other_checks(self):
         checks = [
             {'check_type': 'macro_cpi'},
             {'check_type': 'youtube'},
             {'check_type': 'sentiment'},
             {'check_type': 'retail'},
+            {'check_type': 'seda_retail'},
             {'check_type': 'siel_retail'},
             {'check_type': 'sem_retail'},
             {'check_type': 'seg_retail'},
@@ -383,7 +416,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                'retail', 'siel_retail', 'seg_retail', 'sem_retail',
+                'retail', 'seda_retail', 'siel_retail', 'seg_retail', 'sem_retail',
                 'tse_retail', 'youtube',
                 'macro_cpi', 'sentiment', 'macro_rpi',
             ],
@@ -395,7 +428,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
                 check['check_type']
                 for check in ordered
                 if check['check_type'] not in {
-                    'retail', 'siel_retail', 'seg_retail', 'sem_retail',
+                    'retail', 'seda_retail', 'siel_retail', 'seg_retail', 'sem_retail',
                     'tse_retail', 'youtube'
                 }
             ],

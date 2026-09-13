@@ -16,6 +16,7 @@ LAYER_CONTEXT = {
 SECTION_TITLES = {
     'dashboard': '대시보드',
     'retail': 'SEA Retail',
+    'seda_retail': 'SEDA Retail',
     'siel_retail': 'SIEL Retail',
     'seg_retail': 'SEG Retail',
     'sem_retail': 'SEM Retail',
@@ -41,11 +42,12 @@ SECTION_TITLES = {
 
 _PRIMARY_SECTION_ORDER = {
     'retail': 0,
-    'siel_retail': 1,
-    'seg_retail': 2,
-    'sem_retail': 3,
-    'tse_retail': 4,
-    'youtube': 5,
+    'seda_retail': 1,
+    'siel_retail': 2,
+    'seg_retail': 3,
+    'sem_retail': 4,
+    'tse_retail': 5,
+    'youtube': 6,
 }
 
 

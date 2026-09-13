@@ -7,6 +7,7 @@ class Layer1SidebarContextTests(unittest.TestCase):
     def _load_context(self):
         schedules = [
             {'check_type': 'youtube', 'schedule_type': 'daily'},
+            {'check_type': 'seda_retail', 'schedule_type': 'daily'},
             {'check_type': 'tse_retail', 'schedule_type': 'daily'},
             {'check_type': 'sem_retail', 'schedule_type': 'daily'},
             {'check_type': 'seg_retail', 'schedule_type': 'daily'},
@@ -39,12 +40,13 @@ class Layer1SidebarContextTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                'SEA Retail', 'SIEL Retail', 'SEG Retail', 'SEM Retail',
+                'SEA Retail', 'SEDA Retail', 'SIEL Retail', 'SEG Retail', 'SEM Retail',
                 'TSE Retail', 'YouTube',
             ],
             [item['name'] for item in daily['items']],
         )
-        self.assertTrue(daily['items'][1]['active'])
+        self.assertTrue(daily['items'][2]['active'])
+        self.assertEqual('SEDA Retail', context.SECTION_TITLES['seda_retail'])
         self.assertEqual('SIEL Retail', context.SECTION_TITLES['siel_retail'])
         self.assertEqual('TSE Retail', context.SECTION_TITLES['tse_retail'])
 

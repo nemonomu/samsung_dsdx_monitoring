@@ -1,6 +1,6 @@
 (function() {
     var categoryPrefixes = {
-        retail: 'retail', siel_retail: 'siel', seg_retail: 'seg',
+        retail: 'retail', seda_retail: 'seda', siel_retail: 'siel', seg_retail: 'seg',
         sem_retail: 'sem', tse_retail: 'tse'
     };
 

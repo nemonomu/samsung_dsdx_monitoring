@@ -97,7 +97,7 @@ def _backup_error_response(result, default_error):
 
 
 def backup_retail_data(request):
-    """SEA/SIEL/TSE TV/REF/LDY 통합 백업 API.
+    """Configured retail TV/REF/LDY integrated backup API.
 
     GET: 백업 대상 건수 조회
     POST: 백업 실행
@@ -116,6 +116,9 @@ def backup_retail_data(request):
                 'tv_count': result['tv_count'],
                 'sea_ref_count': result['sea_ref_count'],
                 'sea_ldy_count': result['sea_ldy_count'],
+                'seda_tv_count': result.get('seda_tv_count', 0),
+                'seda_ref_count': result.get('seda_ref_count', 0),
+                'seda_ldy_count': result.get('seda_ldy_count', 0),
                 'siel_tv_count': result['siel_tv_count'],
                 'siel_ref_count': result['siel_ref_count'],
                 'siel_ldy_count': result['siel_ldy_count'],
@@ -147,6 +150,9 @@ def backup_retail_data(request):
                 'tv_count': result['tv']['count'],
                 'sea_ref_count': result['sea_ref']['count'],
                 'sea_ldy_count': result['sea_ldy']['count'],
+                'seda_tv_count': result.get('seda_tv', {}).get('count', 0),
+                'seda_ref_count': result.get('seda_ref', {}).get('count', 0),
+                'seda_ldy_count': result.get('seda_ldy', {}).get('count', 0),
                 'siel_tv_count': result['siel_tv']['count'],
                 'siel_ref_count': result['siel_ref']['count'],
                 'siel_ldy_count': result['siel_ldy']['count'],
@@ -164,6 +170,9 @@ def backup_retail_data(request):
                 f"백업 완료 - SEA TV: {counts['tv_count']}건, "
                 f"SEA REF: {counts['sea_ref_count']}건, "
                 f"SEA LDY: {counts['sea_ldy_count']}건, "
+                f"SEDA TV: {counts['seda_tv_count']}건, "
+                f"SEDA REF: {counts['seda_ref_count']}건, "
+                f"SEDA LDY: {counts['seda_ldy_count']}건, "
                 f"SIEL TV: {counts['siel_tv_count']}건, "
                 f"SIEL REF: {counts['siel_ref_count']}건, "
                 f"SIEL LDY: {counts['siel_ldy_count']}건, "

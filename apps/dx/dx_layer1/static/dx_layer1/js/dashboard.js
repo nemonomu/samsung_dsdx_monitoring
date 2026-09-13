@@ -242,6 +242,9 @@ function formatBackupPrompt(data) {
         totalCount = Number(data.tv_count || 0) +
             Number(data.sea_ref_count || 0) +
             Number(data.sea_ldy_count || 0) +
+            Number(data.seda_tv_count || 0) +
+            Number(data.seda_ref_count || 0) +
+            Number(data.seda_ldy_count || 0) +
             Number(data.siel_tv_count || 0) +
             Number(data.siel_ref_count || 0) +
             Number(data.siel_ldy_count || 0) +
@@ -267,6 +270,13 @@ function formatBackupPrompt(data) {
         'TV ' + formatBackupCount(data.tv_count) +
             '  ·  REF ' + formatBackupCount(data.sea_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.sea_ldy_count),
+        '',
+        'SEDA · D-1 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['seda_tv', 'seda_ref', 'seda_ldy']
+        ),
+        'TV ' + formatBackupCount(data.seda_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.seda_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.seda_ldy_count),
         '',
         'SEM · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']
@@ -312,6 +322,9 @@ function renderBackupConfirmContent(data) {
         totalCount = Number(data.tv_count || 0) +
             Number(data.sea_ref_count || 0) +
             Number(data.sea_ldy_count || 0) +
+            Number(data.seda_tv_count || 0) +
+            Number(data.seda_ref_count || 0) +
+            Number(data.seda_ldy_count || 0) +
             Number(data.siel_tv_count || 0) +
             Number(data.siel_ref_count || 0) +
             Number(data.siel_ldy_count || 0) +
@@ -334,7 +347,7 @@ function renderBackupConfirmContent(data) {
     }
 
     function countryCard(country, offsetLabel, sourceDate, counts) {
-        var flagCodes = { SEA: 'us', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th' };
+        var flagCodes = { SEA: 'us', SEDA: 'br', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th' };
         var card = element('div', null,
             'border:1px solid #e2e8f0;border-radius:10px;padding:13px 14px;background:#fff;');
         var header = element('div', null,
@@ -397,6 +410,15 @@ function renderBackupConfirmContent(data) {
             { label: 'TV', value: data.tv_count },
             { label: 'REF', value: data.sea_ref_count },
             { label: 'LDY', value: data.sea_ldy_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'SEDA', 'D-1',
+        formatBackupSourceDate(sourceDates, ['seda_tv', 'seda_ref', 'seda_ldy']),
+        [
+            { label: 'TV', value: data.seda_tv_count },
+            { label: 'REF', value: data.seda_ref_count },
+            { label: 'LDY', value: data.seda_ldy_count }
         ]
     ));
     cards.appendChild(countryCard(
