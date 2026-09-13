@@ -177,6 +177,8 @@ async function testIntegratedBackupPromptAndPost() {
     assert.strictEqual(cards[3].children[0].children[0].children[0].src, '/static/img/flags/in.svg');
     assert.strictEqual(cards[4].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
     assert.strictEqual(cards[5].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
+    assert(fs.readFileSync(path.join(root, 'apps', 'dx', 'dx_layer1', 'templates', 'dx_layer1_dashboard.html'), 'utf8')
+        .includes("dx_layer1/js/dashboard.js' %}?v=12"));
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');
