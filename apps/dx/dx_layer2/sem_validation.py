@@ -27,7 +27,7 @@ _WEEK = re.compile(r'^[Ww](?:[1-9]|[1-4]\d|5[0-3])$')
 _URL = re.compile(r'^https://(?:www\.)?liverpool\.com\.mx/tienda/pdp/', re.I)
 _SIZE_VALUE = r'\d+(?:\.\d+)?\s+inch'
 _SIZE = re.compile(rf'^{_SIZE_VALUE}(?:\s*/\s*{_SIZE_VALUE})*$', re.I)
-_REF_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s+(?:cu\s*ft|l|liters?)'
+_REF_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s*(?:cu\s*ft|l|liters?)'
 _REF_CAPACITY = re.compile(
     rf'^{_REF_CAPACITY_VALUE}(?:\s*/\s*{_REF_CAPACITY_VALUE})*$', re.I
 )
@@ -105,8 +105,8 @@ _FORMAT_RULE_DETAILS = {
         'pattern': '55 inch / 65 inch',
     },
     'ref_capacity': {
-        'description': '숫자와 냉장고 용량 단위 형식',
-        'pattern': '20 cu ft / 500 L / 500 liters',
+        'description': '숫자와 냉장고 용량 단위 형식 (숫자와 단위 사이 공백 선택)',
+        'pattern': '76L / 76 L / 76liter / 76 liter / 76 liters / 20 cu ft',
     },
     'ref_refrigerator_type': {
         'description': '허용된 냉장고 유형',

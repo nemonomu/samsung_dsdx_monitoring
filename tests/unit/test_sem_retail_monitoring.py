@@ -365,9 +365,19 @@ class SemRetailValidationTests(unittest.TestCase):
             'screen_size': '65 inch / 55 inch / 43 inch',
             'final_sku_price': '$12,999.00 / $7,499.00 / $9,999.00',
         }
-        ref_row = {**self.row, 'ref_capacity': '4.5 L'}
         self.assertEqual([], evaluate_format(tv_row, 'sem_tv'))
-        self.assertEqual([], evaluate_format(ref_row, 'sem_ref'))
+        for capacity in (
+            '76L', '76 L', '76  L', '76liter', '76 liter',
+            '76liters', '76 liters', '76LITER', '76l',
+            '76L / 500 liters', '20cu ft', '20 cu ft', '4.5 L',
+        ):
+            with self.subTest(capacity=capacity):
+                ref_row = {**self.row, 'ref_capacity': capacity}
+                self.assertEqual([], evaluate_format(ref_row, 'sem_ref'))
+        for capacity in ('76', 'L', 'liter', '76kg', '7 6L', '76L extra'):
+            with self.subTest(invalid_capacity=capacity):
+                ref_row = {**self.row, 'ref_capacity': capacity}
+                self.assertIn('ref_capacity', evaluate_format(ref_row, 'sem_ref'))
 
     def test_bad_price_url_and_product_dimension_are_reported(self):
         row = {
