@@ -188,10 +188,30 @@ def _present(column):
     return f"NOT {_missing(column)}"
 
 
-def _column_metrics(source, retailer, column, source_column=None):
+def _sea_tv_master_sku_present():
+    return (
+        "EXISTS ("
+        "SELECT 1 FROM public.tv_item_mst sku_master "
+        "WHERE sku_master.item IS NOT DISTINCT FROM source.item "
+        "AND LOWER(BTRIM(CAST(sku_master.account_name AS TEXT))) = "
+        "LOWER(BTRIM(CAST(source.account_name AS TEXT))) "
+        "AND sku_master.sku IS NOT NULL "
+        "AND BTRIM(CAST(sku_master.sku AS TEXT)) <> ''"
+        ")"
+    )
+
+
+def _column_metrics(source, retailer, column):
     """Return SQL expressions for the real denominator and Missing count."""
-    physical_column = source_column or column
-    missing = _missing(physical_column)
+    if source.get('special_rules') == 'sea_tv' and column == 'sku':
+        master_sku_present = _sea_tv_master_sku_present()
+        return (
+            'COUNT(*)',
+            _count_when(f"NOT {master_sku_present}"),
+            'tv_item_mst 기준',
+        )
+
+    missing = _missing(column)
 
     if column in set(retailer.get('conditional_columns', ())):
         discount_scope = (
@@ -223,7 +243,7 @@ def _column_metrics(source, retailer, column, source_column=None):
             )
         if column == 'trend_rank':
             return (
-                _count_when(_present(physical_column)),
+                _count_when(_present(column)),
                 '0',
                 '트렌드 수집 항목',
             )
@@ -333,15 +353,8 @@ def _query_retailer(cursor, source, retailer, target_date):
         and source['collection_scope'] == 'main'
         else 'COUNT(*)'
     )
-    column_sources = dict(retailer.get('email_column_sources', ()))
     metric_specs = [
-        (
-            column,
-            *_column_metrics(
-                source, retailer, column,
-                source_column=column_sources.get(column),
-            ),
-        )
+        (column, *_column_metrics(source, retailer, column))
         for column in retailer['columns']
     ]
     select_parts = [total_expr]
