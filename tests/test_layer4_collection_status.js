@@ -65,7 +65,7 @@ const emailReportData = {
         main_count: 750,
         bsr_count: 100,
         column_order: [
-            'item', 'sku_popularity', 'promotion_position',
+            'item', 'sku', 'sku_popularity', 'promotion_position',
             'promotion_type', 'trend_rank',
             'number_of_ppl_purchased_yesterday',
             'number_of_ppl_added_to_carts', 'discount_type',
@@ -80,6 +80,7 @@ const emailReportData = {
             redirect_true_count: 2,
             columns: [
                 { column: 'item', total_count: 248, null_count: 0 },
+                { column: 'sku', total_count: 248, null_count: 2 },
                 { column: 'sku_popularity', total_count: 248, null_count: 3 },
                 { column: 'discount_type', total_count: 248, null_count: 7 },
                 { column: 'delivery_availability', total_count: 248, null_count: 8 }
@@ -92,6 +93,7 @@ const emailReportData = {
             redirect_true_count: 0,
             columns: [
                 { column: 'item', total_count: 315, null_count: 0 },
+                { column: 'sku', total_count: 315, null_count: 3 },
                 { column: 'promotion_position', total_count: 16, null_count: 0 },
                 { column: 'promotion_type', total_count: 16, null_count: 1 },
                 { column: 'trend_rank', total_count: 10, null_count: 0 },
@@ -105,6 +107,7 @@ const emailReportData = {
             redirect_true_count: 0,
             columns: [
                 { column: 'item', total_count: 316, null_count: 0 },
+                { column: 'sku', total_count: 316, null_count: 4 },
                 { column: 'sku_popularity', total_count: 316, null_count: 4 },
                 {
                     column: 'number_of_ppl_purchased_yesterday',
@@ -479,6 +482,16 @@ async function run() {
         assert(row);
         return row[1];
     }
+    const skuRow = seaTvMissingRow('sku');
+    [
+        [248, 2], [315, 3], [316, 4]
+    ].forEach(function(expected) {
+        assert(skuRow.includes(
+            '<td align="center">' + expected[0] + '</td>'
+            + '<td align="center">' + expected[1] + '</td>'
+        ));
+    });
+    assert.strictEqual((skuRow.match(/>-<\/td>/g) || []).length, 0);
     const skuPopularityRow = seaTvMissingRow('sku_popularity');
     assert(skuPopularityRow.includes(
         '<td align="center">248</td><td align="center">3</td>'

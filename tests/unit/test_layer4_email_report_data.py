@@ -105,36 +105,36 @@ class EmailRegistryTests(unittest.TestCase):
         self.assertEqual(
             sea_tv_retailers['Amazon']['email_include_skipped_columns'],
             (
-                'sku_popularity', 'savings', 'discount_type',
+                'sku', 'sku_popularity', 'savings', 'discount_type',
                 'delivery_availability',
             ),
         )
         self.assertEqual(
             sea_tv_retailers['Amazon']['email_required_columns'],
-            ('savings', 'discount_type', 'delivery_availability'),
+            ('sku', 'savings', 'discount_type', 'delivery_availability'),
         )
         self.assertEqual(
             sea_tv_retailers['Bestbuy']['email_include_skipped_columns'],
             (
-                'promotion_position', 'promotion_type', 'trend_rank',
+                'sku', 'promotion_position', 'promotion_type', 'trend_rank',
                 'sku_status',
             ),
         )
         self.assertEqual(
             sea_tv_retailers['Bestbuy']['email_required_columns'],
-            ('sku_status',),
+            ('sku', 'sku_status'),
         )
         self.assertEqual(
             sea_tv_retailers['Walmart']['email_include_skipped_columns'],
             (
-                'sku_popularity', 'number_of_ppl_purchased_yesterday',
+                'sku', 'sku_popularity', 'number_of_ppl_purchased_yesterday',
                 'number_of_ppl_added_to_carts', 'offer',
                 'retailer_sku_name_similar',
             ),
         )
         self.assertEqual(
             sea_tv_retailers['Walmart']['email_required_columns'],
-            ('offer', 'retailer_sku_name_similar'),
+            ('sku', 'offer', 'retailer_sku_name_similar'),
         )
         self.assertEqual(
             [
@@ -278,7 +278,7 @@ class EmailReportDataTests(unittest.TestCase):
         registry = load_registry()
         expected = {
             'sea_tv': (
-                'savings', 'discount_type', 'delivery_availability',
+                'sku', 'savings', 'discount_type', 'delivery_availability',
             ),
             'seg_tv': ('savings', 'available_quantity_for_purchase'),
             'seg_ref': ('savings', 'available_quantity_for_purchase'),
@@ -349,15 +349,15 @@ class EmailReportDataTests(unittest.TestCase):
         self.assertEqual(
             retailer_columns['Amazon'],
             (
-                'item', 'sku_popularity', 'savings', 'discount_type',
-                'delivery_availability',
+                'item', 'sku_popularity', 'sku', 'savings',
+                'discount_type', 'delivery_availability',
             ),
         )
         self.assertEqual(
             retailer_columns['Bestbuy'],
             (
                 'item', 'promotion_position', 'promotion_type',
-                'trend_rank', 'sku_status',
+                'trend_rank', 'sku', 'sku_status',
             ),
         )
         self.assertEqual(
@@ -365,7 +365,7 @@ class EmailReportDataTests(unittest.TestCase):
             (
                 'item', 'sku_popularity',
                 'number_of_ppl_purchased_yesterday',
-                'number_of_ppl_added_to_carts', 'offer',
+                'number_of_ppl_added_to_carts', 'sku', 'offer',
                 'retailer_sku_name_similar',
             ),
         )

@@ -74,29 +74,29 @@ _SEA_TV_RETAILERS = (
     _retailer(
         'Amazon', exclude_redirect=True,
         email_include_skipped_columns=(
-            'sku_popularity', 'savings', 'discount_type',
+            'sku', 'sku_popularity', 'savings', 'discount_type',
             'delivery_availability',
         ),
         email_required_columns=(
-            'savings', 'discount_type', 'delivery_availability',
+            'sku', 'savings', 'discount_type', 'delivery_availability',
         ),
     ),
     _retailer(
         'Bestbuy', 'BestBuy',
         email_include_skipped_columns=(
-            'promotion_position', 'promotion_type', 'trend_rank',
+            'sku', 'promotion_position', 'promotion_type', 'trend_rank',
             'sku_status',
         ),
-        email_required_columns=('sku_status',),
+        email_required_columns=('sku', 'sku_status'),
     ),
     _retailer(
         'Walmart',
         email_include_skipped_columns=(
-            'sku_popularity', 'number_of_ppl_purchased_yesterday',
+            'sku', 'sku_popularity', 'number_of_ppl_purchased_yesterday',
             'number_of_ppl_added_to_carts', 'offer',
             'retailer_sku_name_similar',
         ),
-        email_required_columns=('offer', 'retailer_sku_name_similar'),
+        email_required_columns=('sku', 'offer', 'retailer_sku_name_similar'),
     ),
 )
 _SEA_APPLIANCE_RETAILERS = (
