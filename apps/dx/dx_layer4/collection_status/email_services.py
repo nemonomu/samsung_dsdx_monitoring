@@ -208,7 +208,7 @@ def _column_metrics(source, retailer, column):
         return (
             'COUNT(*)',
             _count_when(f"NOT {master_sku_present}"),
-            'tv_item_mst 기준',
+            '',
         )
 
     missing = _missing(column)
