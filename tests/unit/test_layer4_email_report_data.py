@@ -195,9 +195,13 @@ class EmailRegistryTests(unittest.TestCase):
             ),
         }
         for key, configured_source in sem_sources.items():
+            expected_retailers = (
+                {'Liverpool'} if key == 'sem_tv'
+                else {'Liverpool', 'HomeDepot'}
+            )
             self.assertEqual(
                 {retailer['name'] for retailer in configured_source['retailers']},
-                {'Liverpool'},
+                expected_retailers,
             )
             self.assertEqual(configured_source['date_mode'], 'text')
             self.assertFalse(configured_source['has_page_type'])
@@ -205,6 +209,11 @@ class EmailRegistryTests(unittest.TestCase):
                 expected_sem_skipped[key],
                 configured_source['email_include_skipped_columns'],
             )
+            for retailer in configured_source['retailers']:
+                if retailer['name'] == 'HomeDepot':
+                    self.assertEqual(
+                        ('savings',), retailer['email_required_columns'],
+                    )
 
         siel_sources = [
             source for source in registry.EMAIL_REPORT_SOURCES
@@ -867,30 +876,36 @@ class EmailReportDataTests(unittest.TestCase):
                     source for source in registry.EMAIL_REPORT_SOURCES
                     if source['key'] == key
                 )
-                configured_rows = [
-                    (column, 'liverpool', False)
-                    for column in base_columns[key]
-                ] + [
-                    (column, 'liverpool', True)
-                    for column in configured_source[
-                        'email_include_skipped_columns'
-                    ]
-                ]
+                configured_rows = []
+                for retailer in configured_source['retailers']:
+                    retailer_name = retailer['name'].lower()
+                    configured_rows.extend(
+                        (column, retailer_name, False)
+                        for column in base_columns[key]
+                    )
+                    configured_rows.extend(
+                        (column, retailer_name, True)
+                        for column in configured_source[
+                            'email_include_skipped_columns'
+                        ]
+                    )
                 cursor = ScriptedCursor([{'fetchall': configured_rows}])
                 service = load_service(cursor)
 
-                columns = service._configured_retailers(
+                configured_retailers = service._configured_retailers(
                     cursor, configured_source
-                )[0]['columns']
+                )
 
-                self.assertEqual(expected_count, len(columns))
-                self.assertEqual('item', columns[0])
-                self.assertIn('sku', columns)
-                self.assertIn('star_rating', columns)
-                self.assertIn('count_of_star_ratings', columns)
-                self.assertIn('count_of_reviews', columns)
-                self.assertIn('original_sku_price', columns)
-                self.assertIn('savings', columns)
+                for retailer in configured_retailers:
+                    columns = retailer['columns']
+                    self.assertEqual(expected_count, len(columns))
+                    self.assertEqual('item', columns[0])
+                    self.assertIn('sku', columns)
+                    self.assertIn('star_rating', columns)
+                    self.assertIn('count_of_star_ratings', columns)
+                    self.assertIn('count_of_reviews', columns)
+                    self.assertIn('original_sku_price', columns)
+                    self.assertIn('savings', columns)
 
     def test_non_tse_columns_remain_db_driven_without_product_url_injection(self):
         configured_source = source(key='sea_ref', date_mode='text')

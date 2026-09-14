@@ -125,7 +125,15 @@ _SIEL_RETAILERS = (
               )),
     _retailer('Flipkart'),
 )
-_SEM_RETAILERS = (_retailer('Liverpool'),)
+_SEM_LIVERPOOL_RETAILERS = (_retailer('Liverpool'),)
+
+
+def _sem_retailers(product):
+    if product == 'TV':
+        return _SEM_LIVERPOOL_RETAILERS
+    return _SEM_LIVERPOOL_RETAILERS + (
+        _retailer('HomeDepot', email_required_columns=('savings',)),
+    )
 
 
 def _tse_retailers(product):
@@ -218,7 +226,7 @@ EMAIL_REPORT_SOURCES = (
         _source(
             f'sem_{product.lower()}', 'SEM', product,
             f'dx_sem.dx_sem_{product.lower()}_retail_com',
-            'crawl_datetime', 'text', _SEM_RETAILERS,
+            'crawl_datetime', 'text', _sem_retailers(product),
             has_page_type=False, include_unassigned=False,
             collection_scope='all',
             email_include_skipped_columns=(
