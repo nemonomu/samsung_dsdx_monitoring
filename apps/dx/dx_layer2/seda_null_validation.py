@@ -195,10 +195,15 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         items = sorted({str(row['item']) for row in targets if not missing(row.get('item'))})
         history = _history_rows(cursor, source, canonical_retailer,
                                 source_day - timedelta(days=days - 1),
-                                source_day - timedelta(days=1), items)
-    # Always retain today's findings, even when no comparison rows exist.
+                                source_day, items)
+    # History includes the selected source date so normal and NULL rows for the
+    # target items are both visible. Keep current findings with a missing item,
+    # which cannot be selected by the item-based history query.
+    result_rows = list(history) if history else list(targets)
+    result_ids = {row.get('id') for row in result_rows}
+    result_rows.extend(row for row in targets if row.get('id') not in result_ids)
     results = [{**row, 'null_fields': [col for col in allowed if missing(row.get(col))]}
-               for row in [*history, *targets]]
+               for row in result_rows]
     display = detail_columns(column)
     return {
         'date': mapping['inspection_date'], 'results': results,

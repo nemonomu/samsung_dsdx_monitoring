@@ -230,9 +230,10 @@ class CountryNullIntegrationTests(unittest.TestCase):
             inspection_date='2026-09-13', source_date='2026-09-12',
             offset_days=-1, source_key=product_line,
         )
-        history = [{
-            **basis, 'crawl_strdatetime': '2026-09-11 20:00:00',
-        }]
+        history = [
+            {**basis, 'crawl_strdatetime': '2026-09-11 20:00:00'},
+            current,
+        ]
         with patch.object(
                 seda_null_validation, 'SEDA_SOURCE_CONFIG',
                 {product_line: source}), patch.object(
