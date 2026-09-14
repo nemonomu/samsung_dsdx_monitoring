@@ -202,10 +202,10 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             self.assertIn('FROM tv_item_mst non_product', sql)
             self.assertIn('non_product.is_product IS FALSE', sql)
 
-    def test_new_null_refresh_supports_all_five_countries_and_three_products(self):
+    def test_new_null_refresh_supports_all_six_countries_and_three_products(self):
         table_codes = ['tv_retail', 'sea_ref_retail', 'sea_ldy_retail'] + [
             f'{country}_{product}_retail'
-            for country in ('sem', 'siel', 'tse', 'seg')
+            for country in ('seda', 'sem', 'siel', 'tse', 'seg')
             for product in ('tv', 'ref', 'ldy')
         ]
         for table_code in table_codes:
@@ -302,7 +302,6 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             ('format', date(2026, 9, 12), 'sem_tv_retail'),
             ('anomaly', date(2026, 9, 12), 'sem_tv_retail'),
             ('null', date(2026, 9, 12), 'unknown_tv_retail'),
-            ('null', date(2026, 9, 12), 'seda_tv_retail'),
         ]:
             with self.subTest(validation=validation_type, date=target_date, table=table_code):
                 with patch.object(self.service, 'get_null_stats') as stats:
@@ -338,8 +337,8 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
         for table, validation, day, expected_status in [
             ('sem_tv_retail', 'null', '2026-09-12', 200),
             ('sea_ref_retail', 'null', '2026-09-13', 200),
+            ('seda_tv_retail', 'null', '2026-09-12', 200),
             ('unknown_tv_retail', 'null', '2026-09-12', 400),
-            ('seda_tv_retail', 'null', '2026-09-12', 400),
             ('sem_tv_retail', 'null', '2026-09-11', 400),
             ('sem_tv_retail', 'format', '2026-09-12', 400),
             ('TV Retail', 'format', '2026-09-12', 200),

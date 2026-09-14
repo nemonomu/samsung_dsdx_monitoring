@@ -29,7 +29,7 @@ NULL_REVIEW_TABLES = {
     'sea_ldy_retail': 'sea_ldy_retail',
     **{
         f'{country}_{product}_retail': f'{country}_{product}_retail'
-        for country in ('sem', 'siel', 'tse', 'seg')
+        for country in ('seda', 'sem', 'siel', 'tse', 'seg')
         for product in ('tv', 'ref', 'ldy')
     },
 }

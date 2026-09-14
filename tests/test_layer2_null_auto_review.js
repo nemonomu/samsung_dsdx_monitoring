@@ -319,7 +319,7 @@ function testAcceptedOnlyResultsRemainReachable() {
     vm.createContext(sandbox);
     vm.runInContext(dashboardSource, sandbox);
     vm.runInContext(nullSource, sandbox);
-    for (const table of ['tv_retail', 'sem_ref_retail', 'siel_ref_retail', 'tse_ref_retail', 'seg_ref_retail']) {
+    for (const table of ['tv_retail', 'seda_ref_retail', 'sem_ref_retail', 'siel_ref_retail', 'tse_ref_retail', 'seg_ref_retail']) {
         const html = sandbox.renderDXTableDetail({ type: 'null' }, {
             table, table_name: table, supports_null_auto_review: true,
             retailers: [{ retailer: 'Retailer', total: 3, total_null_count: 0,
