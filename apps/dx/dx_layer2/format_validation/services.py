@@ -1785,7 +1785,7 @@ def get_format_detail(cursor, target_date, table, retailer, days):
         )
     if sem_validation.product_line_for(table):
         return sem_validation.format_detail(
-            cursor, target_date, table, days=days
+            cursor, target_date, table, days=days, retailer=retailer
         )
     if _sea_format_product_key(table):
         return _get_sea_format_detail(
@@ -2428,7 +2428,7 @@ def get_format_rules(cursor, table_name, retailer):
     sem_product_line = sem_validation.product_line_for(table_name)
     if sem_product_line:
         return {
-            'rules': sem_validation.get_format_rule_details(sem_product_line)
+            'rules': sem_validation.get_format_rule_details(sem_product_line, retailer)
         }
 
     tbl_rules = dx_table('monitoring_format_rules')

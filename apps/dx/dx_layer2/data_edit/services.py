@@ -176,7 +176,7 @@ def _get_sem_edit_context(table_name):
             'table_name': canonical_table,
             'product_line': product_line,
             'source': get_sem_source(product_line),
-            'max_editable': set(get_sem_editable_columns(product_line)),
+            'max_editable': set(get_sem_editable_columns(product_line, None)),
         }
     except (ImportError, AttributeError, ValueError):
         return None
@@ -262,24 +262,25 @@ def _select_sem_edit_record(
     )
     table_name = context['table_name']
     source_date = mapping['source_date']
+    placeholders = ', '.join(['%s'] * len(source['retailers']))
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
           AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
           AND UPPER(BTRIM(source.country)) = %s
-          AND LOWER(BTRIM(source.account_name)) = LOWER(%s)
+          AND LOWER(BTRIM(source.account_name)) IN ({placeholders})
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
               WHERE LEFT(BTRIM(anchor.crawl_datetime), 10) = %s
-                AND LOWER(BTRIM(anchor.account_name)) = LOWER(%s)
+                AND LOWER(BTRIM(anchor.account_name)) = LOWER(BTRIM(source.account_name))
               ORDER BY anchor.id DESC
               LIMIT 1
           )
     """, (
-        row_id, source_date, SEM_COUNTRY, SEM_RETAILER,
-        source_date, SEM_RETAILER,
+        row_id, source_date, SEM_COUNTRY,
+        *(r.lower() for r in source['retailers']), source_date,
     ))
 
 
@@ -446,7 +447,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
     if sem_context:
-        editable_cols = sem_context['max_editable']
+        editable_cols = get_sem_editable_columns(product_line, retailer)
     elif seg_context:
         editable_cols = set(
             get_seg_format_columns(product_line, editable_retailer)

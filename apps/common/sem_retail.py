@@ -84,7 +84,7 @@ SEM_SOURCE_CONFIG = {
         'table_name': 'dx_sem.dx_sem_ref_retail_com',
         'backup_table_name': 'dx_sem.dx_sem_ref_retail_com_backup',
         'date_column': 'crawl_datetime',
-        'retailers': (SEM_RETAILER,),
+        'retailers': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
         'extra_required_columns': ('ref_capacity',),
         'extra_format_columns': ('ref_capacity', 'ref_refrigerator_type'),
         'extra_table_columns': ('ref_capacity', 'ref_refrigerator_type'),
@@ -97,7 +97,7 @@ SEM_SOURCE_CONFIG = {
         'table_name': 'dx_sem.dx_sem_ldy_retail_com',
         'backup_table_name': 'dx_sem.dx_sem_ldy_retail_com_backup',
         'date_column': 'crawl_datetime',
-        'retailers': (SEM_RETAILER,),
+        'retailers': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
         'extra_required_columns': ('ldy_capacity',),
         'extra_format_columns': ('ldy_capacity', 'ldy_loading_type'),
         'extra_table_columns': ('ldy_loading_type', 'ldy_capacity'),
@@ -145,10 +145,23 @@ def get_sem_product_line_for_table(table_name):
     return SEM_TABLE_TO_PRODUCT_LINE[canonical]
 
 
-def get_sem_editable_columns(product_line):
+def normalize_sem_retailer(product_line, retailer=SEM_RETAILER):
+    key = str(retailer or SEM_RETAILER).strip().casefold()
+    for candidate in get_sem_source(product_line)['retailers']:
+        if candidate.casefold() == key:
+            return candidate
+    raise ValueError(f'Unsupported SEM retailer: {retailer}')
+
+
+def get_sem_editable_columns(product_line, retailer=SEM_RETAILER):
     source = get_sem_source(product_line)
+    # None is the union used to validate column names before loading a row.
+    retailers = source['retailers'] if retailer is None else (
+        normalize_sem_retailer(product_line, retailer),
+    )
     return tuple(dict.fromkeys(
         SEM_COMMON_EDITABLE_COLUMNS + source['extra_format_columns']
+        + (('savings',) if SEM_HOMEDEPOT_RETAILER in retailers else ())
     ))
 
 
@@ -160,10 +173,10 @@ def get_sem_table_columns(product_line):
     ))
 
 
-def validate_sem_editable_column(product_line, column_name):
+def validate_sem_editable_column(product_line, column_name, retailer=SEM_RETAILER):
     key = normalize_sem_product_line(product_line)
     column = str(column_name or '').strip()
-    if column not in get_sem_editable_columns(key):
+    if column not in get_sem_editable_columns(key, retailer):
         raise ValueError(f'{column_name} 컬럼은 수정할 수 없습니다')
     return column
 

@@ -2518,7 +2518,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
 
     if sem_validation.product_line_for(category):
         return sem_validation.null_detail(
-            cursor, target_date, category, column, days=days
+            cursor, target_date, category, column, days=days, retailer=retailer
         )
 
     if seg_validation.product_line_for(category):
@@ -3011,7 +3011,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
                 'status_code': 400,
             }
         sem_allowed_columns = sem_validation.get_review_allowed_columns(
-            sem_product_line, correction_type_value
+            sem_product_line, correction_type_value, retailer=None
         )
         if column_name not in sem_allowed_columns:
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
@@ -3120,8 +3120,15 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         None if youtube_columns is not None
         else str(row[2]) if row[2] else None
     )
-    if sem_product_line and not retailer:
-        retailer = sem_validation.SEM_RETAILER
+    if sem_product_line:
+        try:
+            allowed_columns = sem_validation.get_review_allowed_columns(
+                sem_product_line, correction_type_value, retailer
+            )
+        except ValueError:
+            return {'error': '허용되지 않는 리테일러', 'status_code': 400}
+        if column_name not in allowed_columns:
+            return {'error': '허용되지 않은 리테일러별 컬럼', 'status_code': 400}
 
     if (
         seg_product_line

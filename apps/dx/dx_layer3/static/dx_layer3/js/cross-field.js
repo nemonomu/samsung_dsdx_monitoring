@@ -85,7 +85,12 @@ function _cfUsesEqualReviewCounts(productLine, retailer) {
         || (/^SEA_(REF|LDY)$/.test(product) && account === 'lowes')
         || (product.startsWith('SEG_') && ['mediamarkt', 'otto'].includes(account))
         || (product.startsWith('TSE_') && account === 'homepro')
-        || (product.startsWith('SEM_') && account === 'liverpool');
+        || (product.startsWith('SEM_') && ['liverpool', 'homedepot'].includes(account));
+}
+
+function _cfEditableColumns(retailer) {
+    const columns = (window.crossfieldRetailerEditableColumns || {})[retailer];
+    return columns ? new Set(columns) : (window.crossfieldEditableCols || new Set());
 }
 
 function _cfOrderReviewDetailKeys(keys) {
@@ -168,7 +173,7 @@ function showRetailerDetail(retailer) {
     const titleText = `${ruleNameDisplay} (${findingCountText})`;
     const subtitleText = `${productLineDisplay} Retail | ${retailer}`;
 
-    const editableCols = inline ? (window.crossfieldEditableCols || new Set()) : new Set();
+    const editableCols = inline ? _cfEditableColumns(retailer) : new Set();
     const normalReviews = inline ? (window.crossfieldNormalReviews || {}) : {};
 
     // 동적 컬럼
@@ -740,6 +745,7 @@ async function reloadCfDays() {
         window.crossfieldRetailerSummary = data.retailer_summary || {};
         window.crossfieldAnomalies = anomalies;
         window.crossfieldEditableCols = new Set(data.editable_columns || []);
+        window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
         window.crossfieldNormalReviews = data.normal_reviews || {};
         window.crossfieldRetailerColumns = data.retailer_columns || {};
         window.crossfieldDisplayQuery = data.query || '';
@@ -760,7 +766,7 @@ async function reloadCfDays() {
                 }))];
             var listValues = items.length > 0 ? items : ids;
             var listLabel = items.length > 0 ? 'Item' : 'ID';
-            var editableCols = window.crossfieldEditableCols;
+            var editableCols = _cfEditableColumns(currentRetailer);
             var normalReviews = window.crossfieldNormalReviews;
 
             // 동적 컬럼
@@ -1428,13 +1434,13 @@ function _cfUpdateRuleCardCount() {
     var ruleId = window.crossfieldRuleId;
     var retailerData = window.crossfieldRetailerData;
     var normalReviews = window.crossfieldNormalReviews || {};
-    var editableCols = window.crossfieldEditableCols || new Set();
     if (!ruleId || !retailerData) return;
 
     // 현재 규칙의 실제 활성 건수 계산
     var activeAnomalies = 0;
     var activeReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
+        var editableCols = _cfEditableColumns(retailer);
         retailerData[retailer].rows.forEach(function(row) {
             if (row.row_role && row.row_role !== 'target') return;
             var rowId = row.id;
@@ -1488,12 +1494,12 @@ function _cfUpdateRuleCardCount() {
 function _cfUpdateRetailerCounts() {
     var retailerData = window.crossfieldRetailerData;
     var normalReviews = window.crossfieldNormalReviews || {};
-    var editableCols = window.crossfieldEditableCols || new Set();
-    if (!retailerData || editableCols.size === 0) return;
+    if (!retailerData) return;
 
     var totalAnomalies = 0;
     var totalReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
+        var editableCols = _cfEditableColumns(retailer);
         var rows = retailerData[retailer].rows;
         var activeRows = rows.filter(function(row) {
             if (row.row_role && row.row_role !== 'target') return false;

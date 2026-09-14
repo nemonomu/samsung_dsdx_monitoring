@@ -543,9 +543,17 @@ class SemRetailValidationTests(unittest.TestCase):
         })
         validation = {'tables': []}
 
+        fixture_rows, fixture_mapping = latest_rows.return_value
+        latest_rows.side_effect = lambda *_args, **kwargs: (
+            [] if kwargs.get('retailer') == 'HomeDepot' else fixture_rows,
+            fixture_mapping,
+        )
         total = append_null_stats(None, date(2026, 9, 7), validation)
 
         self.assertEqual(6, total)
+        self.assertEqual(['Liverpool', 'HomeDepot'], [
+            row['retailer'] for row in validation['tables'][1]['retailers']
+        ])
         retailer = validation['tables'][0]['retailers'][0]
         self.assertEqual(2, retailer['total_null_count'])
         self.assertEqual(1, retailer['fields_detail']['sku'])

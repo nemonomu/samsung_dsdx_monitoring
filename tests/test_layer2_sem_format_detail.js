@@ -40,6 +40,17 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
         assert(body.innerHTML.includes('3건'));
         assert(!body.innerHTML.includes('데이터가 없습니다'));
     }
+    for (const product of ['REF', 'LDY']) {
+        response = {ok: true, json: async () => ({
+            date: '2026-09-13', field_counts: {savings: 1},
+            results: [{id: 2, account_name: 'HomeDepot', error_fields: ['savings']}],
+        })};
+        context.openDetailModal('format', 'SEM ' + product, 'HomeDepot', 1);
+        await settle();
+        assert(requests.at(-1).includes('retailer=HomeDepot'));
+        assert(requests.at(-1).includes('table=sem_' + product.toLowerCase() + '_retail'));
+        assert(body.innerHTML.includes("showFormatFieldDetail('savings')"));
+    }
     for (const failure of [
         {ok: false, status: 400, json: async () => ({error: 'Invalid table'})},
         {ok: false, status: 500, json: async () => { throw new SyntaxError('HTML response'); }},

@@ -81,7 +81,7 @@ class SemLayer2NormalReviewTests(unittest.TestCase):
             scope_sql,
         )
         self.assertEqual(
-            ('2026-09-07', 'Liverpool', 404, '2026-09-07'),
+            ('2026-09-07', 'liverpool', 'homedepot', 404, '2026-09-07'),
             scope_params,
         )
         self.assertIn('INSERT INTO monitoring_corrections', cursor.calls[2][0])

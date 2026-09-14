@@ -43,8 +43,9 @@ class SemCrossfieldHistoryTests(unittest.TestCase):
     def detail(self, history, days=3, product='sem_tv', targets=None):
         with patch.object(sem_services, '_latest_rows') as latest:
             with patch.object(sem_services, '_history_rows') as load_history:
-                latest.return_value = (
-                    [self.target] if targets is None else targets, self.mapping,
+                latest.side_effect = lambda *_args, **kwargs: (
+                    ([] if kwargs.get('retailer') == 'HomeDepot' else
+                     [self.target] if targets is None else targets), self.mapping,
                 )
                 load_history.return_value = history
                 result = sem_services.get_sem_cross_field_rule_detail(

@@ -126,7 +126,7 @@ def _get_sem_edit_context(table_name):
     return {
         **source,
         'product_line': product_line,
-        'editable_columns': set(get_sem_editable_columns(product_line)),
+        'editable_columns': set(get_sem_editable_columns(product_line, None)),
     }
 
 
@@ -226,24 +226,25 @@ def _select_sem_record(
     )
     table_name = source['table_name']
     source_date = mapping['source_date']
+    placeholders = ', '.join(['%s'] * len(source['retailers']))
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
           AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
           AND UPPER(BTRIM(source.country)) = %s
-          AND LOWER(BTRIM(source.account_name)) = LOWER(%s)
+          AND LOWER(BTRIM(source.account_name)) IN ({placeholders})
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
               WHERE LEFT(BTRIM(anchor.crawl_datetime), 10) = %s
-                AND LOWER(BTRIM(anchor.account_name)) = LOWER(%s)
+                AND LOWER(BTRIM(anchor.account_name)) = LOWER(BTRIM(source.account_name))
               ORDER BY anchor.id DESC
               LIMIT 1
           )
     """, (
-        row_id, source_date, SEM_COUNTRY, SEM_RETAILER,
-        source_date, SEM_RETAILER,
+        row_id, source_date, SEM_COUNTRY,
+        *(r.lower() for r in source['retailers']), source_date,
     ))
 
 
@@ -304,7 +305,7 @@ def _validate_sem_column(table_name, column_name):
         if not validate_sem_editable_column:
             raise ValueError(f'{column_name} 컬럼은 수정할 수 없습니다')
         product_line = get_sem_product_line_for_table(table_name)
-        validate_sem_editable_column(product_line, column_name)
+        validate_sem_editable_column(product_line, column_name, None)
 
 
 def _check_retail_unique_key(
@@ -407,7 +408,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     item_value = str(row[3]) if row[3] else ''
 
     if sem_context:
-        editable_cols = sem_context['editable_columns']
+        editable_cols = get_sem_editable_columns(product_line, retailer)
     elif siel_context:
         editable_cols = get_siel_crossfield_editable_columns(
             product_line, retailer
@@ -531,7 +532,7 @@ def save_review(cursor, conn, table_name, record_id, column_name,
         if column_name not in editable_cols:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 
-    if sem_context and column_name not in sem_context['editable_columns']:
+    if sem_context and column_name not in get_sem_editable_columns(product_line, retailer):
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 
     if siel_context:

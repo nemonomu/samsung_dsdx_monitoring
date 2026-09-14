@@ -1340,6 +1340,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldTableName = data.table_name || '';
             window.crossfieldDateCol = data.date_col || 'crawl_datetime';
             window.crossfieldEditableCols = new Set(data.editable_columns || []);
+            window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
             window.crossfieldNormalReviews = data.normal_reviews || {};
             window.crossfieldRetailerColumns = data.retailer_columns || {};
             window.crossfieldDisplayQuery = data.query || '';

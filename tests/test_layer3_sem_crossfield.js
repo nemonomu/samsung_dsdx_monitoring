@@ -26,10 +26,10 @@ assert(common.includes("type=${category}"));
 assert(common.includes("const loadedRules = isSemCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
-assert(dashboard.includes("common.js' %}?v=20260910-3"));
-assert(dashboard.includes("cross-field.js' %}?v=25"));
-assert(detail.includes("common.js' %}?v=20260910-3"));
-assert(detail.includes("cross-field.js' %}?v=25"));
+assert(dashboard.includes("common.js' %}?v=20260914-1"));
+assert(dashboard.includes("cross-field.js' %}?v=26"));
+assert(detail.includes("common.js' %}?v=20260914-1"));
+assert(detail.includes("cross-field.js' %}?v=26"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
 
@@ -49,11 +49,20 @@ row = {
 }
 mapping = {'inspection_date': '2026-09-13', 'source_date': '2026-09-13', 'offset_days': 0}
 fixtures = []
-with patch.object(sem_services, '_latest_rows', return_value=([row], mapping)), patch.object(sem_services, '_history_rows', return_value=[]):
+def latest(*args, **kwargs):
+    return ([] if kwargs.get('retailer') == 'HomeDepot' else [row]), mapping
+with patch.object(sem_services, '_latest_rows', side_effect=latest), patch.object(sem_services, '_history_rows', return_value=[]):
     for product in ('sem_tv', 'sem_ref', 'sem_ldy'):
         summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), product)
         detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), product, product + ':final_original_price', days=3)
         fixtures.append({'summary': summary, 'detail': detail})
+def home_latest(*args, **kwargs):
+    rows = [{**row, 'account_name': 'HomeDepot', 'original_sku_price': '$120.00', 'savings': None}]
+    return (rows if kwargs.get('retailer') == 'HomeDepot' else []), mapping
+with patch.object(sem_services, '_latest_rows', side_effect=home_latest), patch.object(sem_services, '_history_rows', return_value=[]):
+    summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), 'sem_ref')
+    detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), 'sem_ref', 'sem_ref:savings_missing', days=3)
+    fixtures.append({'summary': summary, 'detail': detail, 'retailer': 'HomeDepot'})
 print(json.dumps(fixtures))
 `], {encoding: 'utf8'}));
 
@@ -79,16 +88,22 @@ print(json.dumps(fixtures))
         context.renderCrossfieldSummaryContent('SEM', '', fixture.summary);
         assert(!container.innerHTML.includes('D-1'));
         const actions = [...container.innerHTML.matchAll(/onclick="(loadCrossfieldRuleDetail[^\"]+)"/g)];
-        const action = actions.find(match => match[1].includes(':final_original_price'))[1];
+        const action = actions.find(match => match[1].includes(fixture.detail.rule_id))[1];
         await vm.runInContext(action, context);
         const params = new URL(requested, 'https://monitoring.test').searchParams;
         assert.strictEqual(params.get('date'), '2026-09-13');
         assert.strictEqual(params.get('type'), fixture.summary.product_line);
         assert.strictEqual(params.get('rule_id'), fixture.detail.rule_id);
         assert.strictEqual(params.get('days'), '3');
-        assert(container.innerHTML.includes('Liverpool'));
+        assert(container.innerHTML.includes(fixture.retailer || 'Liverpool'));
         assert(container.innerHTML.includes('이상 1건'));
         assert(!container.innerHTML.includes('데이터 로드 실패'));
+        if (fixture.retailer === 'HomeDepot') {
+            assert(context._cfEditableColumns('HomeDepot').has('savings'));
+            assert(!context._cfEditableColumns('Liverpool').has('savings'));
+            assert(context._cfUsesEqualReviewCounts('SEM_REF', 'HomeDepot'));
+            assert.strictEqual(context.crossfieldSelectFields, 'final_sku_price|original_sku_price|savings');
+        }
     }
     console.log('Layer3 SEM real summary-to-detail date routing tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

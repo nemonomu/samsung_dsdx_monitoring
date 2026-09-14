@@ -1,4 +1,4 @@
-"""Layer 2 validation for SEM Mexico Liverpool sources."""
+"""Layer 2 validation for SEM Mexico retailers."""
 
 import re
 from collections import defaultdict
@@ -6,15 +6,17 @@ from datetime import datetime, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import uses_new_policy
-from apps.dx.dx_layer2.null_review_state import review_state
+from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 from apps.common.sem_retail import (
     SEM_COUNTRY,
+    SEM_HOMEDEPOT_RETAILER,
     SEM_RETAILER,
     SEM_SECTION_TO_PRODUCT_LINE,
     SEM_SOURCE_CONFIG,
     get_sem_editable_columns,
     get_sem_required_columns,
     get_sem_table_columns,
+    normalize_sem_retailer,
 )
 
 
@@ -25,6 +27,11 @@ _POSITIVE_INTEGER = re.compile(r'^[1-9]\d*$')
 _RATING = re.compile(r'^(?:[0-4](?:\.\d)?|5(?:\.0)?)$')
 _WEEK = re.compile(r'^[Ww](?:[1-9]|[1-4]\d|5[0-3])$')
 _URL = re.compile(r'^https://(?:www\.)?liverpool\.com\.mx/tienda/pdp/', re.I)
+_HOMEDEPOT_URL = re.compile(r'^https://(?:www\.)?homedepot\.com\.mx/p/[^\s]+$', re.I)
+_HOMEDEPOT_WEEK = re.compile(r'^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$')
+_HOMEDEPOT_PRICE = re.compile(rf'^{_MONEY_VALUE}$')
+_HOMEDEPOT_SAVINGS = re.compile(r'^-(?:0|[1-9]\d?|100)%$')
+_HOMEDEPOT_REF_TYPES = {'Top Mount', 'Bottom Mount', 'French Door', 'Side by Side'}
 _SIZE_VALUE = r'\d+(?:\.\d+)?\s+inch'
 _SIZE = re.compile(rf'^{_SIZE_VALUE}(?:\s*/\s*{_SIZE_VALUE})*$', re.I)
 _REF_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s*(?:cu\s*ft|l|liters?)'
@@ -143,11 +150,12 @@ def _mapping(target_date, source):
     return resolve_monitoring_date(target_date, SEM_COUNTRY, source['source_key'])
 
 
-def _latest_rows(cursor, target_date, source):
+def _latest_rows(cursor, target_date, source, retailer=SEM_RETAILER):
+    retailer = normalize_sem_retailer(source['source_key'], retailer)
     mapping = _mapping(target_date, source)
     cursor.execute(f"""
         WITH latest_batch AS (
-            SELECT batch_id
+            SELECT batch_id, account_name
             FROM {source['table_name']}
             WHERE LEFT(BTRIM(crawl_datetime), 10) = %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
@@ -158,19 +166,21 @@ def _latest_rows(cursor, target_date, source):
         FROM {source['table_name']} source
         CROSS JOIN latest_batch
         WHERE LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND LOWER(BTRIM(source.account_name)) = LOWER(BTRIM(latest_batch.account_name))
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
         ORDER BY source.id
-    """, (mapping['source_date'], SEM_RETAILER,
+    """, (mapping['source_date'], retailer,
           mapping['source_date']))
     columns = [description[0] for description in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()], mapping
 
 
 def _history_rows(cursor, source, start_date, end_date, items,
-                  include_missing_item=False):
-    """Load the latest Liverpool batch per day for target error items."""
+                  include_missing_item=False, retailer=SEM_RETAILER):
+    """Load the retailer's latest batch per day for target error items."""
+    retailer = normalize_sem_retailer(source['source_key'], retailer)
     conditions = []
-    params = [str(start_date), str(end_date), SEM_RETAILER, SEM_COUNTRY]
+    params = [str(start_date), str(end_date), retailer, SEM_COUNTRY]
     if items:
         placeholders = ', '.join(['%s'] * len(items))
         conditions.append(f'source.item IN ({placeholders})')
@@ -188,6 +198,7 @@ def _history_rows(cursor, source, start_date, end_date, items,
             SELECT DISTINCT ON (LEFT(BTRIM(crawl_datetime), 10))
                    LEFT(BTRIM(crawl_datetime), 10) AS source_date,
                    batch_id,
+                   account_name, country,
                    id
             FROM {source['table_name']}
             WHERE LEFT(BTRIM(crawl_datetime), 10) >= %s
@@ -201,6 +212,8 @@ def _history_rows(cursor, source, start_date, end_date, items,
         JOIN latest_batches latest
           ON {date_expression} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+         AND LOWER(BTRIM(source.account_name)) = LOWER(BTRIM(latest.account_name))
+         AND UPPER(BTRIM(source.country)) = UPPER(BTRIM(latest.country))
         WHERE ({' OR '.join(conditions)})
         ORDER BY source.item, {date_expression}, source.id
     """, (*params[:4], *params[4:]))
@@ -231,10 +244,11 @@ def _valid_datetime(value):
     return True
 
 
-def _format_checks(product_line):
+def _format_checks(product_line, retailer=SEM_RETAILER):
+    retailer = normalize_sem_retailer(product_line, retailer)
     checks = {
         'country': lambda value: str(value).strip().upper() == SEM_COUNTRY,
-        'account_name': lambda value: str(value).strip().casefold() == SEM_RETAILER.casefold(),
+        'account_name': lambda value: str(value).strip().casefold() == retailer.casefold(),
         'item': lambda value: bool(_POSITIVE_INTEGER.fullmatch(str(value).strip())),
         'crawl_datetime': _valid_datetime,
         'calendar_week': lambda value: bool(_WEEK.fullmatch(str(value).strip())),
@@ -259,52 +273,85 @@ def _format_checks(product_line):
         checks['ldy_loading_type'] = (
             lambda value: str(value).strip() in _LDY_LOADING_TYPES
         )
+    if retailer == SEM_HOMEDEPOT_RETAILER:
+        checks.update({
+            'calendar_week': lambda value: bool(_HOMEDEPOT_WEEK.fullmatch(str(value).strip())),
+            'product_url': lambda value: bool(_HOMEDEPOT_URL.fullmatch(str(value).strip())),
+            'final_sku_price': lambda value: bool(_HOMEDEPOT_PRICE.fullmatch(str(value).strip())),
+            'original_sku_price': lambda value: bool(_HOMEDEPOT_PRICE.fullmatch(str(value).strip())),
+            'savings': lambda value: bool(_HOMEDEPOT_SAVINGS.fullmatch(str(value).strip())),
+        })
+        if product_line == 'sem_ref':
+            checks['ref_refrigerator_type'] = lambda value: str(value).strip() in _HOMEDEPOT_REF_TYPES
     return checks
 
 
-def get_review_allowed_columns(product_line, correction_type):
+def get_review_allowed_columns(product_line, correction_type, retailer=SEM_RETAILER):
     """Return SEM columns that may be acknowledged without source edits."""
     if product_line not in SEM_SOURCE_CONFIG:
         return ()
+    if retailer is None:
+        return tuple(dict.fromkeys(
+            column for account in SEM_SOURCE_CONFIG[product_line]['retailers']
+            for column in get_review_allowed_columns(product_line, correction_type, account)
+        ))
+    normalize_sem_retailer(product_line, retailer)
     if correction_type == 'null_check':
         return tuple(get_sem_required_columns(product_line))
     if correction_type == 'format_check':
-        return tuple(_format_checks(product_line))
+        return tuple(_format_checks(product_line, retailer))
     return ()
 
 
-def get_format_rule_details(product_line):
+def get_format_rule_details(product_line, retailer=SEM_RETAILER):
     """Return popup metadata for the exact rules used by SEM validation."""
+    retailer = normalize_sem_retailer(product_line, retailer)
+    details = dict(_FORMAT_RULE_DETAILS)
+    if retailer == SEM_HOMEDEPOT_RETAILER:
+        details.update({
+            'account_name': {'description': 'SEM 수집 리테일러명과 일치', 'pattern': 'HomeDepot'},
+            'calendar_week': {'description': '연도와 W01~W53 주차', 'pattern': '2026-W37'},
+            'product_url': {'description': 'HomeDepot 멕시코 상품 상세 URL', 'pattern': 'https://www.homedepot.com.mx/p/...'},
+            'final_sku_price': {'description': '멕시코 페소 단일 금액, 소수점 두 자리', 'pattern': '$11,499.00'},
+            'original_sku_price': {'description': '값이 있으면 멕시코 페소 단일 금액, 소수점 두 자리', 'pattern': '$16,599.00'},
+            'savings': {'description': '마이너스 부호와 정수 할인율, 크기 0~100', 'pattern': '-30%'},
+            'ref_refrigerator_type': {'description': '허용된 HomeDepot 냉장고 유형', 'pattern': 'Top Mount / Bottom Mount / French Door / Side by Side'},
+        })
     return [
         {
             'field': field,
-            **_FORMAT_RULE_DETAILS[field],
+            **details[field],
         }
-        for field in _format_checks(product_line)
+        for field in _format_checks(product_line, retailer)
     ]
 
 
 def fetch_review_record(cursor, target_date, product_line, record_id, column):
     """Return one record only when it belongs to the inspection batch."""
     source = SEM_SOURCE_CONFIG[product_line]
+    allowed = get_review_allowed_columns(product_line, 'format_check', None)
+    allowed += get_review_allowed_columns(product_line, 'null_check', None)
+    if column not in allowed:
+        raise ValueError('허용되지 않는 컬럼')
     mapping = _mapping(target_date, source)
+    placeholders = ', '.join(['%s'] * len(source['retailers']))
     cursor.execute(f"""
         WITH latest_batch AS (
-            SELECT batch_id
+            SELECT DISTINCT ON (LOWER(BTRIM(account_name))) batch_id, account_name
             FROM {source['table_name']}
             WHERE LEFT(BTRIM(crawl_datetime), 10) = %s
-              AND LOWER(BTRIM(account_name)) = LOWER(%s)
-            ORDER BY id DESC
-            LIMIT 1
+              AND LOWER(BTRIM(account_name)) IN ({placeholders})
+            ORDER BY LOWER(BTRIM(account_name)), id DESC
         )
         SELECT source.{column}, source.account_name, source.item
         FROM {source['table_name']} source
         CROSS JOIN latest_batch
         WHERE source.id = %s
           AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND LOWER(BTRIM(source.account_name)) = LOWER(BTRIM(latest_batch.account_name))
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
     """, (
-        mapping['source_date'], SEM_RETAILER, record_id,
+        mapping['source_date'], *(r.lower() for r in source['retailers']), record_id,
         mapping['source_date'],
     ))
     return cursor.fetchone()
@@ -346,9 +393,9 @@ def _load_normal_reviews(cursor, target_date, product_line,
     return reviews
 
 
-def evaluate_format(row, product_line):
+def evaluate_format(row, product_line, retailer=SEM_RETAILER):
     errors = []
-    checks = _format_checks(product_line)
+    checks = _format_checks(product_line, retailer)
 
     for field, validator in checks.items():
         value = row.get(field)
@@ -361,9 +408,9 @@ def evaluate_format(row, product_line):
     return errors
 
 
-def _serialize(row, product_line):
+def _serialize(row, product_line, retailer=SEM_RETAILER):
     result = dict(row)
-    result['error_fields'] = evaluate_format(row, product_line)
+    result['error_fields'] = evaluate_format(row, product_line, retailer)
     result['error_field'] = ', '.join(result['error_fields'])
     return result
 
@@ -371,57 +418,65 @@ def _serialize(row, product_line):
 def append_null_stats(cursor, target_date, validation):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
-        rows, mapping = _latest_rows(cursor, target_date, source)
         normal_reviews = _load_normal_reviews(
             cursor, target_date, product_line, 'null_check'
         )
         fields = list(get_sem_required_columns(product_line))
-        review_stats = {}
-        if uses_new_policy(target_date, SEM_COUNTRY):
-            normal_reviews, review_stats, auto_logs = review_state(
-                cursor, target_date, rows, fields, normal_reviews,
-                table_name=source['table_name'], country=SEM_COUNTRY,
-                product_line=product_line, retailer=SEM_RETAILER,
-                is_null=lambda value, _field: _missing(value),
-            )
-            validation.setdefault('auto_null_reviews', []).extend(auto_logs)
-        field_counts = {
-            field: sum(
-                1 for row in rows
-                if _missing(row.get(field))
-                and f"{row.get('id')}_{field}" not in normal_reviews
-            )
-            for field in fields
-        }
-        issue_count = sum(field_counts.values())
-        validation['tables'].append({
-            'table': source['section_code'],
-            'table_name': source['display_name'],
-            'total_records': len(rows),
-            'total_issues': issue_count,
-            'status': 'OK' if issue_count == 0 else 'CRITICAL',
-            'fields': fields,
-            'retailers': [{
-                'retailer': SEM_RETAILER,
+        retailers = []
+        mapping = _mapping(target_date, source)
+        for retailer in source['retailers']:
+            rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
+            reviews = normal_reviews
+            review_stats = {}
+            if uses_new_policy(target_date, SEM_COUNTRY):
+                reviews, review_stats, auto_logs = review_state(
+                    cursor, target_date, rows, fields, normal_reviews,
+                    table_name=source['table_name'], country=SEM_COUNTRY,
+                    product_line=product_line, retailer=retailer,
+                    is_null=lambda value, _field: _missing(value),
+                )
+                validation.setdefault('auto_null_reviews', []).extend(auto_logs)
+            field_counts = {
+                field: sum(
+                    1 for row in rows
+                    if _missing(row.get(field))
+                    and f"{row.get('id')}_{field}" not in reviews
+                )
+                for field in fields
+            }
+            issue_count = sum(field_counts.values())
+            retailers.append({
+                'retailer': retailer,
                 'total': len(rows),
                 'total_null_count': issue_count,
                 'fields_detail': field_counts,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
                 **review_stats,
-            }],
+            })
+        issue_count = sum(r['total_null_count'] for r in retailers)
+        table_stats = {
+            'table': source['section_code'],
+            'table_name': source['display_name'],
+            'total_records': sum(r['total'] for r in retailers),
+            'total_issues': issue_count,
+            'status': 'OK' if issue_count == 0 else 'CRITICAL',
+            'fields': fields,
+            'retailers': retailers,
             **mapping,
-            **review_stats,
-        })
+        }
+        add_review_totals(table_stats, retailers)
+        validation['tables'].append(table_stats)
         total_issues += issue_count
     return total_issues
 
 
-def null_detail(cursor, target_date, table, column, days=1):
+def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILER):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
     if not source or column not in get_sem_required_columns(product_line):
         return {'results': [], 'display_config': {}, 'query_config': {}}
-    rows, mapping = _latest_rows(cursor, target_date, source)
+    retailer = normalize_sem_retailer(product_line, retailer)
+    rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
     normal_reviews = _load_normal_reviews(
         cursor, target_date, product_line, 'null_check', column
     )
@@ -430,7 +485,7 @@ def null_detail(cursor, target_date, table, column, days=1):
         normal_reviews, review_stats, _auto_logs = review_state(
             cursor, target_date, rows, [column], normal_reviews,
             table_name=source['table_name'], country=SEM_COUNTRY,
-            product_line=product_line, retailer=SEM_RETAILER,
+            product_line=product_line, retailer=retailer,
             is_null=lambda value, _field: _missing(value),
         )
     target_results = []
@@ -462,6 +517,7 @@ def null_detail(cursor, target_date, table, column, days=1):
             source_date,
             items,
             include_missing_item=include_missing_item,
+            retailer=retailer,
         )
         if history_rows:
             results = []
@@ -474,7 +530,7 @@ def null_detail(cursor, target_date, table, column, days=1):
 
     display = _null_detail_columns(column)
     all_columns = list(get_sem_table_columns(product_line))
-    editable = list(get_sem_editable_columns(product_line))
+    editable = list(get_sem_editable_columns(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'results': results,
@@ -483,7 +539,7 @@ def null_detail(cursor, target_date, table, column, days=1):
         'actual_table': source['table_name'],
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display},
-        'query_retailer': SEM_RETAILER,
+        'query_retailer': retailer,
         'normal_reviews': normal_reviews,
         **review_stats,
         'supports_day_history': True,
@@ -497,44 +553,49 @@ def null_detail(cursor, target_date, table, column, days=1):
 def append_format_stats(cursor, target_date, validation):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
-        rows, mapping = _latest_rows(cursor, target_date, source)
         normal_reviews = _load_normal_reviews(
             cursor, target_date, product_line, 'format_check'
         )
-        issue_count = sum(
-            1
-            for row in rows
-            for field in evaluate_format(row, product_line)
-            if f"{row.get('id')}_{field}" not in normal_reviews
-        )
-        validation['tables'].append({
-            'table': source['section_code'],
-            'table_name': source['display_name'],
-            'total_checked': len(rows),
-            'total_issues': issue_count,
-            'status': 'OK' if issue_count == 0 else 'CRITICAL',
-            'retailers': [{
-                'retailer': SEM_RETAILER,
+        retailers = []
+        mapping = _mapping(target_date, source)
+        for retailer in source['retailers']:
+            rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
+            issue_count = sum(
+                1 for row in rows
+                for field in evaluate_format(row, product_line, retailer)
+                if f"{row.get('id')}_{field}" not in normal_reviews
+            )
+            retailers.append({
+                'retailer': retailer,
                 'total': len(rows),
                 'issue_count': issue_count,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
-            }],
+            })
+        issue_count = sum(r['issue_count'] for r in retailers)
+        validation['tables'].append({
+            'table': source['section_code'],
+            'table_name': source['display_name'],
+            'total_checked': sum(r['total'] for r in retailers),
+            'total_issues': issue_count,
+            'status': 'OK' if issue_count == 0 else 'CRITICAL',
+            'retailers': retailers,
             **mapping,
         })
         total_issues += issue_count
     return total_issues
 
 
-def format_detail(cursor, target_date, table, days=1):
+def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
     if not source:
         return {'results': [], 'column_names': [], 'actual_table': ''}
-    rows, mapping = _latest_rows(cursor, target_date, source)
+    retailer = normalize_sem_retailer(product_line, retailer)
+    rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
     normal_reviews = _load_normal_reviews(
         cursor, target_date, product_line, 'format_check'
     )
-    target_records = [_serialize(row, product_line) for row in rows]
+    target_records = [_serialize(row, product_line, retailer) for row in rows]
     target_records = [row for row in target_records if row['error_fields']]
     field_counts = defaultdict(int)
     for row in target_records:
@@ -558,20 +619,23 @@ def format_detail(cursor, target_date, table, days=1):
             source_date - timedelta(days=history_days - 1),
             source_date,
             items,
+            retailer=retailer,
         )
         if history_rows:
-            records = [_serialize(row, product_line) for row in history_rows]
+            records = [_serialize(row, product_line, retailer) for row in history_rows]
     columns = list(dict.fromkeys((
         'id', 'crawl_datetime', 'item', 'sku', 'retailer_sku_name',
         *source['extra_format_columns'], 'final_sku_price',
         'original_sku_price', 'star_rating', 'count_of_star_ratings',
         'count_of_reviews', 'calendar_week', 'product_url',
     )))
-    editable = list(get_sem_editable_columns(product_line))
+    if retailer == SEM_HOMEDEPOT_RETAILER:
+        columns.insert(columns.index('original_sku_price') + 1, 'savings')
+    editable = list(get_sem_editable_columns(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
-        'retailer': SEM_RETAILER,
+        'retailer': retailer,
         'column_names': columns,
         'select_cols': list(get_sem_table_columns(product_line)),
         'editable_cols': editable,
