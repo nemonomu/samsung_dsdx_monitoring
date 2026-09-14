@@ -196,7 +196,7 @@ class SedaNullTests(unittest.TestCase):
         for name in ('format', 'anomaly'):
             self.assertFalse(any(item['key'].startswith('seda_') for item in menus[name]))
 
-    def test_registered_null_dashboard_and_detail_route_to_seda_once(self):
+    def test_null_dashboard_and_detail_route_to_seda_without_db_registration(self):
         self.add(id=1, sku=None)
         config = {source['section_code']: {'checks': {}} for source in SEDA_SOURCE_CONFIG.values()}
         with patch.object(nulls, 'load_null_check_config', return_value=config), \
@@ -213,9 +213,24 @@ class SedaNullTests(unittest.TestCase):
                 patch.object(nulls, '_get_tse_runtime', return_value=None), \
                 patch.object(nulls, '_append_tse_null_stats', return_value=0), \
                 patch.object(nulls.seg_validation, 'append_null_stats', return_value=0), \
-                patch.object(seda, 'append_null_stats') as seda_stats:
+                patch.object(seda, 'append_null_stats', return_value=0) as seda_stats:
             nulls.get_null_stats(self.cursor, DAY, include_youtube=False)
-            seda_stats.assert_not_called()
+            seda_stats.assert_called_once()
+
+        with patch.object(nulls, 'load_null_check_config', return_value={}), \
+                patch.object(nulls, '_get_tse_runtime', return_value=None), \
+                patch.object(nulls.seg_validation, 'SEG_SOURCE_CONFIG', {}):
+            categories = nulls.get_all_categories()
+            sidebar = context.build_sidebar_groups('null_validation')
+        self.assertEqual(
+            ['seda_tv_retail', 'seda_ref_retail', 'seda_ldy_retail'],
+            categories,
+        )
+        seda_menu = next(
+            item for item in sidebar[0]['items']
+            if item['name'] == 'SEDA Retail'
+        )
+        self.assertEqual(3, len(seda_menu['children']))
 
 
 class SedaNullSqlTests(unittest.TestCase):

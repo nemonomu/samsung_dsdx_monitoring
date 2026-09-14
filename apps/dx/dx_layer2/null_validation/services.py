@@ -828,6 +828,9 @@ def get_all_categories():
                 and source['section_code'] not in categories
             ):
                 categories.append(source['section_code'])
+    for source in seda_null_validation.SEDA_SOURCE_CONFIG.values():
+        if source['section_code'] not in categories:
+            categories.append(source['section_code'])
     for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values():
         if source['section_code'] not in categories:
             categories.append(source['section_code'])
@@ -2504,10 +2507,9 @@ def get_null_stats(cursor, target_date, include_youtube=True):
     total_null_issues += seg_validation.append_null_stats(
         cursor, target_date, null_validation
     )
-    if any(seda_null_validation.product_line_for(category) for category in config):
-        total_null_issues += seda_null_validation.append_null_stats(
-            cursor, target_date, null_validation
-        )
+    total_null_issues += seda_null_validation.append_null_stats(
+        cursor, target_date, null_validation
+    )
     if any(sem_validation.product_line_for(category) for category in config):
         total_null_issues += sem_validation.append_null_stats(
             cursor, target_date, null_validation
