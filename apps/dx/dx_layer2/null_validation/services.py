@@ -2930,6 +2930,7 @@ def _null_evidence_save_source(table_name):
     basename = _table_basename(table_name)
     groups = (
         ('SEA', SEA_RETAIL_SOURCES),
+        ('SEDA', seda_null_validation.SEDA_SOURCE_CONFIG),
         ('SIEL', SIEL_SOURCE_CONFIG),
         ('SEM', getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})),
         ('SEG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})),
@@ -2949,7 +2950,7 @@ def _capture_null_review_record(cursor, table_name, record_id, column_name,
     """Lock and capture the value plus identity from the validated source row."""
     country, _product, source = evidence_source
     day = datetime.strptime(str(inspection_date), '%Y-%m-%d').date()
-    source_day = day - timedelta(days=1) if country == 'SEA' else day
+    source_day = day - timedelta(days=1) if country in {'SEA', 'SEDA'} else day
     if country == 'SIEL':
         date_where, date_params = _siel_date_bounds(source, str(source_day))
     else:
@@ -3145,6 +3146,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if seda_product_line and not seda_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
+    if seda_product_line:
+        retailer = seda_null_validation.display_seda_retailer(retailer)
     item_value = (
         None if youtube_columns is not None
         else str(row[2]) if row[2] else None
@@ -3233,7 +3236,13 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             conn.rollback()
             return {'error': '확인 대상 상품이 변경됐습니다. 다시 조회해 주세요.', 'status_code': 409}
         current_account = str(evidence_record.get('account_name') or '').strip()
-        if current_account and current_account.casefold() != str(retailer or '').strip().casefold():
+        same_retailer = (
+            seda_null_validation.seda_retailer_key(current_account)
+            == seda_null_validation.seda_retailer_key(retailer)
+            if seda_product_line else
+            current_account.casefold() == str(retailer or '').strip().casefold()
+        )
+        if current_account and not same_retailer:
             conn.rollback()
             return {'error': '리테일러가 변경됐습니다. 다시 조회해 주세요.', 'status_code': 409}
 

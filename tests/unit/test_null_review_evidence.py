@@ -56,7 +56,7 @@ class NullReviewEvidenceTests(unittest.TestCase):
             **(context or self.context),
         )
 
-    def test_three_eligible_reasons_carry_across_all_five_countries(self):
+    def test_three_eligible_reasons_carry_across_all_six_countries(self):
         for country in sorted(reviews.COUNTRIES):
             for reason in sorted(reviews.ELIGIBLE_REASONS):
                 with self.subTest(country=country, reason=reason):
@@ -141,12 +141,18 @@ class NullReviewEvidenceTests(unittest.TestCase):
         self.assertIsNone(self.match(current, day='2026-09-11'))
         self.assertIsNone(self.match([], day='2026-09-13'))
 
-    def test_non_target_country_never_uses_evidence(self):
+    def test_seda_uses_evidence_and_non_target_country_does_not(self):
         context = dict(self.context, country='SEDA')
+        metadata, _row, cursor = self.capture(context=context)
+        self.assertIsNotNone(metadata)
+        self.assertEqual(1, len(cursor.calls))
+        self.assertTrue(reviews.uses_new_policy('2026-09-13', 'SEDA'))
+
+        context = dict(self.context, country='OTHER')
         metadata, row, cursor = self.capture(context=context)
         self.assertIsNone(metadata)
         self.assertEqual(cursor.calls, [])
-        self.assertFalse(reviews.uses_new_policy('2026-09-13', 'SEDA'))
+        self.assertFalse(reviews.uses_new_policy('2026-09-13', 'OTHER'))
 
     def test_late_manual_confirmation_only_applies_from_actual_next_day(self):
         _, row, _ = self.capture(now=datetime(2026, 9, 15, 9, tzinfo=reviews.KOREA))

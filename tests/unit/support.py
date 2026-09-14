@@ -70,6 +70,22 @@ def seg_validation_stub():
     )
 
 
+def seda_null_validation_stub():
+    """No-op SEDA dependency for isolated country Layer 2 service tests."""
+    return module_stub(
+        'apps.dx.dx_layer2.seda_null_validation',
+        product_line_for=lambda _value: None,
+        append_null_stats=lambda *_args, **_kwargs: 0,
+        null_detail=lambda *_args, **_kwargs: {},
+        SEDA_SOURCE_CONFIG={},
+        get_seda_null_columns=lambda *_args, **_kwargs: (),
+        select_record=lambda *_args, **_kwargs: None,
+        missing=lambda value: value is None or str(value).strip() == '',
+        display_seda_retailer=lambda value: value,
+        seda_retailer_key=lambda value: str(value or '').strip().lower().replace(' ', ''),
+    )
+
+
 def load_module(relative_path, module_name, stubs=None):
     path = REPO_ROOT / relative_path
     spec = importlib.util.spec_from_file_location(module_name, path)

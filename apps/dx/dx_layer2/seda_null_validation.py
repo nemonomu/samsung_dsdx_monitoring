@@ -4,10 +4,13 @@ from collections.abc import Mapping
 from datetime import date, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.null_review_evidence import uses_new_policy
 from apps.common.seda_retail import (
-    SEDA_SOURCE_CONFIG, get_seda_null_columns,
+    SEDA_COUNTRY, SEDA_SOURCE_CONFIG, display_seda_retailer,
+    get_seda_null_columns,
     get_seda_null_select_columns, get_seda_product_line, seda_retailer_key,
 )
+from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 
 
 product_line_for = get_seda_product_line
@@ -126,29 +129,42 @@ def _load_normal_reviews(cursor, target_date, source):
 def append_null_stats(cursor, target_date, validation):
     total = 0
     for product_line, source in SEDA_SOURCE_CONFIG.items():
-        reviews = _load_normal_reviews(cursor, target_date, source)
+        normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
         for retailer in source['retailers']:
             rows, mapping = latest_rows(cursor, target_date, source, retailer)
+            fields = list(get_seda_null_columns(product_line, retailer))
+            reviews = normal_reviews
+            review_stats = {}
+            if uses_new_policy(target_date, SEDA_COUNTRY):
+                reviews, review_stats, auto_logs = review_state(
+                    cursor, target_date, rows, fields, normal_reviews,
+                    table_name=source['table_name'], country=SEDA_COUNTRY,
+                    product_line=product_line, retailer=retailer,
+                    is_null=lambda value, _field: missing(value),
+                )
+                validation.setdefault('auto_null_reviews', []).extend(auto_logs)
             counts = {
                 column: sum(missing(row.get(column)) and f"{row['id']}_{column}" not in reviews
                             for row in rows)
-                for column in get_seda_null_columns(product_line, retailer)
+                for column in fields
             }
             count = sum(counts.values())
             retailers.append({
                 'retailer': retailer, 'total': len(rows), 'total_null_count': count,
                 'fields_detail': counts, 'status': 'CRITICAL' if count else 'OK',
-                **mapping,
+                **mapping, **review_stats,
             })
         count = sum(retailer['total_null_count'] for retailer in retailers)
-        validation['tables'].append({
+        table_stats = {
             'table': source['section_code'], 'table_name': source['display_name'],
             'total_records': sum(retailer['total'] for retailer in retailers),
             'total_issues': count, 'status': 'CRITICAL' if count else 'OK',
             'fields': list(get_seda_null_columns(product_line)), 'retailers': retailers,
             **_mapping(target_date, source),
-        })
+        }
+        add_review_totals(table_stats, retailers)
+        validation['tables'].append(table_stats)
         total += count
     return total
 
@@ -162,6 +178,15 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     canonical_retailer = next(name for name in source['retailers']
                               if seda_retailer_key(name) == seda_retailer_key(retailer))
     rows, mapping = latest_rows(cursor, target_date, source, canonical_retailer)
+    normal_reviews = _load_normal_reviews(cursor, target_date, source)
+    review_stats = {}
+    if uses_new_policy(target_date, SEDA_COUNTRY):
+        normal_reviews, review_stats, _auto_logs = review_state(
+            cursor, target_date, rows, [column], normal_reviews,
+            table_name=source['table_name'], country=SEDA_COUNTRY,
+            product_line=product_line, retailer=canonical_retailer,
+            is_null=lambda value, _field: missing(value),
+        )
     targets = [row for row in rows if missing(row.get(column))]
     days = min(30, max(1, int(days or 3)))
     source_day = date.fromisoformat(mapping['source_date'])
@@ -181,7 +206,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         'editable_cols': list(allowed), 'actual_table': source['table_name'],
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display}, 'query_retailer': canonical_retailer,
-        'normal_reviews': _load_normal_reviews(cursor, target_date, source),
+        'normal_reviews': normal_reviews, **review_stats,
         'supports_day_history': True, 'history_days': days,
         'date_column': source['date_column'], 'readonly': False,
         **mapping,

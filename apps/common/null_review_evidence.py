@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 POLICY_START = date(2026, 9, 12)
 POLICY_VERSION = 1
-COUNTRIES = frozenset({'SEA', 'SEM', 'SIEL', 'TSE', 'SEG'})
+COUNTRIES = frozenset({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'})
 PRODUCT_LINES = frozenset({'TV', 'REF', 'LDY'})
 KOREA = ZoneInfo('Asia/Seoul')
 EVIDENCE_TABLE = 'public.monitoring_null_review_evidence'

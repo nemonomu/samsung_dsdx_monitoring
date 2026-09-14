@@ -6,6 +6,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from apps.common import null_review_evidence as evidence
 from apps.common.seda_retail import (
     SEDA_SOURCE_CONFIG, SEDA_NULL_COLUMNS, get_seda_null_columns,
     get_seda_null_select_columns,
@@ -55,6 +56,9 @@ class SedaNullTests(unittest.TestCase):
             correction_type TEXT, status TEXT, record_id INTEGER, column_name TEXT,
             memo TEXT, created_id TEXT, created_at TEXT, reason TEXT)''')
         self.cursor = MemoryCursor(self.db)
+        self.evidence_patch = patch.object(evidence, 'load_evidence', return_value=[])
+        self.evidence_patch.start()
+        self.addCleanup(self.evidence_patch.stop)
         original_execute = self.cursor.execute
         self.cursor.execute = lambda query, params=(): original_execute(
             query.replace('LEFT(BTRIM(anchor.crawl_strdatetime), 10)', 'SUBSTR(BTRIM(anchor.crawl_strdatetime), 1, 10)')
@@ -160,13 +164,27 @@ class SedaNullTests(unittest.TestCase):
         self.assertIn('FOR UPDATE OF source', cursor.calls[0][0])
         self.assertEqual('2026-09-13', cursor.calls[0][1][0])
         cursor = ScriptedCursor([
-            {'fetchone': (None, 'Magalu', '001', 'current')},
-            {'fetchone': None}, {'rowcount': 1},
+            {'fetchone': (None, 'CasasBahia', '001', 'current')},
+            {'fetchone': (3, '001', 'Product A', None, 'CasasBahia')},
+            {'fetchone': None},
+            {'fetchone': (51,)},
+            {'fetchone': (101,)},
         ])
         conn = Mock()
-        result = nulls.save_null_review(cursor, conn, SOURCE['table_name'], 3, 'sku', 'normal', '', 'test reason', str(DAY), 'null', 'tester')
+        result = nulls.save_null_review(
+            cursor, conn, SOURCE['table_name'], 3, 'screen_size', 'normal', '',
+            '해당값 정상 확인', str(DAY), 'null', 'tester',
+        )
         self.assertTrue(result['success'])
         self.assertEqual('2026-09-13', cursor.calls[0][1][0])
+        self.assertEqual((3, '2026-09-13'), cursor.calls[1][1])
+        snapshot = dict(zip(evidence._EVIDENCE_COLUMNS[1:], cursor.calls[4][1]))
+        self.assertEqual('SEDA', snapshot['country'])
+        self.assertEqual('TV', snapshot['product_line'])
+        self.assertEqual('Casas Bahia', snapshot['retailer'])
+        self.assertEqual('001', snapshot['item'])
+        self.assertEqual('Product A', snapshot['product_name'])
+        self.assertTrue(result['supports_null_auto_review'])
         conn.commit.assert_called_once()
         cursor = ScriptedCursor([{'fetchone': ('SKU', 'Magalu', '001', 'current')}])
         self.assertEqual(409, nulls.save_null_review(cursor, Mock(), SOURCE['table_name'], 3, 'sku', 'normal', '', 'reason', str(DAY), 'null', 'tester')['status_code'])

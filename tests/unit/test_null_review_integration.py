@@ -7,7 +7,9 @@ from unittest.mock import Mock, patch
 
 from apps.common import null_review_evidence as evidence
 from apps.common.inspection_dates import resolve_monitoring_date
-from apps.dx.dx_layer2 import null_review_state, sem_validation, seg_validation
+from apps.dx.dx_layer2 import (
+    null_review_state, seda_null_validation, sem_validation, seg_validation,
+)
 from tests.unit.support import ScriptedCursor, load_module
 from tests.unit.test_layer2_sea_null_validation import common_stubs as sea_stubs
 from tests.unit.test_layer2_siel_null_validation import (
@@ -205,6 +207,69 @@ class CountryNullIntegrationTests(unittest.TestCase):
                 self.assertTrue(detail['supports_null_auto_review'])
                 self.assertEqual({'sku': 1}, detail['auto_reviewed_fields_detail'])
                 self.assertEqual({'sku': 0}, detail['manual_reviewed_fields_detail'])
+
+    def test_seda_summary_and_history_apply_previous_evidence(self):
+        product_line = 'seda_tv'
+        retailer = 'Casas Bahia'
+        source = dict(seda_null_validation.SEDA_SOURCE_CONFIG[product_line])
+        source['retailers'] = (retailer,)
+        context = dict(
+            table_name=source['table_name'], country='SEDA',
+            product_line='TV', retailer=retailer,
+        )
+        basis = current_record(id=41, sku='sku-1', screen_size=None)
+        captured = captured_evidence(
+            context, record=basis, column='screen_size',
+        )
+        current = current_record(
+            sku='sku-1', screen_size=None, country='SEDA',
+            account_name='CasasBahia',
+            crawl_strdatetime='2026-09-12 20:00:00',
+        )
+        mapping = dict(
+            inspection_date='2026-09-13', source_date='2026-09-12',
+            offset_days=-1, source_key=product_line,
+        )
+        history = [{
+            **basis, 'crawl_strdatetime': '2026-09-11 20:00:00',
+        }]
+        with patch.object(
+                seda_null_validation, 'SEDA_SOURCE_CONFIG',
+                {product_line: source}), patch.object(
+                seda_null_validation, 'latest_rows',
+                return_value=([current], mapping)), patch.object(
+                seda_null_validation, '_load_normal_reviews',
+                return_value={}), patch.object(
+                seda_null_validation, 'get_seda_null_columns',
+                return_value=('screen_size',)), patch.object(
+                seda_null_validation, '_history_rows',
+                return_value=history), patch.object(
+                evidence, 'load_evidence', return_value=[captured]):
+            validation = {'tables': []}
+            count = seda_null_validation.append_null_stats(
+                Mock(), DAY, validation,
+            )
+            detail = seda_null_validation.null_detail(
+                Mock(), DAY, product_line, 'CasasBahia', 'screen_size',
+                days=3,
+            )
+
+        self.assertEqual(0, count)
+        table = validation['tables'][0]
+        self.assertEqual(1, table['raw_null_count'])
+        self.assertEqual(1, table['auto_reviewed_count'])
+        self.assertEqual(1, len(validation['auto_null_reviews']))
+        retailer_stats = table['retailers'][0]
+        self.assertEqual(
+            {'screen_size': 1},
+            retailer_stats['auto_reviewed_fields_detail'],
+        )
+        self.assertEqual([41, 42], [row['id'] for row in detail['results']])
+        self.assertTrue(detail['supports_null_auto_review'])
+        self.assertTrue(detail['normal_reviews']['42_screen_size']['auto_applied'])
+        self.assertEqual(
+            {'screen_size': 1}, detail['auto_reviewed_fields_detail'],
+        )
 
     def test_tse_new_summary_and_detail_never_consult_old_carry_forward(self):
         runtime = self.tse._get_tse_runtime()
