@@ -12,6 +12,9 @@
         'SEA AMAZON TV', 'SEA BESTBUY TV', 'SEA WALMART TV',
         'SEA BESTBUY REF', 'SEA LOWES REF',
         'SEA BESTBUY LDY', 'SEA LOWES LDY',
+        'SEDA MAGALU TV', 'SEDA CASAS BAHIA TV',
+        'SEDA MAGALU REF', 'SEDA CASAS BAHIA REF',
+        'SEDA MAGALU LDY', 'SEDA CASAS BAHIA LDY',
         'SIEL AMAZON TV', 'SIEL FLIPKART TV',
         'SIEL AMAZON REF', 'SIEL FLIPKART REF',
         'SIEL AMAZON LDY', 'SIEL FLIPKART LDY',
@@ -54,6 +57,15 @@
         'dx_seg.dx_seg_ref_retail_com': 'REF',
         'dx_seg_ldy_retail_com': 'LDY',
         'dx_seg.dx_seg_ldy_retail_com': 'LDY'
+    };
+
+    var SEDA_TABLE_CATEGORY = {
+        'dx_seda_tv_retail_com': 'TV',
+        'dx_seda.dx_seda_tv_retail_com': 'TV',
+        'dx_seda_ref_retail_com': 'REF',
+        'dx_seda.dx_seda_ref_retail_com': 'REF',
+        'dx_seda_ldy_retail_com': 'LDY',
+        'dx_seda.dx_seda_ldy_retail_com': 'LDY'
     };
 
     var SEM_TABLE_CATEGORY = {
@@ -112,6 +124,10 @@
         var segCategory = SEG_TABLE_CATEGORY[tableName];
         if (segCategory) {
             return marketRetailerName('SEG', retailer, segCategory);
+        }
+        var sedaCategory = SEDA_TABLE_CATEGORY[tableName];
+        if (sedaCategory) {
+            return marketRetailerName('SEDA', retailer, sedaCategory);
         }
         var semCategory = SEM_TABLE_CATEGORY[tableName];
         if (semCategory) {
@@ -257,7 +273,8 @@
 
         var retailerData = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = SEA_TABLE_CATEGORY[tn] || SIEL_TABLE_CATEGORY[tn]
+            var category = SEA_TABLE_CATEGORY[tn] || SEDA_TABLE_CATEGORY[tn]
+                || SIEL_TABLE_CATEGORY[tn]
                 || SEM_TABLE_CATEGORY[tn]
                 || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
@@ -373,7 +390,8 @@
 
         var retailerData = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = SEA_TABLE_CATEGORY[tn] || SIEL_TABLE_CATEGORY[tn]
+            var category = SEA_TABLE_CATEGORY[tn] || SEDA_TABLE_CATEGORY[tn]
+                || SIEL_TABLE_CATEGORY[tn]
                 || SEM_TABLE_CATEGORY[tn]
                 || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
@@ -425,7 +443,8 @@
 
         var ruleGroups = {};
         Object.keys(tableGroups).forEach(function(tn) {
-            var category = SEA_TABLE_CATEGORY[tn] || SIEL_TABLE_CATEGORY[tn]
+            var category = SEA_TABLE_CATEGORY[tn] || SEDA_TABLE_CATEGORY[tn]
+                || SIEL_TABLE_CATEGORY[tn]
                 || SEM_TABLE_CATEGORY[tn]
                 || TSE_TABLE_CATEGORY[tn] || tn;
             tableGroups[tn].forEach(function(d) {
@@ -584,6 +603,7 @@
                     tableGroups[tn].forEach(function(d) {
                         var isRetailTable = Boolean(
                             TSE_TABLE_CATEGORY[tn] || SEA_TABLE_CATEGORY[tn]
+                            || SEDA_TABLE_CATEGORY[tn]
                             || SIEL_TABLE_CATEGORY[tn]
                             || SEM_TABLE_CATEGORY[tn]
                             || SEG_TABLE_CATEGORY[tn]

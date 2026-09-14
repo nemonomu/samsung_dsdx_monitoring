@@ -59,6 +59,12 @@ const reportData = {
             'dx_siel.dx_siel_ref_retail_com': [
                 { retailer: 'Amazon', status: 'normal', column_name: 'sku', item: 'SR1' }
             ],
+            'dx_seda.dx_seda_ldy_retail_com': [
+                { retailer: 'Magalu', status: 'normal', column_name: 'sku', item: 'SD1' }
+            ],
+            'dx_seda.dx_seda_tv_retail_com': [
+                { retailer: 'Casas Bahia', status: 'corrected', column_name: 'sku', item: 'ST1' }
+            ],
             'dx_sem.dx_sem_tv_retail_com': [
                 { retailer: 'Liverpool', status: 'corrected', column_name: 'sku', item: 'MT1' }
             ],
@@ -168,6 +174,8 @@ setImmediate(() => {
     assert(html.includes('SEA LOWES LDY'));
     assert(html.includes('SIEL AMAZON REF'));
     assert(html.includes('SIEL FLIPKART LDY'));
+    assert(html.includes('SEDA MAGALU LDY'));
+    assert(html.includes('SEDA CASAS BAHIA TV'));
     assert(html.includes('SEM Liverpool TV'));
     assert(html.includes('SEM Liverpool REF'));
     assert(html.includes('SEM Liverpool LDY'));
@@ -175,6 +183,8 @@ setImmediate(() => {
     assert(nullSummary.includes('SEG OTTO REF 확인 8건'));
     assert(nullSummary.includes('SEG MEDIAMARKT LDY 확인 6건'));
     assert(nullSummary.includes('SEG OTTO LDY 확인 4건'));
+    assert(nullSummary.includes('SEDA MAGALU LDY 확인 1건'));
+    assert(nullSummary.includes('SEDA CASAS BAHIA TV 수정 1건'));
     const crossSummary = renderedRows.find(row => row.includes('크로스필드 검증'));
     assert(crossSummary.includes('SEG OTTO REF 확인 1건'));
     assert(renderedRows.find(row => row.includes('형식 검증')).includes('SEG AMAZON TV 수정 1건'));
@@ -191,10 +201,12 @@ setImmediate(() => {
     assert(!html.includes('public.ldy_retail_com'));
     assert(!html.includes('dx_siel.dx_siel_ref_retail_com'));
     assert(!html.includes('dx_siel.dx_siel_ldy_retail_com'));
+    assert(!html.includes('dx_seda.dx_seda_ldy_retail_com'));
+    assert(!html.includes('dx_seda.dx_seda_tv_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_tv_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=8"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=9"));
     console.log('Layer 4 retail report label tests passed');
 });
