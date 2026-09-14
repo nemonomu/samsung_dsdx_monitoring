@@ -168,6 +168,7 @@ def _result(cursor, target_date, product_line):
             'detail_code': f'{key}_{rule_key}',
             'rule_key': rule_key,
             'detail_name': name,
+            'retailers': list(source['retailers']) if rule in _RULES else [SEM_HOMEDEPOT_RETAILER],
             'field1': field1,
             'field2': field2,
             'validation_type': rule_key,

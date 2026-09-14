@@ -140,6 +140,18 @@ class HomeDepotRulesTests(unittest.TestCase):
             summary = crossfield.get_sem_cross_field_summary(None, DAY, 'sem_tv')
         self.assertEqual(4, len(summary['rule_summary']))
 
+    def test_rule_retailers_are_visible_even_without_findings(self):
+        for product in ('sem_tv', 'sem_ref', 'sem_ldy'):
+            with self.subTest(product=product), \
+                    patch.object(crossfield, '_latest_rows', return_value=([], MAPPING)):
+                summary = crossfield.get_sem_cross_field_summary(None, DAY, product)
+            rules = summary['rule_summary']
+            self.assertEqual(0, summary['total_anomalies'])
+            expected_common = ['Liverpool'] if product == 'sem_tv' else ['Liverpool', 'HomeDepot']
+            self.assertEqual([expected_common] * 4, [rule['retailers'] for rule in rules[:4]])
+            if product != 'sem_tv':
+                self.assertEqual([['HomeDepot']] * 4, [rule['retailers'] for rule in rules[4:]])
+
 
 class HomeDepotIntegrationTests(unittest.TestCase):
     def latest(self, _cursor, _date, source, retailer='Liverpool'):

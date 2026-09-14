@@ -1000,13 +1000,15 @@ function renderCrossfieldSummaryContent(title, _category, data) {
         html += '<div class="rule-summary-container">';
         ruleSummary.forEach((rule, idx) => {
             const fieldDisplay = rule.field2 ? `${rule.field1} ↔ ${rule.field2}` : rule.field1;
+            const retailerScope = Array.isArray(rule.retailers) ? rule.retailers.join(' · ') : '';
+            const ruleTitle = retailerScope ? (rule.detail_name || fieldDisplay) : fieldDisplay;
             const queryId = `crossfield-query-${idx}`;
             const displayQuery = isCanonicalProductLine
                 ? (rule.query || '쿼리 없음')
                 : replaceCrossfieldQueryPlaceholders(
                     rule.query, tableName, dateCol, noReviewTexts, targetDate
                 );
-            const detailTitle = `${fieldDisplay} (${rule.error_message})`;
+            const detailTitle = `${ruleTitle}${retailerScope ? ' [' + retailerScope + ']' : ''} (${rule.error_message})`;
             const errorCount = Number(rule.error_count || 0);
             const reviewCount = Number(rule.review_count || 0);
             const countBadges = errorCount === 0 && reviewCount === 0
@@ -1018,9 +1020,10 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                     <div class="rule-summary-card" data-rule-id="${esc(String(rule.rule_id))}" onclick="loadCrossfieldRuleDetail('${escJs(data.product_line.toLowerCase())}', '${escJs(rule.rule_id)}', '${escJs(data.date)}', '${escJs(detailTitle)}')">
                         <div class="rule-info">
                             <div class="rule-name">
-                                ${esc(fieldDisplay)}
+                                ${esc(ruleTitle)}
                                 <button class="btn-show-query" onclick="event.stopPropagation(); toggleCrossfieldQuery('${escJs(queryId)}')" title="검증 쿼리 보기">SQL</button>
                             </div>
+                            ${retailerScope ? `<div class="rule-desc">적용 대상: ${esc(retailerScope)}</div><div class="rule-desc">${esc(fieldDisplay)}</div>` : ''}
                             <div class="rule-desc">${esc(rule.error_message)}</div>
                             ${Number(rule.missing_comparison_count || 0) > 0
                                 ? `<div class="rule-desc">이전 5일 내 비교 기록 없음 ${Number(rule.missing_comparison_count).toLocaleString()}건</div>`
@@ -1087,6 +1090,7 @@ function showGenericCrossfieldGuide(data, title) {
             const ruleName = rule.detail_name || fieldDisplay;
             return `<li>
                 <strong>${esc(ruleName)}</strong>
+                ${Array.isArray(rule.retailers) ? `<p>적용 대상: ${esc(rule.retailers.join(' · '))}</p>` : ''}
                 <code>${esc(fieldDisplay)}</code>
                 <p>${esc(rule.error_message || '등록된 검수 조건을 확인합니다.')}</p>
             </li>`;

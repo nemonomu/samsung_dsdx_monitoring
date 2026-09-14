@@ -26,9 +26,9 @@ assert(common.includes("type=${category}"));
 assert(common.includes("const loadedRules = isSemCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
-assert(dashboard.includes("common.js' %}?v=20260914-1"));
+assert(dashboard.includes("common.js' %}?v=20260914-2"));
 assert(dashboard.includes("cross-field.js' %}?v=26"));
-assert(detail.includes("common.js' %}?v=20260914-1"));
+assert(detail.includes("common.js' %}?v=20260914-2"));
 assert(detail.includes("cross-field.js' %}?v=26"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
@@ -63,6 +63,10 @@ with patch.object(sem_services, '_latest_rows', side_effect=home_latest), patch.
     summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), 'sem_ref')
     detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), 'sem_ref', 'sem_ref:savings_missing', days=3)
     fixtures.append({'summary': summary, 'detail': detail, 'retailer': 'HomeDepot'})
+with patch.object(sem_services, '_latest_rows', return_value=([], mapping)):
+    for product in ('sem_ref', 'sem_ldy'):
+        summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), product)
+        fixtures.append({'summary': summary, 'no_findings': True})
 print(json.dumps(fixtures))
 `], {encoding: 'utf8'}));
 
@@ -87,6 +91,27 @@ print(json.dumps(fixtures))
         context.isCrossFieldInline = () => true;
         context.renderCrossfieldSummaryContent('SEM', '', fixture.summary);
         assert(!container.innerHTML.includes('D-1'));
+        const summaryHtml = container.innerHTML;
+        for (const rule of fixture.summary.rule_summary) {
+            const card = summaryHtml.split(`data-rule-id="${rule.rule_id}"`)[1].split('class="rule-count-group"')[0];
+            assert(card.includes(rule.detail_name));
+            assert(card.includes('적용 대상: ' + rule.retailers.join(' · ')));
+            if (rule.rule_key === 'savings_missing') assert(!card.includes('Liverpool'));
+        }
+        if (fixture.no_findings) {
+            assert.strictEqual((summaryHtml.match(/class="rule-count zero"/g) || []).length, 8);
+            assert(summaryHtml.includes('HomeDepot 할인율 일치'));
+            assert(summaryHtml.includes('적용 대상: Liverpool · HomeDepot'));
+            let guideHtml;
+            context.AppModal = {
+                setTitle() {}, open() {},
+                setBody(_name, html) { guideHtml = html; },
+            };
+            context.showGenericCrossfieldGuide(fixture.summary, 'SEM');
+            assert(guideHtml.includes('HomeDepot 할인율 일치'));
+            assert(guideHtml.includes('적용 대상: Liverpool · HomeDepot'));
+            continue;
+        }
         const actions = [...container.innerHTML.matchAll(/onclick="(loadCrossfieldRuleDetail[^\"]+)"/g)];
         const action = actions.find(match => match[1].includes(fixture.detail.rule_id))[1];
         await vm.runInContext(action, context);
