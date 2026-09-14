@@ -68,7 +68,9 @@ const emailReportData = {
             'item', 'sku_popularity', 'promotion_position',
             'promotion_type', 'trend_rank',
             'number_of_ppl_purchased_yesterday',
-            'number_of_ppl_added_to_carts'
+            'number_of_ppl_added_to_carts', 'discount_type',
+            'delivery_availability', 'sku_status', 'offer',
+            'retailer_sku_name_similar'
         ],
         retailers: [{
             retailer: 'Amazon',
@@ -78,7 +80,9 @@ const emailReportData = {
             redirect_true_count: 2,
             columns: [
                 { column: 'item', total_count: 248, null_count: 0 },
-                { column: 'sku_popularity', total_count: 248, null_count: 3 }
+                { column: 'sku_popularity', total_count: 248, null_count: 3 },
+                { column: 'discount_type', total_count: 248, null_count: 7 },
+                { column: 'delivery_availability', total_count: 248, null_count: 8 }
             ]
         }, {
             retailer: 'Bestbuy',
@@ -90,7 +94,8 @@ const emailReportData = {
                 { column: 'item', total_count: 315, null_count: 0 },
                 { column: 'promotion_position', total_count: 16, null_count: 0 },
                 { column: 'promotion_type', total_count: 16, null_count: 1 },
-                { column: 'trend_rank', total_count: 10, null_count: 0 }
+                { column: 'trend_rank', total_count: 10, null_count: 0 },
+                { column: 'sku_status', total_count: 315, null_count: 9 }
             ]
         }, {
             retailer: 'Walmart',
@@ -110,7 +115,9 @@ const emailReportData = {
                     column: 'number_of_ppl_added_to_carts',
                     total_count: 316,
                     null_count: 6
-                }
+                },
+                { column: 'offer', total_count: 316, null_count: 10 },
+                { column: 'retailer_sku_name_similar', total_count: 316, null_count: 11 }
             ]
         }]
     }, {
@@ -493,6 +500,20 @@ async function run() {
         assert.strictEqual((row.match(/>-<\/td>/g) || []).length, 4);
     });
     [
+        ['discount_type', 248, 7],
+        ['delivery_availability', 248, 8],
+        ['sku_status', 315, 9],
+        ['offer', 316, 10],
+        ['retailer_sku_name_similar', 316, 11]
+    ].forEach(function(expected) {
+        const row = seaTvMissingRow(expected[0]);
+        assert(row.includes(
+            '<td align="center">' + expected[1] + '</td>'
+            + '<td align="center">' + expected[2] + '</td>'
+        ));
+        assert.strictEqual((row.match(/>-<\/td>/g) || []).length, 4);
+    });
+    [
         ['number_of_ppl_purchased_yesterday', 5],
         ['number_of_ppl_added_to_carts', 6]
     ].forEach(function(expected) {
@@ -534,7 +555,6 @@ async function run() {
     assert(emailHtml.includes('redirect'));
     assert(emailHtml.includes('Amazon redirect=TRUE 건수'));
     assert(emailHtml.includes('>2</td>'));
-    assert(emailHtml.indexOf('>sku</td>') < emailHtml.indexOf('>offer</td>'));
     const seaRefStart = emailHtml.indexOf('<div class="et">SEA - REF');
     const seaRefEnd = emailHtml.indexOf('<div class="et">SEDA - TV', seaRefStart);
     const seaRefTables = Array.from(
@@ -571,7 +591,7 @@ async function run() {
         (emailHtml.match(/<th rowspan="2">비고<\/th>/g) || []).length,
         4
     );
-    const offerRow = emailHtml.match(/<tr><td[^>]*>offer<\/td>([\s\S]*?)<\/tr>/);
+    const offerRow = seaRefTable.match(/<tr><td[^>]*>offer<\/td>([\s\S]*?)<\/tr>/);
     assert(offerRow);
     assert.strictEqual((offerRow[1].match(/>-<\/td>/g) || []).length, 2);
 

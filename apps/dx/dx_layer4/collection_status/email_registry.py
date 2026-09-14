@@ -73,21 +73,30 @@ def _source(key, country, product, table_name, date_column, date_mode,
 _SEA_TV_RETAILERS = (
     _retailer(
         'Amazon', exclude_redirect=True,
-        email_include_skipped_columns=('sku_popularity', 'savings'),
-        email_required_columns=('savings',),
+        email_include_skipped_columns=(
+            'sku_popularity', 'savings', 'discount_type',
+            'delivery_availability',
+        ),
+        email_required_columns=(
+            'savings', 'discount_type', 'delivery_availability',
+        ),
     ),
     _retailer(
         'Bestbuy', 'BestBuy',
         email_include_skipped_columns=(
             'promotion_position', 'promotion_type', 'trend_rank',
+            'sku_status',
         ),
+        email_required_columns=('sku_status',),
     ),
     _retailer(
         'Walmart',
         email_include_skipped_columns=(
             'sku_popularity', 'number_of_ppl_purchased_yesterday',
-            'number_of_ppl_added_to_carts',
+            'number_of_ppl_added_to_carts', 'offer',
+            'retailer_sku_name_similar',
         ),
+        email_required_columns=('offer', 'retailer_sku_name_similar'),
     ),
 )
 _SEA_APPLIANCE_RETAILERS = (
