@@ -114,6 +114,10 @@ class EmailRegistryTests(unittest.TestCase):
             ('sku', 'savings', 'discount_type', 'delivery_availability'),
         )
         self.assertEqual(
+            sea_tv_retailers['Amazon']['email_column_sources'],
+            (('sku', 'item'),),
+        )
+        self.assertEqual(
             sea_tv_retailers['Bestbuy']['email_include_skipped_columns'],
             (
                 'sku', 'promotion_position', 'promotion_type', 'trend_rank',
@@ -123,6 +127,10 @@ class EmailRegistryTests(unittest.TestCase):
         self.assertEqual(
             sea_tv_retailers['Bestbuy']['email_required_columns'],
             ('sku', 'sku_status'),
+        )
+        self.assertEqual(
+            sea_tv_retailers['Bestbuy']['email_column_sources'],
+            (('sku', 'item'),),
         )
         self.assertEqual(
             sea_tv_retailers['Walmart']['email_include_skipped_columns'],
@@ -135,6 +143,10 @@ class EmailRegistryTests(unittest.TestCase):
         self.assertEqual(
             sea_tv_retailers['Walmart']['email_required_columns'],
             ('sku', 'offer', 'retailer_sku_name_similar'),
+        )
+        self.assertEqual(
+            sea_tv_retailers['Walmart']['email_column_sources'],
+            (('sku', 'item'),),
         )
         self.assertEqual(
             [
@@ -312,8 +324,13 @@ class EmailReportDataTests(unittest.TestCase):
                 for index, column in enumerate(columns, 1):
                     self.assertEqual((100, index * 7), (metrics[index]['total_count'], metrics[index]['null_count']))
                     aggregate_sql = cursor.calls[-2][0]
-                    self.assertIn(f'source.{column} IS NULL', aggregate_sql)
-                    self.assertIn(f"BTRIM(CAST(source.{column} AS TEXT)) = ''", aggregate_sql)
+                    source_column = 'item' if (
+                        key == 'sea_tv' and column == 'sku'
+                    ) else column
+                    self.assertIn(f'source.{source_column} IS NULL', aggregate_sql)
+                    self.assertIn(f"BTRIM(CAST(source.{source_column} AS TEXT)) = ''", aggregate_sql)
+                    if source_column != column:
+                        self.assertNotIn(f'source.{column} IS NULL', aggregate_sql)
         for configured_source in registry.EMAIL_REPORT_SOURCES:
             for retailer in configured_source['retailers']:
                 if configured_source['country'] in ('SEG', 'SIEL') and retailer['name'] != 'Amazon':

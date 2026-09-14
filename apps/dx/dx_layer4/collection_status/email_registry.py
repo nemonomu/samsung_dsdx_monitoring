@@ -21,7 +21,8 @@ def _retailer(name, *aliases, exclude_redirect=False,
               include_unassigned=None, unsupported_columns=(),
               conditional_columns=(), optional_if_unconfigured=False,
               email_redirect_metric=False,
-              email_include_skipped_columns=(), email_required_columns=()):
+              email_include_skipped_columns=(), email_required_columns=(),
+              email_column_sources=()):
     retailer = {
         'name': name,
         'aliases': tuple(dict.fromkeys((name,) + aliases)),
@@ -34,6 +35,7 @@ def _retailer(name, *aliases, exclude_redirect=False,
             email_include_skipped_columns
         ),
         'email_required_columns': tuple(email_required_columns),
+        'email_column_sources': tuple(email_column_sources),
     }
     if include_unassigned is not None:
         retailer['include_unassigned'] = bool(include_unassigned)
@@ -80,6 +82,7 @@ _SEA_TV_RETAILERS = (
         email_required_columns=(
             'sku', 'savings', 'discount_type', 'delivery_availability',
         ),
+        email_column_sources=(('sku', 'item'),),
     ),
     _retailer(
         'Bestbuy', 'BestBuy',
@@ -88,6 +91,7 @@ _SEA_TV_RETAILERS = (
             'sku_status',
         ),
         email_required_columns=('sku', 'sku_status'),
+        email_column_sources=(('sku', 'item'),),
     ),
     _retailer(
         'Walmart',
@@ -97,6 +101,7 @@ _SEA_TV_RETAILERS = (
             'retailer_sku_name_similar',
         ),
         email_required_columns=('sku', 'offer', 'retailer_sku_name_similar'),
+        email_column_sources=(('sku', 'item'),),
     ),
 )
 _SEA_APPLIANCE_RETAILERS = (
@@ -287,6 +292,15 @@ def _validate_registry():
                 if not _IDENTIFIER.fullmatch(identifier):
                     raise ValueError(
                         f"Unsafe retailer column: {source['key']}"
+                    )
+            for display_column, source_column in retailer.get(
+                    'email_column_sources', ()):
+                if not (
+                    _IDENTIFIER.fullmatch(display_column)
+                    and _IDENTIFIER.fullmatch(source_column)
+                ):
+                    raise ValueError(
+                        f"Unsafe retailer column source: {source['key']}"
                     )
 
 
