@@ -33,8 +33,13 @@
         var dateFilter = config.timestamp
             ? config.dateColumn + ' >= (' + literal(day) + "::date::timestamp AT TIME ZONE 'Asia/Seoul')"
             : config.dateColumn + ' >= ' + literal(day);
+        var accountName = retailer.trim().toLowerCase();
+        // SEDA cards display "Casas Bahia"; the collected account is CasasBahia.
+        if (country === 'SEDA' && accountName.replace(/\s+/g, '') === 'casasbahia') {
+            accountName = 'casasbahia';
+        }
         return 'SELECT *\nFROM ' + config.table + '\nWHERE LOWER(BTRIM(account_name)) = ' +
-            literal(retailer.trim().toLowerCase()) + '\n  AND ' + dateFilter +
+            literal(accountName) + '\n  AND ' + dateFilter +
             '\n  AND batch_id ' + batchFilter + '\nORDER BY ' + config.dateColumn + ';';
     }
 

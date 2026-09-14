@@ -58,6 +58,16 @@ for (const country of ['SEA', 'SEDA', 'SIEL', 'SEG', 'TSE', 'SEM']) {
 }
 assert(query.buildQuery('SEA', 'TV', "A'B", "b'1, b2, b2", '2026-09-09').includes("IN ('b''1', 'b2')"));
 assert(query.buildQuery('SEA', 'TV', "A'B", 'b1', '2026-09-09').includes("= 'a''b'"));
+for (const product of ['TV', 'REF', 'LDY']) {
+    for (const name of ['Casas Bahia', 'CasasBahia', ' CASAS BAHIA ']) {
+        const sql = query.buildQuery('SEDA', product, name, 'c_batch', '2026-09-13');
+        assert(sql.includes("WHERE LOWER(BTRIM(account_name)) = 'casasbahia'\n"));
+    }
+    assert(query.buildQuery('SEDA', product, 'Magalu', 'm_batch', '2026-09-13')
+        .includes("WHERE LOWER(BTRIM(account_name)) = 'magalu'\n"));
+}
+assert(query.buildQuery('SEA', 'TV', 'A B', 'batch', '2026-09-13')
+    .includes("WHERE LOWER(BTRIM(account_name)) = 'a b'\n"));
 for (const args of [
     ['SEA', 'TV', 'Amazon', '', '2026-09-09'],
     ['SEA', 'TV', 'Amazon', ' , ', '2026-09-09'],
@@ -102,8 +112,19 @@ assert(nodes['l1-query-sql'].textContent.includes('FROM dx_sem.dx_sem_tv_retail_
 assert.strictEqual(nodes['l1-query-date'].value, '2026-03-01');
 
 (async () => {
+    // The SQL shown and copied from a Casas Bahia card must use the DB account.
+    query.button('SEDA', {name: 'TV', source_date: '2026-09-13',
+        retailers: [{retailer: 'Casas Bahia', batch_id: 'c_20260913_200300'}]}, 9, 0);
+    query.open('SEDA-9-0');
+    assert(body.includes('Casas Bahia / c_20260913_200300'));
+    const expectedSedaSql = "SELECT *\nFROM dx_seda.dx_seda_tv_retail_com\n" +
+        "WHERE LOWER(BTRIM(account_name)) = 'casasbahia'\n" +
+        "  AND crawl_strdatetime >= '2026-09-13'\n" +
+        "  AND batch_id = 'c_20260913_200300'\nORDER BY crawl_strdatetime;";
+    assert.strictEqual(nodes['l1-query-sql'].textContent, expectedSedaSql);
     // HTTP production pages need the legacy copy fallback inside the modal.
     await query.copy();
+    assert.strictEqual(copied, expectedSedaSql);
     assert.strictEqual(copied, nodes['l1-query-sql'].textContent);
     assert(fallbackRemoved);
     context.isSecureContext = true;
