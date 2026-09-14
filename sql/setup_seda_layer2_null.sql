@@ -5,6 +5,40 @@
 -- Re-running repairs matching configuration without creating duplicates.
 BEGIN;
 
+-- The NULL evidence table predates SEDA. Extend its country constraint so a
+-- SEDA manual confirmation and its automatic-review evidence commit together.
+DO $seda_evidence$
+DECLARE
+    country_constraint text;
+BEGIN
+    IF to_regclass('public.monitoring_null_review_evidence') IS NULL THEN
+        RAISE EXCEPTION
+            'public.monitoring_null_review_evidence is missing; run sql/create_null_review_evidence.sql first';
+    END IF;
+
+    FOR country_constraint IN
+        SELECT constraint_row.conname
+        FROM pg_constraint AS constraint_row
+        JOIN pg_attribute AS country_column
+          ON country_column.attrelid = constraint_row.conrelid
+         AND country_column.attname = 'country'
+         AND country_column.attnum = ANY(constraint_row.conkey)
+        WHERE constraint_row.conrelid =
+              'public.monitoring_null_review_evidence'::regclass
+          AND constraint_row.contype = 'c'
+    LOOP
+        EXECUTE format(
+            'ALTER TABLE public.monitoring_null_review_evidence DROP CONSTRAINT %I',
+            country_constraint
+        );
+    END LOOP;
+
+    ALTER TABLE public.monitoring_null_review_evidence
+        ADD CONSTRAINT monitoring_null_review_evidence_country_check
+        CHECK (country IN ('SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'));
+END
+$seda_evidence$;
+
 CREATE TEMP TABLE _seda_null_fields (
     product_line text, retailer text, column_name text,
     PRIMARY KEY (product_line, retailer, column_name)

@@ -1,5 +1,6 @@
 """SEDA NULL scope, matrix, detail, write permissions, and registration."""
 
+import re
 import sqlite3
 import unittest
 from datetime import date
@@ -270,9 +271,15 @@ class SedaNullSqlTests(unittest.TestCase):
             for table, columns in definitions.items():
                 db.execute(f'CREATE TABLE public.{table} (id INTEGER PRIMARY KEY, {columns}, {audit})')
             sql = (Path(__file__).resolve().parents[2] / 'sql/setup_seda_layer2_null.sql').read_text(encoding='utf-8')
+            evidence_migration = re.search(
+                r'DO \$seda_evidence\$.*?\$seda_evidence\$;', sql, re.DOTALL,
+            )
+            self.assertIsNotNone(evidence_migration)
+            self.assertIn("'SEDA'", evidence_migration.group(0))
+            sqlite_sql = sql[:evidence_migration.start()] + sql[evidence_migration.end():]
 
             def seed():
-                db.executescript(sql.replace(' ON COMMIT DROP', ''))
+                db.executescript(sqlite_sql.replace(' ON COMMIT DROP', ''))
                 for table in ('_seda_null_fields', '_seda_null_sources', '_seda_null_groups', '_seda_null_columns'):
                     db.execute('DROP TABLE ' + table)
                 db.commit()
@@ -301,6 +308,16 @@ class SedaNullSqlTests(unittest.TestCase):
                         self.assertEqual(0, days)
             self.assertEqual(34, db.execute('''SELECT COUNT(*) FROM public.monitoring_retail_columns
                 WHERE is_active AND NOT is_del AND NOT skip_missing_check AND is_editable''').fetchone()[0])
+
+    def test_fresh_evidence_schema_accepts_seda(self):
+        sql = (Path(__file__).resolve().parents[2] / 'sql/create_null_review_evidence.sql').read_text(encoding='utf-8')
+        country_check = re.search(r"country text NOT NULL CHECK \(country IN \((.*?)\)\)", sql)
+        self.assertIsNotNone(country_check)
+        countries = {
+            value.strip().strip("'")
+            for value in country_check.group(1).split(',')
+        }
+        self.assertEqual({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'}, countries)
 
 
 if __name__ == '__main__':

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.monitoring_null_review_evidence (
     correction_id bigint NOT NULL UNIQUE,
     policy_version smallint NOT NULL DEFAULT 1 CHECK (policy_version = 1),
     table_name text NOT NULL,
-    country text NOT NULL CHECK (country IN ('SEA', 'SEM', 'SIEL', 'TSE', 'SEG')),
+    country text NOT NULL CHECK (country IN ('SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG')),
     product_line text NOT NULL CHECK (product_line IN ('TV', 'REF', 'LDY')),
     retailer text NOT NULL,
     record_id bigint NOT NULL,
