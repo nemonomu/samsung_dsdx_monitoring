@@ -1,4 +1,4 @@
-"""SEDA Brazil retail source definitions used by Layer 1 and backup."""
+"""SEDA Brazil retail sources and approved Layer 2 NULL columns."""
 
 SEDA_COUNTRY = 'SEDA'
 SEDA_CHECK_TYPE = 'seda_retail'
@@ -28,6 +28,52 @@ SEDA_SOURCE_CONFIG = {
     }
     for product in ('TV', 'REF', 'LDY')
 }
+
+_SEDA_COMMON_NULL_COLUMNS = (
+    'count_of_reviews', 'count_of_star_ratings', 'final_sku_price',
+    'retailer_sku_name', 'star_rating',
+)
+SEDA_NULL_COLUMNS = {
+    'seda_tv': {
+        'casasbahia': _SEDA_COMMON_NULL_COLUMNS + ('screen_size',),
+        'magalu': _SEDA_COMMON_NULL_COLUMNS + ('screen_size', 'sku'),
+    },
+    'seda_ref': {
+        'casasbahia': _SEDA_COMMON_NULL_COLUMNS,
+        'magalu': _SEDA_COMMON_NULL_COLUMNS,
+    },
+    'seda_ldy': {
+        'casasbahia': _SEDA_COMMON_NULL_COLUMNS + ('ldy_color',),
+        'magalu': _SEDA_COMMON_NULL_COLUMNS,
+    },
+}
+
+
+def get_seda_product_line(value):
+    key = str(value or '').strip().lower()
+    for product_line, source in SEDA_SOURCE_CONFIG.items():
+        if key in (product_line, source['section_code'], source['table_name']):
+            return product_line
+    return None
+
+
+def seda_retailer_key(value):
+    return str(value or '').strip().lower().replace(' ', '')
+
+
+def get_seda_null_columns(product_line, retailer=None):
+    columns = SEDA_NULL_COLUMNS.get(get_seda_product_line(product_line), {})
+    if retailer is None:
+        return tuple(dict.fromkeys(column for fields in columns.values() for column in fields))
+    return columns.get(seda_retailer_key(retailer), ())
+
+
+def get_seda_null_select_columns(product_line):
+    return tuple(dict.fromkeys((
+        'id', 'country', 'product', 'item', 'account_name', 'page_type',
+        'batch_id', 'crawl_strdatetime', 'sku', 'retailer_sku_name',
+        *get_seda_null_columns(product_line), 'product_url',
+    )))
 
 
 def get_seda_source(product_line):

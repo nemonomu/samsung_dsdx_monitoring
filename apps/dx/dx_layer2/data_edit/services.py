@@ -7,6 +7,7 @@ import re
 from datetime import datetime
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
+from apps.dx.dx_layer2 import seda_null_validation
 
 try:
     from apps.common.retail_validation import get_tv_validation_condition
@@ -102,7 +103,9 @@ VALID_TABLES_UPDATE = ({
     SEM_TABLE_TO_PRODUCT_LINE
 ) | set(
     SEG_TABLE_TO_PRODUCT_LINE
-)) - DISABLED_SOURCE_TABLES
+) | {
+    source['table_name'] for source in seda_null_validation.SEDA_SOURCE_CONFIG.values()
+}) - DISABLED_SOURCE_TABLES
 
 
 def _get_sea_edit_context(table_name):
@@ -341,7 +344,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     seg_context = _get_seg_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
     sea_context = _get_sea_edit_context(table_name)
-    if tse_context:
+    seda_product_line = seda_null_validation.product_line_for(table_name)
+    if seda_product_line:
+        product_line = seda_product_line
+        if correction_type not in {'null', 'null_check'}:
+            return {'error': 'SEDA는 NULL 검증 값만 수정할 수 있습니다', 'status': 403}
+        if column_name not in seda_null_validation.get_seda_null_columns(product_line):
+            return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+    elif tse_context:
         table_name = tse_context['table_name']
         product_line = tse_context['product_line']
         if column_name not in tse_context['max_editable']:
@@ -374,7 +384,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     select_columns = f"{column_name}, account_name, item"
     if tse_context or sem_context or seg_context:
         select_columns += ", batch_id"
-    if tse_context:
+    if seda_product_line:
+        try:
+            seda_row = seda_null_validation.select_record(
+                cursor, crawl_date, product_line, row_id, column_name, for_edit=True
+            )
+        except (TypeError, ValueError):
+            return {'error': '검수일 또는 수정 대상이 올바르지 않습니다', 'status': 400}
+    elif tse_context:
         cursor.execute(f"""
             SELECT {select_columns}
             FROM {table_name}
@@ -431,14 +448,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
             (row_id,)
         )
-    row = cursor.fetchone()
+    row = seda_row if seda_product_line else cursor.fetchone()
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status': 404}
 
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else ''
-    batch_id = row[3] if tse_context or sem_context or seg_context else None
+    batch_id = row[3] if tse_context or sem_context or seg_context or seda_product_line else None
 
     # editable 컬럼 확인
     editable_retailer = retailer
@@ -446,7 +463,9 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_retailer = new_value
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
-    if sem_context:
+    if seda_product_line:
+        editable_cols = seda_null_validation.get_seda_null_columns(product_line, retailer)
+    elif sem_context:
         editable_cols = get_sem_editable_columns(product_line, retailer)
     elif seg_context:
         editable_cols = set(

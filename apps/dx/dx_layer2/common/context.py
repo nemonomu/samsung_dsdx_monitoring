@@ -18,6 +18,13 @@ SECTION_TITLES = {
     'null_review_log': 'NULL 검수 로그',
 }
 
+SEDA_RETAIL_SIDEBAR_CHILDREN = tuple(
+    {'name': f'SEDA {product}', 'label': product,
+     'detail_code': f'seda_{product.lower()}_retail'}
+    for product in ('TV', 'REF', 'LDY')
+)
+SEDA_RETAIL_CATEGORIES = {child['detail_code'] for child in SEDA_RETAIL_SIDEBAR_CHILDREN}
+
 
 TSE_RETAIL_SIDEBAR_CHILDREN = (
     {
@@ -146,8 +153,8 @@ def get_sidebar_items():
     ]
     return {
         'null': items,
-        'format': items,
-        'anomaly': items,
+        'format': [item for item in items if item['key'] not in SEDA_RETAIL_CATEGORIES],
+        'anomaly': [item for item in items if item['key'] not in SEDA_RETAIL_CATEGORIES],
     }
 
 
@@ -166,6 +173,8 @@ def build_sidebar_groups(section, focus=''):
         for category, info in sorted(
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
+            if category in SEDA_RETAIL_CATEGORIES:
+                continue
             display_name = _get_display_name(category, info)
             item_active = (
                 section == sec
@@ -273,6 +282,19 @@ def build_sidebar_groups(section, focus=''):
         'anomaly_validation': make_items('anomaly_validation'),
     }
     active_categories = set(get_all_categories())
+
+    seda_children = [
+        {**child, 'active': section == 'null_validation'
+         and focus in (child['name'], child['detail_code'])}
+        for child in SEDA_RETAIL_SIDEBAR_CHILDREN
+        if child['detail_code'] in active_categories
+    ]
+    if seda_children:
+        items = section_items['null_validation']
+        insert_at = next((index for index, item in enumerate(items)
+                          if item['name'] != 'SEA Retail'), len(items))
+        items.insert(insert_at, {'name': 'SEDA Retail', 'children': seda_children,
+                                'active': any(child['active'] for child in seda_children)})
 
     # Keep SEG in the same country order as the dashboard: SIEL, SEG, SEM.
     for section_name in (

@@ -3,6 +3,9 @@ const LAYER2_TABLE_DISPLAY_NAMES = {
     tv_retail: 'SEA TV',
     sea_ref_retail: 'SEA REF',
     sea_ldy_retail: 'SEA LDY',
+    seda_tv_retail: 'SEDA TV',
+    seda_ref_retail: 'SEDA REF',
+    seda_ldy_retail: 'SEDA LDY',
     siel_tv_retail: 'SIEL TV',
     siel_ref_retail: 'SIEL REF',
     siel_ldy_retail: 'SIEL LDY',
@@ -18,6 +21,9 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     tv_retail: 0,
     sea_ref_retail: 1,
     sea_ldy_retail: 2,
+    seda_tv_retail: 2.1,
+    seda_ref_retail: 2.2,
+    seda_ldy_retail: 2.3,
     siel_tv_retail: 3,
     siel_ref_retail: 4,
     siel_ldy_retail: 5,
@@ -39,6 +45,12 @@ const LAYER2_NULL_TABLE_GROUPS = [
         name: 'SEA Retail',
         description: 'SEA TV/REF/LDY NULL 검증',
         tableCodes: ['tv_retail', 'sea_ref_retail', 'sea_ldy_retail']
+    },
+    {
+        key: 'seda',
+        name: 'SEDA Retail',
+        description: 'SEDA TV/REF/LDY NULL 검증 · 전날 데이터',
+        tableCodes: ['seda_tv_retail', 'seda_ref_retail', 'seda_ldy_retail']
     },
     {
         key: 'siel',

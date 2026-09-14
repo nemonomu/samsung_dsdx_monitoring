@@ -12,6 +12,7 @@ let modalState = {
 };
 var _dupPageSize = 50;
 const SEA_TSE_NULL_HISTORY_TABLES = new Set([
+    'seda_tv_retail', 'seda_ref_retail', 'seda_ldy_retail',
     'tv_retail',
     'sea_ref_retail',
     'sea_ldy_retail',
@@ -227,6 +228,9 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEA TV' ? 'tv_retail' :
                        tableName === 'SEA REF' ? 'sea_ref_retail' :
                        tableName === 'SEA LDY' ? 'sea_ldy_retail' :
+                       tableName === 'SEDA TV' ? 'seda_tv_retail' :
+                       tableName === 'SEDA REF' ? 'seda_ref_retail' :
+                       tableName === 'SEDA LDY' ? 'seda_ldy_retail' :
                        tableName === 'SIEL TV' ? 'siel_tv_retail' :
                        tableName === 'SIEL REF' ? 'siel_ref_retail' :
                        tableName === 'SIEL LDY' ? 'siel_ldy_retail' :
@@ -459,16 +463,18 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
-    const isSeaDMinusOneSource = isSeaRetail || tableParam === 'youtube';
+    const isSeaDMinusOneSource = isSeaRetail || isSedaRetail || tableParam === 'youtube';
     const isRetail = isLegacyRetail || isSeaRetail || isSielRetail
-        || isSemRetail || isSegRetail;
+        || isSemRetail || isSegRetail || isSedaRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
         || (isSeaAppliance && data.supports_day_history === true)
         || (isSielRetail && data.supports_day_history === true)
         || (isSemRetail && data.supports_day_history === true)
         || (isSegRetail && data.supports_day_history === true)
+        || (isSedaRetail && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
     const defaultDays = getDefaultNullHistoryDays(tableParam);
     const currentDays = supportsDayHistory
@@ -520,7 +526,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
-            ${(isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isTseRetail) ? daysInputHtml : ''}
+            ${(isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isTseRetail || isSedaRetail) ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL ${supportsReview ? '검수 조회' : '오류'} (${records.length}건)</h4>`;
     }
@@ -611,7 +617,11 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     ? '\n    AND redirect IS NOT TRUE'
                     : '';
                 const segHistoryQuery = `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10))\n         LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10) AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND LOWER(BTRIM(account_name)) = LOWER('${retailerName}')\n    AND UPPER(BTRIM(country)) = 'SEG'\n    AND LOWER(BTRIM(page_type)) = 'main'${segAnchorRedirectScope}\n  ORDER BY source_date, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(BTRIM(CAST(source.${dateColumn} AS TEXT)), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(BTRIM(source.account_name)) = LOWER('${retailerName}')\n  AND UPPER(BTRIM(source.country)) = 'SEG'\n  AND LOWER(BTRIM(source.page_type)) IN ('main', 'bsr')\n  AND source.item IN (${inClause})${segRedirectScope}\nORDER BY source.item, source.${dateColumn} ASC;`;
-                const query3Days = isSielRetail
+                const sedaRetailerKey = retailerName.toLowerCase().replace(/ /g, '');
+                const sedaHistoryQuery = `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(BTRIM(${dateColumn}), 10))\n         LEFT(BTRIM(${dateColumn}), 10) AS source_date, batch_id\n  FROM ${tblName}\n  WHERE LEFT(BTRIM(${dateColumn}), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND LOWER(REPLACE(BTRIM(account_name), ' ', '')) = '${sedaRetailerKey}'\n    AND LOWER(BTRIM(page_type)) = 'main'\n  ORDER BY source_date, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(BTRIM(source.${dateColumn}), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE LOWER(REPLACE(BTRIM(source.account_name), ' ', '')) = '${sedaRetailerKey}'\n  AND LOWER(BTRIM(source.page_type)) IN ('main', 'bsr')\n  AND source.item IN (${inClause})\nORDER BY source.item, source.${dateColumn}, source.id;`;
+                const query3Days = isSedaRetail
+                    ? sedaHistoryQuery
+                    : isSielRetail
                     ? scopedSielHistoryQuery
                     : isSemRetail
                     ? semHistoryQuery
@@ -620,7 +630,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     : isSeaRetail
                     ? seaHistoryQuery
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateColumn} ASC;`;
-                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail)
+                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">
@@ -712,7 +722,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         editableCols: data.editable_cols || [],
         actualTable: data.actual_table || '',
         crawlDate: date,
-        editableDate: (isSeaRetail || isSielRetail || isSegRetail)
+        editableDate: (isSeaRetail || isSielRetail || isSegRetail) || isSedaRetail
             ? (data.source_date || date) : date,
         dateColumn: data.date_column || '',
         normalReviews: data.normal_reviews || {},
