@@ -395,6 +395,42 @@ class SegFormatValidationTests(unittest.TestCase):
             'main_rank', 'calendar_week', 'screen_size',
         }, set(invalid_tv))
 
+    def test_selected_refrigerator_type_variants_are_allowed(self):
+        allowed = (
+            'compact freezer-on-bottom',
+            'compact without freezer compartment',
+            'Cross Door',
+            'full-size without freezer compartment',
+            'internal freezer compartment',
+            'Kühlschrank mit Gefrierfach',
+            'Refrigerator with chill compartment',
+            'without freezer compartment',
+            '无冷冻室',
+        )
+        excluded = (
+            'Refrigerator', 'Built-in Refrigerator', 'Mini fridge',
+            'Chest Freezer', 'Fleischreifeschrank', 'Getränkekühler',
+            'Getränkekühlschrank', 'Kühlbox', 'Party-Kühlbox',
+            'Generation 2',
+        )
+
+        for value in allowed:
+            with self.subTest(allowed=value):
+                self.assertNotIn(
+                    'ref_refrigerator_type',
+                    seg_validation.evaluate_format_row(
+                        {'ref_refrigerator_type': value}, 'seg_ref', 'Amazon'
+                    ),
+                )
+        for value in excluded:
+            with self.subTest(excluded=value):
+                self.assertIn(
+                    'ref_refrigerator_type',
+                    seg_validation.evaluate_format_row(
+                        {'ref_refrigerator_type': value}, 'seg_ref', 'Amazon'
+                    ),
+                )
+
     @patch('apps.dx.dx_layer2.seg_validation._load_normal_reviews', return_value={})
     @patch('apps.dx.dx_layer2.seg_validation._history_rows')
     @patch('apps.dx.dx_layer2.seg_validation._latest_rows')

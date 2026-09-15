@@ -63,6 +63,17 @@ _REF_TYPE_VALUES = {
         'side by side',
     },
 }
+_REF_TYPE_ADDITIONAL_ALLOWED = {
+    'compact freezer-on-bottom',
+    'compact without freezer compartment',
+    'cross door',
+    'full-size without freezer compartment',
+    'internal freezer compartment',
+    'kühlschrank mit gefrierfach',
+    'refrigerator with chill compartment',
+    'without freezer compartment',
+    '无冷冻室',
+}
 _FINAL_PRICE_ALLOWED_TEXT = {
     'Höherer Preis als üblich',
     'Derzeit nicht verfügbar.',
@@ -284,7 +295,10 @@ def evaluate_format_row(row, product_line, retailer):
         'ref_refrigerator_type' in fields
         and not _missing(refrigerator_type)
         and str(refrigerator_type).strip().casefold()
-        not in _REF_TYPE_VALUES.get(retailer_key, set())
+        not in (
+            _REF_TYPE_VALUES.get(retailer_key, set())
+            | _REF_TYPE_ADDITIONAL_ALLOWED
+        )
     ):
         errors['ref_refrigerator_type'] = (
             'CSV에서 확인된 리테일러별 냉장고 타입이 아닙니다.'
