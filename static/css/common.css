@@ -50,7 +50,7 @@ body {
 }
 
 .nav-container {
-    max-width: 1400px;
+    width: 100%;
     margin: 0 auto;
     padding: 0 24px;
     display: flex;
@@ -156,7 +156,6 @@ body {
 /* Main Content */
 .main-content {
     flex: 1;
-    max-width: 1400px;
     margin: 0 auto;
     padding: 32px 24px;
     width: 100%;
