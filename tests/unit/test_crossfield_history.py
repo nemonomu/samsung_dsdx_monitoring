@@ -150,7 +150,7 @@ class CrossfieldHistoryTests(unittest.TestCase):
         for days in (3, 4):
             cursor = ScriptedCursor([
                 {'fetchall': [sea._rule(7,'review_body_count',retailer='Bestbuy',product_line='sea_ldy')]},
-                {'fetchall': rows}, {'fetchall': [correction]},
+                {'fetchall': rows}, {'fetchall': []}, {'fetchall': [correction]},
             ])
             detail = sea.sea_services.get_sea_cross_field_rule_detail(
                 cursor, date(2026,9,13), 'sea_ldy', 7, days)
@@ -173,7 +173,7 @@ class CrossfieldHistoryTests(unittest.TestCase):
                     rows[-1]['final_sku_price']='1000'
                     rule = (module._rule(7, 'final_original_price', 'Flipkart')
                             if module is siel else module._rule(7, 'final_original_price'))
-                    cursor = ScriptedCursor([{'fetchall':[rule]}, {'fetchall':rows}, {'fetchall':[]}])
+                    cursor = ScriptedCursor([{'fetchall':[rule]}, {'fetchall':rows}, {'fetchall':[]}, {'fetchall':[]}])
                     detail_fn = getattr(service, f'get_{product.split("_")[0]}_cross_field_rule_detail')
                     detail = detail_fn(cursor,date(2026,9,13),product,7,days)
                     self.assertEqual(list(range(14-days,14)),[r['id'] for r in detail['anomalies']])

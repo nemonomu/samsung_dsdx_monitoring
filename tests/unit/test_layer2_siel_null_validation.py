@@ -3,6 +3,7 @@ import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
+from apps.common.siel_retail import SIEL_NULL_COLUMNS
 
 from tests.unit.support import (
     ScriptedCursor,
@@ -185,6 +186,7 @@ def common_stubs():
             'apps.common.siel_retail',
             SIEL_BUSINESS_TIMEZONE='Asia/Seoul',
             SIEL_SOURCE_CONFIG=SIEL_SOURCES,
+            SIEL_NULL_COLUMNS=SIEL_NULL_COLUMNS,
             get_siel_format_editable_columns=lambda product, retailer: list(
                 SIEL_FORMAT_COLUMNS.get(product, {}).get(
                     str(retailer or '').lower(), ()
@@ -421,7 +423,11 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
             )
 
         self.assertEqual([41, 42], [row['id'] for row in result['results']])
-        self.assertEqual([], result['editable_cols'])
+        self.assertIn('sku', result['editable_cols'])
+        self.assertIn('retailer_sku_name', result['editable_cols'])
+        self.assertIn('count_of_reviews', result['editable_cols'])
+        self.assertNotIn('batch_id', result['editable_cols'])
+        self.assertNotIn('crawl_datetime', result['editable_cols'])
         self.assertEqual('2026-08-31', result['source_date'])
         self.assertEqual(0, result['offset_days'])
         self.assertEqual('Asia/Seoul', result['business_timezone'])

@@ -40,6 +40,7 @@ try:
         SIEL_BUSINESS_TIMEZONE,
         SIEL_TABLE_TO_PRODUCT_LINE,
         get_siel_format_editable_columns,
+        get_siel_null_editable_columns,
         get_siel_product_line_for_table,
         get_siel_source,
     )
@@ -47,6 +48,7 @@ except (ImportError, AttributeError):
     SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
     SIEL_TABLE_TO_PRODUCT_LINE = {}
     get_siel_format_editable_columns = None
+    get_siel_null_editable_columns = None
     get_siel_product_line_for_table = None
     get_siel_source = None
 
@@ -474,7 +476,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             else get_seg_null_columns(product_line, editable_retailer)
         )
     elif siel_context:
-        editable_cols = get_siel_format_editable_columns(
+        siel_editable = (get_siel_null_editable_columns
+                         if correction_type_value == 'null_check'
+                         else get_siel_format_editable_columns)
+        editable_cols = siel_editable(
             product_line, editable_retailer
         )
     else:

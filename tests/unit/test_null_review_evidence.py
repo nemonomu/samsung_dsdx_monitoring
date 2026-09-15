@@ -230,7 +230,7 @@ class NullReviewEvidenceTests(unittest.TestCase):
         result = reviews.load_evidence(
             cursor, inspection_date='2026-09-13', records=[self.record],
             columns=['ref_capacity'], **self.context)
-        self.assertEqual(len(cursor.calls[0][1][7]), 1)
+        self.assertEqual(len(cursor.calls[0][1][10]), 1)
         self.assertTrue(self.match(result)['auto_applied'])
         self.assertEqual(result[0]['value_snapshot'], {'type': 'null', 'value': None})
 

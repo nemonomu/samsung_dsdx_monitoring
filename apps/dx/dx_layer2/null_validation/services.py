@@ -11,7 +11,7 @@ from apps.common.response import log_error
 from apps.common.retail_columns import load_retail_columns, get_editable_columns
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
-from apps.common.null_review_evidence import uses_new_policy
+from apps.common.null_review_evidence import uses_new_policy, is_non_target_metric
 from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import sem_validation, seda_null_validation
@@ -43,11 +43,13 @@ try:
     from apps.common.siel_retail import (
         SIEL_BUSINESS_TIMEZONE,
         SIEL_SOURCE_CONFIG,
+        SIEL_NULL_COLUMNS,
         get_siel_format_editable_columns,
     )
 except (ImportError, AttributeError):
     SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
     SIEL_SOURCE_CONFIG = {}
+    SIEL_NULL_COLUMNS = {}
     get_siel_format_editable_columns = None
 
 try:
@@ -133,42 +135,6 @@ SIEL_NULL_SOURCE_KEY_BY_CATEGORY = {
     category: source_key
     for source_key, category in SIEL_NULL_CATEGORY_BY_SOURCE_KEY.items()
 }
-SIEL_NULL_COLUMNS = {
-    'siel_tv': {
-        'amazon': (
-            'count_of_star_ratings', 'final_sku_price',
-            'retailer_sku_name', 'screen_size', 'sku', 'star_rating',
-        ),
-        'flipkart': (
-            'count_of_reviews', 'count_of_star_ratings',
-            'estimated_annual_electricity_use', 'final_sku_price',
-            'model_year', 'retailer_sku_name', 'screen_size', 'sku',
-            'star_rating',
-        ),
-    },
-    'siel_ref': {
-        'amazon': (
-            'count_of_star_ratings', 'final_sku_price',
-            'retailer_sku_name', 'sku', 'star_rating',
-        ),
-        'flipkart': (
-            'count_of_reviews', 'count_of_star_ratings',
-            'final_sku_price', 'ref_capacity', 'ref_refrigerator_type',
-            'retailer_sku_name', 'sku', 'star_rating',
-        ),
-    },
-    'siel_ldy': {
-        'amazon': (
-            'count_of_star_ratings', 'final_sku_price',
-            'retailer_sku_name', 'sku', 'star_rating',
-        ),
-        'flipkart': (
-            'count_of_reviews', 'count_of_star_ratings',
-            'final_sku_price', 'ldy_capacity', 'retailer_sku_name', 'sku',
-            'star_rating',
-        ),
-    },
-}
 
 
 def _table_basename(table_name):
@@ -249,7 +215,7 @@ def _get_siel_allowed_columns(source, retailer=None):
     source_key = source.get('source_key') if source else None
     columns_by_retailer = SIEL_NULL_COLUMNS.get(source_key, {})
     if retailer:
-        return set(columns_by_retailer.get(str(retailer).lower(), ()))
+        return set(columns_by_retailer.get(str(retailer).strip().casefold(), ()))
     return {
         column
         for columns in columns_by_retailer.values()
@@ -2865,7 +2831,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     if has_retailer and retailer:
         if siel_source:
             all_retail_cols = list(select_cols)
-            editable_cols = []
+            editable_cols = sorted(_get_siel_allowed_columns(siel_source, retailer))
         elif latest_anchor_scope:
             all_retail_cols = list(select_cols)
             editable_cols = get_editable_columns(
@@ -2989,6 +2955,12 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
 
     if table_name not in VALID_TABLES_UPDATE:
         return {'error': '허용되지 않는 테이블', 'status_code': 400}
+
+    if correction_type_value == 'null_check' and is_non_target_metric(column_name, reason):
+        return {
+            'error': '금액·별점·별점 수·리뷰 수의 NULL은 수집 대상 제품 아님으로 확인할 수 없습니다. 값을 보정하거나 다른 확인 사유를 선택해 주세요.',
+            'status_code': 400,
+        }
 
     sea_source = _get_sea_null_source_for_table(table_name)
     siel_source = _get_siel_null_source_for_table(table_name)

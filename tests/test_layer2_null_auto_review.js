@@ -397,7 +397,74 @@ function testTseLogPolicyMatchesSelectedDate() {
     assert.ok(elements['review-log-policy'].textContent.includes('14일'));
 }
 
+function testPageAbsenceShowsSameRecordBasis() {
+    const sandbox = commonSandbox();
+    const rows = renderRows(sandbox, { normalReviews: {
+        '1_ref_capacity': { auto_applied: true, auto_eligible: false,
+            same_record_applied: true, source_column: 'sku<script>',
+            reason: '상품페이지 없음', memo: '404 확인', correction_id: 17,
+            created_id: 'reviewer', original_crawl_date: '2026-09-13' }
+    } });
+    const reason = sandbox.getCellHtml(rows[0], { key: '_null_review_reason' }, 'sea_ref_retail');
+    assert.ok(reason.includes('상품페이지 없음 · 연동 자동확인'));
+    const basis = sandbox.getCellHtml(rows[0], { key: '_null_review_basis' }, 'sea_ref_retail');
+    assert.ok(basis.includes('같은 검수일·수집 건'));
+    assert.ok(basis.includes('최초 항목: sku&lt;script&gt;'));
+    assert.ok(!basis.includes('<script>'));
+    assert.ok(!basis.includes('자동확인 제외'));
+    assert.ok(basis.includes('원 확인 취소'));
+}
+
+function testNonTargetBasisKeepsMetricExceptionsVisible() {
+    const sandbox = commonSandbox();
+    const rows = renderRows(sandbox, { normalReviews: {
+        '1_ref_capacity': { auto_applied: true, same_record_applied: true,
+            reason: '수집 대상 제품 아님', source_column: 'sku', correction_id: 17,
+            created_id: 'reviewer', original_crawl_date: '2026-09-13' }
+    } });
+    const reason = sandbox.getCellHtml(rows[0], { key: '_null_review_reason' }, 'sea_ref_retail');
+    assert(reason.includes('수집 대상 제품 아님 · 연동 자동확인'));
+    const basis = sandbox.getCellHtml(rows[0], { key: '_null_review_basis' }, 'sea_ref_retail');
+    assert(basis.includes('금액·별점·별점 수·리뷰 수 제외'));
+    assert(!basis.includes('크로스필드 제외'));
+    assert(basis.includes('원 확인 취소'));
+}
+
+async function testSielNullValueSaveRefreshesFindingsAndKeepsFailedEdits() {
+    const sandbox = commonSandbox();
+    renderRows(sandbox, { tableParam: 'siel_ref_retail' });
+    let refreshCount = 0;
+    const edit = { table_name: 'dx_siel.dx_siel_ref_retail_com', row_id: 42,
+        column_name: 'final_sku_price', new_value: '100', crawl_date: '2026-09-13' };
+    sandbox.detailViewState.pendingEdits = { '42_final_sku_price': edit };
+    sandbox._updateSaveButton = () => {};
+    let payload;
+    sandbox.fetch = async (url, options) => {
+        assert.strictEqual(url, '/dx/layer2/api/update-cell/');
+        payload = JSON.parse(options.body);
+        return { json: async () => ({ success: true }) };
+    };
+    sandbox.refreshNullReviewDetail = async () => {
+        refreshCount++;
+        assert.strictEqual(Object.keys(sandbox.detailViewState.pendingEdits).length, 0);
+    };
+    await sandbox._doSaveEdits('페이지에서 확인');
+    assert.strictEqual(payload.table_name, edit.table_name);
+    assert.strictEqual(payload.correction_type, 'null');
+    assert.strictEqual(payload.new_value, '100');
+    assert.strictEqual(payload.crawl_date, '2026-09-13');
+    assert.strictEqual(payload.memo, '페이지에서 확인');
+    assert.strictEqual(refreshCount, 1);
+    sandbox.detailViewState.pendingEdits = { '42_final_sku_price': edit };
+    sandbox.fetch = async () => ({ json: async () => ({ error: '해당 레코드가 없습니다' }) });
+    await sandbox._doSaveEdits('다시 확인');
+    assert.strictEqual(refreshCount, 1);
+    assert.strictEqual(sandbox.detailViewState.pendingEdits['42_final_sku_price'], edit);
+}
+
 (async () => {
+    testNonTargetBasisKeepsMetricExceptionsVisible();
+    testPageAbsenceShowsSameRecordBasis();
     testVisibleReviewColumnsAndNoFormatChange();
     testManualOnlyReviewExplainsAutomaticExclusion();
     testReasonAndMemoFollowCurrentQueryMetadata();
@@ -410,5 +477,6 @@ function testTseLogPolicyMatchesSelectedDate() {
     await testCancellationUsesManualCorrectionOnly();
     await testRefreshRetainsSummaryAndSelectedField();
     await testManualSaveDisplaysServerMetadataAndRefreshes();
+    await testSielNullValueSaveRefreshesFindingsAndKeepsFailedEdits();
     console.log('Layer2 NULL automatic review frontend tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

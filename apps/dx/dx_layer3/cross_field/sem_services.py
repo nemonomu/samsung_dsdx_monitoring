@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.sem_retail import (
     SEM_COUNTRY,
     SEM_HOMEDEPOT_RETAILER,
@@ -148,6 +149,7 @@ def _result(cursor, target_date, product_line):
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in source['retailers'] else ()
     )
     rows = []
+    page_exclusions = []
     failures = {rule[0]: [] for rule in definitions}
     failed_ids = set()
     for retailer in source['retailers']:
@@ -155,6 +157,11 @@ def _result(cursor, target_date, product_line):
             retailer_rows, mapping = _latest_rows(cursor, target_date, source)
         else:
             retailer_rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
+        retailer_rows, excluded = exclude_page_absent_records(
+            cursor, target_date, retailer_rows, table_name=source['table_name'],
+            country='SEM', product_line=key.rsplit('_', 1)[-1],
+        )
+        page_exclusions.extend(excluded)
         rows.extend(retailer_rows)
         for row in retailer_rows:
             for rule_key in _failed_rules(row, retailer, key):
@@ -177,6 +184,7 @@ def _result(cursor, target_date, product_line):
             'select_fields': _rule_select_fields(field1, field2, rule_key),
             'sort_order': index * 10,
         })
+    mapping = {**mapping, 'page_exclusions': page_exclusions}
     return source, rows, failures, failed_ids, summaries, mapping
 
 

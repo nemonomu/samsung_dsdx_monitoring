@@ -23,7 +23,7 @@ function _renderNullReviewLogs(data) {
     if (heading) heading.textContent = data.supports_null_auto_review
         ? 'NULL 확인 이력' : '해당값 정상 처리 이력';
     if (policy) policy.textContent = data.supports_null_auto_review
-        ? '9/12 이후 새로 수동확인한 건만 근거로 사용합니다. 같은 상품·항목·값의 자동확인 사유는 NULL 검증 조회에서도 볼 수 있습니다.'
+        ? '9/12 이후 수동확인을 근거로 사용합니다. 상품페이지 없음은 같은 검수일·수집 건의 NULL 항목과 크로스필드에 연동됩니다. 수집 대상 제품 아님은 금액·별점·별점 수·리뷰 수를 제외한 다른 NULL 항목에 연동됩니다.'
         : '같은 item + retailer_sku_name 조합은 확인 후 14일 단위로 재검수하며, 자동 제외된 날짜도 이력에 표시됩니다.';
     count.textContent = logs.length.toLocaleString() + '건';
 

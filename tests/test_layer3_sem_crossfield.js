@@ -26,9 +26,9 @@ assert(common.includes("type=${category}"));
 assert(common.includes("const loadedRules = isSemCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
-assert(dashboard.includes("common.js' %}?v=20260914-2"));
+assert(dashboard.includes("common.js' %}?v=20260915-1"));
 assert(dashboard.includes("cross-field.js' %}?v=26"));
-assert(detail.includes("common.js' %}?v=20260914-2"));
+assert(detail.includes("common.js' %}?v=20260915-1"));
 assert(detail.includes("cross-field.js' %}?v=26"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
@@ -51,7 +51,7 @@ mapping = {'inspection_date': '2026-09-13', 'source_date': '2026-09-13', 'offset
 fixtures = []
 def latest(*args, **kwargs):
     return ([] if kwargs.get('retailer') == 'HomeDepot' else [row]), mapping
-with patch.object(sem_services, '_latest_rows', side_effect=latest), patch.object(sem_services, '_history_rows', return_value=[]):
+with patch.object(sem_services, 'exclude_page_absent_records', side_effect=lambda cursor, day, records, **kwargs: (records, [])), patch.object(sem_services, '_latest_rows', side_effect=latest), patch.object(sem_services, '_history_rows', return_value=[]):
     for product in ('sem_tv', 'sem_ref', 'sem_ldy'):
         summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), product)
         detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), product, product + ':final_original_price', days=3)
@@ -59,7 +59,7 @@ with patch.object(sem_services, '_latest_rows', side_effect=latest), patch.objec
 def home_latest(*args, **kwargs):
     rows = [{**row, 'account_name': 'HomeDepot', 'original_sku_price': '$120.00', 'savings': None}]
     return (rows if kwargs.get('retailer') == 'HomeDepot' else []), mapping
-with patch.object(sem_services, '_latest_rows', side_effect=home_latest), patch.object(sem_services, '_history_rows', return_value=[]):
+with patch.object(sem_services, 'exclude_page_absent_records', side_effect=lambda cursor, day, records, **kwargs: (records, [])), patch.object(sem_services, '_latest_rows', side_effect=home_latest), patch.object(sem_services, '_history_rows', return_value=[]):
     summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), 'sem_ref')
     detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), 'sem_ref', 'sem_ref:savings_missing', days=3)
     fixtures.append({'summary': summary, 'detail': detail, 'retailer': 'HomeDepot'})

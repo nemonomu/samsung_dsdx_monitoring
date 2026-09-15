@@ -12,6 +12,44 @@ SIEL_COLLECTION_END = time(8, 30)
 SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
 SIEL_RETAILERS = ('Amazon', 'Flipkart')
 
+SIEL_NULL_COLUMNS = {
+    'siel_tv': {
+        'amazon': (
+            'count_of_star_ratings', 'final_sku_price',
+            'retailer_sku_name', 'screen_size', 'sku', 'star_rating',
+        ),
+        'flipkart': (
+            'count_of_reviews', 'count_of_star_ratings',
+            'estimated_annual_electricity_use', 'final_sku_price',
+            'model_year', 'retailer_sku_name', 'screen_size', 'sku',
+            'star_rating',
+        ),
+    },
+    'siel_ref': {
+        'amazon': (
+            'count_of_star_ratings', 'final_sku_price',
+            'retailer_sku_name', 'sku', 'star_rating',
+        ),
+        'flipkart': (
+            'count_of_reviews', 'count_of_star_ratings',
+            'final_sku_price', 'ref_capacity', 'ref_refrigerator_type',
+            'retailer_sku_name', 'sku', 'star_rating',
+        ),
+    },
+    'siel_ldy': {
+        'amazon': (
+            'count_of_star_ratings', 'final_sku_price',
+            'retailer_sku_name', 'sku', 'star_rating',
+        ),
+        'flipkart': (
+            'count_of_reviews', 'count_of_star_ratings',
+            'final_sku_price', 'ldy_capacity', 'retailer_sku_name', 'sku',
+            'star_rating',
+        ),
+    },
+}
+
+
 # Layer2 SIEL format-detail cells that may be corrected.  These mirror the
 # fields validated by ``dx_layer2.format_validation`` and deliberately omit
 # source identity/audit columns such as id, batch_id, crawl_datetime and
@@ -148,6 +186,11 @@ def display_siel_retailer(value):
         if retailer.lower() == normalized:
             return retailer
     return str(value or '').strip()
+
+
+def get_siel_null_editable_columns(product_line, retailer):
+    key = normalize_siel_product_line(product_line)
+    return list(SIEL_NULL_COLUMNS[key].get(str(retailer or '').strip().casefold(), ()))
 
 
 def get_siel_format_editable_columns(product_line, retailer):

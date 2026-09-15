@@ -303,8 +303,19 @@ def layer_stats(request):
                     tv_crossfield_result = validate_crossfield(
                         sea_tv_source_date, 'tv_retail'
                     )
+                    excluded_ids = [entry['record_id'] for entry in tv_crossfield_result.get('page_exclusions', [])]
+                    if excluded_ids:
+                        cursor.execute("""
+                            SELECT COUNT(*) FROM tv_retail_com
+                            WHERE DATE(crawl_datetime::timestamp) = %s
+                              AND NOT (account_name = 'Amazon' AND redirect IS TRUE)
+                              AND id = ANY(%s)
+                        """, (sea_tv_source_date, excluded_ids))
+                        tv_cross_total = max(0, tv_total - cursor.fetchone()[0])
                     tv_cross_errors = tv_crossfield_result['total_errors']
-                    tv_normal = get_crossfield_normal_counts(target_date, 'tv_retail_com')
+                    tv_normal = get_crossfield_normal_counts(
+                        target_date, 'tv_retail_com', excluded_ids,
+                    )
                     tv_cross_errors = max(0, tv_cross_errors - sum(tv_normal.values()))
                 except Exception as e:
                     log_error(e)

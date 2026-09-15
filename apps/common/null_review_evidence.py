@@ -14,6 +14,13 @@ from zoneinfo import ZoneInfo
 
 POLICY_START = date(2026, 9, 12)
 POLICY_VERSION = 1
+PAGE_ABSENT_REASON = '상품페이지 없음'
+NON_TARGET_REASON = '수집 대상 제품 아님'
+RECORD_REVIEW_REASONS = (PAGE_ABSENT_REASON, NON_TARGET_REASON)
+NON_TARGET_REQUIRED_METRICS = frozenset({
+    'final_sku_price', 'original_sku_price', 'savings',
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+})
 COUNTRIES = frozenset({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'})
 PRODUCT_LINES = frozenset({'TV', 'REF', 'LDY'})
 KOREA = ZoneInfo('Asia/Seoul')
@@ -42,11 +49,13 @@ class _EvidenceCollection(list):
         super().__init__(rows)
         self.by_subject = {}
         self.by_record = {}
+        self.by_page = {}
         for row in self:
             self.by_subject.setdefault(row.get('subject_key'), []).append(row)
             key = (str(row.get('record_id')), row.get('column_name'),
                    str(row.get('inspection_date')))
             self.by_record.setdefault(key, []).append(row)
+            self.by_page.setdefault(str(row.get('record_id')), []).append(row)
 
 
 def _date(value):
@@ -86,6 +95,10 @@ def _table_name(value):
 def canonical_reason(value):
     reason = _text(value)
     return '해당값 정상 확인' if reason in _NORMAL_REASON_ALIASES else reason
+
+
+def is_non_target_metric(column, reason):
+    return reason == NON_TARGET_REASON and column in NON_TARGET_REQUIRED_METRICS
 
 
 def uses_new_policy(inspection_date, country):
@@ -144,6 +157,8 @@ def _as_dict(row):
 
 
 def _auto_exclusion_reason(evidence):
+    if is_non_target_metric(evidence.get('column_name'), evidence.get('reason')):
+        return '수집 대상과 무관하게 검증하는 필수 지표'
     missing_identity = []
     if not _text(evidence.get('item')):
         missing_identity.append('item')
@@ -275,11 +290,13 @@ def load_evidence(
             WHERE policy_version = %s
               AND table_name = %s AND country = %s AND product_line = %s
               AND LOWER(TRIM(retailer)) = %s
-              AND inspection_date <= %s AND reviewed_at < %s
+              AND inspection_date <= %s
+              AND (reviewed_at < %s OR
+                   (inspection_date = %s AND record_id = ANY(%s) AND reason = ANY(%s)))
               AND (
                   subject_key = ANY(%s)
                   OR (inspection_date = %s AND record_id = ANY(%s)
-                      AND column_name = ANY(%s))
+                      AND (column_name = ANY(%s) OR reason = ANY(%s)))
               )
         ), latest AS (
             SELECT DISTINCT ON (subject_key) {', '.join(_EVIDENCE_COLUMNS)}
@@ -290,11 +307,132 @@ def load_evidence(
         UNION
         SELECT {', '.join(_EVIDENCE_COLUMNS)} FROM scoped
         WHERE inspection_date = %s AND record_id = ANY(%s)
-          AND column_name = ANY(%s)
+          AND (column_name = ANY(%s) OR reason = ANY(%s))
     """, (POLICY_VERSION, _table_name(table_name), _text(country).upper(),
           _text(product_line).upper(), _text(retailer).lower(), day, end_time,
-          subjects, day, record_ids, columns, day, record_ids, columns))
+          day, record_ids, list(RECORD_REVIEW_REASONS),
+          subjects, day, record_ids, columns, list(RECORD_REVIEW_REASONS),
+          day, record_ids, columns, list(RECORD_REVIEW_REASONS)))
     return _EvidenceCollection(_as_dict(row) for row in cursor.fetchall())
+
+
+def _same_record_review(record, inspection_date, evidence, *, reason, table_name,
+                        country, product_line, retailer=None):
+    """A product decision applies only to its exact collection row and day."""
+    day = _date(inspection_date)
+    if not uses_new_policy(day, country) or record.get('id') is None:
+        return None
+    entries = (evidence.by_page.get(str(record['id']), ())
+               if isinstance(evidence, _EvidenceCollection) else evidence)
+    latest_by_column = {}
+    for raw in entries:
+        entry = _as_dict(raw)
+        if (entry.get('policy_version') != POLICY_VERSION
+                or str(entry.get('record_id')) != str(record['id'])
+                or _date(entry.get('inspection_date')) != day
+                or _table_name(entry.get('table_name')) != _table_name(table_name)
+                or entry.get('country') != _text(country).upper()
+                or entry.get('product_line') != _text(product_line).upper()):
+            continue
+        account = retailer if retailer is not None else record.get('account_name')
+        if account is not None and _text(entry.get('retailer')).casefold() != _text(account).casefold():
+            continue
+        column = entry.get('column_name')
+        previous = latest_by_column.get(column)
+        order = lambda value: (_korean_time(value['reviewed_at']), int(value['id']))
+        if previous is None or order(entry) > order(previous):
+            latest_by_column[column] = entry
+    active = [entry for entry in latest_by_column.values()
+              if entry.get('reason') == reason and not entry.get('revoked_at')]
+    if not active:
+        return None
+    original = min(active, key=lambda entry: (_korean_time(entry['reviewed_at']), int(entry['id'])))
+    return {
+        **_metadata(original, automatic=True),
+        'same_record_applied': True,
+        'source_column': original['column_name'],
+        'application_type': '연동 자동확인',
+    }
+
+
+def page_absence_review(record, inspection_date, evidence, **context):
+    return _same_record_review(
+        record, inspection_date, evidence, reason=PAGE_ABSENT_REASON, **context,
+    )
+
+
+def linked_null_review(record, column, inspection_date, evidence, **context):
+    for reason in RECORD_REVIEW_REASONS:
+        if is_non_target_metric(column, reason):
+            continue
+        review = _same_record_review(
+            record, inspection_date, evidence, reason=reason, **context,
+        )
+        if review and review['source_column'] != column:
+            return review
+    return None
+
+
+def exclude_page_absent_records(cursor, inspection_date, records, *,
+                                table_name, country, product_line):
+    """Partition cross-field inputs before evaluating any rule."""
+    records = list(records)
+    ids = sorted({int(row['id']) for row in records if row.get('id') is not None})
+    if not ids or not uses_new_policy(inspection_date, country):
+        return records, []
+    cursor.execute(f"""
+        SELECT {', '.join(_EVIDENCE_COLUMNS)}
+        FROM {EVIDENCE_TABLE}
+        WHERE policy_version = %s AND table_name = %s
+          AND country = %s AND product_line = %s AND inspection_date = %s
+          AND record_id = ANY(%s)
+    """, (POLICY_VERSION, _table_name(table_name), _text(country).upper(),
+          _text(product_line).upper(), _date(inspection_date), ids))
+    evidence = _EvidenceCollection(_as_dict(row) for row in cursor.fetchall())
+    included, excluded = [], []
+    for record in records:
+        review = page_absence_review(
+            record, inspection_date, evidence, table_name=table_name,
+            country=country, product_line=product_line,
+        )
+        if review:
+            excluded.append({
+                'record_id': record['id'], 'item': record.get('item'),
+                'retailer': record.get('account_name'),
+                'retailer_sku_name': record.get('retailer_sku_name'),
+                **review,
+            })
+        else:
+            included.append(record)
+    return included, excluded
+
+
+def load_page_exclusions(cursor, inspection_date, *, table_name, country, product_line):
+    """Load exact-row exclusions for SQL rules whose SELECT may omit IDs."""
+    if not uses_new_policy(inspection_date, country):
+        return []
+    cursor.execute(f"""
+        SELECT {', '.join(_EVIDENCE_COLUMNS)}
+        FROM {EVIDENCE_TABLE}
+        WHERE policy_version = %s AND table_name = %s AND country = %s
+          AND product_line = %s AND inspection_date = %s
+    """, (POLICY_VERSION, _table_name(table_name), _text(country).upper(),
+          _text(product_line).upper(), _date(inspection_date)))
+    evidence = _EvidenceCollection(_as_dict(row) for row in cursor.fetchall())
+    excluded = []
+    for record_id, entries in evidence.by_page.items():
+        review = page_absence_review(
+            {'id': record_id}, inspection_date, evidence, table_name=table_name,
+            country=country, product_line=product_line,
+        )
+        if review:
+            original = next(entry for entry in entries if entry['id'] == review['evidence_id'])
+            excluded.append({
+                'record_id': int(record_id), 'item': original['item'],
+                'retailer': original['retailer'],
+                'retailer_sku_name': original['product_name'], **review,
+            })
+    return excluded
 
 
 def match_review(
@@ -333,7 +471,8 @@ def match_review(
             and decision.get('product_line') == _text(product_line).upper()
             and _text(decision.get('retailer')).casefold() == _text(retailer).casefold()
             and reviewed_on and POLICY_START <= reviewed_on <= day
-            and POLICY_START <= reviewed_at.date() <= day
+            and (POLICY_START <= reviewed_at.date() <= day
+                 or (same_record and decision.get('reason') in RECORD_REVIEW_REASONS))
         ):
             candidates.append(decision)
     if not candidates:
@@ -345,8 +484,11 @@ def match_review(
     ]
     latest = max(manual_candidates or candidates,
                  key=lambda row: (_korean_time(row['reviewed_at']), int(row['id'])))
+    if is_non_target_metric(column, latest.get('reason')):
+        return None
     revoked_at = latest.get('revoked_at')
-    if revoked_at and _korean_time(revoked_at).date() <= day:
+    if revoked_at and (_korean_time(revoked_at).date() <= day
+                       or (manual_candidates and latest.get('reason') in RECORD_REVIEW_REASONS)):
         return None
     if latest.get('value_snapshot') != value_snapshot(record[column]):
         return None

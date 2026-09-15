@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 import re
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_columns import get_editable_columns
 from apps.common.sea_retail import get_sea_retail_source
@@ -597,6 +598,10 @@ def build_sea_crossfield_result(
     rows = load_latest_sea_rows(
         cursor, inspection_date, key, from_date=from_date
     )
+    rows, page_exclusions = exclude_page_absent_records(
+        cursor, inspection_date, rows, table_name=source['table_name'],
+        country='SEA', product_line=key.rsplit('_', 1)[-1],
+    )
     rule_ids = [
         rule_id
         for rule in rules
@@ -754,6 +759,7 @@ def build_sea_crossfield_result(
         'retailers': retailer_summaries,
         'source_rows': rows,
         'normal_corrections': corrections,
+        'page_exclusions': page_exclusions,
     }
 
 
@@ -937,6 +943,7 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
         'date_col': result['date_col'],
         'no_review_texts': '',
         'retailers': result['retailers'],
+        'page_exclusions': result['page_exclusions'],
     }
 
 

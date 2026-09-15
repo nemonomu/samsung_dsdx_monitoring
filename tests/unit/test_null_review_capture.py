@@ -93,6 +93,21 @@ class NullReviewCaptureTests(unittest.TestCase):
         conn.commit.assert_not_called()
         conn.rollback.assert_called_once_with()
 
+    def test_non_target_metric_confirmation_is_rejected_without_writing(self):
+        for column in ('final_sku_price', 'original_sku_price', 'savings',
+                       'star_rating', 'count_of_star_ratings', 'count_of_reviews'):
+            with self.subTest(column=column):
+                cursor = ScriptedCursor([])
+                conn = Mock()
+                result = self.service.save_null_review(
+                    cursor, conn, 'public.ref_retail_com', 42, column,
+                    'normal', '', '수집 대상 제품 아님', '2026-09-12', 'null', 'reviewer',
+                )
+                self.assertEqual(400, result['status_code'])
+                self.assertIn('NULL', result['error'])
+                self.assertEqual([], cursor.calls)
+                conn.commit.assert_not_called()
+
     def test_changed_or_resolved_value_is_not_confirmed(self):
         for value in ('160 L', ''):
             with self.subTest(value=value):

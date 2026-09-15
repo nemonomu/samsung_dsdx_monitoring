@@ -21,7 +21,7 @@ def get_tv_validation_condition(alias=None):
     )
 
 
-def apply_tv_validation_scope(query, table_name):
+def apply_tv_validation_scope(query, table_name, exclude_record_ids=False):
     """Shadow tv_retail_com with a validation-only CTE.
 
     This works for both plain SELECT statements and existing WITH queries,
@@ -33,11 +33,12 @@ def apply_tv_validation_scope(query, table_name):
     leading_length = len(query) - len(query.lstrip())
     leading = query[:leading_length]
     body = query[leading_length:]
+    record_filter = " AND id <> ALL(%s)" if exclude_record_ids else ""
     scope_cte = (
         f"{TV_RETAIL_TABLE} AS ("
         f"SELECT * FROM public.{TV_RETAIL_TABLE} "
         f"WHERE {get_tv_validation_condition()}"
-        f")"
+        f"{record_filter})"
     )
 
     if re.match(r'^WITH\b', body, flags=re.IGNORECASE):

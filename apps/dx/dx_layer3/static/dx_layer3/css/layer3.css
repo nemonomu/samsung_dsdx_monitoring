@@ -1707,6 +1707,19 @@ td.cell-review-selected:hover {
 
 .memo-dialog-select:focus { border-color: var(--layer-color); }
 
+.crossfield-page-exclusions {
+    margin: 12px 0;
+    padding: 12px 16px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    font-size: 13px;
+}
+
+.crossfield-page-exclusions summary { cursor: pointer; font-weight: 600; }
+.crossfield-page-exclusions ul { margin: 10px 0 0; padding-left: 20px; }
+.crossfield-page-exclusions li { margin: 6px 0; overflow-wrap: anywhere; }
+
 td[data-editable] {
     cursor: text;
 }

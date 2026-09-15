@@ -74,7 +74,7 @@ assert(commonSource.includes('function showCrossfieldGuide()'));
 assert(commonSource.includes('새 대상도 등록 규칙을 자동 표시'));
 assert(!commonSource.includes('D-1 (offset_days='));
 assert(baseTemplate.includes("AppModal.create('crossfield-guide'"));
-assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=11'));
+assert(baseTemplate.includes('dx_layer3/css/layer3.css\' %}?v=12'));
 assert(layer3Css.includes('.btn-crossfield-guide'));
 assert(layer3Css.includes('margin-left: auto'));
 assert(commonSource.includes("{ key: 'sea', title: 'SEA Retail'"));
@@ -115,6 +115,20 @@ function testCrossfieldRetailChecksRenderAsRegionAccordions() {
     };
     vm.createContext(renderSandbox);
     vm.runInContext(commonSource, renderSandbox);
+
+    renderSandbox.esc = value => String(value).replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const exclusion = renderSandbox.renderPageExclusions([{
+        record_id: 42, item: 'A-1', retailer: 'Lowes', source_column: 'sku',
+        created_id: 'reviewer', memo: '<script>404 확인</script>',
+        original_created_at: '2026-09-15 10:00',
+    }]);
+    assert(exclusion.includes('상품페이지 없음 · 검증 제외 1건'));
+    assert(exclusion.includes('Lowes · A-1 · sku · reviewer · 2026-09-15 10:00'));
+    assert(exclusion.includes('&lt;script&gt;404 확인&lt;/script&gt;'));
+    assert(!exclusion.includes('<script>'));
+    assert.strictEqual(renderSandbox.renderPageExclusions([]), '');
+    renderSandbox.esc = value => String(value == null ? '' : value);
 
     const check = (name, detailCode, checked, failed, reviewNeeded = 0) => ({
         category: '크로스 필드 검증',

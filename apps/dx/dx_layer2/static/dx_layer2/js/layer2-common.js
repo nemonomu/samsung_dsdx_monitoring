@@ -350,7 +350,8 @@ function _annotateNullReviewRows(rows) {
         row._null_review_status = review
             ? (review.auto_applied ? '자동확인' : '수동확인')
             : (isHistory ? '비교 이력' : (hasNull ? '확인 필요' : '정상'));
-        row._null_review_reason = review ? (review.reason || '-') : '-';
+        row._null_review_reason = review
+            ? (review.reason || '-') + (review.same_record_applied ? ' · 연동 자동확인' : '') : '-';
         row._null_review_basis = review
             ? [review.original_crawl_date || detailViewState.crawlDate,
                 review.created_id || '', review.revoked_at ? '근거 취소됨' : '']
@@ -384,8 +385,19 @@ function getCellHtml(row, col, tableParam) {
         if (review) {
             var confirmedAt = review.original_created_at || review.created_at;
             if (confirmedAt) basisHtml += '<span class="null-review-note">수동확인 ' + esc(confirmedAt) + '</span>';
-            if (review.auto_eligible === false) {
-                basisHtml += '<span class="null-review-note">자동확인 제외'
+            if (review.reason === '상품페이지 없음') {
+                basisHtml += '<span class="null-review-note">같은 검수일·수집 건의 NULL 확인 및 크로스필드 제외'
+                    + (review.source_column ? ' · 최초 항목: ' + esc(review.source_column) : '')
+                    + '</span>';
+            } else if (review.reason === '수집 대상 제품 아님'
+                && (review.same_record_applied || !review.auto_applied)) {
+                basisHtml += '<span class="null-review-note">같은 검수일·수집 건의 NULL 항목 연동 · 금액·별점·별점 수·리뷰 수 제외'
+                    + (review.source_column ? ' · 최초 항목: ' + esc(review.source_column) : '')
+                    + '</span>';
+            }
+            if (review.auto_eligible === false && !review.same_record_applied
+                && review.reason !== '상품페이지 없음') {
+                basisHtml += '<span class="null-review-note">다음 검수일 자동확인 제외'
                     + (review.auto_exclusion_reason ? ' · ' + esc(review.auto_exclusion_reason) : '')
                     + '</span>';
             }
@@ -395,7 +407,7 @@ function getCellHtml(row, col, tableParam) {
                     + '_' + detailViewState.nullReviewField;
                 basisHtml += '<button type="button" class="null-review-cancel" data-review-key="'
                     + esc(reviewKey) + '" onclick="event.stopPropagation();cancelNullReviewEvidence(this)">'
-                    + (review.auto_applied ? '자동확인 중단' : '확인 취소') + '</button>';
+                    + (review.same_record_applied ? '원 확인 취소' : review.auto_applied ? '자동확인 중단' : '확인 취소') + '</button>';
             }
         }
         return basisHtml + '</td>';
@@ -1054,7 +1066,7 @@ function _doSaveEdits(memo) {
         });
     });
 
-    Promise.all(requests).then(function(results) {
+    return Promise.all(requests).then(function(results) {
         var successCount = 0;
         var failCount = 0;
         results.forEach(function(r) {
@@ -1074,6 +1086,11 @@ function _doSaveEdits(memo) {
         if (successCount > 0) showToast(successCount + '건 저장 완료', 'success');
         if (failCount > 0) showToast(failCount + '건 저장 실패', 'error');
         _updateSaveButton();
+        if (successCount > 0 && failCount === 0 && detailViewState.type === 'null'
+            && detailViewState.supportsNullAutoReview
+            && typeof refreshNullReviewDetail === 'function') {
+            return refreshNullReviewDetail();
+        }
     });
 }
 
@@ -1180,7 +1197,9 @@ function _showReviewDialog(callback, options) {
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">이유 <span style="color:#dc2626;">*</span></label>'
         + '<select class="memo-dialog-select" id="review-reason-select"><option value="">불러오는 중...</option></select></div>'
         + (detailViewState.type === 'null' && detailViewState.supportsNullAutoReview
-            ? '<p class="null-review-dialog-note">수집 대상 제품 아님, 상품페이지 내 항목 부재, 해당값 정상 확인은 같은 국가·리테일러·제품군의 상품·NULL 항목·값이 일치할 때 실제 확인일 다음 검수일부터 자동 적용됩니다. item·제품명 정보가 부족한 건은 이번 검수만 수동확인합니다.</p>' : '')
+            ? '<p class="null-review-dialog-note">상품페이지 없음은 같은 검수일·수집 건의 다른 NULL 항목을 자동 확인하고 모든 크로스필드 검증에서 제외합니다.</p>'
+                + '<p class="null-review-dialog-note">수집 대상 제품 아님은 같은 검수일·수집 건의 다른 NULL 항목을 자동 확인합니다. 금액·별점·별점 수·리뷰 수의 NULL은 이 사유로 확인할 수 없으며 이상치로 남습니다.</p>'
+                + '<p class="null-review-dialog-note">수집 대상 제품 아님, 상품페이지 내 항목 부재, 해당값 정상 확인은 같은 국가·리테일러·제품군의 상품·NULL 항목·값이 일치할 때 실제 확인일 다음 검수일부터 자동 적용됩니다. item·제품명 정보가 부족한 건은 이번 검수만 수동확인합니다.</p>' : '')
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모'
         + (memoRequired ? ' <span style="color:#dc2626;">*</span>' : '')
         + '</label>'
@@ -1400,8 +1419,11 @@ async function cancelNullReviewEvidence(button) {
     var review = (detailViewState.normalReviews || {})[button.dataset.reviewKey];
     var correctionId = review && Number(review.correction_id);
     if (!review || review.revoked_at || !Number.isSafeInteger(correctionId) || correctionId <= 0) return;
+    var cancelMessage = review.reason === '상품페이지 없음'
+        ? '원래 상품페이지 없음 확인을 취소하면 같은 수집 건에 연동된 NULL 자동확인과 크로스필드 제외가 함께 해제됩니다. 취소하시겠습니까?'
+        : '원래 수동확인을 취소하면 이 근거를 사용하는 현재·이후 자동확인이 중단됩니다. 이미 남긴 이력과 사유는 유지됩니다. 취소하시겠습니까?';
     var confirmation = await showConfirm(
-        '원래 수동확인을 취소하면 이 근거를 사용하는 현재·이후 자동확인이 중단됩니다. 이미 남긴 이력과 사유는 유지됩니다. 취소하시겠습니까?',
+        cancelMessage,
         'warning', { input: { placeholder: '취소 사유 (선택)' } }
     );
     if (!confirmation.confirmed) return;

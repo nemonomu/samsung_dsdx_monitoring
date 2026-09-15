@@ -3,6 +3,8 @@ Layer 3 대시보드 서비스 — 공통 규칙 로드, 검증, 상태 판정
 """
 
 import re
+from datetime import timedelta
+from apps.common.null_review_evidence import load_page_exclusions
 from apps.common.db import get_dx_connection, dx_table
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
@@ -388,7 +390,8 @@ def validate_all_category_specs(target_date):
     return results
 
 
-def execute_crossfield_query(rule, table_name, date_col, target_date, product_line='tv'):
+def execute_crossfield_query(rule, table_name, date_col, target_date, product_line='tv',
+                            page_exclusions=None):
     """규칙의 쿼리를 실행하고 결과 건수 반환"""
     query_template = rule.get('query', '')
     rule_id = str(rule.get('rule_id', ''))
@@ -405,16 +408,21 @@ def execute_crossfield_query(rule, table_name, date_col, target_date, product_li
     query = query.replace('{date_col}', date_col)
     query = query.replace('{no_review_texts}', get_all_no_review_texts())
     query = query.replace('{product_line}', product_line)
-    query = apply_tv_retail_am_filter(query, table_name, date_col)
+    excluded_ids = ([entry['record_id'] for entry in page_exclusions]
+                    if page_exclusions and table_name == 'tv_retail_com' else [])
+    query = apply_tv_validation_scope(query, table_name, exclude_record_ids=bool(excluded_ids))
     if not validate_select_query(query):
         return 0, []
 
     query = query.replace('%', '%%').replace('%%s', '%s')
+    params = [target_date]
+    if excluded_ids:
+        params.insert(0, excluded_ids)
 
     try:
         conn = get_dx_connection()
         cursor = conn.cursor()
-        cursor.execute(query, (target_date,))
+        cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
         columns = [desc[0] for desc in cursor.description] if cursor.description else []
         cursor.close()
@@ -443,6 +451,7 @@ def validate_crossfield(target_date, section='tv_retail'):
 
     table_name = ''
     date_col = ''
+    page_exclusions = None
 
     for rule in rules:
         if rule.get('section_code', '').lower() != section:
@@ -451,9 +460,19 @@ def validate_crossfield(target_date, section='tv_retail'):
         table_name = rule.get('table_name', '')
         date_col = rule.get('date_column', '')
         validate_table_name(table_name)
+        if table_name == 'tv_retail_com' and page_exclusions is None:
+            conn = get_dx_connection()
+            try:
+                cursor = conn.cursor()
+                page_exclusions = load_page_exclusions(
+                    cursor, target_date + timedelta(days=1),
+                    table_name=table_name, country='SEA', product_line='TV',
+                )
+            finally:
+                conn.close()
 
         error_count, error_details = execute_crossfield_query(
-            rule, table_name, date_col, target_date, section
+            rule, table_name, date_col, target_date, section, page_exclusions
         )
 
         results['total_errors'] += error_count
@@ -473,11 +492,12 @@ def validate_crossfield(target_date, section='tv_retail'):
 
     results['table_name'] = table_name
     results['date_col'] = date_col
+    results['page_exclusions'] = page_exclusions or []
 
     return results
 
 
-def get_crossfield_normal_counts(target_date, table_name=None):
+def get_crossfield_normal_counts(target_date, table_name=None, excluded_record_ids=None):
     """크로스필드 정상 처리 건수를 rule_id별로 반환."""
     conn = None
     try:
@@ -494,6 +514,9 @@ def get_crossfield_normal_counts(target_date, table_name=None):
         if table_name:
             sql += " AND table_name = %s"
             params.append(table_name)
+        if excluded_record_ids:
+            sql += " AND record_id <> ALL(%s)"
+            params.append(excluded_record_ids)
         sql += " GROUP BY rule_id"
         cursor.execute(sql, params)
         result = {row[0]: row[1] for row in cursor.fetchall()}

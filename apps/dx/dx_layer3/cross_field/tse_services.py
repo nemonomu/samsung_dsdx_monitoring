@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 import re
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.retail_columns import (
     get_editable_columns,
     get_tse_retailer_columns,
@@ -653,6 +654,10 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
         for correction in corrections
     }
 
+    rows, page_exclusions = exclude_page_absent_records(
+        cursor, target_date, rows, table_name=source['table_name'],
+        country='TSE', product_line=key.rsplit('_', 1)[-1],
+    )
     evaluations = {
         str(row.get('id')): evaluate_tse_row(row)
         for row in rows
@@ -747,6 +752,7 @@ def build_tse_crossfield_result(cursor, target_date, product_line, from_date=Non
         'retailers': retailer_summaries,
         'source_rows': rows,
         'normal_corrections': corrections,
+        'page_exclusions': page_exclusions,
     }
 
 
@@ -831,6 +837,7 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
         'date_col': result['date_col'],
         'no_review_texts': '',
         'retailers': result['retailers'],
+        'page_exclusions': result['page_exclusions'],
     }
 
 

@@ -56,6 +56,16 @@ def review_state(cursor, inspection_date, records, columns, manual_reviews,
                 if key in exact_evidence:
                     reviews.pop(key, None)
                 review = reviews.get(key)
+            if review and null_review_evidence.is_non_target_metric(column, review.get('reason')):
+                reviews.pop(key, None)
+                review = None
+            if enabled and (not review or review.get('auto_applied')):
+                linked_review = null_review_evidence.linked_null_review(
+                    record, column, inspection_date, evidence, **context,
+                )
+                if linked_review:
+                    review = linked_review
+                    reviews[key] = review
             if not review:
                 continue
             reviewed_fields[column] += 1
@@ -65,7 +75,7 @@ def review_state(cursor, inspection_date, records, columns, manual_reviews,
                 auto_logs.append({
                     **review,
                     'id': f'auto:{table_name}:{record.get("id")}:{column}:{inspection_date}',
-                    'application_type': '자동확인',
+                    'application_type': review.get('application_type', '자동확인'),
                     'table_name': table_name,
                     'record_id': record.get('id'),
                     'column_name': column,

@@ -121,6 +121,54 @@ class SIELLayer2DataEditTests(unittest.TestCase):
         self.assertEqual(1, len(cursor.calls))
         self.assertNotIn('UPDATE', cursor.calls[0][0])
 
+    def test_null_values_can_be_corrected_for_every_siel_product_and_retailer(self):
+        for product, source in siel_retail.SIEL_SOURCE_CONFIG.items():
+            for retailer in ('Amazon', 'Flipkart'):
+                fields = [('sku', 'SKU-1'), ('retailer_sku_name', 'Product A'),
+                          ('final_sku_price', '100'), ('star_rating', '4.5'),
+                          ('count_of_star_ratings', '10')]
+                if retailer == 'Flipkart':
+                    fields.append(('count_of_reviews', '10'))
+                for column, new_value in fields:
+                    with self.subTest(product=product, retailer=retailer, column=column):
+                        cursor = ScriptedCursor([{'fetchone': (None, retailer, 'item-1')}, {}, {}])
+                        result = self.service.update_cell_value(
+                            cursor, Mock(), source['table_name'], 42, column, new_value,
+                            date(2026, 9, 15), 'null', 'reviewer', '페이지에서 확인',
+                        )
+                        self.assertTrue(result['success'])
+                        self.assertIn('source.batch_id IS NOT DISTINCT FROM', cursor.calls[0][0])
+                        self.assertIn("AT TIME ZONE 'Asia/Seoul'", cursor.calls[0][0])
+                        self.assertEqual((new_value, 42), cursor.calls[1][1])
+                        self.assertIn(f'UPDATE {source["table_name"]} SET {column} = %s', cursor.calls[1][0])
+                        history = cursor.calls[2][1]
+                        self.assertEqual('null_check', history[1])
+                        self.assertEqual(column, history[4])
+                        self.assertIsNone(history[5])
+                        self.assertEqual(new_value, history[6])
+                        self.assertEqual('reviewer', history[8])
+                        self.assertEqual('corrected', history[10])
+
+    def test_null_edits_keep_retailer_field_permissions_and_source_identity(self):
+        for column in ('count_of_reviews', 'account_name', 'batch_id', 'id', 'crawl_datetime'):
+            with self.subTest(column=column):
+                cursor = ScriptedCursor([{'fetchone': (None, 'Amazon', 'item-1')}])
+                result = self.service.update_cell_value(
+                    cursor, Mock(), SIEL_TV_TABLE, 42, column, 'test',
+                    date(2026, 9, 15), 'null', 'reviewer', '',
+                )
+                self.assertEqual(403, result['status'])
+                self.assertEqual(1, len(cursor.calls))
+
+    def test_null_edit_rejects_rows_outside_current_day_and_latest_batch(self):
+        cursor = ScriptedCursor([{'fetchone': None}])
+        result = self.service.update_cell_value(
+            cursor, Mock(), SIEL_TV_TABLE, 42, 'sku', 'SKU-1',
+            date(2026, 9, 15), 'null', 'reviewer', '',
+        )
+        self.assertEqual(404, result['status'])
+        self.assertEqual(1, len(cursor.calls))
+
 
 if __name__ == '__main__':
     unittest.main()

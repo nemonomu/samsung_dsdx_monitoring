@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 import re
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seg_retail import (
     SEG_RETAILERS,
@@ -726,6 +727,10 @@ def build_seg_crossfield_result(
     )
     rows = [row for row in rows
             if str(start_day) <= _detail_row_source_date(row, source['date_column']) <= str(inspection_date)]
+    rows, page_exclusions = exclude_page_absent_records(
+        cursor, inspection_date, rows, table_name=source['table_name'],
+        country='SEG', product_line=key.rsplit('_', 1)[-1],
+    )
     comparison_data = load_seg_review_history(cursor, start_day, key, rows) if needs_previous else []
     previous_rows = _previous_body_rows(comparison_data + rows, source['date_column']) if needs_previous else {}
     rule_ids = [
@@ -906,6 +911,7 @@ def build_seg_crossfield_result(
         'retailers': retailer_summaries,
         'source_rows': rows,
         'normal_corrections': corrections,
+        'page_exclusions': page_exclusions,
     }
 
 
@@ -1097,6 +1103,7 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
         'date_col': result['date_col'],
         'no_review_texts': SEG_NO_REVIEW_TEXT,
         'retailers': result['retailers'],
+        'page_exclusions': result['page_exclusions'],
     }
 
 

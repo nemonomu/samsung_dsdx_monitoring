@@ -12,6 +12,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.siel_retail import (
@@ -642,6 +643,10 @@ def build_siel_crossfield_result(
         for correction in corrections
     }
 
+    rows, page_exclusions = exclude_page_absent_records(
+        cursor, inspection_date, rows, table_name=source['table_name'],
+        country='SIEL', product_line=key.rsplit('_', 1)[-1],
+    )
     evaluations = {
         str(row.get('id')): evaluate_siel_row(row)
         for row in rows
@@ -740,6 +745,7 @@ def build_siel_crossfield_result(
         'retailers': retailer_summaries,
         'source_rows': rows,
         'normal_corrections': corrections,
+        'page_exclusions': page_exclusions,
     }
 
 
@@ -911,6 +917,7 @@ def get_siel_cross_field_summary(cursor, inspection_date, product_line):
         'date_col': result['date_col'],
         'no_review_texts': SIEL_NO_REVIEW_TEXT,
         'retailers': result['retailers'],
+        'page_exclusions': result['page_exclusions'],
     }
 
 

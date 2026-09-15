@@ -235,7 +235,8 @@ def get_cross_field_summary(
     table_name_for_normal = 'tv_retail_com' if product_line == 'tv' else 'hhp_retail_com'
     correction_date = inspection_date or target_date
     normal_counts = get_crossfield_normal_counts(
-        correction_date, table_name_for_normal
+        correction_date, table_name_for_normal,
+        [entry['record_id'] for entry in crossfield_result.get('page_exclusions', [])],
     )
 
     rule_summary = []
@@ -268,6 +269,7 @@ def get_cross_field_summary(
         'table_name': table_name,
         'date_col': date_col,
         'no_review_texts': get_all_no_review_texts(),
+        'page_exclusions': crossfield_result.get('page_exclusions', []),
     }
 
 

@@ -954,6 +954,18 @@ function renderCrossfieldReviewTypes(summary) {
 }
 
 // 크로스필드 요약 렌더링 (모달 / 인라인 공용)
+function renderPageExclusions(exclusions) {
+    if (!Array.isArray(exclusions) || exclusions.length === 0) return '';
+    return '<details class="crossfield-page-exclusions"><summary>상품페이지 없음 · 검증 제외 '
+        + exclusions.length.toLocaleString() + '건</summary><ul>'
+        + exclusions.map(function(entry) {
+            return '<li>' + [entry.retailer, entry.item || ('ID ' + entry.record_id),
+                entry.retailer_sku_name, entry.source_column,
+                entry.created_id, entry.original_created_at || entry.created_at, entry.memo]
+                .filter(Boolean).map(function(value) { return esc(String(value)); }).join(' · ') + '</li>';
+        }).join('') + '</ul></details>';
+}
+
 function renderCrossfieldSummaryContent(title, _category, data) {
     const inline = isCrossFieldInline();
     const ruleSummary = data.rule_summary || [];
@@ -986,6 +998,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
     html += '<button type="button" class="btn-crossfield-guide" onclick="showCrossfieldGuide()">검수 기준 안내</button>';
     html += '</div>';
 
+    html += renderPageExclusions(data.page_exclusions);
     if (ruleSummary.length === 0) {
         html += '<p>논리 오류 데이터가 없습니다.</p>';
     } else {

@@ -139,6 +139,8 @@ nullSandbox.renderNullFieldDetailView('ref_capacity', {
         ]
     },
     actual_table: 'dx_siel.dx_siel_ref_retail_com',
+    editable_cols: ['sku', 'retailer_sku_name', 'ref_capacity', 'final_sku_price',
+        'star_rating', 'count_of_star_ratings', 'count_of_reviews'],
     inspection_date: '2026-08-31',
     source_date: '2026-08-31',
     offset_days: 0,
@@ -161,15 +163,43 @@ assert.strictEqual(tableOptions.actualTable, 'dx_siel.dx_siel_ref_retail_com');
 assert.strictEqual(tableOptions.crawlDate, '2026-08-31');
 assert.strictEqual(tableOptions.editableDate, '2026-08-31');
 assert.deepStrictEqual(
-    JSON.parse(JSON.stringify(tableOptions.editableCols)), []
+    JSON.parse(JSON.stringify(tableOptions.editableCols)),
+    ['sku', 'retailer_sku_name', 'ref_capacity', 'final_sku_price',
+        'star_rating', 'count_of_star_ratings', 'count_of_reviews']
 );
+
+const editSandbox = {
+    console, window: { LAYER2: { section: 'null_validation' } },
+    document: { addEventListener() {} }, modalState: { days: 3 },
+    esc: value => String(value),
+};
+vm.createContext(editSandbox);
+vm.runInContext(commonSource, editSandbox);
+editSandbox.isInlineMode = () => true;
+Object.assign(editSandbox.detailViewState, {
+    type: 'null', tableParam: 'siel_ref_retail',
+    editableCols: new Set(tableOptions.editableCols),
+    crawlDate: tableOptions.crawlDate, editableDate: tableOptions.editableDate,
+    dateColumn: tableOptions.dateColumn, supportsNullAutoReview: true,
+    nullReviewField: 'ref_capacity', normalReviews: {},
+});
+for (const column of tableOptions.editableCols) {
+    const row = { id: 42, crawl_datetime: '2026-08-31 08:50:00',
+        [column]: null, null_fields: [column] };
+    const html = editSandbox.getCellHtml(row, { key: column }, 'siel_ref_retail');
+    assert(html.includes('data-editable="true"'), column + ' must be editable');
+    assert(html.includes('data-row-id="42"'));
+    assert(!editSandbox.getCellHtml({ ...row, id: 41, crawl_datetime: '2026-08-30 08:50:00' },
+        { key: column }, 'siel_ref_retail').includes('data-editable'));
+}
+assert.strictEqual(editSandbox._editableAttr({ id: 42, crawl_datetime: '2026-08-31' }, 'batch_id'), '');
 
 assert.ok(!commonSource.includes("detailViewState.type !== 'null'"));
 assert.ok(commonSource.includes('requireMemo: false'));
 assert.ok(commonSource.includes('if (memoRequired && !memo)'));
 assert.ok(commonSource.includes("failureMessages.join(' / ')"));
 assert.ok(nullTemplateSource.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260912-3"
+    "dx_layer2/js/layer2-common.js' %}?v=20260915-2"
 ));
 
 console.log('Layer2 SIEL NULL frontend tests passed.');
