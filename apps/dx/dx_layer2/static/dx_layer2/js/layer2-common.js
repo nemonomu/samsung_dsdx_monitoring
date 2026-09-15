@@ -366,6 +366,40 @@ function _nullReviewStatusClass(row) {
         : (row._null_review_status === '확인 필요' ? 'unreviewed' : 'history');
 }
 
+function _nullReviewGroupKey(row) {
+    var item = row.item === null || row.item === undefined ? '' : String(row.item).trim();
+    if (!item) return row;
+    return JSON.stringify([
+        String(row.country || '').trim().toUpperCase(),
+        String(row.account_name || '').trim().toLowerCase(),
+        item
+    ]);
+}
+
+function _sortNullReviewGroups(rows) {
+    if (detailViewState.type !== 'null' || !detailViewState.supportsNullAutoReview) return rows;
+    var byItem = new Map();
+    rows.forEach(function(row) {
+        var key = _nullReviewGroupKey(row);
+        if (!byItem.has(key)) byItem.set(key, { rows: [], pending: false });
+        var group = byItem.get(key);
+        group.rows.push(row);
+        if (row._null_review_status === '확인 필요') group.pending = true;
+    });
+    var groups = Array.from(byItem.values());
+    groups.sort(function(a, b) { return Number(b.pending) - Number(a.pending); });
+    var ordered = [];
+    groups.forEach(function(group) {
+        group.rows.sort(function(a, b) {
+            var dateColumn = detailViewState.dateColumn;
+            return String(a[dateColumn] || '').trim().substring(0, 10)
+                .localeCompare(String(b[dateColumn] || '').trim().substring(0, 10));
+        });
+        group.rows.forEach(function(row) { ordered.push(row); });
+    });
+    return ordered;
+}
+
 function getCellHtml(row, col, tableParam) {
     var key = col.key;
     var val;
@@ -597,7 +631,10 @@ function renderDetailWithTable(options) {
     } else {
         flatData = data;
     }
-    if (detailViewState.supportsNullAutoReview) _annotateNullReviewRows(flatData);
+    if (detailViewState.supportsNullAutoReview) {
+        _annotateNullReviewRows(flatData);
+        flatData = _sortNullReviewGroups(flatData);
+    }
     detailViewState.allData = flatData;
     detailViewState.originalData = flatData.slice();
     detailViewState.filteredData = null;
@@ -1480,13 +1517,14 @@ function handleDetailSort(sortCols) {
         });
     }
 
+    detailViewState.allData = _sortNullReviewGroups(detailViewState.allData);
     if (detailViewState.filteredData) applyDetailFilter();
     detailRenderPage(1);
 }
 
 function resetDetailSort() {
     detailViewState.sortColumns = [];
-    detailViewState.allData = detailViewState.originalData.slice();
+    detailViewState.allData = _sortNullReviewGroups(detailViewState.originalData.slice());
     if (detailViewState.table) detailViewState.table.setSortColumns([]);
     if (detailViewState.filteredData) applyDetailFilter();
     detailRenderPage(1);
@@ -1535,10 +1573,12 @@ function detailRenderPage(page) {
 
     // item rowspan 계산 (flat 모드, null 타입만)
     if (!isRowspan && detailViewState.type === 'null') {
+        var itemGroupKey = detailViewState.supportsNullAutoReview
+            ? _nullReviewGroupKey : function(row) { return row.item || ''; };
         for (var ri = 0; ri < pageData.length; ri++) {
-            var curItem = pageData[ri].item || '';
+            var curItem = itemGroupKey(pageData[ri]);
             var span = 1;
-            while (ri + span < pageData.length && (pageData[ri + span].item || '') === curItem) {
+            while (ri + span < pageData.length && itemGroupKey(pageData[ri + span]) === curItem) {
                 span++;
             }
             if (span > 1) {

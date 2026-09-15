@@ -134,7 +134,7 @@ function testManualOnlyReviewExplainsAutomaticExclusion() {
     }
     for (const eligibility of [true, undefined]) {
         sandbox.detailViewState.normalReviews['1_ref_capacity'].auto_eligible = eligibility;
-        const basis = sandbox.getCellHtml(sandbox.detailViewState.allData[0], { key: '_null_review_basis' }, 'sea_ref_retail');
+        const basis = sandbox.getCellHtml(sandbox.detailViewState.allData.find(row => row.id === 1), { key: '_null_review_basis' }, 'sea_ref_retail');
         assert.ok(!basis.includes('자동확인 제외'), 'only explicit server ineligibility should be displayed');
     }
 }
@@ -163,7 +163,7 @@ function testReasonAndMemoFollowCurrentQueryMetadata() {
         assert.ok(!basis.includes('자동확인 제외'));
     }
     renderRows(sandbox, { normalReviews: {} });
-    const unreviewed = sandbox.detailViewState.allData[0];
+    const unreviewed = sandbox.detailViewState.allData.find(row => row.id === 1);
     assert.strictEqual(unreviewed._null_review_status, '확인 필요');
     assert.strictEqual(sandbox.getCellHtml(unreviewed, { key: '_null_review_reason' }, 'sea_ref_retail'),
         '<td class="null-review-reason">-</td>');
@@ -300,8 +300,8 @@ async function testManualSaveDisplaysServerMetadataAndRefreshes() {
     await sandbox._submitNullReviews([cell], 'normal', metadata.memo, metadata.reason);
     assert.strictEqual(cell.className, 'cell-normal null-review-value manual');
     assert.strictEqual(sandbox.detailViewState.normalReviews['3_ref_capacity'], metadata);
-    assert.strictEqual(sandbox.detailViewState.allData[2]._null_review_status, '수동확인');
-    const saved = sandbox.detailViewState.allData[2];
+    const saved = sandbox.detailViewState.allData.find(row => row.id === 3);
+    assert.strictEqual(saved._null_review_status, '수동확인');
     assert.ok(sandbox.getCellHtml(saved, { key: '_null_review_reason' }, 'sea_ref_retail').includes('메모: 검수 메모'));
     assert.ok(sandbox.getCellHtml(saved, { key: '_null_review_basis' }, 'sea_ref_retail').includes('자동확인 제외 · 제품명 정보 부족'));
     assert.strictEqual(refreshed, 1);
@@ -462,7 +462,101 @@ async function testSielNullValueSaveRefreshesFindingsAndKeepsFailedEdits() {
     assert.strictEqual(sandbox.detailViewState.pendingEdits['42_final_sku_price'], edit);
 }
 
+function groupedReviewFixture() {
+    const data = [];
+    ['A', 'B', 'C', 'D', 'E'].forEach((item, index) => {
+        // Deliberately interleave dates; the current row arrives first.
+        [14, 12, 13].forEach(day => data.push({
+            id: index * 10 + day, item, account_name: 'Lowes', country: 'SEA',
+            crawl_datetime: '2026-09-' + day + ' 08:00:00',
+            ref_capacity: item === 'E' && day === 14 ? '100 L' : null,
+            null_fields: item === 'E' && day === 14 ? ['star_rating'] : ['ref_capacity']
+        }));
+    });
+    return {
+        data, crawlDate: '2026-09-15', editableDate: '2026-09-14',
+        normalReviews: {
+            '14_ref_capacity': { auto_applied: true, reason: '상품페이지 없음' },
+            '34_ref_capacity': { auto_applied: false, reason: '해당값 정상 확인' }
+        }
+    };
+}
+
+function testPendingProductsComeFirstWithAscendingHistoryAcrossCountries() {
+    for (const tableParam of ['tv_retail', 'sea_ref_retail', 'seda_ref_retail',
+        'siel_ref_retail', 'sem_ref_retail', 'seg_ref_retail', 'tse_ref_retail']) {
+        const sandbox = commonSandbox();
+        const fixture = groupedReviewFixture();
+        const originalIds = fixture.data.map(row => row.id);
+        renderRows(sandbox, { ...fixture, tableParam });
+        assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id),
+            [22, 23, 24, 42, 43, 44, 12, 13, 14, 32, 33, 34, 52, 53, 54], tableParam);
+        assert.deepStrictEqual(fixture.data.map(row => row.id), originalIds);
+        assert.strictEqual(sandbox.detailViewState.allData[0]._null_review_status, '비교 이력');
+        assert.strictEqual(sandbox.detailViewState.allData[2]._null_review_status, '확인 필요');
+        assert.strictEqual(sandbox.detailViewState.allData[14]._null_review_status, '정상');
+
+        sandbox.handleDetailSort([{ key: 'item', order: 'desc' }]);
+        assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id),
+            [42, 43, 44, 22, 23, 24, 52, 53, 54, 32, 33, 34, 12, 13, 14]);
+        sandbox.resetDetailSort();
+        assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id),
+            [22, 23, 24, 42, 43, 44, 12, 13, 14, 32, 33, 34, 52, 53, 54]);
+    }
+}
+
+function testRefreshedConfirmationAndCancellationReorderWholeProduct() {
+    const sandbox = commonSandbox();
+    const fixture = groupedReviewFixture();
+    renderRows(sandbox, fixture);
+    fixture.normalReviews['24_ref_capacity'] = { auto_applied: false, reason: '해당값 정상 확인' };
+    renderRows(sandbox, fixture);
+    assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id),
+        [42, 43, 44, 12, 13, 14, 22, 23, 24, 32, 33, 34, 52, 53, 54]);
+    delete fixture.normalReviews['24_ref_capacity'];
+    renderRows(sandbox, fixture);
+    assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id).slice(0, 6),
+        [22, 23, 24, 42, 43, 44]);
+    fixture.data.find(row => row.id === 24).null_fields = [];
+    fixture.data.find(row => row.id === 24).ref_capacity = '6 L';
+    renderRows(sandbox, fixture);
+    assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id).slice(0, 3),
+        [42, 43, 44]);
+}
+
+function testMissingItemsAndDifferentRetailersDoNotSharePriority() {
+    const sandbox = commonSandbox();
+    const data = [
+        { id: 1, item: null, account_name: 'Lowes', country: 'SEA' },
+        { id: 2, item: '', account_name: 'Lowes', country: 'SEA' },
+        { id: 3, item: 'same', account_name: 'Lowes', country: 'SEA', crawl_datetime: '2026-09-12' },
+        { id: 4, item: 'same', account_name: 'Bestbuy', country: 'SEA' },
+        { id: 5, item: 'same', account_name: 'Lowes', country: 'SEA' },
+        { id: 6, item: 'same', account_name: 'Bestbuy', country: 'SEM' }
+    ].map(row => ({ crawl_datetime: '2026-09-14', ref_capacity: null, null_fields: ['ref_capacity'], ...row }));
+    renderRows(sandbox, { data, editableDate: '2026-09-14', normalReviews: {
+        '1_ref_capacity': { auto_applied: true },
+        '5_ref_capacity': { auto_applied: true },
+        '6_ref_capacity': { auto_applied: true }
+    } });
+    assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id), [2, 4, 1, 3, 5, 6]);
+}
+
+function testOtherValidationViewsKeepTheirExistingOrder() {
+    const sandbox = commonSandbox();
+    const fixture = groupedReviewFixture();
+    for (const options of [{ type: 'format' }, { supportsNullAutoReview: false }]) {
+        renderRows(sandbox, { ...fixture, ...options });
+        assert.deepStrictEqual(Array.from(sandbox.detailViewState.allData, row => row.id),
+            fixture.data.map(row => row.id));
+    }
+}
+
 (async () => {
+    testPendingProductsComeFirstWithAscendingHistoryAcrossCountries();
+    testRefreshedConfirmationAndCancellationReorderWholeProduct();
+    testMissingItemsAndDifferentRetailersDoNotSharePriority();
+    testOtherValidationViewsKeepTheirExistingOrder();
     testNonTargetBasisKeepsMetricExceptionsVisible();
     testPageAbsenceShowsSameRecordBasis();
     testVisibleReviewColumnsAndNoFormatChange();

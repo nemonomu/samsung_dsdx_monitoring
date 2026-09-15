@@ -194,12 +194,16 @@ for (const column of tableOptions.editableCols) {
 }
 assert.strictEqual(editSandbox._editableAttr({ id: 42, crawl_datetime: '2026-08-31' }, 'batch_id'), '');
 
-assert.ok(!commonSource.includes("detailViewState.type !== 'null'"));
+editSandbox.detailViewState.type = 'format';
+assert.ok(editSandbox.getCellHtml(
+    { id: 42, crawl_datetime: '2026-08-31', final_sku_price: '100' },
+    { key: 'final_sku_price' }, 'siel_ref_retail'
+).includes('data-editable="true"'));
 assert.ok(commonSource.includes('requireMemo: false'));
 assert.ok(commonSource.includes('if (memoRequired && !memo)'));
 assert.ok(commonSource.includes("failureMessages.join(' / ')"));
 assert.ok(nullTemplateSource.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260915-2"
+    "dx_layer2/js/layer2-common.js' %}?v=20260915-3"
 ));
 
 console.log('Layer2 SIEL NULL frontend tests passed.');
