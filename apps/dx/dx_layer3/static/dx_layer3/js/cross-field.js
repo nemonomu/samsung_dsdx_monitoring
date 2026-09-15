@@ -98,8 +98,9 @@ function _cfOrderReviewDetailKeys(keys) {
         'issue_type',
         'crawl_datetime',
         'crawl_strdatetime',
-        'count_of_reviews',
+        'star_rating',
         'count_of_star_ratings',
+        'count_of_reviews',
         'review_body_count',
         'previous_review_body_count',
         'previous_source_date',
@@ -300,7 +301,12 @@ function showRetailerDetail(retailer) {
     if (_cfUsesEqualReviewCounts(productLine, retailer)) {
         fixedKeys.push('count_of_star_ratings');
     }
-    const defaultDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
+    const configuredDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
+    const defaultDisplayKeys = window.RetailReviewColumns
+        ? window.RetailReviewColumns.expand(
+            configuredDisplayKeys, dynamicKeys,
+            ruleDisplayCols.concat(window.crossfieldRuleFields || [])
+        ) : configuredDisplayKeys;
 
     // 전체 컬럼 정의 (기본 표시 + 나머지 수집 컬럼)
     const allColumns = [

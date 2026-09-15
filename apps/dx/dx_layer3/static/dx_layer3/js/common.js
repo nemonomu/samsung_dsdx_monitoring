@@ -1353,6 +1353,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldRuleName = ruleName;
             window.crossfieldRuleId = ruleId;
             window.crossfieldSelectFields = data.select_fields || '';
+            window.crossfieldRuleFields = [data.field1, data.field2];
             window.crossfieldValidationType = data.validation_type || '';
             window.crossfieldTableName = data.table_name || '';
             window.crossfieldDateCol = data.date_col || 'crawl_datetime';

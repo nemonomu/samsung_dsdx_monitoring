@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const reviewColumnsSource = fs.readFileSync('static/js/retail-review-columns.js', 'utf8');
 
 const source = fs.readFileSync(
     path.join(
@@ -223,6 +224,7 @@ const sandbox = {
 };
 
 vm.createContext(sandbox);
+vm.runInContext(reviewColumnsSource, sandbox);
 vm.runInContext(source, sandbox);
 
 const decreaseKeys = sandbox._cfDetailKeys([
@@ -337,12 +339,54 @@ function testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails() {
         assert.strictEqual(state.allData[0].count_of_star_ratings, '50');
         if (expected) {
             assert.strictEqual(state.visibleKeys.indexOf('count_of_star_ratings'),
-                state.visibleKeys.indexOf('count_of_reviews') + 1);
+                state.visibleKeys.indexOf('count_of_reviews') - 1);
         }
     }
 }
 
 testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails();
+
+function testReviewMetricsVisibleForEveryReviewRuleInInlineAndModal() {
+    const metrics = ['star_rating', 'count_of_star_ratings', 'count_of_reviews', 'review_body_count'];
+    for (const product of ['TV', 'SEA_REF', 'SIEL_TV', 'SEG_REF', 'SEM_LDY', 'TSE_TV']) {
+        for (const field of metrics.concat(['detailed_review_content', 'previous_review_body_count'])) {
+            for (const inline of [true, false]) {
+                sandbox.window.crossfieldProductLine = product;
+                sandbox.window.crossfieldSelectFields = field;
+                sandbox.window.crossfieldRuleFields = [field];
+                sandbox.window.crossfieldRetailerData = { Amazon: { rows: [{
+                    id: 1, item: 'A', account_name: 'Amazon', star_rating: null,
+                    count_of_star_ratings: '20', count_of_reviews: '10', review_body_count: 5,
+                    previous_review_body_count: 10, detailed_review_content: 'review1 - text',
+                    crawl_datetime: '2026-09-14',
+                }] } };
+                sandbox.window.crossfieldRetailerSummary = { Amazon: { count: 1, items: ['A'] } };
+                sandbox.isCrossFieldInline = () => inline;
+                sandbox.showRetailerDetail('Amazon');
+                const state = sandbox.window._cfDetailState;
+                assert.deepStrictEqual(Array.from(state.visibleKeys).filter(key => metrics.includes(key)),
+                    metrics, product + ':' + field + ':' + inline);
+                assert.strictEqual(new Set(state.visibleKeys).size, state.visibleKeys.length);
+                assert.strictEqual(state.allData[0].star_rating, '-');
+                assert.strictEqual(state.allData[0].count_of_star_ratings, '20');
+            }
+        }
+    }
+    // A sparse display configuration must still honor the rule's fields.
+    sandbox.window.crossfieldSelectFields = 'item';
+    sandbox.window.crossfieldRuleFields = ['star_rating', 'count_of_star_ratings'];
+    sandbox.showRetailerDetail('Amazon');
+    assert(sandbox.window._cfDetailState.visibleKeys.includes('count_of_reviews'));
+    assert(sandbox.window._cfDetailState.visibleKeys.includes('star_rating'));
+    sandbox.window.crossfieldSelectFields = 'final_sku_price';
+    sandbox.window.crossfieldRuleFields = ['final_sku_price', 'original_sku_price'];
+    sandbox.showRetailerDetail('Amazon');
+    assert(!sandbox.window._cfDetailState.visibleKeys.includes('star_rating'));
+    assert(!sandbox.window._cfDetailState.visibleKeys.includes('count_of_star_ratings'));
+    sandbox.window.crossfieldRuleFields = [];
+}
+
+testReviewMetricsVisibleForEveryReviewRuleInInlineAndModal();
 
 function testSeaTvUsesSourceDateWithoutMasterSku() {
     sandbox.window.crossfieldRetailerData = {

@@ -184,6 +184,8 @@ class SegCrossfieldScopeTests(unittest.TestCase):
             self.assertNotIn("A'1", sql)
             self.assertNotIn('amazon', sql.lower())
             self.assertNotIn('source.*', sql)
+            for metric in ('star_rating', 'count_of_star_ratings', 'count_of_reviews'):
+                self.assertIn(f'source.{metric}', sql)
             self.assertIn('SELECT DISTINCT ON', sql)
             self.assertIn("= 'main') DESC, source.id DESC", sql)
             self.assertEqual(2, sql.count('>= %s'))

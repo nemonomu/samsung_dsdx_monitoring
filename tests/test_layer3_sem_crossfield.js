@@ -1,5 +1,6 @@
 const assert = require('assert');
 const fs = require('fs');
+const reviewColumns = fs.readFileSync('static/js/retail-review-columns.js', 'utf8');
 
 const common = fs.readFileSync(
     'apps/dx/dx_layer3/static/dx_layer3/js/common.js', 'utf8'
@@ -26,10 +27,10 @@ assert(common.includes("type=${category}"));
 assert(common.includes("const loadedRules = isSemCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
-assert(dashboard.includes("common.js' %}?v=20260915-1"));
-assert(dashboard.includes("cross-field.js' %}?v=26"));
-assert(detail.includes("common.js' %}?v=20260915-1"));
-assert(detail.includes("cross-field.js' %}?v=26"));
+assert(dashboard.includes("common.js' %}?v=20260915-2"));
+assert(dashboard.includes("cross-field.js' %}?v=27"));
+assert(detail.includes("common.js' %}?v=20260915-2"));
+assert(detail.includes("cross-field.js' %}?v=27"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
 
@@ -85,6 +86,7 @@ print(json.dumps(fixtures))
         };
         context.window = context;
         vm.createContext(context);
+        vm.runInContext(reviewColumns, context);
         vm.runInContext(common, context);
         vm.runInContext(crossField, context);
         vm.runInContext('ViewStack.push = function() {};', context);

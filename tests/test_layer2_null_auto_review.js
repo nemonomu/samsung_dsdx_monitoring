@@ -3,6 +3,7 @@ const fs = require('fs');
 const vm = require('vm');
 
 const commonSource = fs.readFileSync('apps/dx/dx_layer2/static/dx_layer2/js/layer2-common.js', 'utf8');
+const reviewColumnsSource = fs.readFileSync('static/js/retail-review-columns.js', 'utf8');
 const nullSource = fs.readFileSync('apps/dx/dx_layer2/static/dx_layer2/js/null_validation.js', 'utf8');
 const dashboardSource = fs.readFileSync('apps/dx/dx_layer2/static/dx_layer2/js/dashboard.js', 'utf8');
 const reviewLogSource = fs.readFileSync('apps/dx/dx_layer2/static/dx_layer2/js/null_review_log.js', 'utf8');
@@ -27,6 +28,7 @@ function commonSandbox() {
         getCsrfToken() { return 'csrf-placeholder'; }
     };
     vm.createContext(sandbox);
+    vm.runInContext(reviewColumnsSource, sandbox);
     vm.runInContext(commonSource, sandbox);
     sandbox._buildDetailTable = () => {};
     sandbox.detailRenderPage = () => {};
@@ -552,7 +554,41 @@ function testOtherValidationViewsKeepTheirExistingOrder() {
     }
 }
 
+function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
+    const metrics = ['star_rating', 'count_of_star_ratings', 'count_of_reviews', 'review_body_count'];
+    for (const field of metrics.concat(['detailed_review_content'])) {
+        for (const tableParam of ['tv_retail', 'sea_ref_retail', 'seda_ref_retail',
+            'siel_ref_retail', 'sem_ref_retail', 'seg_ref_retail', 'tse_ref_retail']) {
+            const sandbox = commonSandbox();
+            const row = { id: 1, item: 'A', star_rating: null, count_of_star_ratings: '10',
+                count_of_reviews: '5', review_body_count: 3, detailed_review_content: 'review1 - text',
+                crawl_datetime: '2026-09-13', null_fields: [field] };
+            const config = [{ key: 'item' }, { key: field }, { key: 'product_url' }];
+            renderRows(sandbox, { tableParam, data: [row], config, nullReviewField: field,
+                editableCols: [field], normalReviews: {} });
+            const keys = Array.from(sandbox.detailViewState.columns, column => column.key);
+            assert.deepStrictEqual(keys.filter(key => metrics.includes(key)), metrics, tableParam + ':' + field);
+            assert.strictEqual(new Set(keys).size, keys.length);
+            assert(keys.indexOf('_null_review_status') > keys.indexOf('review_body_count'));
+            assert.deepStrictEqual(config.map(column => column.key), ['item', field, 'product_url']);
+            assert.deepStrictEqual(row.null_fields, [field]);
+            assert.deepStrictEqual(Array.from(sandbox.detailViewState.editableCols), [field]);
+        }
+    }
+    const sandbox = commonSandbox();
+    renderRows(sandbox, { nullReviewField: 'star_rating', normalReviews: {},
+        config: [{ key: 'star_rating' }], data: [{ id: 1, item: 'A', star_rating: null,
+            count_of_star_ratings: null, null_fields: ['star_rating'] }] });
+    const keys = Array.from(sandbox.detailViewState.columns, column => column.key);
+    assert(keys.includes('count_of_star_ratings'), 'an all-NULL metric must remain visible');
+    assert(!keys.includes('count_of_reviews'), 'do not invent fields absent from the response');
+    assert(!keys.includes('review_body_count'), 'do not invent a derived body count');
+    renderRows(sandbox, { type: 'format', nullReviewField: 'star_rating', config: [{ key: 'star_rating' }] });
+    assert.deepStrictEqual(Array.from(sandbox.detailViewState.columns, column => column.key), ['star_rating']);
+}
+
 (async () => {
+    testRelatedReviewMetricsAreVisibleBeforeReviewActions();
     testPendingProductsComeFirstWithAscendingHistoryAcrossCountries();
     testRefreshedConfirmationAndCancellationReorderWholeProduct();
     testMissingItemsAndDifferentRetailersDoNotSharePriority();

@@ -601,7 +601,7 @@ def load_latest_seg_rows(
         select_sql = ', '.join(f'source.{column}' for column in (
             'id', 'account_name', 'item', 'sku', 'retailer_sku_name',
             'page_type', 'batch_id', date_column, 'count_of_reviews',
-            'count_of_star_ratings', 'detailed_review_content', 'product_url',
+            'count_of_star_ratings', 'star_rating', 'detailed_review_content', 'product_url',
         ))
         identity_sql = ('LOWER(BTRIM(CAST(source.account_name AS TEXT))), '
                         'BTRIM(CAST(source.item AS TEXT))')

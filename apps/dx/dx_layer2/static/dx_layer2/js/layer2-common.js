@@ -611,6 +611,19 @@ function renderDetailWithTable(options) {
     detailViewState.supportsNullAutoReview = type === 'null'
         && options.supportsNullAutoReview === true;
     detailViewState.nullReviewField = options.nullReviewField || '';
+    var reviewColumnsHelper = window.RetailReviewColumns;
+    if (type === 'null' && !isRowspan && reviewColumnsHelper) {
+        var availableKeys = (selectCols || []).concat(data.flatMap(function(row) { return Object.keys(row); }));
+        var columnByKey = new Map(defaultCols.map(function(col) { return [col.key, col]; }));
+        defaultCols = reviewColumnsHelper.expand(
+            defaultCols.map(function(col) { return col.key; }), availableKeys,
+            [detailViewState.nullReviewField]
+        ).map(function(key) {
+            return columnByKey.get(key) || {
+                key: key, label: key === 'review_body_count' ? '리뷰본문 수' : key, width: 130
+            };
+        });
+    }
     if (detailViewState.supportsNullAutoReview) {
         var reviewColumns = [
             { key: '_null_review_status', label: '검수 상태', width: 100 },
@@ -620,6 +633,11 @@ function renderDetailWithTable(options) {
         var fieldIndex = defaultCols.findIndex(function(col) {
             return col.key === detailViewState.nullReviewField;
         });
+        if (reviewColumnsHelper && reviewColumnsHelper.isRelated(detailViewState.nullReviewField)) {
+            defaultCols.forEach(function(col, index) {
+                if (reviewColumnsHelper.isRelated(col.key)) fieldIndex = index;
+            });
+        }
         defaultCols.splice.apply(defaultCols, [fieldIndex >= 0 ? fieldIndex + 1 : defaultCols.length, 0]
             .concat(reviewColumns));
     }
