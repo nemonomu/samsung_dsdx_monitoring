@@ -13,11 +13,11 @@ class SegLayer1RepositoryTests(unittest.TestCase):
         sql, params = cursor.calls[0]
         self.assertEqual(['2026-09-09', 'mediamarkt', 'otto', 7], params)
         self.assertIn('LEFT(BTRIM(crawl_strdatetime), 10) < %s', sql)
-        self.assertIn('HAVING COUNT(rows.main_rank) > 0', sql)
+        self.assertIn('WHERE main_count > 0', sql)
         self.assertIn('PARTITION BY retailer ORDER BY source_date DESC', sql)
         self.assertIn('WHERE day_rank <= %s', sql)
-        self.assertIn('rows.source_date = latest.source_date', sql)
-        self.assertIn("WHERE page_type = 'main'", sql)
+        self.assertIn('GROUP BY retailer, source_date, batch_id', sql)
+        self.assertIn("MAX(id) FILTER (WHERE page_type = 'main')", sql)
         self.assertNotIn('INTERVAL', sql)
         self.assertEqual(301, result[0]['main_count'])
 

@@ -12,11 +12,15 @@ from tests.unit.support import (
     package_stub,
     sem_validation_stub,
     seg_validation_stub,
+    seda_null_validation_stub,
+    null_review_dependency_stubs,
 )
 
 
 def common_stubs():
     return {
+        **null_review_dependency_stubs(),
+        'apps.dx.dx_layer2.seda_null_validation': seda_null_validation_stub(),
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
         'apps.common.retail_validation': module_stub(
@@ -82,7 +86,7 @@ class YouTubeNullValidationTests(unittest.TestCase):
         self.service._null_check_config_cache_time = None
         self.service.log_error = lambda *_: None
 
-    def test_legacy_db_rules_are_replaced_by_three_country_structure_checks(self):
+    def test_youtube_rules_are_not_loaded(self):
         self.service.execute_dx_query = lambda _query: [{
             'category': 'youtube',
             'cat_display_name': 'YouTube',
@@ -101,23 +105,9 @@ class YouTubeNullValidationTests(unittest.TestCase):
 
         config = self.service.load_null_check_config()
 
-        checks = config['youtube']['checks']
-        self.assertEqual(
-            {'youtube_country_runs', 'youtube_videos', 'youtube_comments'},
-            set(checks),
-        )
-        self.assertNotIn('youtube_logs', checks)
-        self.assertIn(
-            'collection_country', checks['youtube_videos']['columns']
-        )
-        self.assertIn(
-            'collection_batch_id', checks['youtube_comments']['columns']
-        )
-        self.assertNotIn(
-            'youtube_collection_logs', self.service.VALID_TABLES_UPDATE
-        )
+        self.assertNotIn('youtube', config)
 
-    def test_failed_db_rule_load_returns_youtube_but_is_not_cached(self):
+    def test_failed_db_rule_load_does_not_enable_youtube_or_cache_failure(self):
         attempts = {'count': 0}
 
         def fail(_query):
@@ -129,8 +119,8 @@ class YouTubeNullValidationTests(unittest.TestCase):
         first = self.service.load_null_check_config()
         second = self.service.load_null_check_config()
 
-        self.assertIn('youtube', first)
-        self.assertIn('youtube', second)
+        self.assertNotIn('youtube', first)
+        self.assertNotIn('youtube', second)
         self.assertEqual(2, attempts['count'])
         self.assertIsNone(self.service._null_check_config_cache)
 
@@ -154,7 +144,7 @@ class YouTubeNullValidationTests(unittest.TestCase):
         config = self.service.load_null_check_config()
 
         self.assertIn('tv', config)
-        self.assertIn('youtube', config)
+        self.assertNotIn('youtube', config)
 
     def test_null_stats_can_skip_only_youtube_for_transaction_recovery(self):
         self.service.load_null_check_config = lambda: {
@@ -170,106 +160,23 @@ class YouTubeNullValidationTests(unittest.TestCase):
         self.assertEqual(0, total)
         self.assertEqual([], cursor.calls)
 
-    def test_null_stats_use_inspection_d_minus_one_youtube_runs_only(self):
-        youtube_config = {
-            'youtube': {
-                'display_name': 'YouTube',
-                'display_order': 3,
-                'has_retailer': False,
-                'checks': {
-                    'youtube_country_runs': {
-                        'display_name': 'Country Runs',
-                        'table_name': 'youtube_country_collection_runs',
-                        'date_column': 'collection_date',
-                        'youtube_scope': 'runs',
-                        'columns': {
-                            'batch_id': {
-                                'check_type': 'both',
-                                'display_columns': ['id', 'batch_id'],
-                                'query_columns': ['id', 'batch_id'],
-                                'query_days': 0,
-                            },
-                        },
-                    },
-                },
-            },
-        }
-        cursor = ScriptedCursor([
-            {'fetchone': (5, 1)},
-            {'fetchall': []},
-        ])
-
-        with patch.object(
-            self.service, 'load_null_check_config',
-            return_value=youtube_config,
-        ):
+    def test_legacy_include_flag_cannot_enable_youtube(self):
+        cursor = ScriptedCursor([])
+        with patch.object(self.service, 'load_null_check_config', return_value={
+                'youtube': self.service._YOUTUBE_NULL_CONFIG}):
             validation, total = self.service.get_null_stats(
-                cursor, date(2026, 7, 29), include_youtube=True
-            )
+                cursor, date(2026, 9, 15), include_youtube=True)
+        self.assertEqual([], validation['tables'])
+        self.assertEqual(0, total)
+        self.assertEqual([], cursor.calls)
 
-        self.assertEqual(1, total)
-        table = validation['tables'][0]
-        self.assertEqual('2026-07-29', table['inspection_date'])
-        self.assertEqual('2026-07-28', table['source_date'])
-        self.assertEqual(-1, table['offset_days'])
-        self.assertEqual('sea_youtube', table['source_key'])
-
-        summary_sql, summary_params = cursor.calls[0]
-        self.assertIn(
-            'COALESCE(collection_date, DATE(started_at)) = %s',
-            summary_sql,
-        )
-        self.assertEqual(['2026-07-28'], summary_params)
-        correction_sql, correction_params = cursor.calls[1]
-        self.assertIn(
-            'record_id IN (SELECT id FROM '
-            'youtube_country_collection_runs',
-            correction_sql,
-        )
-        self.assertEqual(
-            [
-                'youtube_country_collection_runs', '2026-07-29',
-                '2026-07-28',
-            ],
-            correction_params,
-        )
-
-    def test_null_detail_uses_youtube_d_minus_one_and_reports_both_dates(self):
-        description = [
-            ('id',), ('batch_id',), ('collection_date',), ('started_at',),
-        ]
-        cursor = ScriptedCursor([
-            {
-                'description': description,
-                'fetchall': [(7, None, date(2026, 7, 28), None)],
-            },
-            {'fetchall': []},
-        ])
-
+    def test_disabled_youtube_detail_does_not_query_source(self):
+        self.service.execute_dx_query = lambda _: []
+        cursor = ScriptedCursor([])
         result = self.service.get_null_detail(
-            cursor, date(2026, 7, 29), 'youtube',
-            'Country Runs', 1, 'batch_id',
-        )
-
-        self.assertEqual([7], [row['id'] for row in result['results']])
-        self.assertEqual('2026-07-29', result['inspection_date'])
-        self.assertEqual('2026-07-28', result['source_date'])
-        self.assertEqual(-1, result['offset_days'])
-        self.assertEqual('sea_youtube', result['source_key'])
-        self.assertFalse(result['supports_day_history'])
-
-        detail_sql, detail_params = cursor.calls[0]
-        self.assertIn(
-            'COALESCE(collection_date, DATE(started_at)) = %s',
-            detail_sql,
-        )
-        self.assertEqual([date(2026, 7, 28)], detail_params)
-        correction_sql, correction_params = cursor.calls[1]
-        self.assertIn('FROM monitoring_corrections', correction_sql)
-        self.assertEqual(
-            ('youtube_country_collection_runs', '2026-07-29', 'batch_id'),
-            correction_params,
-        )
+            cursor, date(2026, 9, 15), 'youtube', 'Country Runs', 1, 'batch_id')
+        self.assertEqual([], result['results'])
+        self.assertEqual([], cursor.calls)
 
     def test_run_scope_can_count_null_collection_date_by_started_at(self):
         where_sql, params = self.service._build_null_date_where({
@@ -456,13 +363,11 @@ class YouTubeDuplicateValidationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual([], cursor.calls)
 
-    def test_anomaly_stats_has_youtube_only_fallback_switch(self):
+    def test_anomaly_stats_does_not_run_youtube(self):
         source = inspect.getsource(self.service.get_anomaly_stats)
-        self.assertIn('include_youtube=True', str(inspect.signature(
-            self.service.get_anomaly_stats
-        )))
-        self.assertIn('if include_youtube:', source)
-        self.assertIn('_get_youtube_video_duplicate_stats', source)
+        self.assertNotIn('_get_youtube_video_duplicate_stats', source)
+        self.assertNotIn('youtube_videos', self.service.VALID_TABLES_ANOMALY)
+        self.assertNotIn('youtube_videos', self.service._DUP_TABLE_CONFIG)
 
 
 class YouTubeFormatValidationTests(unittest.TestCase):

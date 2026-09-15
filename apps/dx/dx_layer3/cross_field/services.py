@@ -19,7 +19,9 @@ def get_cross_field_rule_detail(
         cursor, target_date, product_line, section, rule_id, days,
         inspection_date=None):
     """특정 규칙 상세 조회 - 에러 아이템 원본 데이터 + 정상 처리 이력 반환"""
-    crossfield_result = validate_crossfield(target_date, section)
+    crossfield_result = validate_crossfield(
+        target_date, section, cursor=cursor, rule_id=rule_id,
+    )
 
     for rule_result in crossfield_result['rule_results']:
         if str(rule_result['rule_id']) == str(rule_id):
@@ -229,15 +231,17 @@ def get_cross_field_rule_detail(
 
 def get_cross_field_summary(
         target_date, product_line, section, inspection_date=None):
-    """규칙별 요약 반환 (검증 유형별 건수) - DB 연결 불필요"""
-    crossfield_result = validate_crossfield(target_date, section)
-
+    """규칙별 요약 반환 (검증 유형별 건수)."""
+    from apps.common.db import dx_connection
     table_name_for_normal = 'tv_retail_com' if product_line == 'tv' else 'hhp_retail_com'
     correction_date = inspection_date or target_date
-    normal_counts = get_crossfield_normal_counts(
-        correction_date, table_name_for_normal,
-        [entry['record_id'] for entry in crossfield_result.get('page_exclusions', [])],
-    )
+    with dx_connection() as (_conn, cursor):
+        crossfield_result = validate_crossfield(target_date, section, cursor=cursor)
+        normal_counts = get_crossfield_normal_counts(
+            correction_date, table_name_for_normal,
+            [entry['record_id'] for entry in crossfield_result.get('page_exclusions', [])],
+            cursor=cursor,
+        )
 
     rule_summary = []
     total_anomalies = 0

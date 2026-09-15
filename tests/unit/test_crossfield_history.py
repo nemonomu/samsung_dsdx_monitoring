@@ -26,7 +26,7 @@ class CrossfieldHistoryTests(unittest.TestCase):
                                     select_fields='value', error_details=[finding])
                         validated_dates = []
 
-                        def validate(source_date, section):
+                        def validate(source_date, section, **kwargs):
                             validated_dates.append(source_date)
                             return dict(rule_results=[rule], table_name='tv_retail_com',
                                         date_col='crawl_datetime')
@@ -87,7 +87,7 @@ class CrossfieldHistoryTests(unittest.TestCase):
                             get_retailer_columns=lambda *_: ['value']),
                         'apps.dx.dx_layer3.dashboard.services': module_stub(
                             'apps.dx.dx_layer3.dashboard.services',
-                            validate_crossfield=lambda *_: dict(rule_results=[rule],
+                            validate_crossfield=lambda *_, **kwargs: dict(rule_results=[rule],
                                 table_name='tv_retail_com', date_col='crawl_datetime'),
                             validate_review_detail_match=lambda *_: {},
                             get_crossfield_normal_counts=lambda *_: {},

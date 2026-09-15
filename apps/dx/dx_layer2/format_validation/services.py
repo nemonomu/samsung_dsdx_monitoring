@@ -951,7 +951,7 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days):
     }
 
 
-def _append_sea_format_stats(cursor, target_date, validation):
+def _append_sea_format_stats(cursor, target_date, validation, category=None):
     if not resolve_monitoring_date:
         return 0
     savepoint = 'layer2_sea_format_stats'
@@ -959,6 +959,8 @@ def _append_sea_format_stats(cursor, target_date, validation):
     total_issues = 0
     try:
         for product_key, section_code in SEA_FORMAT_SECTION_BY_PRODUCT.items():
+            if category and category != section_code:
+                continue
             source = SEA_RETAIL_SOURCES.get(product_key)
             if not source:
                 continue
@@ -1207,7 +1209,7 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
     }
 
 
-def _append_tse_format_stats(cursor, target_date, validation):
+def _append_tse_format_stats(cursor, target_date, validation, category=None):
     if not TSE_SOURCE_CONFIG or not get_tse_retailer_columns:
         return 0
     savepoint = 'layer2_tse_format_stats'
@@ -1215,6 +1217,8 @@ def _append_tse_format_stats(cursor, target_date, validation):
     total_issues = 0
     try:
         for product_line, source in TSE_SOURCE_CONFIG.items():
+            if category and category != source['section_code']:
+                continue
             configs = get_tse_retailer_columns(product_line)
             retailer_rows = []
             table_checked = 0
@@ -1701,7 +1705,7 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days):
     }
 
 
-def _append_siel_format_stats(cursor, target_date, validation):
+def _append_siel_format_stats(cursor, target_date, validation, category=None):
     if not resolve_monitoring_date or not SIEL_SOURCE_CONFIG:
         return 0
     savepoint = 'layer2_siel_format_stats'
@@ -1709,6 +1713,8 @@ def _append_siel_format_stats(cursor, target_date, validation):
     total_issues = 0
     try:
         for source_key, source in SIEL_SOURCE_CONFIG.items():
+            if category and category != source['section_code']:
+                continue
             date_mapping = resolve_monitoring_date(
                 target_date, 'SIEL', source['source_key']
             )
@@ -2625,7 +2631,7 @@ def get_hhp_format_errors(cursor, table_name, date_field, target_date, retailer)
     return errors
 
 
-def get_format_stats(cursor, target_date):
+def get_format_stats(cursor, target_date, category=None):
     """형식 검증 통계 — 대시보드용"""
 
     total_format_issues = 0
@@ -2638,289 +2644,296 @@ def get_format_stats(cursor, target_date):
         'tables': []
     }
 
-    # tv_item_mst에서 유효한 item 목록 조회
-    cursor.execute("SELECT DISTINCT item FROM tv_item_mst")
-    tv_valid_items = set(row[0] for row in cursor.fetchall())
+    if category in (None, 'tv_retail'):
+        # tv_item_mst에서 유효한 item 목록 조회
+        cursor.execute("SELECT DISTINCT item FROM tv_item_mst")
+        tv_valid_items = set(row[0] for row in cursor.fetchall())
 
-    # TV Retail 형식 검증 - 청크 단위 전수검사
-    tv_format_errors = []
-    tv_format_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
-    tv_format_total_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
-    tv_format_rows_count = 0
+        # TV Retail 형식 검증 - 청크 단위 전수검사
+        tv_format_errors = []
+        tv_format_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
+        tv_format_total_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
+        tv_format_rows_count = 0
 
-    all_fields = [
-        'item', 'page_type', 'product_url', 'main_rank', 'bsr_rank',
-        'final_sku_price', 'original_sku_price',
-        'count_of_reviews', 'star_rating', 'count_of_star_ratings',
-        'detailed_review_content',
-        'number_of_units_purchased_past_month', 'available_quantity_for_purchase',
-        'sku_popularity', 'retailer_membership_discounts',
-        'rank_1', 'rank_2', 'summarized_review_content',
-        'savings', 'offer', 'retailer_sku_name_similar', 'recommendation_intent',
-        'number_of_ppl_purchased_yesterday', 'number_of_ppl_added_to_carts', 'discount_type'
-    ]
+        all_fields = [
+            'item', 'page_type', 'product_url', 'main_rank', 'bsr_rank',
+            'final_sku_price', 'original_sku_price',
+            'count_of_reviews', 'star_rating', 'count_of_star_ratings',
+            'detailed_review_content',
+            'number_of_units_purchased_past_month', 'available_quantity_for_purchase',
+            'sku_popularity', 'retailer_membership_discounts',
+            'rank_1', 'rank_2', 'summarized_review_content',
+            'savings', 'offer', 'retailer_sku_name_similar', 'recommendation_intent',
+            'number_of_ppl_purchased_yesterday', 'number_of_ppl_added_to_carts', 'discount_type'
+        ]
 
-    CHUNK_SIZE = 5000
-    tv_offset = 0
-    while True:
-        cursor.execute(f"""
-            SELECT
-                account_name, id, item, page_type, product_url,
-                main_rank, bsr_rank, final_sku_price, original_sku_price,
-                count_of_reviews, star_rating, count_of_star_ratings,
-                detailed_review_content,
-                number_of_units_purchased_past_month, available_quantity_for_purchase,
-                sku_popularity, retailer_membership_discounts,
-                rank_1, rank_2, summarized_review_content,
-                savings, offer, retailer_sku_name_similar, recommendation_intent,
-                number_of_ppl_purchased_yesterday, number_of_ppl_added_to_carts, discount_type
-            FROM tv_retail_com
-            WHERE DATE(crawl_datetime::timestamp) = %s
-              AND {get_tv_validation_condition()}
-            ORDER BY id
-            LIMIT %s OFFSET %s
-        """, (target_date, CHUNK_SIZE, tv_offset))
+        CHUNK_SIZE = 5000
+        tv_offset = 0
+        while True:
+            cursor.execute(f"""
+                SELECT
+                    account_name, id, item, page_type, product_url,
+                    main_rank, bsr_rank, final_sku_price, original_sku_price,
+                    count_of_reviews, star_rating, count_of_star_ratings,
+                    detailed_review_content,
+                    number_of_units_purchased_past_month, available_quantity_for_purchase,
+                    sku_popularity, retailer_membership_discounts,
+                    rank_1, rank_2, summarized_review_content,
+                    savings, offer, retailer_sku_name_similar, recommendation_intent,
+                    number_of_ppl_purchased_yesterday, number_of_ppl_added_to_carts, discount_type
+                FROM tv_retail_com
+                WHERE DATE(crawl_datetime::timestamp) = %s
+                  AND {get_tv_validation_condition()}
+                ORDER BY id
+                LIMIT %s OFFSET %s
+            """, (target_date, CHUNK_SIZE, tv_offset))
 
-        chunk = cursor.fetchall()
-        if not chunk:
-            break
-        tv_format_rows_count += len(chunk)
+            chunk = cursor.fetchall()
+            if not chunk:
+                break
+            tv_format_rows_count += len(chunk)
 
-        for row in chunk:
-            account_name = row[0] or 'Unknown'
-            item_value = row[2]
-            errors = []
+            for row in chunk:
+                account_name = row[0] or 'Unknown'
+                item_value = row[2]
+                errors = []
 
-            if account_name in tv_format_total_by_retailer:
-                tv_format_total_by_retailer[account_name] += 1
-            else:
-                tv_format_total_by_retailer[account_name] = 1
+                if account_name in tv_format_total_by_retailer:
+                    tv_format_total_by_retailer[account_name] += 1
+                else:
+                    tv_format_total_by_retailer[account_name] = 1
 
-            values = list(row[2:])
+                values = list(row[2:])
 
-            for field, value in zip(all_fields, values):
-                error = validate_tv_field(field, value, account_name)
-                if error:
-                    errors.append({'field': field, 'value': str(value)[:30] if value else '', 'error': error})
+                for field, value in zip(all_fields, values):
+                    error = validate_tv_field(field, value, account_name)
+                    if error:
+                        errors.append({'field': field, 'value': str(value)[:30] if value else '', 'error': error})
 
-            if item_value and item_value not in tv_valid_items:
-                errors.append({
-                    'field': 'item (참조 무결성)',
-                    'value': str(item_value)[:30],
-                    'error': '마스터 테이블에 등록되지 않은 item'
+                if item_value and item_value not in tv_valid_items:
+                    errors.append({
+                        'field': 'item (참조 무결성)',
+                        'value': str(item_value)[:30],
+                        'error': '마스터 테이블에 등록되지 않은 item'
+                    })
+
+                if errors:
+                    if len(tv_format_errors) < 30:
+                        tv_format_errors.append({
+                            'id': row[1],
+                            'account_name': account_name,
+                            'item': row[2],
+                            'errors': errors[:5]
+                        })
+                    if account_name in tv_format_by_retailer:
+                        tv_format_by_retailer[account_name] += len(errors)
+                    else:
+                        tv_format_by_retailer[account_name] = len(errors)
+
+            tv_offset += CHUNK_SIZE
+
+        tv_format_retailers = []
+        tv_format_issue_total = 0
+        for retailer, count in tv_format_by_retailer.items():
+            tv_format_retailers.append({
+                'retailer': retailer,
+                'total': tv_format_total_by_retailer.get(retailer, 0),
+                'issue_count': count,
+                'status': get_status(count)
+            })
+            tv_format_issue_total += count
+
+        format_validation['tables'].append({
+            'table': 'tv_retail',
+            'table_name': 'TV Retail',
+            'total_checked': tv_format_rows_count,
+            'total_issues': tv_format_issue_total,
+            'status': get_status(tv_format_issue_total),
+            'retailers': tv_format_retailers,
+            'sample_errors': tv_format_errors
+        })
+        total_format_issues += tv_format_issue_total
+
+        # hhp_item_mst
+        hhp_valid_items = set()
+
+        # HHP Retail - 청크 단위 전수검사
+        hhp_format_errors = []
+        hhp_format_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
+        hhp_format_total_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
+        hhp_format_rows_count = 0
+
+        hhp_fields = [
+            'item', 'page_type', 'product_url', 'main_rank', 'bsr_rank', 'trend_rank',
+            'final_sku_price', 'original_sku_price',
+            'count_of_reviews', 'star_rating', 'count_of_star_ratings',
+            'detailed_review_content', 'trade_in', 'sku_status',
+            'number_of_units_purchased_past_month', 'available_quantity_for_purchase', 'delivery_availability',
+            'sku_popularity', 'retailer_membership_discounts',
+            'rank_1', 'rank_2', 'summarized_review_content',
+            'savings', 'offer', 'retailer_sku_name_similar', 'recommendation_intent',
+            'number_of_ppl_purchased_yesterday', 'number_of_ppl_added_to_carts', 'discount_type'
+        ]
+
+        hhp_offset = 0
+        while False:
+            cursor.execute("""
+                SELECT
+                    account_name, id, item, page_type, product_url,
+                    main_rank, bsr_rank, trend_rank, final_sku_price, original_sku_price,
+                    count_of_reviews, star_rating, count_of_star_ratings,
+                    detailed_review_content, trade_in, sku_status,
+                    number_of_units_purchased_past_month, available_quantity_for_purchase, delivery_availability,
+                    sku_popularity, retailer_membership_discounts,
+                    rank_1, rank_2, summarized_review_content,
+                    savings, offer, retailer_sku_name_similar, recommendation_intent,
+                    number_of_ppl_purchased_yesterday, number_of_ppl_added_to_carts, discount_type
+                FROM hhp_retail_com
+                WHERE DATE(crawl_strdatetime::timestamp) = %s
+                ORDER BY id
+                LIMIT %s OFFSET %s
+            """, (target_date, CHUNK_SIZE, hhp_offset))
+
+            chunk = cursor.fetchall()
+            if not chunk:
+                break
+            hhp_format_rows_count += len(chunk)
+
+            for row in chunk:
+                account_name = row[0] or 'Unknown'
+                item_value = row[2]
+                errors = []
+
+                if account_name in hhp_format_total_by_retailer:
+                    hhp_format_total_by_retailer[account_name] += 1
+                else:
+                    hhp_format_total_by_retailer[account_name] = 1
+
+                values = list(row[2:])
+
+                for field, value in zip(hhp_fields, values):
+                    error = validate_hhp_field(field, value, account_name)
+                    if error:
+                        errors.append({'field': field, 'value': str(value)[:30] if value else '', 'error': error})
+
+                if item_value and item_value not in hhp_valid_items:
+                    errors.append({
+                        'field': 'item (참조 무결성)',
+                        'value': str(item_value)[:30],
+                        'error': '마스터 테이블에 등록되지 않은 item'
+                    })
+
+                if errors:
+                    if len(hhp_format_errors) < 30:
+                        hhp_format_errors.append({
+                            'id': row[1],
+                            'account_name': account_name,
+                            'item': row[2],
+                            'errors': errors[:5]
+                        })
+                    if account_name in hhp_format_by_retailer:
+                        hhp_format_by_retailer[account_name] += len(errors)
+                    else:
+                        hhp_format_by_retailer[account_name] = len(errors)
+
+            hhp_offset += CHUNK_SIZE
+
+        hhp_format_retailers = []
+        hhp_format_issue_total = 0
+        for retailer, count in hhp_format_by_retailer.items():
+            hhp_format_retailers.append({
+                'retailer': retailer,
+                'total': hhp_format_total_by_retailer.get(retailer, 0),
+                'issue_count': count,
+                'status': get_status(count)
+            })
+            hhp_format_issue_total += count
+
+        format_validation['tables'].append({
+            'table': 'hhp_retail',
+            'table_name': 'HHP Retail',
+            'total_checked': hhp_format_rows_count,
+            'total_issues': hhp_format_issue_total,
+            'status': get_status(hhp_format_issue_total),
+            'retailers': hhp_format_retailers,
+            'sample_errors': hhp_format_errors
+        })
+        total_format_issues += hhp_format_issue_total
+        format_validation['tables'] = [t for t in format_validation['tables'] if t.get('table') != 'hhp_retail']
+        total_format_issues -= hhp_format_issue_total
+
+    if category in (None, 'market'):
+        # Market 형식 검증
+        try:
+            configured_market_tables = [
+                ('market_trend', 'Trend', 'crawl_at_local_time'),
+                ('market_comp_product', 'Comp Product', 'created_at'),
+                ('market_comp_event', 'Comp Event', 'created_at'),
+                ('openai_forecast_results', 'Forecast', 'crawled_at'),
+            ]
+            # 수집 재개 시 공통 비활성화 목록에서 테이블을 제거하면 자동 복구된다.
+            market_tables = [
+                item for item in configured_market_tables
+                if item[0] not in DISABLED_SOURCE_TABLES
+            ]
+            market_total_format_issues = 0
+            market_total_format_checked = 0
+            market_format_retailers = []
+
+            for mkt_table, mkt_retailer, mkt_date_col in market_tables:
+                cursor.execute(f"SELECT COUNT(*) FROM {mkt_table} WHERE DATE({mkt_date_col}) = %s", (target_date,))
+                mkt_total = cursor.fetchone()[0] or 0
+
+                error_where = build_format_error_sql(mkt_table, 'ALL', mkt_retailer)
+                if error_where != 'FALSE':
+                    cursor.execute(f"SELECT COUNT(*) FROM {mkt_table} WHERE DATE({mkt_date_col}) = %s AND ({error_where})", (target_date,))
+                    mkt_issues = cursor.fetchone()[0] or 0
+                else:
+                    mkt_issues = 0
+
+                market_total_format_checked += mkt_total
+                market_total_format_issues += mkt_issues
+                market_format_retailers.append({
+                    'retailer': mkt_retailer,
+                    'total': mkt_total,
+                    'issue_count': mkt_issues,
+                    'status': get_status(mkt_issues),
                 })
 
-            if errors:
-                if len(tv_format_errors) < 30:
-                    tv_format_errors.append({
-                        'id': row[1],
-                        'account_name': account_name,
-                        'item': row[2],
-                        'errors': errors[:5]
-                    })
-                if account_name in tv_format_by_retailer:
-                    tv_format_by_retailer[account_name] += len(errors)
-                else:
-                    tv_format_by_retailer[account_name] = len(errors)
-
-        tv_offset += CHUNK_SIZE
-
-    tv_format_retailers = []
-    tv_format_issue_total = 0
-    for retailer, count in tv_format_by_retailer.items():
-        tv_format_retailers.append({
-            'retailer': retailer,
-            'total': tv_format_total_by_retailer.get(retailer, 0),
-            'issue_count': count,
-            'status': get_status(count)
-        })
-        tv_format_issue_total += count
-
-    format_validation['tables'].append({
-        'table': 'tv_retail',
-        'table_name': 'TV Retail',
-        'total_checked': tv_format_rows_count,
-        'total_issues': tv_format_issue_total,
-        'status': get_status(tv_format_issue_total),
-        'retailers': tv_format_retailers,
-        'sample_errors': tv_format_errors
-    })
-    total_format_issues += tv_format_issue_total
-
-    # hhp_item_mst
-    hhp_valid_items = set()
-
-    # HHP Retail - 청크 단위 전수검사
-    hhp_format_errors = []
-    hhp_format_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
-    hhp_format_total_by_retailer = {'Amazon': 0, 'Bestbuy': 0, 'Walmart': 0}
-    hhp_format_rows_count = 0
-
-    hhp_fields = [
-        'item', 'page_type', 'product_url', 'main_rank', 'bsr_rank', 'trend_rank',
-        'final_sku_price', 'original_sku_price',
-        'count_of_reviews', 'star_rating', 'count_of_star_ratings',
-        'detailed_review_content', 'trade_in', 'sku_status',
-        'number_of_units_purchased_past_month', 'available_quantity_for_purchase', 'delivery_availability',
-        'sku_popularity', 'retailer_membership_discounts',
-        'rank_1', 'rank_2', 'summarized_review_content',
-        'savings', 'offer', 'retailer_sku_name_similar', 'recommendation_intent',
-        'number_of_ppl_purchased_yesterday', 'number_of_ppl_added_to_carts', 'discount_type'
-    ]
-
-    hhp_offset = 0
-    while False:
-        cursor.execute("""
-            SELECT
-                account_name, id, item, page_type, product_url,
-                main_rank, bsr_rank, trend_rank, final_sku_price, original_sku_price,
-                count_of_reviews, star_rating, count_of_star_ratings,
-                detailed_review_content, trade_in, sku_status,
-                number_of_units_purchased_past_month, available_quantity_for_purchase, delivery_availability,
-                sku_popularity, retailer_membership_discounts,
-                rank_1, rank_2, summarized_review_content,
-                savings, offer, retailer_sku_name_similar, recommendation_intent,
-                number_of_ppl_purchased_yesterday, number_of_ppl_added_to_carts, discount_type
-            FROM hhp_retail_com
-            WHERE DATE(crawl_strdatetime::timestamp) = %s
-            ORDER BY id
-            LIMIT %s OFFSET %s
-        """, (target_date, CHUNK_SIZE, hhp_offset))
-
-        chunk = cursor.fetchall()
-        if not chunk:
-            break
-        hhp_format_rows_count += len(chunk)
-
-        for row in chunk:
-            account_name = row[0] or 'Unknown'
-            item_value = row[2]
-            errors = []
-
-            if account_name in hhp_format_total_by_retailer:
-                hhp_format_total_by_retailer[account_name] += 1
-            else:
-                hhp_format_total_by_retailer[account_name] = 1
-
-            values = list(row[2:])
-
-            for field, value in zip(hhp_fields, values):
-                error = validate_hhp_field(field, value, account_name)
-                if error:
-                    errors.append({'field': field, 'value': str(value)[:30] if value else '', 'error': error})
-
-            if item_value and item_value not in hhp_valid_items:
-                errors.append({
-                    'field': 'item (참조 무결성)',
-                    'value': str(item_value)[:30],
-                    'error': '마스터 테이블에 등록되지 않은 item'
+            if market_format_retailers:
+                format_validation['tables'].append({
+                    'table': 'market',
+                    'table_name': 'Market',
+                    'total_checked': market_total_format_checked,
+                    'total_issues': market_total_format_issues,
+                    'status': get_status(market_total_format_issues),
+                    'retailers': market_format_retailers
                 })
-
-            if errors:
-                if len(hhp_format_errors) < 30:
-                    hhp_format_errors.append({
-                        'id': row[1],
-                        'account_name': account_name,
-                        'item': row[2],
-                        'errors': errors[:5]
-                    })
-                if account_name in hhp_format_by_retailer:
-                    hhp_format_by_retailer[account_name] += len(errors)
-                else:
-                    hhp_format_by_retailer[account_name] = len(errors)
-
-        hhp_offset += CHUNK_SIZE
-
-    hhp_format_retailers = []
-    hhp_format_issue_total = 0
-    for retailer, count in hhp_format_by_retailer.items():
-        hhp_format_retailers.append({
-            'retailer': retailer,
-            'total': hhp_format_total_by_retailer.get(retailer, 0),
-            'issue_count': count,
-            'status': get_status(count)
-        })
-        hhp_format_issue_total += count
-
-    format_validation['tables'].append({
-        'table': 'hhp_retail',
-        'table_name': 'HHP Retail',
-        'total_checked': hhp_format_rows_count,
-        'total_issues': hhp_format_issue_total,
-        'status': get_status(hhp_format_issue_total),
-        'retailers': hhp_format_retailers,
-        'sample_errors': hhp_format_errors
-    })
-    total_format_issues += hhp_format_issue_total
-    format_validation['tables'] = [t for t in format_validation['tables'] if t.get('table') != 'hhp_retail']
-    total_format_issues -= hhp_format_issue_total
-
-    # Market 형식 검증
-    try:
-        configured_market_tables = [
-            ('market_trend', 'Trend', 'crawl_at_local_time'),
-            ('market_comp_product', 'Comp Product', 'created_at'),
-            ('market_comp_event', 'Comp Event', 'created_at'),
-            ('openai_forecast_results', 'Forecast', 'crawled_at'),
-        ]
-        # 수집 재개 시 공통 비활성화 목록에서 테이블을 제거하면 자동 복구된다.
-        market_tables = [
-            item for item in configured_market_tables
-            if item[0] not in DISABLED_SOURCE_TABLES
-        ]
-        market_total_format_issues = 0
-        market_total_format_checked = 0
-        market_format_retailers = []
-
-        for mkt_table, mkt_retailer, mkt_date_col in market_tables:
-            cursor.execute(f"SELECT COUNT(*) FROM {mkt_table} WHERE DATE({mkt_date_col}) = %s", (target_date,))
-            mkt_total = cursor.fetchone()[0] or 0
-
-            error_where = build_format_error_sql(mkt_table, 'ALL', mkt_retailer)
-            if error_where != 'FALSE':
-                cursor.execute(f"SELECT COUNT(*) FROM {mkt_table} WHERE DATE({mkt_date_col}) = %s AND ({error_where})", (target_date,))
-                mkt_issues = cursor.fetchone()[0] or 0
-            else:
-                mkt_issues = 0
-
-            market_total_format_checked += mkt_total
-            market_total_format_issues += mkt_issues
-            market_format_retailers.append({
-                'retailer': mkt_retailer,
-                'total': mkt_total,
-                'issue_count': mkt_issues,
-                'status': get_status(mkt_issues),
-            })
-
-        if market_format_retailers:
-            format_validation['tables'].append({
-                'table': 'market',
-                'table_name': 'Market',
-                'total_checked': market_total_format_checked,
-                'total_issues': market_total_format_issues,
-                'status': get_status(market_total_format_issues),
-                'retailers': market_format_retailers
-            })
-            total_format_issues += market_total_format_issues
-    except Exception as e:
-        print(f'[WARN] layer_stats market_format: {e}')
+                total_format_issues += market_total_format_issues
+        except Exception as e:
+            print(f'[WARN] layer_stats market_format: {e}')
 
     total_format_issues += _append_sea_format_stats(
-        cursor, target_date, format_validation
+        cursor, target_date, format_validation,
+        **({"category": category} if category else {})
     )
 
     total_format_issues += _append_siel_format_stats(
-        cursor, target_date, format_validation
+        cursor, target_date, format_validation,
+        **({"category": category} if category else {})
     )
 
     total_format_issues += _append_tse_format_stats(
-        cursor, target_date, format_validation
+        cursor, target_date, format_validation,
+        **({"category": category} if category else {})
     )
     total_format_issues += seg_validation.append_format_stats(
-        cursor, target_date, format_validation
+        cursor, target_date, format_validation,
+        **({"category": category} if category else {})
     )
     total_format_issues += sem_validation.append_format_stats(
-        cursor, target_date, format_validation
+        cursor, target_date, format_validation,
+        **({"category": category} if category else {})
     )
 
     format_validation['total_issues'] = total_format_issues

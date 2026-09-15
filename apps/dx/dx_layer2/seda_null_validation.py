@@ -126,9 +126,11 @@ def _load_normal_reviews(cursor, target_date, source):
     }
 
 
-def append_null_stats(cursor, target_date, validation):
+def append_null_stats(cursor, target_date, validation, category=None):
     total = 0
     for product_line, source in SEDA_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
         for retailer in source['retailers']:

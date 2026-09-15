@@ -83,59 +83,31 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             stubs,
         )
 
-    def test_failure_rolls_back_and_retries_without_youtube(self):
-        cursor = RecordingCursor()
-        include_values = []
+    def test_each_validation_receives_only_requested_country_product(self):
+        for section, function in (
+            ('null_validation', 'get_null_stats'),
+            ('format_validation', 'get_format_stats'),
+            ('anomaly_validation', 'get_anomaly_stats'),
+        ):
+            with self.subTest(section=section), patch.object(
+                    self.service, function, return_value=({'tables': []}, 0)) as stats:
+                cursor = RecordingCursor()
+                result = self.service.get_layer_stats(
+                    cursor, date(2026, 9, 15), section, category='seg_tv_retail')
+                stats.assert_called_once_with(cursor, date(2026, 9, 15), category='seg_tv_retail')
+                self.assertEqual('seg_tv_retail', result['scoped_table'])
 
-        def stats(_cursor, _target_date, include_youtube=True):
-            include_values.append(include_youtube)
-            if include_youtube:
-                raise RuntimeError('youtube query failed')
-            return {'tables': [{'table': 'tv_retail'}]}, 3
-
-        result = self.service._run_with_youtube_fallback(
-            cursor,
-            date(2026, 7, 29),
-            stats,
-            'layer2_youtube_test',
-        )
-
-        self.assertEqual([True, False], include_values)
-        self.assertEqual(3, result[1])
-        self.assertEqual('tv_retail', result[0]['tables'][0]['table'])
-        self.assertEqual([
-            'SAVEPOINT layer2_youtube_test',
-            'ROLLBACK TO SAVEPOINT layer2_youtube_test',
-            'RELEASE SAVEPOINT layer2_youtube_test',
-        ], [sql for sql, _params in cursor.calls])
-
-    def test_success_releases_without_retry(self):
-        cursor = RecordingCursor()
-        include_values = []
-
-        def stats(_cursor, _target_date, include_youtube=True):
-            include_values.append(include_youtube)
-            return {'tables': [{'table': 'tv_retail'}, {'table': 'youtube'}]}, 0
-
-        result = self.service._run_with_youtube_fallback(
-            cursor,
-            date(2026, 7, 29),
-            stats,
-            'layer2_youtube_test',
-        )
-
-        self.assertEqual([True], include_values)
-        self.assertEqual(2, len(result[0]['tables']))
-        self.assertEqual([
-            'SAVEPOINT layer2_youtube_test',
-            'RELEASE SAVEPOINT layer2_youtube_test',
-        ], [sql for sql, _params in cursor.calls])
+    def test_failed_null_query_is_not_repeated(self):
+        with patch.object(self.service, 'get_null_stats', side_effect=RuntimeError('failed')) as stats:
+            with self.assertRaises(RuntimeError):
+                self.service.get_layer_stats(RecordingCursor(), date(2026, 9, 15), 'null_validation')
+            stats.assert_called_once()
 
     def test_section_stats_runs_only_requested_validation(self):
         cursor = RecordingCursor()
         null_result = ({'type': 'null', 'tables': []}, 7)
         with patch.object(
-            self.service, '_run_with_youtube_fallback',
+            self.service, 'get_null_stats',
             return_value=null_result,
         ) as null_stats, patch.object(
             self.service, 'get_format_stats'
@@ -171,7 +143,7 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
                 'retailers': [{'retailer': 'Homepro', 'auto_reviewed_count': 3}],
             }],
         }
-        with patch.object(self.service, '_run_with_youtube_fallback',
+        with patch.object(self.service, 'get_null_stats',
                           return_value=(null_validation, 2)):
             result = self.service.get_layer_stats(
                 RecordingCursor(), date(2026, 9, 13), 'null_validation',
@@ -233,7 +205,7 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
                         cursor, 'null', table_code, 'Example Retailer', date(2026, 9, 12),
                     )
 
-                stats.assert_called_once_with(cursor, date(2026, 9, 12), include_youtube=False)
+                stats.assert_called_once_with(cursor, date(2026, 9, 12), include_youtube=False, category=table_code)
                 self.assertEqual(retailer['fields_detail'], result['field_counts'])
                 for key in (
                     'raw_fields_detail', 'reviewed_fields_detail', 'raw_null_count',

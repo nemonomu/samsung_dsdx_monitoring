@@ -75,28 +75,26 @@ def get_previous_main_counts(cursor, product_line, source_date, limit=7):
                   ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
               AND LOWER(REPLACE(BTRIM(account_name), ' ', ''))
                   IN ({placeholders})
-        ), latest_main_batches AS (
-            SELECT DISTINCT ON (retailer, source_date)
-                   retailer, source_date, batch_id
+        ), batch_counts AS (
+            SELECT retailer, source_date, batch_id,
+                   MAX(id) FILTER (WHERE page_type = 'main') AS latest_main_id,
+                   COUNT(main_rank) FILTER (
+                       WHERE page_type IN ('main', 'bsr')
+                   ) AS main_count
             FROM dated_rows
-            WHERE page_type = 'main'
-            ORDER BY retailer, source_date, id DESC
+            GROUP BY retailer, source_date, batch_id
         ), daily_counts AS (
-            SELECT latest.retailer, latest.source_date,
-                   COUNT(rows.main_rank) AS main_count
-            FROM latest_main_batches latest
-            JOIN dated_rows rows
-              ON rows.retailer = latest.retailer
-             AND rows.source_date = latest.source_date
-             AND rows.batch_id IS NOT DISTINCT FROM latest.batch_id
-            WHERE rows.page_type IN ('main', 'bsr')
-            GROUP BY latest.retailer, latest.source_date
-            HAVING COUNT(rows.main_rank) > 0
+            SELECT DISTINCT ON (retailer, source_date)
+                   retailer, source_date, main_count
+            FROM batch_counts
+            WHERE latest_main_id IS NOT NULL
+            ORDER BY retailer, source_date, latest_main_id DESC
         ), ranked_days AS (
             SELECT *, ROW_NUMBER() OVER (
                 PARTITION BY retailer ORDER BY source_date DESC
             ) AS day_rank
             FROM daily_counts
+            WHERE main_count > 0
         )
         SELECT retailer, source_date, main_count
         FROM ranked_days

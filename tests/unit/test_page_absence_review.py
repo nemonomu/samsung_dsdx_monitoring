@@ -205,7 +205,8 @@ class PageAbsenceCrossfieldTests(unittest.TestCase):
             )
         self.assertEqual(1, count)
         self.assertEqual([{'item': 'other'}], results)
-        sql, params = cursor.execute.call_args.args
+        sql, params = next(call.args for call in cursor.execute.call_args_list
+                           if call.args[0].startswith('WITH tv_retail_com AS ('))
         self.assertTrue(sql.startswith('WITH tv_retail_com AS ('))
         self.assertIn('AND id <> ALL(%s)', sql)
         self.assertEqual(1, sql.count('WITH tv_retail_com AS ('))

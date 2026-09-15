@@ -158,7 +158,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         config = self.service.load_null_check_config()
 
         self.assertEqual(
-            {'sea_ref_retail', 'sea_ldy_retail', 'youtube'}, set(config)
+            {'sea_ref_retail', 'sea_ldy_retail'}, set(config)
         )
         self.assertEqual(
             set(NULL_COLUMNS['ref']),

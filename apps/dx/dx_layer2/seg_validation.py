@@ -460,9 +460,11 @@ def _load_normal_reviews(cursor, target_date, product_line,
     return reviews
 
 
-def append_null_stats(cursor, target_date, validation):
+def append_null_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEG_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         table_retailers = []
         table_fields = []
         table_records = 0
@@ -523,9 +525,11 @@ def append_null_stats(cursor, target_date, validation):
     return total_issues
 
 
-def append_format_stats(cursor, target_date, validation):
+def append_format_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEG_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         retailer_rows = []
         table_checked = 0
         table_issues = 0
@@ -789,9 +793,11 @@ def build_duplicate_groups(rows, retailer=None):
     return groups
 
 
-def append_duplicate_stats(cursor, target_date, validation):
+def append_duplicate_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for _product_line, source in SEG_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         retailer_rows = []
         table_records = 0
         table_issues = 0

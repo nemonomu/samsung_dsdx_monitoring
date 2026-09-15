@@ -3,7 +3,6 @@ NULL 검증 서비스 — 순수 비즈니스 로직 (DB cursor/conn을 받아 �
 """
 
 import time
-from copy import deepcopy
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from apps.common.db import execute_dx_query, dx_table
@@ -759,8 +758,6 @@ def load_null_check_config():
     except Exception as e:
         log_error(e, 'db')
 
-    # DB 설정 조회 결과와 무관하게 구형 YouTube 설정을 신규 구조로 교체한다.
-    result['youtube'] = deepcopy(_YOUTUBE_NULL_CONFIG)
     result = dict(sorted(
         result.items(),
         key=lambda item: (
@@ -770,7 +767,7 @@ def load_null_check_config():
         ),
     ))
 
-    # DB 조회 실패 시 비-YouTube 설정을 60초간 빈 상태로 고정하지 않는다.
+    # DB 조회 실패 시 설정을 60초간 빈 상태로 고정하지 않는다.
     if db_load_succeeded:
         _null_check_config_cache = result
         _null_check_config_cache_time = now
@@ -801,6 +798,25 @@ def get_all_categories():
         if source['section_code'] not in categories:
             categories.append(source['section_code'])
     return categories
+
+
+def resolve_stats_category(value):
+    """Resolve sidebar names and canonical codes before selecting SQL scopes."""
+    value = str(value or '').strip().casefold()
+    if not value:
+        return None
+    config = load_null_check_config()
+    for category in get_all_categories():
+        aliases = {
+            category.casefold(),
+            config.get(category, {}).get('display_name', '').casefold(),
+            category.removesuffix('_retail').replace('_', ' ').casefold(),
+        }
+        if category == 'tv_retail':
+            aliases.update(('sea tv', 'sea retail', 'tv retail'))
+        if value in aliases and category != 'youtube':
+            return category
+    raise ValueError('잘못된 검증 대상입니다.')
 
 
 def get_check_names_by_category(category):
@@ -1706,11 +1722,18 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
     return tables, total_issues
 
 
-def _append_tse_null_stats(cursor, target_date, validation):
+def _append_tse_null_stats(cursor, target_date, validation, category=None):
     """Append TSE stats behind a savepoint so legacy stats still render."""
     runtime = _get_tse_runtime()
     if not runtime:
         return 0
+    if category:
+        runtime = dict(runtime, sources={
+            key: source for key, source in runtime['sources'].items()
+            if source['section_code'] == category
+        })
+        if not runtime['sources']:
+            return 0
     try:
         tse_config = runtime['load_columns']()
     except Exception as exc:
@@ -2232,7 +2255,7 @@ def get_non_product_exclusion_condition(table_name):
 
 
 
-def get_null_stats(cursor, target_date, include_youtube=True):
+def get_null_stats(cursor, target_date, include_youtube=False, category=None):
     """NULL 검증 통계 — 대시보드용"""
     total_null_issues = 0
 
@@ -2245,7 +2268,11 @@ def get_null_stats(cursor, target_date, include_youtube=True):
         'tables': []
     }
 
-    config = load_null_check_config()
+    requested_category = category
+    config = {
+        key: info for key, info in load_null_check_config().items()
+        if key != 'youtube' and (category is None or key == category)
+    }
 
     for category, cat_info in config.items():
         if (
@@ -2468,17 +2495,21 @@ def get_null_stats(cursor, target_date, include_youtube=True):
         total_null_issues += cat_total_issues
 
     total_null_issues += _append_tse_null_stats(
-        cursor, target_date, null_validation
+        cursor, target_date, null_validation,
+        **({'category': requested_category} if requested_category else {})
     )
     total_null_issues += seg_validation.append_null_stats(
-        cursor, target_date, null_validation
+        cursor, target_date, null_validation,
+        **({'category': requested_category} if requested_category else {})
     )
     total_null_issues += seda_null_validation.append_null_stats(
-        cursor, target_date, null_validation
+        cursor, target_date, null_validation,
+        **({'category': requested_category} if requested_category else {})
     )
     if any(sem_validation.product_line_for(category) for category in config):
         total_null_issues += sem_validation.append_null_stats(
-            cursor, target_date, null_validation
+            cursor, target_date, null_validation,
+            **({'category': requested_category} if requested_category else {})
         )
     null_validation['total_issues'] = total_null_issues
     null_validation['status'] = get_status(total_null_issues)

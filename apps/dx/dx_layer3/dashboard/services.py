@@ -3,6 +3,7 @@ Layer 3 대시보드 서비스 — 공통 규칙 로드, 검증, 상태 판정
 """
 
 import re
+from contextlib import contextmanager
 from datetime import timedelta
 from apps.common.null_review_evidence import load_page_exclusions
 from apps.common.db import get_dx_connection, dx_table
@@ -123,37 +124,55 @@ def load_timeseries_rules():
     return rules
 
 
-def load_crossfield_rules():
+@contextmanager
+def _crossfield_cursor(cursor=None):
+    if cursor is not None:
+        yield cursor
+        return
+    conn = get_dx_connection()
+    try:
+        owned_cursor = conn.cursor()
+        try:
+            yield owned_cursor
+        finally:
+            owned_cursor.close()
+    finally:
+        conn.close()
+
+
+def load_crossfield_rules(cursor=None):
     """DB에서 크로스필드 검증 규칙 로드 (monitoring_validation_rules 테이블)"""
     rules = []
     try:
-        conn = get_dx_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, detail_code, detail_name, section_code, section_name,
-                   table_name, date_column, product_line, retailer,
-                   field1, field2, validation_type,
-                   error_message, select_fields, query, sort_order
-            FROM monitoring_validation_rules
-            WHERE rule_type = 'crossfield' AND is_active = true
-            ORDER BY sort_order, id
-        """)
-        columns = [
-            'rule_id', 'detail_code', 'detail_name', 'section_code', 'section_name',
-            'table_name', 'date_column', 'product_line', 'retailer',
-            'field1', 'field2', 'validation_type',
-            'error_message', 'select_fields', 'query', 'sort_order'
-        ]
-        for row in cursor.fetchall():
-            rule = dict(zip(columns, row))
-            if is_excluded_retail_rule(rule):
-                continue
-            rules.append(rule)
-        cursor.close()
-        conn.close()
+        with _crossfield_cursor(cursor) as cursor:
+            return _read_crossfield_rules(cursor)
     except Exception as e:
         log_error(e)
+    return rules
 
+
+def _read_crossfield_rules(cursor):
+    rules = []
+    cursor.execute(f"""
+        SELECT id, detail_code, detail_name, section_code, section_name,
+               table_name, date_column, product_line, retailer,
+               field1, field2, validation_type,
+               error_message, select_fields, query, sort_order
+        FROM {dx_table('monitoring_validation_rules')}
+        WHERE rule_type = 'crossfield' AND is_active = true
+        ORDER BY sort_order, id
+    """)
+    columns = [
+        'rule_id', 'detail_code', 'detail_name', 'section_code', 'section_name',
+        'table_name', 'date_column', 'product_line', 'retailer',
+        'field1', 'field2', 'validation_type',
+        'error_message', 'select_fields', 'query', 'sort_order'
+    ]
+    for row in cursor.fetchall():
+        rule = dict(zip(columns, row))
+        if is_excluded_retail_rule(rule):
+            continue
+        rules.append(rule)
     return rules
 
 
@@ -391,7 +410,7 @@ def validate_all_category_specs(target_date):
 
 
 def execute_crossfield_query(rule, table_name, date_col, target_date, product_line='tv',
-                            page_exclusions=None):
+                            page_exclusions=None, cursor=None):
     """규칙의 쿼리를 실행하고 결과 건수 반환"""
     query_template = rule.get('query', '')
     rule_id = str(rule.get('rule_id', ''))
@@ -420,13 +439,17 @@ def execute_crossfield_query(rule, table_name, date_col, target_date, product_li
         params.insert(0, excluded_ids)
 
     try:
-        conn = get_dx_connection()
-        cursor = conn.cursor()
-        cursor.execute(query, tuple(params))
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description] if cursor.description else []
-        cursor.close()
-        conn.close()
+        with _crossfield_cursor(cursor) as query_cursor:
+            query_cursor.execute('SAVEPOINT crossfield_rule')
+            try:
+                query_cursor.execute(query, tuple(params))
+                rows = query_cursor.fetchall()
+                columns = [desc[0] for desc in query_cursor.description] if query_cursor.description else []
+            except Exception:
+                query_cursor.execute('ROLLBACK TO SAVEPOINT crossfield_rule')
+                raise
+            finally:
+                query_cursor.execute('RELEASE SAVEPOINT crossfield_rule')
 
         results = [dict(zip(columns, row)) for row in rows]
 
@@ -441,9 +464,14 @@ def execute_crossfield_query(rule, table_name, date_col, target_date, product_li
         return 0, []
 
 
-def validate_crossfield(target_date, section='tv_retail'):
+def validate_crossfield(target_date, section='tv_retail', cursor=None, rule_id=None):
     """DB 기반 크로스필드 검증 실행"""
-    rules = load_crossfield_rules()
+    with _crossfield_cursor(cursor) as cursor:
+        return _validate_crossfield(cursor, target_date, section, rule_id)
+
+
+def _validate_crossfield(cursor, target_date, section, rule_id):
+    rules = load_crossfield_rules(cursor)
     results = {
         'total_errors': 0,
         'rule_results': []
@@ -456,23 +484,21 @@ def validate_crossfield(target_date, section='tv_retail'):
     for rule in rules:
         if rule.get('section_code', '').lower() != section:
             continue
+        if rule_id is not None and str(rule.get('rule_id')) != str(rule_id):
+            continue
 
         table_name = rule.get('table_name', '')
         date_col = rule.get('date_column', '')
         validate_table_name(table_name)
         if table_name == 'tv_retail_com' and page_exclusions is None:
-            conn = get_dx_connection()
-            try:
-                cursor = conn.cursor()
-                page_exclusions = load_page_exclusions(
-                    cursor, target_date + timedelta(days=1),
-                    table_name=table_name, country='SEA', product_line='TV',
-                )
-            finally:
-                conn.close()
+            page_exclusions = load_page_exclusions(
+                cursor, target_date + timedelta(days=1),
+                table_name=table_name, country='SEA', product_line='TV',
+            )
 
         error_count, error_details = execute_crossfield_query(
-            rule, table_name, date_col, target_date, section, page_exclusions
+            rule, table_name, date_col, target_date, section, page_exclusions,
+            cursor=cursor,
         )
 
         results['total_errors'] += error_count
@@ -497,12 +523,14 @@ def validate_crossfield(target_date, section='tv_retail'):
     return results
 
 
-def get_crossfield_normal_counts(target_date, table_name=None, excluded_record_ids=None):
+def get_crossfield_normal_counts(target_date, table_name=None, excluded_record_ids=None, cursor=None):
     """크로스필드 정상 처리 건수를 rule_id별로 반환."""
-    conn = None
+    with _crossfield_cursor(cursor) as cursor:
+        return _read_crossfield_normal_counts(cursor, target_date, table_name, excluded_record_ids)
+
+
+def _read_crossfield_normal_counts(cursor, target_date, table_name, excluded_record_ids):
     try:
-        conn = get_dx_connection()
-        cursor = conn.cursor()
         sql = """
             SELECT rule_id, COUNT(DISTINCT record_id)
             FROM monitoring_corrections
@@ -520,15 +548,8 @@ def get_crossfield_normal_counts(target_date, table_name=None, excluded_record_i
         sql += " GROUP BY rule_id"
         cursor.execute(sql, params)
         result = {row[0]: row[1] for row in cursor.fetchall()}
-        cursor.close()
-        conn.close()
         return result
     except Exception:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
         return {}
 
 

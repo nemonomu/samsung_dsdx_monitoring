@@ -6,7 +6,6 @@ Layer 2 Dashboard: 비즈니스 로직
 
 from datetime import datetime
 from apps.common.retail_columns import validate_field
-from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2.null_validation.services import (
@@ -46,28 +45,11 @@ def supports_null_auto_detail(validation_type, table_name, target_date):
     return uses_new_policy(target_date, country)
 
 
-def _run_with_youtube_fallback(
-    cursor, target_date, stats_func, savepoint_name
-):
-    """YouTube SQL 실패 시 트랜잭션을 복구하고 기존 검수만 재조회한다."""
-    cursor.execute(f'SAVEPOINT {savepoint_name}')
-    try:
-        result = stats_func(cursor, target_date)
-    except Exception as exc:
-        cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint_name}')
-        cursor.execute(f'RELEASE SAVEPOINT {savepoint_name}')
-        log_error(exc)
-        return stats_func(cursor, target_date, include_youtube=False)
-
-    cursor.execute(f'RELEASE SAVEPOINT {savepoint_name}')
-    return result
-
-
 # ══════════════════════════════════════════════════════════════
 # 메인 서비스 함수
 # ══════════════════════════════════════════════════════════════
 
-def get_layer_stats(cursor, target_date, section=''):
+def get_layer_stats(cursor, target_date, section='', category=None):
     """
     Layer 2 통계 — 각 메뉴 서비스의 stats 함수를 호출하여 집계.
     cursor와 target_date만 받으며, HTTP 의존성 없음.
@@ -92,6 +74,8 @@ def get_layer_stats(cursor, target_date, section=''):
     }
     if section not in allowed_sections:
         raise ValueError(f'허용되지 않은 Layer2 검증 영역: {section}')
+    if category:
+        results['scoped_table'] = category
 
     total_null_issues = 0
     total_format_issues = 0
@@ -100,11 +84,10 @@ def get_layer_stats(cursor, target_date, section=''):
     # 섹션 화면과 대시보드의 분할 요청은 필요한 검증만 실행한다. 하나의
     # 느린 검증이 나머지 두 검증까지 프록시 타임아웃으로 막지 않게 한다.
     if section in ('', 'null_validation'):
-        null_validation, total_null_issues = _run_with_youtube_fallback(
+        null_validation, total_null_issues = get_null_stats(
             cursor,
             target_date,
-            get_null_stats,
-            'layer2_youtube_null_stats',
+            **({'category': category} if category else {}),
         )
         # Full automatic-review details belong to the report, not dashboard counts.
         null_validation = dict(null_validation)
@@ -113,17 +96,16 @@ def get_layer_stats(cursor, target_date, section=''):
 
     if section in ('', 'format_validation'):
         format_validation, total_format_issues = get_format_stats(
-            cursor, target_date
+            cursor, target_date, **({'category': category} if category else {})
         )
         results['validation_types'].append(format_validation)
 
     if section in ('', 'anomaly_validation'):
         anomaly_validation, total_anomaly_issues = (
-            _run_with_youtube_fallback(
+            get_anomaly_stats(
                 cursor,
                 target_date,
-                get_anomaly_stats,
-                'layer2_youtube_anomaly_stats',
+                **({'category': category} if category else {}),
             )
         )
         results['validation_types'].append(anomaly_validation)
@@ -155,10 +137,10 @@ def get_retailer_detail(cursor, validation_type, table_name, retailer, target_da
     }
 
     if supports_null_auto_detail(validation_type, table_name, target_date):
-        validation, _total_issues = get_null_stats(
-            cursor, target_date, include_youtube=False,
-        )
         table_code = NULL_REVIEW_TABLES[table_name]
+        validation, _total_issues = get_null_stats(
+            cursor, target_date, include_youtube=False, category=table_code,
+        )
         for table in validation.get('tables', []):
             if table.get('table') != table_code:
                 continue

@@ -60,6 +60,10 @@ const sandbox = {
     history: { replaceState() {} },
     getSelectedDate() { return '2026-08-10'; },
     showTableDetail(index) { openedIndex = index; },
+    renderDXValidationTypes(data) {
+        const focus = vm.runInContext('currentFocusTable', sandbox);
+        openedIndex = data.validation_types[0].tables.findIndex(table => table.table_name === focus);
+    },
     ViewStack: {
         depth() { return 0; },
         pop() {},
@@ -72,6 +76,7 @@ vm.createContext(sandbox);
 vm.runInContext(source, sandbox);
 vm.runInContext(`
     dxData = {
+        date: '2026-08-10',
         validation_types: [{
             tables: [
                 { table: 'tv_retail', table_name: 'SEA TV' },

@@ -9,110 +9,112 @@ var CHECK_TYPE_URL = {
     market_promotion: '/dx/layer1/market-promotion/'
 };
 
+var layer1StatsRequestId = 0;
+
 async function loadStats() {
+    const requestId = ++layer1StatsRequestId;
+    const selectedDate = getSelectedDate();
+    let data = null;
+    currentCheckStatus = null;
+    currentRetailSummary = null;
+    currentNullData = null;
+    const render = function() {
+        if (requestId === layer1StatsRequestId && data) renderLayer1Stats(data);
+    };
+    const statusRequest = loadCheckStatus(selectedDate).then(function(status) {
+        if (requestId !== layer1StatsRequestId) return;
+        currentCheckStatus = status;
+        render();
+    }).catch(function() {});
+    const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
+
     try {
-        const selectedDate = getSelectedDate();
-
-        // 1. 체크 상태 먼저 조회
-        let checkData = null;
-        try {
-            checkData = await loadCheckStatus(selectedDate);
-            currentCheckStatus = checkData;
-        } catch (e) {
-            currentCheckStatus = null;
-        }
-
         const url = selectedDate
             ? `/dx/layer1/api/stats/?date=${selectedDate}`
             : '/dx/layer1/api/stats/';
-
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-
+        data = await response.json();
+        if (requestId !== layer1StatsRequestId) return;
         currentStatsData = data;
-
-        // 선택한 검수일 기준 SEA TV/REF/LDY summary를 한 번씩 로딩
-        try {
-            await loadSeaRetailSummaries(selectedDate);
-        } catch (e) {
-            currentRetailSummary = null;
-            currentNullData = null;
-        }
-
-        // Summary stats
-        document.getElementById('total-checked').textContent = data.summary.total_checked;
-        document.getElementById('total-passed').textContent = data.summary.passed;
-        document.getElementById('total-failed').textContent = data.summary.failed;
-        updateConfirmedCount();
-
-
-        // 데일리 / 분석대상일별 분류 (API 응답의 display_group 기반)
-        const dailyChecks = data.checks.filter(c => c.display_group === 'daily');
-        const periodChecks = data.checks.filter(c => c.display_group === 'periodic');
-
-        // 체크 렌더링 함수 — L1.renderers에서 check_type별 렌더러 참조
-        function renderCheck(check, checkIdx) {
-            var renderer = L1.renderers[check.check_type];
-            if (renderer) {
-                return renderer(check, checkIdx);
-            }
-            return `
-                <div class="check-item">
-                    <div class="check-main">
-                        <div class="check-info">
-                            <div class="check-name">${renderCountryFlagLabel(check.name)}</div>
-                            <div class="check-description">${esc(check.description || '')}</div>
-                        </div>
-                        <div class="check-stats">
-                            ${getStatusBadge(check.status)}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // check-item에 data-check-type 속성만 추가 (배지는 addCheckBadges()에서 DOM으로 삽입)
-        function wrapWithCheckBadge(checkHtml, checkType) {
-            if (!checkType) return checkHtml;
-            return checkHtml.replace(
-                '<div class="check-item">',
-                `<div class="check-item" data-check-type="${checkType}">`
-            );
-        }
-
-        // 데일리 체크 리스트
-        const dailyChecksList = document.getElementById('daily-checks-list');
-        if (dailyChecks.length > 0) {
-            dailyChecksList.innerHTML = dailyChecks.map((check, idx) => {
-                const checkIdx = data.checks.indexOf(check);
-                return wrapWithCheckBadge(renderCheck(check, checkIdx), check.check_type);
-            }).join('');
-        } else {
-            dailyChecksList.innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 없음</div></div></div></div>';
-        }
-
-        // 분석대상일별 체크 리스트
-        const periodChecksList = document.getElementById('period-checks-list');
-        if (periodChecks.length > 0) {
-            periodChecksList.innerHTML = periodChecks.map((check, idx) => {
-                const checkIdx = data.checks.indexOf(check);
-                return wrapWithCheckBadge(renderCheck(check, checkIdx), check.check_type);
-            }).join('');
-        } else {
-            periodChecksList.innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 없음</div></div></div></div>';
-        }
-
-        // 체크 배지 삽입 (DOM API)
-        addCheckBadges();
-
-
+        render();
+        await Promise.allSettled([statusRequest, summaryRequest]);
     } catch (error) {
+        if (requestId !== layer1StatsRequestId) return;
+        data = null;
         console.error('Stats load failed:', error);
         const errorHtml = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 로드 실패</div><div class="check-description">' + esc(error.message) + '</div></div></div></div>';
         document.getElementById('daily-checks-list').innerHTML = errorHtml;
         document.getElementById('period-checks-list').innerHTML = errorHtml;
     }
+}
+
+function renderLayer1Stats(data) {
+    // Summary stats
+    document.getElementById('total-checked').textContent = data.summary.total_checked;
+    document.getElementById('total-passed').textContent = data.summary.passed;
+    document.getElementById('total-failed').textContent = data.summary.failed;
+    updateConfirmedCount();
+
+
+    // 데일리 / 분석대상일별 분류 (API 응답의 display_group 기반)
+    const dailyChecks = data.checks.filter(c => c.display_group === 'daily');
+    const periodChecks = data.checks.filter(c => c.display_group === 'periodic');
+
+    // 체크 렌더링 함수 — L1.renderers에서 check_type별 렌더러 참조
+    function renderCheck(check, checkIdx) {
+        var renderer = L1.renderers[check.check_type];
+        if (renderer) {
+            return renderer(check, checkIdx);
+        }
+        return `
+            <div class="check-item">
+                <div class="check-main">
+                    <div class="check-info">
+                        <div class="check-name">${renderCountryFlagLabel(check.name)}</div>
+                        <div class="check-description">${esc(check.description || '')}</div>
+                    </div>
+                    <div class="check-stats">
+                        ${getStatusBadge(check.status)}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // check-item에 data-check-type 속성만 추가 (배지는 addCheckBadges()에서 DOM으로 삽입)
+    function wrapWithCheckBadge(checkHtml, checkType) {
+        if (!checkType) return checkHtml;
+        return checkHtml.replace(
+            '<div class="check-item">',
+            `<div class="check-item" data-check-type="${checkType}">`
+        );
+    }
+
+    // 데일리 체크 리스트
+    const dailyChecksList = document.getElementById('daily-checks-list');
+    if (dailyChecks.length > 0) {
+        dailyChecksList.innerHTML = dailyChecks.map((check, idx) => {
+            const checkIdx = data.checks.indexOf(check);
+            return wrapWithCheckBadge(renderCheck(check, checkIdx), check.check_type);
+        }).join('');
+    } else {
+        dailyChecksList.innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 없음</div></div></div></div>';
+    }
+
+    // 분석대상일별 체크 리스트
+    const periodChecksList = document.getElementById('period-checks-list');
+    if (periodChecks.length > 0) {
+        periodChecksList.innerHTML = periodChecks.map((check, idx) => {
+            const checkIdx = data.checks.indexOf(check);
+            return wrapWithCheckBadge(renderCheck(check, checkIdx), check.check_type);
+        }).join('');
+    } else {
+        periodChecksList.innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 없음</div></div></div></div>';
+    }
+
+    // 체크 배지 삽입 (DOM API)
+    addCheckBadges();
 }
 
 

@@ -574,6 +574,8 @@ async function loadSeaRetailSummaries(inspectionDate) {
     var loadId = ++seaRetailSummaryLoadId;
     seaRetailSummaryDate = selectedInspectionDate;
     seaRetailSummaryCache = {};
+    currentRetailSummary = null;
+    currentNullData = null;
 
     var results = await Promise.all(SEA_RETAIL_PRODUCTS.map(async function(product) {
         var url = '/dx/layer1/retail/api/summary/?type=' + encodeURIComponent(product.key) +
@@ -602,38 +604,50 @@ async function loadSeaRetailSummaries(inspectionDate) {
     return nextCache;
 }
 
+var seaRetailSectionRequestId = 0;
+
 async function loadSectionData() {
+    const requestId = ++seaRetailSectionRequestId;
     if (rawView.checkUrlAndShow()) return;
-
-    // 기존 summary view
+    const selectedDate = getSelectedDate();
+    let data = null;
+    currentCheckStatus = null;
+    const render = function() {
+        if (requestId === seaRetailSectionRequestId && data) renderSeaRetailSection(data);
+    };
+    const statusRequest = loadCheckStatus(selectedDate).then(function(status) {
+        if (requestId !== seaRetailSectionRequestId) return;
+        currentCheckStatus = status;
+        render();
+    }).catch(function() {});
+    const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
     try {
-        var selectedDate = getSelectedDate();
-
-        try { currentCheckStatus = await loadCheckStatus(selectedDate); }
-        catch (e) { currentCheckStatus = null; }
-
-        var response = await fetch('/dx/layer1/api/stats/?date=' + selectedDate + '&check_type=retail');
+        const response = await fetch('/dx/layer1/api/stats/?date=' + selectedDate + '&check_type=retail');
         if (!response.ok) throw new Error('HTTP ' + response.status);
-        var data = await response.json();
+        data = await response.json();
+        if (requestId !== seaRetailSectionRequestId) return;
         currentStatsData = data;
-
-        // 선택한 검수일을 그대로 전달해 TV/REF/LDY를 각각 조회한다.
-        await loadSeaRetailSummaries(selectedDate);
-
-        var check = data.checks ? data.checks.find(function(c) { return c.check_type === 'retail'; }) : null;
-        var checkIdx = check ? data.checks.indexOf(check) : 0;
-        if (!check) check = { name: 'SEA Retail', description: '데이터 없음', check_type: 'retail', status: 'PENDING', categories: [] };
-
-        var container = document.getElementById('section-content');
-        var html = renderRetailCheck(check, checkIdx);
-        html = html.replace('<div class="check-item">', '<div class="check-item" data-check-type="retail">');
-        container.innerHTML = html;
-        addCheckBadges();
-        expandSectionContent();
+        render();
+        await Promise.allSettled([statusRequest, summaryRequest]);
     } catch (error) {
+        if (requestId !== seaRetailSectionRequestId) return;
+        data = null;
         console.error('Load failed:', error);
         document.getElementById('section-content').innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터를 불러올 수 없습니다</div><div class="check-description">잠시 후 다시 시도해주세요.</div></div></div></div>';
     }
+}
+
+function renderSeaRetailSection(data) {
+    var check = data.checks ? data.checks.find(function(c) { return c.check_type === 'retail'; }) : null;
+    var checkIdx = check ? data.checks.indexOf(check) : 0;
+    if (!check) check = { name: 'SEA Retail', description: '데이터 없음', check_type: 'retail', status: 'PENDING', categories: [] };
+
+    var container = document.getElementById('section-content');
+    var html = renderRetailCheck(check, checkIdx);
+    html = html.replace('<div class="check-item">', '<div class="check-item" data-check-type="retail">');
+    container.innerHTML = html;
+    addCheckBadges();
+    expandSectionContent();
 }
 
 function loadAllData() { loadSectionData(); }

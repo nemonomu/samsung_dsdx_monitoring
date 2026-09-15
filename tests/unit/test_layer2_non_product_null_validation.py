@@ -115,7 +115,7 @@ class Layer2NonProductNullValidationTests(unittest.TestCase):
             {'fetchall': []},
         ])
 
-        self.service.get_null_stats(cursor, date(2026, 8, 3))
+        self.service.get_null_stats(cursor, date(2026, 8, 3), category='tv_retail')
 
         summary_sql = cursor.calls[0][0]
         self.assertIn('FROM tv_item_mst non_product', summary_sql)

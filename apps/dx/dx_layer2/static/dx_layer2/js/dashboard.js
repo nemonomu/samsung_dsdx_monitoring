@@ -247,9 +247,10 @@ function renderLayer2Stats(data) {
     updateCurrentInfo(data.date);
 }
 
-async function fetchLayer2StatsSection(date, section) {
+async function fetchLayer2StatsSection(date, section, table) {
+    const tableParam = table ? `&table=${encodeURIComponent(table)}` : '';
     const response = await fetch(
-        `/dx/layer2/api/stats/?date=${encodeURIComponent(date)}&section=${encodeURIComponent(section)}`
+        `/dx/layer2/api/stats/?date=${encodeURIComponent(date)}&section=${encodeURIComponent(section)}${tableParam}`
     );
     if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -259,7 +260,8 @@ async function fetchLayer2StatsSection(date, section) {
     return data;
 }
 
-async function fetchDXStats() {
+async function fetchDXStats(tableTarget) {
+    if (typeof tableTarget === 'string') currentFocusTable = tableTarget;
     const date = getSelectedDate();
     const section = (window.LAYER2 && window.LAYER2.section) || 'dashboard';
     const requestId = ++layer2StatsRequestId;
@@ -271,7 +273,8 @@ async function fetchDXStats() {
 
     if (section !== 'dashboard') {
         try {
-            const data = await fetchLayer2StatsSection(date, section);
+            const table = currentFocusTable || new URLSearchParams(window.location.search).get('focus');
+            const data = await fetchLayer2StatsSection(date, section, table);
             if (requestId !== layer2StatsRequestId) return;
             renderLayer2Stats(data);
         } catch (error) {
@@ -426,7 +429,7 @@ function renderDXValidationTypes(data) {
             });
             if (idx >= 0) {
                 // 목록 HTML은 ViewStack에만 저장 (뒤로가기용)
-                ViewStack.stack = [{ html: html, scrollTop: 0 }];
+                ViewStack.stack = [{ html: html, scrollTop: 0, loadOverview: Boolean(data.scoped_table) }];
                 ViewStack._updateBackBtn();
                 const table = vType.tables[idx];
                 currentFocusTable = table.table_name;

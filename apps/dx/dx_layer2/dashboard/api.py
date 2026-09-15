@@ -15,10 +15,17 @@ def layer_stats(request):
     if target_date is None:
         return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
 
+    from apps.dx.dx_layer2.null_validation.services import resolve_stats_category
+    try:
+        category = resolve_stats_category(request.GET.get('table', ''))
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+
     try:
         with dx_connection() as (conn, cursor):
             results = services.get_layer_stats(
-                cursor, target_date, request.GET.get('section', '')
+                cursor, target_date, request.GET.get('section', ''),
+                **({'category': category} if category else {}),
             )
     except Exception as e:
         results = {

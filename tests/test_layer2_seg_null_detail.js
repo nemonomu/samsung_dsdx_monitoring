@@ -32,7 +32,7 @@ assert(template.includes(
     "dx_layer2/js/null_validation.js' %}?v=20260914-1"
 ));
 assert(template.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20260914-1"
+    "dx_layer2/js/dashboard.js' %}?v=20260915-perf1"
 ));
 
 console.log('Layer2 SEG NULL frontend tests passed.');

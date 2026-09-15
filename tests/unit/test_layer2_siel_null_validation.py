@@ -258,7 +258,6 @@ class SIELLayer2NullValidationTests(unittest.TestCase):
         self.assertEqual(
             {
                 'siel_tv_retail', 'siel_ref_retail', 'siel_ldy_retail',
-                'youtube',
             },
             set(config),
         )

@@ -242,15 +242,15 @@ function categoryFromSummary(key) {
     assert.ok(!fallbackHtml.includes('LDY Lowes · 정상:'));
     assert.ok(fallbackHtml.includes('수집 항목 정보'));
 
-    assert.ok(dashboardSource.includes('await loadSeaRetailSummaries(selectedDate);'));
+    assert.ok(dashboardSource.includes('loadSeaRetailSummaries(selectedDate).then(render)'));
     assert.ok(!dashboardSource.includes("summary/?type=tv"));
 
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=18"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=18"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=11"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260915-perf1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260915-perf1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260915-perf1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=13"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));

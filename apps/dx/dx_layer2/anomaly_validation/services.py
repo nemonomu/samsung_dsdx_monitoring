@@ -66,7 +66,7 @@ SIEL_DUPLICATE_SOURCE_BY_SECTION = {
 
 # table 파라미터 화이트리스트
 VALID_TABLES_ANOMALY = {
-    'tv_retail', 'youtube_videos',
+    'tv_retail',
     'market_trend', 'market_product', 'market_event',
 } | {
     section_code
@@ -94,13 +94,6 @@ _DUP_TABLE_CONFIG = {
         'date_col': 'crawl_datetime',
         'use_period': True,
         'retailer_col': 'account_name',
-    },
-    'youtube_videos': {
-        'actual': 'youtube_videos',
-        'dup_keys': ', '.join(_YOUTUBE_VIDEO_DUP_KEYS),
-        'date_col': 'created_at',
-        'use_period': False,
-        'retailer_col': None,
     },
     'market_trend': {
         'actual': 'market_trend',
@@ -349,15 +342,16 @@ def _get_sea_anomaly_detail(
     }
 
 
-def _append_sea_anomaly_stats(cursor, target_date, validation):
+def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
     if not resolve_monitoring_date:
         return 0
     savepoint = 'layer2_sea_duplicate_stats'
     cursor.execute(f'SAVEPOINT {savepoint}')
     total_issues = 0
     try:
-        for product_key, section_code in (
-                SEA_DUPLICATE_SECTION_BY_PRODUCT.items()):
+        for product_key, section_code in SEA_DUPLICATE_SECTION_BY_PRODUCT.items():
+            if category and category != section_code:
+                continue
             source = SEA_RETAIL_SOURCES.get(product_key)
             if not source:
                 continue
@@ -621,7 +615,7 @@ def _get_siel_anomaly_detail(
     }
 
 
-def _append_siel_anomaly_stats(cursor, target_date, validation):
+def _append_siel_anomaly_stats(cursor, target_date, validation, category=None):
     if not resolve_monitoring_date or not SIEL_SOURCE_CONFIG:
         return 0
     savepoint = 'layer2_siel_duplicate_stats'
@@ -629,6 +623,8 @@ def _append_siel_anomaly_stats(cursor, target_date, validation):
     total_issues = 0
     try:
         for source_key, source in SIEL_SOURCE_CONFIG.items():
+            if category and category != source['section_code']:
+                continue
             date_mapping = resolve_monitoring_date(
                 target_date, 'SIEL', source['source_key']
             )
@@ -889,7 +885,7 @@ def _get_tse_anomaly_detail(
     }
 
 
-def _append_tse_anomaly_stats(cursor, target_date, validation):
+def _append_tse_anomaly_stats(cursor, target_date, validation, category=None):
     if not TSE_SOURCE_CONFIG or not get_tse_retailer_columns:
         return 0
     savepoint = 'layer2_tse_duplicate_stats'
@@ -897,6 +893,8 @@ def _append_tse_anomaly_stats(cursor, target_date, validation):
     total_issues = 0
     try:
         for product_line, source in TSE_SOURCE_CONFIG.items():
+            if category and category != source['section_code']:
+                continue
             configs = get_tse_retailer_columns(product_line)
             retailer_rows = []
             table_records = 0
@@ -1771,7 +1769,7 @@ def _get_market_duplicate_stats(
     }
 
 
-def get_anomaly_stats(cursor, target_date, include_youtube=True):
+def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None):
     """중복 검증 통계 — 대시보드용"""
     total_anomaly_issues = 0
     anomaly_validation = {
@@ -1783,211 +1781,189 @@ def get_anomaly_stats(cursor, target_date, include_youtube=True):
         'tables': []
     }
 
-    # TV Retail 중복 검증
-    tv_dup_keys = get_retail_duplicate_keys('tv')
-    if not tv_dup_keys:
-        tv_dup_keys = ['item', 'account_name']
-    tv_date_col = 'crawl_datetime'
+    if category in (None, 'tv_retail'):
+        # TV Retail 중복 검증
+        tv_dup_keys = get_retail_duplicate_keys('tv')
+        if not tv_dup_keys:
+            tv_dup_keys = ['item', 'account_name']
+        tv_date_col = 'crawl_datetime'
 
-    cursor.execute(
-        f"SELECT COUNT(*) FROM tv_retail_com "
-        f"WHERE DATE({tv_date_col}::timestamp) = %s "
-        f"AND {get_tv_validation_condition()}",
-        (target_date,),
-    )
-    tv_total_records = cursor.fetchone()[0] or 0
-
-    retailer_list = get_retailer_list()
-    tv_dup_dict = get_duplicate_count(cursor, 'tv_retail_com', tv_date_col, tv_dup_keys, target_date, use_period=True, group_by_col='account_name')
-
-    # 정상처리 차감
-    tv_dup_normal = {}
-    try:
-        cursor.execute("""
-            SELECT retailer, COUNT(*) FROM monitoring_corrections
-            WHERE table_name = 'tv_retail_com' AND crawl_date = %s
-              AND correction_type = 'duplicate_check' AND status = 'normal'
-            GROUP BY retailer
-        """, (str(target_date),))
-        for nr in cursor.fetchall():
-            tv_dup_normal[nr[0]] = nr[1]
-    except Exception:
-        pass
-
-    tv_dup_retailers = []
-    tv_dup_total = 0
-    for retailer_name in retailer_list:
-        dup_count = max(0, tv_dup_dict.get(retailer_name, 0) - tv_dup_normal.get(retailer_name, 0))
-        tv_dup_retailers.append({
-            'retailer': retailer_name,
-            'duplicate_groups': dup_count,
-            'status': get_status(dup_count)
-        })
-        tv_dup_total += dup_count
-
-    # TV Retail 가격 이상
-    cursor.execute(f"""
-        SELECT COUNT(*) FROM tv_retail_com
-        WHERE DATE(crawl_datetime::timestamp) = %s
-        AND {get_tv_validation_condition()}
-        AND final_sku_price ~ '^\\$[\\d,]+\\.?\\d*$'
-        AND (
-            CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) < 0
-            OR CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) > 50000
+        cursor.execute(
+            f"SELECT COUNT(*) FROM tv_retail_com "
+            f"WHERE DATE({tv_date_col}::timestamp) = %s "
+            f"AND {get_tv_validation_condition()}",
+            (target_date,),
         )
-    """, (target_date,))
-    tv_price_anomaly = cursor.fetchone()[0] or 0
+        tv_total_records = cursor.fetchone()[0] or 0
 
-    anomaly_validation['tables'].append({
-        'table': 'tv_retail',
-        'table_name': 'TV Retail',
-        'total_records': tv_total_records,
-        'total_issues': tv_dup_total,
-        'duplicate_groups': tv_dup_total,
-        'duplicate_keys': tv_dup_keys,
-        'status': get_status(tv_dup_total),
-        'retailers': tv_dup_retailers
-    })
-    total_anomaly_issues += tv_dup_total
+        retailer_list = get_retailer_list()
+        tv_dup_dict = get_duplicate_count(cursor, 'tv_retail_com', tv_date_col, tv_dup_keys, target_date, use_period=True, group_by_col='account_name')
 
-    # HHP Retail 중복 검증
-    hhp_dup_keys = get_retail_duplicate_keys('hhp')
-    if not hhp_dup_keys:
-        hhp_dup_keys = ['item', 'account_name']
-    hhp_date_col = 'crawl_strdatetime'
-
-    hhp_total_records = 0
-
-    hhp_dup_dict = {}
-
-    hhp_dup_normal = {}
-    try:
-        if False:
+        # 정상처리 차감
+        tv_dup_normal = {}
+        try:
             cursor.execute("""
-            SELECT retailer, COUNT(*) FROM monitoring_corrections
-            WHERE table_name = 'hhp_retail_com' AND crawl_date = %s
-              AND correction_type = 'duplicate_check' AND status = 'normal'
-            GROUP BY retailer
+                SELECT retailer, COUNT(*) FROM monitoring_corrections
+                WHERE table_name = 'tv_retail_com' AND crawl_date = %s
+                  AND correction_type = 'duplicate_check' AND status = 'normal'
+                GROUP BY retailer
             """, (str(target_date),))
             for nr in cursor.fetchall():
-                hhp_dup_normal[nr[0]] = nr[1]
-    except Exception:
-        pass
+                tv_dup_normal[nr[0]] = nr[1]
+        except Exception:
+            pass
 
-    hhp_dup_retailers = []
-    hhp_dup_total = 0
-    for retailer_name in retailer_list:
-        dup_count = max(0, hhp_dup_dict.get(retailer_name, 0) - hhp_dup_normal.get(retailer_name, 0))
-        hhp_dup_retailers.append({
-            'retailer': retailer_name,
-            'duplicate_groups': dup_count,
-            'status': get_status(dup_count)
-        })
-        hhp_dup_total += dup_count
+        tv_dup_retailers = []
+        tv_dup_total = 0
+        for retailer_name in retailer_list:
+            dup_count = max(0, tv_dup_dict.get(retailer_name, 0) - tv_dup_normal.get(retailer_name, 0))
+            tv_dup_retailers.append({
+                'retailer': retailer_name,
+                'duplicate_groups': dup_count,
+                'status': get_status(dup_count)
+            })
+            tv_dup_total += dup_count
 
-    anomaly_validation['tables'].append({
-        'table': 'hhp_retail',
-        'table_name': 'HHP Retail',
-        'total_records': hhp_total_records,
-        'total_issues': hhp_dup_total,
-        'duplicate_groups': hhp_dup_total,
-        'duplicate_keys': hhp_dup_keys,
-        'status': get_status(hhp_dup_total),
-        'retailers': hhp_dup_retailers
-    })
-    total_anomaly_issues += hhp_dup_total
-    anomaly_validation['tables'] = [t for t in anomaly_validation['tables'] if t.get('table') != 'hhp_retail']
-    total_anomaly_issues -= hhp_dup_total
+        # TV Retail 가격 이상
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM tv_retail_com
+            WHERE DATE(crawl_datetime::timestamp) = %s
+            AND {get_tv_validation_condition()}
+            AND final_sku_price ~ '^\\$[\\d,]+\\.?\\d*$'
+            AND (
+                CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) < 0
+                OR CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) > 50000
+            )
+        """, (target_date,))
+        tv_price_anomaly = cursor.fetchone()[0] or 0
 
-    if include_youtube:
-        # 타 국가·타 배치는 서로 다른 정상 수집이므로 동일 범위만 비교한다.
-        youtube_dup_stats = _get_youtube_video_duplicate_stats(
-            cursor, target_date
-        )
-        ytv_dup_keys = youtube_dup_stats['duplicate_keys']
-        ytv_total_records = youtube_dup_stats['total_records']
-        ytv_dup_total = youtube_dup_stats['duplicate_groups']
-
-        yt_total_issues = ytv_dup_total
         anomaly_validation['tables'].append({
-            'table': 'youtube',
-            'table_name': 'YouTube',
-            'total_records': ytv_total_records,
-            'total_issues': yt_total_issues,
-            'duplicate_groups': yt_total_issues,
-            'status': get_status(yt_total_issues),
-            'retailers': [
-                {
-                    'retailer': 'Videos',
-                    'total': ytv_total_records,
-                    'duplicate_groups': ytv_dup_total,
-                    'duplicate_keys': ytv_dup_keys,
-                    'status': get_status(ytv_dup_total)
-                }
-            ]
+            'table': 'tv_retail',
+            'table_name': 'TV Retail',
+            'total_records': tv_total_records,
+            'total_issues': tv_dup_total,
+            'duplicate_groups': tv_dup_total,
+            'duplicate_keys': tv_dup_keys,
+            'status': get_status(tv_dup_total),
+            'retailers': tv_dup_retailers
         })
-        total_anomaly_issues += yt_total_issues
+        total_anomaly_issues += tv_dup_total
 
-    # Market 중복
-    # 중단된 Market 원본은 통계에서도 조회하지 않는다.
-    market_sources = (
-        ('market_trend', 'Trend', 'crawl_at_local_time', ['keyword']),
-        (
-            'market_comp_product', 'Product', 'created_at',
-            ['batch_id', 'samsung_series_name', 'comp_brand', 'comp_series_name'],
-        ),
-        (
-            'market_comp_event', 'Event', 'created_at',
-            ['batch_id', 'comp_brand', 'comp_sku_name'],
-        ),
-    )
-    market_retailers = []
-    market_total_records = 0
-    market_total_dup = 0
-    for table_name, display_name, date_col, duplicate_keys in market_sources:
-        source_stats = _get_market_duplicate_stats(
-            cursor, target_date, table_name, date_col, duplicate_keys
-        )
-        if source_stats is None:
-            continue
-        market_total_records += source_stats['total_records']
-        market_total_dup += source_stats['duplicate_groups']
-        market_retailers.append({
-            'retailer': display_name,
-            'total': source_stats['total_records'],
-            'duplicate_groups': source_stats['duplicate_groups'],
-            'duplicate_keys': source_stats['duplicate_keys'],
-            'status': get_status(source_stats['duplicate_groups'])
-        })
+        # HHP Retail 중복 검증
+        hhp_dup_keys = get_retail_duplicate_keys('hhp')
+        if not hhp_dup_keys:
+            hhp_dup_keys = ['item', 'account_name']
+        hhp_date_col = 'crawl_strdatetime'
 
-    if market_retailers:
+        hhp_total_records = 0
+
+        hhp_dup_dict = {}
+
+        hhp_dup_normal = {}
+        try:
+            if False:
+                cursor.execute("""
+                SELECT retailer, COUNT(*) FROM monitoring_corrections
+                WHERE table_name = 'hhp_retail_com' AND crawl_date = %s
+                  AND correction_type = 'duplicate_check' AND status = 'normal'
+                GROUP BY retailer
+                """, (str(target_date),))
+                for nr in cursor.fetchall():
+                    hhp_dup_normal[nr[0]] = nr[1]
+        except Exception:
+            pass
+
+        hhp_dup_retailers = []
+        hhp_dup_total = 0
+        for retailer_name in retailer_list:
+            dup_count = max(0, hhp_dup_dict.get(retailer_name, 0) - hhp_dup_normal.get(retailer_name, 0))
+            hhp_dup_retailers.append({
+                'retailer': retailer_name,
+                'duplicate_groups': dup_count,
+                'status': get_status(dup_count)
+            })
+            hhp_dup_total += dup_count
+
         anomaly_validation['tables'].append({
-            'table': 'market',
-            'table_name': 'Market',
-            'total_records': market_total_records,
-            'total_issues': market_total_dup,
-            'duplicate_groups': market_total_dup,
-            'status': get_status(market_total_dup),
-            'retailers': market_retailers
+            'table': 'hhp_retail',
+            'table_name': 'HHP Retail',
+            'total_records': hhp_total_records,
+            'total_issues': hhp_dup_total,
+            'duplicate_groups': hhp_dup_total,
+            'duplicate_keys': hhp_dup_keys,
+            'status': get_status(hhp_dup_total),
+            'retailers': hhp_dup_retailers
         })
-        total_anomaly_issues += market_total_dup
+        total_anomaly_issues += hhp_dup_total
+        anomaly_validation['tables'] = [t for t in anomaly_validation['tables'] if t.get('table') != 'hhp_retail']
+        total_anomaly_issues -= hhp_dup_total
+
+    if category in (None, 'market'):
+        # Market 중복
+        # 중단된 Market 원본은 통계에서도 조회하지 않는다.
+        market_sources = (
+            ('market_trend', 'Trend', 'crawl_at_local_time', ['keyword']),
+            (
+                'market_comp_product', 'Product', 'created_at',
+                ['batch_id', 'samsung_series_name', 'comp_brand', 'comp_series_name'],
+            ),
+            (
+                'market_comp_event', 'Event', 'created_at',
+                ['batch_id', 'comp_brand', 'comp_sku_name'],
+            ),
+        )
+        market_retailers = []
+        market_total_records = 0
+        market_total_dup = 0
+        for table_name, display_name, date_col, duplicate_keys in market_sources:
+            source_stats = _get_market_duplicate_stats(
+                cursor, target_date, table_name, date_col, duplicate_keys
+            )
+            if source_stats is None:
+                continue
+            market_total_records += source_stats['total_records']
+            market_total_dup += source_stats['duplicate_groups']
+            market_retailers.append({
+                'retailer': display_name,
+                'total': source_stats['total_records'],
+                'duplicate_groups': source_stats['duplicate_groups'],
+                'duplicate_keys': source_stats['duplicate_keys'],
+                'status': get_status(source_stats['duplicate_groups'])
+            })
+
+        if market_retailers:
+            anomaly_validation['tables'].append({
+                'table': 'market',
+                'table_name': 'Market',
+                'total_records': market_total_records,
+                'total_issues': market_total_dup,
+                'duplicate_groups': market_total_dup,
+                'status': get_status(market_total_dup),
+                'retailers': market_retailers
+            })
+            total_anomaly_issues += market_total_dup
 
     total_anomaly_issues += _append_sea_anomaly_stats(
-        cursor, target_date, anomaly_validation
+        cursor, target_date, anomaly_validation,
+        **({"category": category} if category else {})
     )
 
     total_anomaly_issues += _append_siel_anomaly_stats(
-        cursor, target_date, anomaly_validation
+        cursor, target_date, anomaly_validation,
+        **({"category": category} if category else {})
     )
 
     total_anomaly_issues += _append_tse_anomaly_stats(
-        cursor, target_date, anomaly_validation
+        cursor, target_date, anomaly_validation,
+        **({"category": category} if category else {})
     )
     total_anomaly_issues += seg_validation.append_duplicate_stats(
-        cursor, target_date, anomaly_validation
+        cursor, target_date, anomaly_validation,
+        **({"category": category} if category else {})
     )
     total_anomaly_issues += sem_validation.append_duplicate_stats(
-        cursor, target_date, anomaly_validation
+        cursor, target_date, anomaly_validation,
+        **({"category": category} if category else {})
     )
 
     anomaly_validation['total_issues'] = total_anomaly_issues

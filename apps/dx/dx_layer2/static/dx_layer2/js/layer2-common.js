@@ -1745,7 +1745,23 @@ const ViewStack = {
         if (this.stack.length === 0) return false;
         const s = this.stack.pop();
         const c = this.getContainer();
+        if (s.loadOverview) {
+            currentFocusTable = null;
+            const url = new URL(window.location.href);
+            url.searchParams.delete('focus');
+            history.replaceState(null, '', url);
+            this.nullReviewStatsDirty = false;
+            this._updateBackBtn();
+            fetchDXStats();
+            return true;
+        }
         if (c) { c.innerHTML = s.html; window.scrollTo(0, s.scrollTop); }
+        if (this.stack.length === 0) {
+            currentFocusTable = null;
+            const url = new URL(window.location.href);
+            url.searchParams.delete('focus');
+            history.replaceState(null, '', url);
+        }
         this._updateBackBtn();
         if (s.nullReviewSummary && typeof renderNullFieldSummary === 'function') {
             renderNullFieldSummary(modalState.nullFieldsData || {});
@@ -2000,15 +2016,24 @@ function scrollToTable(tableName) {
 
 // 표시명 또는 canonical section code로 테이블 상세 열기
 function showTableDetailByName(tableTarget) {
-    if (!dxData || !dxData.validation_types || !dxData.validation_types[0]) return;
-    const tables = dxData.validation_types[0].tables || [];
+    const tables = dxData && dxData.date === getSelectedDate() && dxData.validation_types && dxData.validation_types[0]
+        ? dxData.validation_types[0].tables || [] : [];
     const idx = tables.findIndex(
         t => t.table_name === tableTarget || t.table === tableTarget
     );
     if (idx >= 0) {
-        // ViewStack 초기화 후 열기
-        while (ViewStack.depth() > 0) ViewStack.pop();
-        showTableDetail(idx);
+        // Invalidate an older country request before showing an already loaded table.
+        if (typeof layer2StatsRequestId !== 'undefined') layer2StatsRequestId += 1;
+        currentFocusTable = tables[idx].table_name;
+        const url = new URL(window.location.href);
+        url.searchParams.set('focus', currentFocusTable);
+        history.replaceState(null, '', url);
+        renderDXValidationTypes(dxData);
+    } else {
+        const url = new URL(window.location.href);
+        url.searchParams.set('focus', tableTarget);
+        history.replaceState(null, '', url);
+        fetchDXStats(tableTarget);
     }
 }
 

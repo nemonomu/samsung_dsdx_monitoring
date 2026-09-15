@@ -39,7 +39,7 @@ class SedaLayer1RepositoryTests(unittest.TestCase):
             ['2026-08-10', 'magalu', 'casasbahia', 7],
             params,
         )
-        self.assertIn('HAVING COUNT(rows.main_rank) > 0', sql)
+        self.assertIn('WHERE main_count > 0', sql)
         self.assertIn('WHERE day_rank <= %s', sql)
         self.assertEqual(300, result[0]['main_count'])
 

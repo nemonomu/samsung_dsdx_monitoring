@@ -415,9 +415,11 @@ def _serialize(row, product_line, retailer=SEM_RETAILER):
     return result
 
 
-def append_null_stats(cursor, target_date, validation):
+def append_null_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         normal_reviews = _load_normal_reviews(
             cursor, target_date, product_line, 'null_check'
         )
@@ -550,9 +552,11 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILE
     }
 
 
-def append_format_stats(cursor, target_date, validation):
+def append_format_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         normal_reviews = _load_normal_reviews(
             cursor, target_date, product_line, 'format_check'
         )
@@ -672,9 +676,11 @@ def _duplicate_groups(rows):
     ]
 
 
-def append_duplicate_stats(cursor, target_date, validation):
+def append_duplicate_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for _product_line, source in SEM_SOURCE_CONFIG.items():
+        if category and category != source['section_code']:
+            continue
         rows, mapping = _latest_rows(cursor, target_date, source)
         groups = _duplicate_groups(rows)
         validation['tables'].append({
