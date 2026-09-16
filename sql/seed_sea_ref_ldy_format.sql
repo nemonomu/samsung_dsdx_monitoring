@@ -3,6 +3,7 @@
 -- It is safe to run again: matching templates/rules are updated and only
 -- missing rows are inserted.  The file intentionally does not open a
 -- transaction so it also works when DBeaver already has one in progress.
+-- Re-run to register Lowes-specific formats and deactivate legacy Lowes offer rules.
 
 SELECT setval(
     pg_get_serial_sequence('public.monitoring_format_templates', 'id'),
@@ -43,6 +44,21 @@ WITH seed (name, description, check_type, pattern) AS (
         ('SEA_APPLIANCE_BESTBUY_RECOMMENDATION',
          'Bestbuy recommendation: integer percentage from 0 through 100', 'regex',
          $recommendation$^(0|[1-9][0-9]?|100)% would recommend to a friend$$recommendation$),
+        ('SEA_APPLIANCE_LOWES_QUANTITY',
+         'Lowes available quantity: non-negative integer, digits only', 'regex',
+         $quantity$^[0-9]+$$quantity$),
+        ('SEA_APPLIANCE_LOWES_PICKUP',
+         'Lowes pickup date or Pickup Ready Today', 'regex',
+         $lowespickup$^Pickup Ready (Today|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$lowespickup$),
+        ('SEA_APPLIANCE_LOWES_DELIVERY',
+         'Lowes delivery or shipping date, or free installation', 'regex',
+         $lowesdelivery$^((Delivery|Shipping) (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])|Delivery w/FREE Installation)$$lowesdelivery$),
+        ('SEA_APPLIANCE_LOWES_RECOMMENDATION',
+         'Lowes recommendation: integer percentage from 0 through 100', 'regex',
+         $lowesrecommendation$^(0|[1-9][0-9]?|100)% Recommend this product$$lowesrecommendation$),
+        ('SEA_APPLIANCE_LOWES_DISCOUNT',
+         'Lowes discount phrases with positive integer amounts and quantities', 'regex',
+         $lowesdiscount$^(Exclusive Appliance Bundle|Unlock Member Deal|Get [$][1-9][0-9]* Off In Cart On Purchase Of [1-9][0-9]* Items|[$][1-9][0-9]* Instant Savings|Buy [1-9][0-9]*[+] Get ([1-9][0-9]?|100)% Off)$$lowesdiscount$),
         ('SEA_APPLIANCE_RATING',
          'Star rating from 0 through 5', 'range_float', NULL),
         ('SEA_APPLIANCE_USD',
@@ -152,8 +168,6 @@ WITH products (
              'original_sku_price는 $ 금액 형식이어야 합니다.'),
             ('savings', 'SEA_APPLIANCE_USD', NULL,
              'savings는 $ 금액 형식이어야 합니다.'),
-            ('offer', 'SEA_APPLIANCE_OFFER', NULL,
-             'offer는 숫자로만 구성된 0 이상의 정수여야 합니다.'),
             ('sku_status', 'SEA_APPLIANCE_ENUM', 'Sponsored|Rollback',
              'sku_status는 Sponsored 또는 Rollback이어야 합니다.'),
             ('detailed_review_content', 'SEA_APPLIANCE_REVIEW_BODY',
@@ -243,6 +257,8 @@ WITH products (
     FROM products product
     CROSS JOIN LATERAL (
         VALUES
+            ('offer', 'SEA_APPLIANCE_OFFER',
+             'offer는 숫자로만 구성된 0 이상의 정수여야 합니다.'),
             ('pick_up_availability', 'SEA_APPLIANCE_BESTBUY_PICKUP',
              'pick_up_availability는 Pick up 요일, 월 일 또는 Pick up today 형식이어야 합니다.'),
             ('delivery_availability', 'SEA_APPLIANCE_BESTBUY_DELIVERY',
@@ -250,12 +266,45 @@ WITH products (
             ('recommendation_intent', 'SEA_APPLIANCE_BESTBUY_RECOMMENDATION',
              'recommendation_intent는 0~100 정수% would recommend to a friend 형식이어야 합니다.')
     ) AS rule(column_name, template_name, error_message)
+), lowes_seed AS (
+    SELECT
+        product.table_name,
+        'Lowes'::text AS account_name,
+        rule.column_name,
+        rule.template_name,
+        rule.rule_value,
+        NULL::text AS extra_allowed,
+        rule.error_message
+    FROM products product
+    CROSS JOIN LATERAL (
+        VALUES
+            ('pick_up_availability', 'SEA_APPLIANCE_LOWES_PICKUP', NULL,
+             'pick_up_availability는 Pickup Ready by 요일, 월 일 또는 Pickup Ready Today 형식이어야 합니다.'),
+            ('delivery_availability', 'SEA_APPLIANCE_LOWES_DELIVERY', NULL,
+             'delivery_availability는 Delivery/Shipping 요일, 월 일 또는 Delivery w/FREE Installation 형식이어야 합니다.'),
+            ('recommendation_intent', 'SEA_APPLIANCE_LOWES_RECOMMENDATION', NULL,
+             'recommendation_intent는 0~100 정수% Recommend this product 형식이어야 합니다.'),
+            ('available_quantity_for_purchase_pickup', 'SEA_APPLIANCE_LOWES_QUANTITY', NULL,
+             'available_quantity_for_purchase_pickup은 숫자로만 구성된 0 이상의 정수여야 합니다.'),
+            ('available_quantity_for_purchase_delivery', 'SEA_APPLIANCE_LOWES_QUANTITY', NULL,
+             'available_quantity_for_purchase_delivery는 숫자로만 구성된 0 이상의 정수여야 합니다.'),
+            ('available_quantity_for_purchase_fastdelivery', 'SEA_APPLIANCE_LOWES_QUANTITY', NULL,
+             'available_quantity_for_purchase_fastdelivery는 숫자로만 구성된 0 이상의 정수여야 합니다.'),
+            ('fastest_delivery', 'SEA_APPLIANCE_ENUM', 'Get it Tomorrow',
+             'fastest_delivery는 Get it Tomorrow여야 합니다.'),
+            ('discount_type', 'SEA_APPLIANCE_LOWES_DISCOUNT', NULL,
+             'discount_type은 허용된 Lowes 할인 문구여야 하며 금액과 수량은 양의 정수, 할인율은 1~100 정수여야 합니다.'),
+            ('sku_popularity', 'SEA_APPLIANCE_ENUM', 'Top Deal|trending now|best seller|luxury',
+             'sku_popularity는 Top Deal, trending now, best seller 또는 luxury여야 합니다.')
+    ) AS rule(column_name, template_name, rule_value, error_message)
 ), rule_seed AS (
     SELECT * FROM common_seed
     UNION ALL
     SELECT * FROM retailer_seed
     UNION ALL
     SELECT * FROM bestbuy_seed
+    UNION ALL
+    SELECT * FROM lowes_seed
 ), resolved AS (
     SELECT
         seed.*,
@@ -300,7 +349,17 @@ WHERE NOT EXISTS (
           LOWER(TRIM(seed.account_name))
 );
 
--- Verification: expected result is 4 rows.
+-- Lowes does not collect offer; retire rules installed by earlier seed versions.
+UPDATE public.monitoring_format_rules
+SET is_active = FALSE,
+    updated_id = 'seed_sea_format',
+    updated_at = NOW()
+WHERE table_name IN ('ref_retail_com', 'ldy_retail_com')
+  AND LOWER(TRIM(account_name)) = 'lowes'
+  AND column_name = 'offer'
+  AND is_active = TRUE;
+
+-- Verification: expected result is 4 rows. Lowes must not include offer.
 SELECT
     table_name,
     account_name,

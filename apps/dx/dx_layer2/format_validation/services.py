@@ -79,9 +79,18 @@ SEA_FORMAT_COMMON_FIELDS = (
     'product_url', 'count_of_reviews', 'count_of_star_ratings',
     'star_rating', 'final_sku_price', 'original_sku_price', 'savings',
     'detailed_review_content', 'calendar_week',
-    'offer', 'pick_up_availability', 'delivery_availability',
+    'pick_up_availability', 'delivery_availability',
     'recommendation_intent', 'sku_status',
 )
+SEA_FORMAT_RETAILER_FIELDS = {
+    'bestbuy': ('offer',),
+    'lowes': (
+        'available_quantity_for_purchase_pickup',
+        'available_quantity_for_purchase_delivery',
+        'available_quantity_for_purchase_fastdelivery',
+        'fastest_delivery', 'discount_type', 'sku_popularity',
+    ),
+}
 SEA_FORMAT_EXTRA_FIELDS = {
     'ref': ('ref_capacity',),
     'ldy': ('ldy_capacity', 'ldy_loading_type'),
@@ -734,10 +743,12 @@ def _resolve_sea_format_retailer(source, retailer):
     return None
 
 
-def _get_sea_format_fields(product_key):
+def _get_sea_format_fields(product_key, retailer):
     return tuple(dict.fromkeys(
         SEA_FORMAT_COMMON_FIELDS + SEA_FORMAT_EXTRA_FIELDS.get(
             product_key, ()
+        ) + SEA_FORMAT_RETAILER_FIELDS.get(
+            str(retailer or '').strip().casefold(), ()
         )
     ))
 
@@ -748,7 +759,7 @@ def _fetch_sea_format_rows(
     canonical_table = source['table_name']
     date_column = source['date_column']
     product_key = source['product_key']
-    format_fields = _get_sea_format_fields(product_key)
+    format_fields = _get_sea_format_fields(product_key, retailer_value)
     select_columns = list(dict.fromkeys((
         'id', 'batch_id', 'country', 'product', 'account_name', 'page_type',
         'item', 'sku', 'retailer_sku_name', *format_fields,
@@ -807,7 +818,7 @@ def evaluate_sea_format_row(row, product_key, retailer):
         return {}
     table_name = str(source['table_name']).split('.')[-1]
     errors = {}
-    for field in _get_sea_format_fields(product_key):
+    for field in _get_sea_format_fields(product_key, retailer):
         error = validate_field(
             table_name, field, row.get(field), retailer,
             product_line='ALL', row_context=row,
@@ -919,7 +930,7 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days):
         for field in record['error_fields']:
             field_counts[field] = field_counts.get(field, 0) + 1
 
-    format_fields = _get_sea_format_fields(product_key)
+    format_fields = _get_sea_format_fields(product_key, retailer_value)
     date_column = source['date_column']
     column_names = list(dict.fromkeys((
         'id', date_column, 'account_name', 'page_type', 'item', 'sku',
@@ -2456,6 +2467,11 @@ def get_format_rules(cursor, table_name, retailer):
 
     cols = [desc[0] for desc in cursor.description]
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+    sea_product_key = _sea_format_product_key(table_name)
+    if sea_product_key:
+        fields = set(_get_sea_format_fields(sea_product_key, retailer))
+        rows = [row for row in rows if row['column_name'] in fields]
 
     result = []
     for row in rows:

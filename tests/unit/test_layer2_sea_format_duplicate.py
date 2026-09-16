@@ -120,13 +120,17 @@ class SEAFormatValidationTests(unittest.TestCase):
             'item', 'product_url', 'page_type', 'count_of_reviews',
             'count_of_star_ratings', 'star_rating', 'final_sku_price',
             'original_sku_price', 'savings', 'detailed_review_content',
-            'offer', 'pick_up_availability', 'delivery_availability',
+            'pick_up_availability', 'delivery_availability',
             'recommendation_intent', 'sku_status',
         }.issubset(common))
         self.assertFalse({
             'retailer_sku_name_similar', 'main_rank', 'bsr_rank',
             'ref_refrigerator_type', 'sku', 'retailer_sku_name',
         } & common)
+        self.assertNotIn('offer', common)
+        for product in ('ref', 'ldy'):
+            self.assertIn('offer', self.service._get_sea_format_fields(product, 'Bestbuy'))
+            self.assertNotIn('offer', self.service._get_sea_format_fields(product, 'Lowes'))
 
     def test_row_evaluation_uses_only_the_approved_field_list(self):
         calls = []
@@ -142,7 +146,7 @@ class SEAFormatValidationTests(unittest.TestCase):
 
         self.assertEqual({'item': 'item 형식 오류'}, errors)
         self.assertEqual(
-            set(self.service._get_sea_format_fields('ref')), set(calls)
+            set(self.service._get_sea_format_fields('ref', 'Bestbuy')), set(calls)
         )
         self.assertNotIn('ref_refrigerator_type', calls)
         self.assertIn('recommendation_intent', calls)

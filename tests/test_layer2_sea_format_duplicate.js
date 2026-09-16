@@ -38,7 +38,10 @@ assert(seed.includes("'ldy_retail_com', 'LDY'"));
 assert(seed.includes('SEA_APPLIANCE_BESTBUY_URL'));
 assert(seed.includes('SEA_APPLIANCE_LOWES_CAPACITY'));
 for (const field of ['offer', 'pick_up_availability', 'delivery_availability',
-    'recommendation_intent', 'sku_status']) {
+    'recommendation_intent', 'sku_status',
+    'available_quantity_for_purchase_pickup', 'available_quantity_for_purchase_delivery',
+    'available_quantity_for_purchase_fastdelivery', 'fastest_delivery',
+    'discount_type', 'sku_popularity']) {
     assert(seed.includes(`'${field}'`));
 }
 assert(seed.includes("'Sponsored|Rollback'"));
