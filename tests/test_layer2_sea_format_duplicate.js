@@ -37,7 +37,11 @@ assert(seed.includes("'ref_retail_com', 'REF'"));
 assert(seed.includes("'ldy_retail_com', 'LDY'"));
 assert(seed.includes('SEA_APPLIANCE_BESTBUY_URL'));
 assert(seed.includes('SEA_APPLIANCE_LOWES_CAPACITY'));
-assert(!seed.includes('recommendation_intent'));
+for (const field of ['offer', 'pick_up_availability', 'delivery_availability',
+    'recommendation_intent', 'sku_status']) {
+    assert(seed.includes(`'${field}'`));
+}
+assert(seed.includes("'Sponsored|Rollback'"));
 assert(!seed.includes('ref_refrigerator_type'));
 assert(!seed.includes('retailer_sku_name'));
 assert(!seed.includes('main_rank'));

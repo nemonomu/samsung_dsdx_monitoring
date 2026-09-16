@@ -79,6 +79,8 @@ SEA_FORMAT_COMMON_FIELDS = (
     'product_url', 'count_of_reviews', 'count_of_star_ratings',
     'star_rating', 'final_sku_price', 'original_sku_price', 'savings',
     'detailed_review_content', 'calendar_week',
+    'offer', 'pick_up_availability', 'delivery_availability',
+    'recommendation_intent', 'sku_status',
 )
 SEA_FORMAT_EXTRA_FIELDS = {
     'ref': ('ref_capacity',),

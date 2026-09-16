@@ -31,6 +31,18 @@ WITH seed (name, description, check_type, pattern) AS (
         ('SEA_APPLIANCE_NONNEGATIVE_COUNT',
          'Non-negative integer; thousands comma is allowed', 'regex',
          '^(0|[1-9][0-9]*|[1-9][0-9]{0,2}(,[0-9]{3})+)$'),
+        ('SEA_APPLIANCE_OFFER',
+         'Offer count: non-negative integer, digits only', 'regex',
+         $offer$^[0-9]+$$offer$),
+        ('SEA_APPLIANCE_BESTBUY_PICKUP',
+         'Bestbuy pickup date or Pick up today', 'regex',
+         $pickup$^Pick up (today|(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$pickup$),
+        ('SEA_APPLIANCE_BESTBUY_DELIVERY',
+         'Bestbuy delivery date', 'regex',
+         $delivery$^Delivery as soon as (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])$$delivery$),
+        ('SEA_APPLIANCE_BESTBUY_RECOMMENDATION',
+         'Bestbuy recommendation: integer percentage from 0 through 100', 'regex',
+         $recommendation$^(0|[1-9][0-9]?|100)% would recommend to a friend$$recommendation$),
         ('SEA_APPLIANCE_RATING',
          'Star rating from 0 through 5', 'range_float', NULL),
         ('SEA_APPLIANCE_USD',
@@ -140,6 +152,10 @@ WITH products (
              'original_sku_price는 $ 금액 형식이어야 합니다.'),
             ('savings', 'SEA_APPLIANCE_USD', NULL,
              'savings는 $ 금액 형식이어야 합니다.'),
+            ('offer', 'SEA_APPLIANCE_OFFER', NULL,
+             'offer는 숫자로만 구성된 0 이상의 정수여야 합니다.'),
+            ('sku_status', 'SEA_APPLIANCE_ENUM', 'Sponsored|Rollback',
+             'sku_status는 Sponsored 또는 Rollback이어야 합니다.'),
             ('detailed_review_content', 'SEA_APPLIANCE_REVIEW_BODY',
              'review1 - ',
              '리뷰본문은 "review1 - "로 시작해야 합니다.'),
@@ -214,10 +230,32 @@ WITH products (
     FROM products product
     CROSS JOIN retailers retailer
     WHERE product.loading_type_column IS NOT NULL
+), bestbuy_seed AS (
+    -- These text formats were verified against Bestbuy REF/LDY exports only.
+    SELECT
+        product.table_name,
+        'Bestbuy'::text AS account_name,
+        rule.column_name,
+        rule.template_name,
+        NULL::text AS rule_value,
+        NULL::text AS extra_allowed,
+        rule.error_message
+    FROM products product
+    CROSS JOIN LATERAL (
+        VALUES
+            ('pick_up_availability', 'SEA_APPLIANCE_BESTBUY_PICKUP',
+             'pick_up_availability는 Pick up 요일, 월 일 또는 Pick up today 형식이어야 합니다.'),
+            ('delivery_availability', 'SEA_APPLIANCE_BESTBUY_DELIVERY',
+             'delivery_availability는 Delivery as soon as 요일, 월 일 형식이어야 합니다.'),
+            ('recommendation_intent', 'SEA_APPLIANCE_BESTBUY_RECOMMENDATION',
+             'recommendation_intent는 0~100 정수% would recommend to a friend 형식이어야 합니다.')
+    ) AS rule(column_name, template_name, error_message)
 ), rule_seed AS (
     SELECT * FROM common_seed
     UNION ALL
     SELECT * FROM retailer_seed
+    UNION ALL
+    SELECT * FROM bestbuy_seed
 ), resolved AS (
     SELECT
         seed.*,

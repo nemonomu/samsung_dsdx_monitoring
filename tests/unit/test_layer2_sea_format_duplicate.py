@@ -7,6 +7,8 @@ from tests.unit.support import (
     load_module,
     module_stub,
     package_stub,
+    seg_validation_stub,
+    sem_validation_stub,
 )
 
 
@@ -84,6 +86,8 @@ def common_stubs():
         ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
+        'apps.dx.dx_layer2.seg_validation': seg_validation_stub(),
+        'apps.dx.dx_layer2.sem_validation': sem_validation_stub(),
         'apps.dx.dx_layer2.common': package_stub(
             'apps.dx.dx_layer2.common'
         ),
@@ -116,9 +120,11 @@ class SEAFormatValidationTests(unittest.TestCase):
             'item', 'product_url', 'page_type', 'count_of_reviews',
             'count_of_star_ratings', 'star_rating', 'final_sku_price',
             'original_sku_price', 'savings', 'detailed_review_content',
+            'offer', 'pick_up_availability', 'delivery_availability',
+            'recommendation_intent', 'sku_status',
         }.issubset(common))
         self.assertFalse({
-            'recommendation_intent', 'main_rank', 'bsr_rank',
+            'retailer_sku_name_similar', 'main_rank', 'bsr_rank',
             'ref_refrigerator_type', 'sku', 'retailer_sku_name',
         } & common)
 
@@ -139,7 +145,8 @@ class SEAFormatValidationTests(unittest.TestCase):
             set(self.service._get_sea_format_fields('ref')), set(calls)
         )
         self.assertNotIn('ref_refrigerator_type', calls)
-        self.assertNotIn('recommendation_intent', calls)
+        self.assertIn('recommendation_intent', calls)
+        self.assertNotIn('retailer_sku_name_similar', calls)
 
     def test_query_uses_latest_main_batch_and_includes_main_and_bsr(self):
         cursor = ScriptedCursor([{'fetchall': []}])
@@ -154,6 +161,10 @@ class SEAFormatValidationTests(unittest.TestCase):
         self.assertIn("= 'MAIN'", sql)
         self.assertIn("IN ('MAIN', 'BSR')", sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM', sql)
+        for field in ('offer', 'pick_up_availability', 'delivery_availability',
+                      'recommendation_intent', 'sku_status'):
+            self.assertIn(f'source.{field}', sql)
+        self.assertNotIn('source.retailer_sku_name_similar', sql)
         self.assertEqual(
             ('2026-08-30', '2026-08-31', 'Bestbuy',
              '2026-08-30', '2026-08-31', 'Bestbuy'),
