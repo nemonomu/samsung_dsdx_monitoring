@@ -36,6 +36,10 @@ SEG_PRICE_STATUS_TEXTS = {
 
 SEG_RULE_SPECS = OrderedDict((
     ('rating_count_presence', {
+        'guide_description': (
+            '별점이 0보다 큰데 별점 수를 숫자로 읽을 수 없거나, 두 값이 숫자일 때 한쪽만 0이면 이상입니다. '
+            'Mediamarkt·OTTO는 별점과 리뷰 수의 0 여부도 비교합니다.'
+        ),
         'detail_name': '별점과 별점 수 존재 일치',
         'field1': 'star_rating',
         'field2': 'count_of_star_ratings',
@@ -57,6 +61,7 @@ SEG_RULE_SPECS = OrderedDict((
         ),
     }),
     ('rating_range', {
+        'guide_description': '값이 있는 별점은 숫자 0~5여야 합니다. No customer reviews 문구는 허용합니다.',
         'detail_name': '별점 숫자 형식 및 5점 이하',
         'field1': 'star_rating',
         'field2': None,
@@ -67,6 +72,10 @@ SEG_RULE_SPECS = OrderedDict((
         ),
     }),
     ('rank_page_type', {
+        'guide_description': (
+            'MAIN이면 main_rank, BSR이면 bsr_rank가 있어야 합니다. 두 순위가 함께 있어도 정상입니다. 순위의 '
+            '연속성은 검사하지 않습니다.'
+        ),
         'detail_name': '페이지 유형과 순위 필드 일치',
         'field1': 'page_type',
         'field2': 'main_rank|bsr_rank',
@@ -75,6 +84,7 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': 'MAIN/BSR page_type에 해당하는 순위 필드가 없습니다.',
     }),
     ('final_original_price', {
+        'guide_description': '두 가격이 숫자일 때 final_sku_price >= original_sku_price이면 이상입니다.',
         'detail_name': '최종가와 원가 순서',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -85,6 +95,7 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': 'final_sku_price가 original_sku_price보다 크거나 같습니다.',
     }),
     ('discount_rate_90', {
+        'guide_description': '최종가와 원가가 모두 숫자이며 0보다 클 때 (원가-최종가)/원가 × 100이 90 이상이면 이상입니다.',
         'detail_name': '90% 이상 할인 검증',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -95,6 +106,10 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': '최종가와 원가로 계산한 할인율이 90% 이상입니다.',
     }),
     ('savings_missing', {
+        'guide_description': (
+            '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다. Mediamarkt는 원가가 0보다 크고 할인율이 '
+            '10% 이하이면 제외합니다.'
+        ),
         'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
         'field2': 'final_sku_price|original_sku_price',
@@ -107,6 +122,7 @@ SEG_RULE_SPECS = OrderedDict((
         ),
     }),
     ('original_missing', {
+        'guide_description': '숫자 최종가와 savings가 있는데 원가가 없으면 이상입니다.',
         'detail_name': '판매가·savings 존재 시 원가 확인',
         'field1': 'original_sku_price',
         'field2': 'final_sku_price|savings',
@@ -133,6 +149,7 @@ SEG_RULE_SPECS = OrderedDict((
         ),
     }),
     ('savings_amount_match', {
+        'guide_description': '두 가격과 savings가 숫자이고 원가 > 최종가일 때 원가-최종가와 savings가 다르면 이상입니다.',
         'detail_name': 'Amazon 할인 금액 일치',
         'field1': 'savings',
         'field2': 'original_sku_price|final_sku_price',
@@ -153,6 +170,11 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
     }),
     ('review_body_count', {
+        'guide_description': (
+            '리뷰 수와 별점 수가 모두 0인데 본문이 있으면 확인 필요입니다. OTTO는 리뷰 수 있음·본문 없음 / 리뷰 수 0·본문 '
+            '있음 / 최대 reviewN 번호가 리뷰 수보다 큼 / 리뷰 수 20 이상·최대 reviewN 번호가 20 미만도 확인 필요로 '
+            '표시합니다. 이상치로 집계하지 않습니다.'
+        ),
         'detail_name': '리뷰 수와 본문 확인',
         'field1': 'count_of_reviews', 'field2': 'detailed_review_content',
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
@@ -160,6 +182,13 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': '두 카운트가 0인데 본문이 남았는지 확인합니다. OTTO는 기존 본문 네 가지 조건도 확인합니다.',
     }),
     ('review_body_decrease', {
+        'guide_description': (
+            '수집 완료 후 당일을 제외한 이전 5일 중 같은 상품의 가장 최근 기록과 비교합니다. 본문이 감소했고 현재 본문·리뷰 수가 '
+            '모두 0이거나 이전 리뷰 수가 0이면 확인 필요입니다. 그 외 유효한 카운트에서 리뷰 수·별점 수가 다르거나 어느 한쪽이라도 '
+            '감소하지 않았으면 이상입니다. 두 카운트가 모두 감소했다면 현재 본문이 min(현재 카운트, 20)개보다 부족할 때 '
+            '이상입니다. 비교 기록이 없거나 본문 개수·카운트를 해석할 수 없는 경우에는 판정하지 않습니다. 현재 두 카운트가 0인데 '
+            '본문이 남은 경우는 리뷰 수와 본문 확인에서 처리합니다.'
+        ),
         'detail_name': '최근 5일 내 직전 수집 대비 리뷰본문 감소',
         'field1': 'detailed_review_content', 'field2': None,
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
@@ -1055,6 +1084,11 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
             for row in error_rows
             if str(row.get('account_name') or '').strip()
         ]
+        applicable_retailers = [
+            retailer for retailer in available_retailers
+            if _rule_applies_to_retailer(rule, retailer)
+        ]
+        spec = SEG_RULE_SPECS[rule['rule_key']]
         scoped_retailers = sorted({pair[0] for pair in pairs})
         if not scoped_retailers:
             scoped_retailers = [
@@ -1070,6 +1104,9 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
             'field1': rule['field1'],
             'field2': rule.get('field2'),
             'validation_type': rule['rule_key'],
+            'retailers': applicable_retailers,
+            'guide_name': spec['detail_name'],
+            'guide_description': spec.get('guide_description', spec['error_message']),
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
             'review_count': rule['review_count'],
@@ -1102,6 +1139,9 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
         'table_name': result['table_name'],
         'date_col': result['date_col'],
         'no_review_texts': SEG_NO_REVIEW_TEXT,
+        'guide_notes': [
+            'Amazon 최종가가 Höherer Preis als üblich 또는 Derzeit nicht verfügbar.이면 가격 관련 검사를 제외합니다.',
+        ] if 'Amazon' in available_retailers else [],
         'retailers': result['retailers'],
         'page_exclusions': result['page_exclusions'],
     }

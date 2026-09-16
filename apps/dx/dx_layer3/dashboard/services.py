@@ -509,6 +509,7 @@ def _validate_crossfield(cursor, target_date, section, rule_id):
             'field1': rule.get('field1'),
             'field2': rule.get('field2'),
             'validation_type': rule.get('validation_type'),
+            'retailer': rule.get('retailer'),
             'error_message': rule.get('error_message'),
             'error_count': error_count,
             'error_details': error_details,

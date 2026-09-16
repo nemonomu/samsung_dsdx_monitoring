@@ -250,6 +250,8 @@ def get_cross_field_summary(
         rule_summary.append({
             'rule_id': r['rule_id'],
             'detail_code': r['detail_code'],
+            'detail_name': r.get('detail_name'),
+            'retailers': [r['retailer']] if r.get('retailer') else [],
             'field1': r['field1'],
             'field2': r.get('field2'),
             'validation_type': r.get('validation_type', ''),

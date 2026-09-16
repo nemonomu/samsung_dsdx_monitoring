@@ -40,6 +40,29 @@ class RecordingCursor:
 
 
 class SegCrossfieldEvaluationTests(unittest.TestCase):
+    def test_guide_scope_uses_product_and_rule_retailers_not_error_rows(self):
+        for product in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            rules = [dict(spec, rule_id=i, rule_key=key, detail_code=product + '_' + key,
+                          _all_retailers=True)
+                     for i, (key, spec) in enumerate(seg_services.SEG_RULE_SPECS.items(), 1)
+                     if key in ('final_original_price', 'rank_page_type')]
+            retailers = seg_services.get_seg_source(product)['retailers']
+            rows = [_amazon_row(id=i, account_name=retailer, crawl_strdatetime='2026-09-03 10:00:00',
+                                final_sku_price='2.000,00€' if retailer == 'OTTO' else '899,99€')
+                    for i, retailer in enumerate(retailers, 1)]
+            with patch.object(seg_services, 'load_active_seg_rules', return_value=rules), \
+                    patch.object(seg_services, 'load_latest_seg_rows', return_value=rows), \
+                    patch.object(seg_services, '_load_normal_corrections', return_value=[]):
+                result = seg_services.get_seg_cross_field_summary(None, date(2026, 9, 3), product)
+            summary = {rule['validation_type']: rule for rule in result['rule_summary']}
+            self.assertEqual(set(retailers), set(summary['final_original_price']['retailers']))
+            if 'Amazon' in retailers:
+                self.assertEqual(['Amazon'], summary['rank_page_type']['retailers'])
+                self.assertIn('Höherer Preis', result['guide_notes'][0])
+            else:
+                self.assertNotIn('rank_page_type', summary)
+                self.assertEqual([], result['guide_notes'])
+
     def test_mediamarkt_discount_boundary_and_other_retailers(self):
         for retailer in ('Mediamarkt', 'OTTO', 'Amazon'):
             for final, missing in (('900,00€', retailer != 'Mediamarkt'), ('899,99€', True)):

@@ -1087,6 +1087,23 @@ function showCrossfieldGuide() {
     showGenericCrossfieldGuide(data, window.crossfieldTitle || data.label || productLine);
 }
 
+function renderCrossfieldGuideRule(rule, showRetailers = true, retailer = '') {
+    const fieldDisplay = rule.field2
+        ? `${rule.field1 || '-'} ↔ ${rule.field2}`
+        : (rule.field1 || rule.detail_code || '-');
+    const retailerNames = Array.isArray(rule.retailers)
+        ? rule.retailers.map(name => name === 'ALL' ? '전체 리테일러' : name).join(' · ')
+        : '';
+    const description = (rule.guide_descriptions || {})[retailer]
+        || rule.guide_description || rule.error_message || '등록된 검수 조건을 확인합니다.';
+    return `<li>
+        <strong>${esc(rule.guide_name || rule.detail_name || fieldDisplay)}</strong>
+        ${showRetailers && retailerNames ? `<p>적용 대상: ${esc(retailerNames)}</p>` : ''}
+        <code>${esc(fieldDisplay)}</code>
+        <p>${esc(description)}</p>
+    </li>`;
+}
+
 function showGenericCrossfieldGuide(data, title) {
     const rules = Array.isArray(data.rule_summary) ? data.rule_summary : [];
     const inspectionDate = data.inspection_date || data.date || '-';
@@ -1096,18 +1113,7 @@ function showGenericCrossfieldGuide(data, title) {
     let ruleItems = '<li><p>등록된 검수 규칙 설명이 없습니다.</p></li>';
 
     if (rules.length) {
-        ruleItems = rules.map(rule => {
-            const fieldDisplay = rule.field2
-                ? `${rule.field1 || '-'} ↔ ${rule.field2}`
-                : (rule.field1 || rule.detail_code || '-');
-            const ruleName = rule.detail_name || fieldDisplay;
-            return `<li>
-                <strong>${esc(ruleName)}</strong>
-                ${Array.isArray(rule.retailers) ? `<p>적용 대상: ${esc(rule.retailers.join(' · '))}</p>` : ''}
-                <code>${esc(fieldDisplay)}</code>
-                <p>${esc(rule.error_message || '등록된 검수 조건을 확인합니다.')}</p>
-            </li>`;
-        }).join('');
+        ruleItems = rules.map(rule => renderCrossfieldGuideRule(rule)).join('');
     }
 
     const html = `
@@ -1119,6 +1125,7 @@ function showGenericCrossfieldGuide(data, title) {
                     <span>${esc(datePolicy)}</span>
                     <span>현재 등록된 규칙 ${rules.length}개</span>
                     <span>새 대상도 등록 규칙을 자동 표시</span>
+                    ${(data.guide_notes || []).map(note => `<p>${esc(note)}</p>`).join('')}
                 </div>
             </div>
             <div class="sea-guide-grid single">
@@ -1136,54 +1143,30 @@ function showGenericCrossfieldGuide(data, title) {
 }
 
 function showSeaCrossfieldGuide() {
-    const html = `
-        <div class="sea-crossfield-guide">
-            <div class="sea-guide-scope">
-                <div class="sea-guide-scope-title">먼저 확인할 조회 범위</div>
-                <div class="sea-guide-scope-items">
-                    <span>SEA REF·LDY 동일 적용</span>
-                    <span>검수일 D → 데이터일 D-1</span>
-                    <span>리테일러별 최신 MAIN batch의 MAIN+BSR</span>
-                    <span>NULL·형식 오류는 Layer2에서 확인</span>
-                </div>
+    const data = window.crossfieldSummaryData || {};
+    const rules = Array.isArray(data.rule_summary) ? data.rule_summary : [];
+    const retailers = [...new Set(rules.flatMap(rule => rule.retailers || []))];
+    const cards = retailers.map(retailer => {
+        const scopedRules = rules.filter(rule => (rule.retailers || []).includes(retailer));
+        return `<section class="sea-guide-card">
+            <div class="sea-guide-card-header">
+                <h3>${esc(retailer)}</h3><span>${scopedRules.length}개</span>
             </div>
-            <div class="sea-guide-grid">
-                <section class="sea-guide-card">
-                    <div class="sea-guide-card-header">
-                        <h3>Bestbuy</h3><span>7개</span>
-                    </div>
-                    <ol class="sea-guide-rule-list">
-                        <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
-                        <li><strong>별점 0과 별점 수·리뷰 수 0 일치</strong><p>별점과 별점 수, 별점과 리뷰 수를 각각 비교해 한쪽만 0이면 이상입니다.</p></li>
-                        <li><strong>페이지 유형과 순위 일치</strong><p>MAIN이면 <code>main_rank</code>, BSR이면 <code>bsr_rank</code>가 있어야 합니다.</p></li>
-                        <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt;= original_sku_price → 이상</code></li>
-                        <li><strong>90% 이상 할인</strong><code>(원가-최종가)/원가 &gt;= 90% → 이상</code></li>
-                        <li><strong>리뷰본문 개수</strong><p>리뷰 수가 20개 이하면 해당 수까지, 20개 이상이면 <code>review20</code>까지 있어야 합니다.</p></li>
-                        <li><strong>추천 의향 형식</strong><p>리뷰가 있으면 <code>NN% would recommend to a friend</code>, 0~100% 범위여야 합니다. 리뷰가 0이면 값도 비어 있어야 합니다.</p></li>
-                    </ol>
-                </section>
-                <section class="sea-guide-card">
-                    <div class="sea-guide-card-header">
-                        <h3>Lowes</h3><span>9개</span>
-                    </div>
-                    <ol class="sea-guide-rule-list">
-                        <li><strong>리뷰 수 일치</strong><code>count_of_reviews = count_of_star_ratings</code></li>
-                        <li><strong>별점 0과 별점 수·리뷰 수 0 일치</strong><p>별점과 별점 수, 별점과 리뷰 수를 각각 비교해 한쪽만 0이면 이상입니다.</p></li>
-                        <li><strong>최종가·원가 관계</strong><code>final_sku_price &gt;= original_sku_price → 이상</code></li>
-                        <li>
-                            <strong>리뷰 수·본문 확인</strong>
-                            <p>사이트 특성상 이상치로 집계하지 않고 파란색 <b>확인 필요</b>로 표시합니다.</p>
-                            <code>리뷰 수 있음·본문 없음 / 리뷰 수 0·본문 있음 / reviewN이 리뷰 수보다 큼 / 리뷰 수 20 이상·review20 없음</code>
-                        </li>
-                        <li><strong>savings 누락</strong><p>최종가와 원가가 있는데 <code>savings</code>가 없으면 이상입니다.</p></li>
-                        <li><strong>원가 누락</strong><p>최종가와 <code>savings</code>가 있는데 원가가 없으면 이상입니다.</p></li>
-                        <li><strong>할인 금액 일치</strong><code>original_sku_price - final_sku_price &lt;&gt; savings → 이상</code></li>
-                        <li><strong>최종가 누락</strong><p>최종가가 없는데 원가 또는 <code>savings</code>가 있으면 이상입니다.</p></li>
-                        <li><strong>추천 의향 형식</strong><p>리뷰가 있으면 <code>NN% Recommend this product</code>, 0~100% 범위여야 합니다. 리뷰가 0이면 값도 비어 있어야 합니다.</p></li>
-                    </ol>
-                </section>
+            <ol class="sea-guide-rule-list">${scopedRules.map(rule => renderCrossfieldGuideRule(rule, false, retailer)).join('')}</ol>
+        </section>`;
+    }).join('');
+    const html = `<div class="sea-crossfield-guide">
+        <div class="sea-guide-scope">
+            <div class="sea-guide-scope-title">현재 화면에 적용된 검수 기준</div>
+            <div class="sea-guide-scope-items">
+                <span>검수일 D → 데이터일 D-1</span>
+                <span>리테일러별 최신 MAIN batch의 MAIN+BSR</span>
+                <span>활성 규칙과 적용 리테일러 기준</span>
+                <span>NULL·형식 오류는 Layer2에서 확인</span>
             </div>
-        </div>`;
+        </div>
+        <div class="sea-guide-grid">${cards || '<p>등록된 검수 규칙 설명이 없습니다.</p>'}</div>
+    </div>`;
     AppModal.setTitle('crossfield-guide', 'SEA REF/LDY 크로스필드 검수 기준');
     AppModal.setBody('crossfield-guide', html);
     AppModal.open('crossfield-guide');
@@ -1474,6 +1457,7 @@ async function showRulesModal(checkName) {
     const isSemCrossfield = /^SEM (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isSielCrossfield || isSegCrossfield || isSemCrossfield || isTseCrossfield;
+    const isRetailCrossfield = isCrossfield && !checkName.includes('Sentiment');
 
     // checkName에서 category 추출
     let category = 'all';
@@ -1518,8 +1502,8 @@ async function showRulesModal(checkName) {
         } else if (checkName.includes('HHP')) {
             category = 'hhp_retail';
         }
-        apiUrl = isSemCrossfield
-            ? `/layer3/api/cross-field-detail/?date=${getSelectedDate()}&type=${category}`
+        apiUrl = isRetailCrossfield
+            ? `/layer3/api/cross-field-detail/?date=${getSelectedDate()}&type=${category.replace(/_retail$/, '')}`
             : `/layer3/api/crossfield-rules/?section=${category}`;
     } else {
         // 카테고리별 특성 규칙 (display_name으로 매핑)
@@ -1533,10 +1517,16 @@ async function showRulesModal(checkName) {
     try {
         const data = await fetchAPI(apiUrl);
 
-        const loadedRules = isSemCrossfield
+        const loadedRules = isRetailCrossfield
             ? (data.rule_summary || [])
             : (data.rules || []);
-        if ((isSemCrossfield || data.status === 'success') && loadedRules.length > 0) {
+        if (isRetailCrossfield) {
+            const notes = (data.guide_notes || []).map(note => `<p>${esc(note)}</p>`).join('');
+            const items = loadedRules.map(rule => renderCrossfieldGuideRule(rule)).join('');
+            AppModal.setBody('detail', `<div class="sea-crossfield-guide">${notes}<ol class="sea-guide-rule-list">${items || '<li>등록된 검수 규칙 설명이 없습니다.</li>'}</ol></div>`);
+            return;
+        }
+        if (data.status === 'success' && loadedRules.length > 0) {
             let html = '<ul class="rules-list">';
             loadedRules.forEach((rule, idx) => {
                 const retailerInfo = rule.retailer && rule.retailer !== 'all' ? ` (${rule.retailer})` : '';
@@ -1590,6 +1580,10 @@ async function showRulesModal(checkName) {
         }
     } catch (error) {
         console.error('Failed to fetch rules:', error);
+        if (isRetailCrossfield) {
+            AppModal.setBody('detail', '<p>검수 기준을 불러오지 못했습니다. 다시 시도해주세요.</p>');
+            return;
+        }
         // 에러 시 기존 하드코딩 데이터 사용 (fallback)
         const rules = getValidationRules(checkName);
         let html = '<ul class="rules-list">';

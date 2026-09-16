@@ -23,13 +23,13 @@ assert(common.includes("detailCode === 'sem_ldy' || checkName.includes('SEM LDY'
 assert(common.includes("detailCode === 'siel_tv' || detailCode === 'seg_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'"));
 assert(common.includes("detailCode === 'siel_ref' || detailCode === 'seg_ref' || detailCode === 'sem_ref' || detailCode === 'tse_ref'"));
 assert(common.includes("const isSemCrossfield = /^SEM (TV|REF|LDY)"));
-assert(common.includes("type=${category}"));
-assert(common.includes("const loadedRules = isSemCrossfield"));
+assert(common.includes("type=${category.replace(/_retail$/, '')}"));
+assert(common.includes("const loadedRules = isRetailCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
-assert(dashboard.includes("common.js' %}?v=20260915-2"));
+assert(dashboard.includes("common.js' %}?v=20260916-1"));
 assert(dashboard.includes("cross-field.js' %}?v=27"));
-assert(detail.includes("common.js' %}?v=20260915-2"));
+assert(detail.includes("common.js' %}?v=20260916-1"));
 assert(detail.includes("cross-field.js' %}?v=27"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');

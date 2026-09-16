@@ -1,5 +1,7 @@
 import unittest
 from datetime import date
+from pathlib import Path
+import re
 
 from apps.common import inspection_dates, sea_retail
 from tests.unit.support import (
@@ -95,6 +97,20 @@ def _rule(rule_id, rule_key, retailer='ALL', product_line='sea_ref'):
 
 
 class SeaCrossfieldEvaluationTests(unittest.TestCase):
+    def test_page_type_requires_only_its_own_rank_for_both_retailers(self):
+        for factory in (_bestbuy_row, _lowes_row):
+            for page, field, other in (
+                ('MAIN', 'main_rank', 'bsr_rank'),
+                ('bsr', 'bsr_rank', 'main_rank'),
+            ):
+                for missing in (None, '', '  ', 'null', '-'):
+                    with self.subTest(retailer=factory.__name__, page=page, missing=missing):
+                        row = factory(page_type=page, **{field: missing, other: '28'})
+                        self.assertIn('rank_page_type', sea_services.evaluate_sea_row(row))
+                for rank in ('28', '30', '300'):
+                    row = factory(page_type=page, **{field: rank, other: '12'})
+                    self.assertNotIn('rank_page_type', sea_services.evaluate_sea_row(row))
+
     def test_equal_prices_and_review_zero_pair_use_existing_rules(self):
         for factory in (_bestbuy_row, _lowes_row):
             errors = sea_services.evaluate_sea_row(factory(
@@ -268,6 +284,50 @@ class SeaCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class SeaCrossfieldScopeTests(unittest.TestCase):
+    def test_seed_rules_produce_eleven_bestbuy_and_ten_lowes_guide_entries(self):
+        sql = (Path(__file__).resolve().parents[2] / 'sql/seed_sea_ref_ldy_crossfield.sql').read_text(encoding='utf-8')
+        definitions = re.findall(r"\('(Bestbuy|Lowes)', '([a-z_0-9]+)',", sql)
+        self.assertEqual(21, len(definitions))
+        for product in ('sea_ref', 'sea_ldy'):
+            cursor = ScriptedCursor([
+                {'fetchall': [_rule(i, key, retailer, product)
+                              for i, (retailer, key) in enumerate(definitions, 1)]},
+                {'fetchall': [_bestbuy_row(), _lowes_row()]},
+                {'fetchall': []},
+            ])
+            result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 8, 31), product)
+            for retailer, expected in (('Bestbuy', 11), ('Lowes', 10)):
+                self.assertEqual(expected, sum(retailer in rule['retailers'] for rule in result['rule_summary']))
+
+    def test_lowes_rank_rule_is_active_for_ref_and_ldy_and_guide_keeps_normal_retailer(self):
+        for product in ('sea_ref', 'sea_ldy'):
+            cursor = ScriptedCursor([
+                {'fetchall': [_rule(i, 'rank_page_type', retailer, product)
+                              for i, retailer in enumerate(('Bestbuy', 'Lowes'), 1)]},
+                {'fetchall': [_bestbuy_row(), _lowes_row(main_rank=None)]},
+                {'fetchall': []},
+            ])
+            result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 8, 31), product)
+            rule = result['rule_summary'][0]
+            self.assertEqual(1, result['total_anomalies'])
+            self.assertEqual(['Bestbuy', 'Lowes'], rule['retailers'])
+            self.assertIn('main_rank', rule['guide_description'])
+            self.assertIn('bsr_rank', rule['guide_description'])
+
+    def test_guide_respects_configured_retailer_and_ignores_stale_description(self):
+        rule = _rule(1, 'savings_missing', 'Bestbuy')
+        rule['error_message'] = 'outdated description'
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]},
+            {'fetchall': [_bestbuy_row(savings=None), _lowes_row()]},
+            {'fetchall': []},
+        ])
+        result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 8, 31), 'sea_ref')
+        rule = result['rule_summary'][0]
+        self.assertEqual(['Bestbuy'], rule['retailers'])
+        self.assertNotIn('outdated', rule['guide_description'])
+        self.assertIn('원가 > 최종가', rule['guide_description'])
+
     def test_latest_anchor_scope_uses_exact_d_minus_one(self):
         cursor = ScriptedCursor([{'fetchall': [_bestbuy_row()]}])
 

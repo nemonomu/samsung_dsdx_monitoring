@@ -68,9 +68,6 @@ for (const label of [
 }
 assert(commonSource.includes('검수 기준 안내'));
 assert(commonSource.includes('SEA REF/LDY 크로스필드 검수 기준'));
-assert(commonSource.includes('별점 0과 별점 수·리뷰 수 0 일치'));
-assert(commonSource.includes('<h3>Bestbuy</h3><span>7개</span>'));
-assert(commonSource.includes('<h3>Lowes</h3><span>9개</span>'));
 assert(commonSource.includes('function showCrossfieldGuide()'));
 assert(commonSource.includes('새 대상도 등록 규칙을 자동 표시'));
 assert(!commonSource.includes('D-1 (offset_days='));
@@ -674,6 +671,8 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
             field1: 'count_of_reviews',
             field2: 'count_of_star_ratings',
             error_message: '두 값이 다르면 이상입니다.',
+            guide_description: '숫자 두 값이 다르면 이상입니다.',
+            retailers: ['Homepro'],
         }],
     };
     commonSandbox.window.crossfieldTitle = 'TSE TV 논리적 일관성';
@@ -684,6 +683,52 @@ async function testSeaRetailDisplayKeepsCanonicalTvRoute() {
     assert(detailModal.body.includes('count_of_reviews ↔ count_of_star_ratings'));
     assert(detailModal.body.includes('현재 등록된 규칙 1개'));
     assert(detailModal.body.includes('새 대상도 등록 규칙을 자동 표시'));
+    assert(detailModal.body.includes('적용 대상: Homepro'));
+    assert(detailModal.body.includes('숫자 두 값이 다르면 이상입니다.'));
+
+    const priceRules = ['savings_missing', 'original_missing', 'savings_amount_match', 'final_missing'];
+    commonSandbox.window.crossfieldSummaryData = {
+        product_line: 'SEA_REF',
+        rule_summary: [
+            ...priceRules.map(key => ({detail_name: key, guide_description: `condition ${key}`,
+                retailers: ['Bestbuy', 'Lowes']})),
+            {detail_name: '페이지 유형과 순위 일치', retailers: ['Lowes'],
+                guide_description: 'MAIN → main_rank / BSR → bsr_rank'},
+        ],
+    };
+    commonSandbox.showCrossfieldGuide();
+    assert(detailModal.body.includes('<h3>Bestbuy</h3><span>4개</span>'));
+    assert(detailModal.body.includes('<h3>Lowes</h3><span>5개</span>'));
+    for (const key of priceRules) {
+        assert.strictEqual(detailModal.body.split(`condition ${key}`).length - 1, 2);
+    }
+    assert.strictEqual(detailModal.body.split('MAIN → main_rank').length - 1, 1);
+    commonSandbox.window.crossfieldSummaryData.rule_summary = [];
+    commonSandbox.showCrossfieldGuide();
+    assert(detailModal.body.includes('등록된 검수 규칙 설명이 없습니다.'));
+    assert(!detailModal.body.includes('<h3>Lowes</h3>'));
+    assert(commonSandbox.renderCrossfieldGuideRule({guide_description: '<script>alert(1)</script>'})
+        .includes('&lt;script&gt;'));
+    assert(commonSandbox.renderCrossfieldGuideRule({guide_description: 'both',
+        guide_descriptions: {Lowes: '확인 필요', Bestbuy: '이상'}}, false, 'Lowes').includes('확인 필요'));
+
+    for (const [name, product] of [
+        ['TV 논리적 일관성', 'tv'], ['SEA REF 논리적 일관성', 'sea_ref'],
+        ['SIEL LDY 논리적 일관성', 'siel_ldy'], ['SEG TV 논리적 일관성', 'seg_tv'],
+        ['TSE REF 논리적 일관성', 'tse_ref'], ['SEM REF 논리적 일관성', 'sem_ref'],
+    ]) {
+        await commonSandbox.showRulesModal(name);
+        assert.strictEqual(requestedUrl, `/layer3/api/cross-field-detail/?date=2026-08-11&type=${product}`);
+        assert(detailModal.body.includes('등록된 검수 규칙 설명이 없습니다.'));
+    }
+    commonSandbox.fetchAPI = async () => ({rule_summary: [{detail_name: 'rule',
+        guide_description: 'actual condition', error_message: 'stale message', retailers: ['Homepro']}],
+        guide_notes: ['retailer exception']});
+    await commonSandbox.showRulesModal('TSE TV 논리적 일관성');
+    assert(detailModal.body.includes('actual condition'));
+    assert(detailModal.body.includes('retailer exception'));
+    assert(detailModal.body.includes('적용 대상: Homepro'));
+    assert(!detailModal.body.includes('stale message'));
 }
 
 testSeaRetailDisplayKeepsCanonicalTvRoute().catch(error => {

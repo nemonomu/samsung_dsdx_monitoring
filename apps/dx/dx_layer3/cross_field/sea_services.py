@@ -31,6 +31,7 @@ LOWES_REVIEW_ISSUES = OrderedDict((
 
 SEA_RULE_SPECS = OrderedDict((
     ('review_count_match', {
+        'guide_description': '두 값이 숫자일 때 count_of_reviews와 count_of_star_ratings가 다르면 이상입니다.',
         'detail_name': '리뷰 수와 별점 수 일치',
         'field1': 'count_of_reviews',
         'field2': 'count_of_star_ratings',
@@ -42,6 +43,7 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
     }),
     ('rating_count_presence', {
+        'guide_description': '숫자로 읽히는 별점과 별점 수, 별점과 리뷰 수를 각각 비교해 한쪽만 0이면 이상입니다.',
         'detail_name': '별점 0과 별점 수 0 일치',
         'field1': 'star_rating',
         'field2': 'count_of_star_ratings',
@@ -52,14 +54,19 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': 'star_rating과 별점 수 또는 리뷰 수의 0 여부가 다릅니다.',
     }),
     ('rank_page_type', {
+        'guide_description': (
+            'MAIN이면 main_rank, BSR이면 bsr_rank가 있어야 합니다. 두 순위가 함께 있어도 정상입니다. 순위의 '
+            '연속성은 검사하지 않습니다.'
+        ),
         'detail_name': '페이지 유형과 순위 필드 일치',
         'field1': 'page_type',
         'field2': 'main_rank|bsr_rank',
-        'retailers': ('Bestbuy',),
+        'retailers': ('Bestbuy', 'Lowes'),
         'display_fields': ('page_type', 'main_rank', 'bsr_rank'),
         'error_message': 'MAIN/BSR page_type에 해당하는 순위 필드가 없습니다.',
     }),
     ('final_original_price', {
+        'guide_description': '두 가격이 숫자일 때 final_sku_price >= original_sku_price이면 이상입니다.',
         'detail_name': '최종가와 원가 순서',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -70,6 +77,7 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '최종가와 원가의 가격 관계가 올바르지 않습니다.',
     }),
     ('discount_rate_90', {
+        'guide_description': '두 가격이 숫자이고 원가가 0보다 클 때 (원가-최종가)/원가 × 100이 90 이상이면 이상입니다.',
         'detail_name': '90% 이상 할인 검사',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -80,6 +88,15 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '최종가와 원가로 계산한 할인율이 90% 이상입니다.',
     }),
     ('review_body_count', {
+        'guide_descriptions': {
+            'Bestbuy': '리뷰 수가 1 이상일 때 본문의 최대 reviewN 번호가 min(리뷰 수, 20)보다 작으면 이상입니다.',
+            'Lowes': '리뷰 수 있음·본문 없음 / 리뷰 수 0·본문 있음 / 최대 reviewN 번호가 리뷰 수보다 큼 / 리뷰 수 20 이상·최대 reviewN 번호가 20 미만이면 이상치가 아닌 확인 필요로 표시합니다.',
+        },
+        'guide_description': (
+            'Bestbuy: 리뷰 수가 1 이상일 때 본문의 최대 reviewN 번호가 min(리뷰 수, 20)보다 작으면 이상입니다. '
+            'Lowes: 리뷰 수 있음·본문 없음 / 리뷰 수 0·본문 있음 / 최대 reviewN 번호가 리뷰 수보다 큼 / 리뷰 수 '
+            '20 이상·최대 reviewN 번호가 20 미만이면 이상치가 아닌 확인 필요로 표시합니다.'
+        ),
         'detail_name': '리뷰 수와 리뷰 본문 개수 일치',
         'field1': 'count_of_reviews',
         'field2': 'detailed_review_content',
@@ -91,6 +108,7 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '리뷰 수와 detailed_review_content의 reviewN 범위가 맞지 않습니다.',
     }),
     ('savings_missing', {
+        'guide_description': '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다.',
         'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
         'field2': 'final_sku_price|original_sku_price',
@@ -101,6 +119,7 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '숫자 원가가 판매가보다 큰데 savings가 없습니다.',
     }),
     ('original_missing', {
+        'guide_description': '숫자 최종가와 savings가 있는데 원가가 없으면 이상입니다.',
         'detail_name': '최종가·savings 존재 시 원가 확인',
         'field1': 'original_sku_price',
         'field2': 'final_sku_price|savings',
@@ -111,6 +130,7 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '최종가와 savings가 있는데 original_sku_price가 없습니다.',
     }),
     ('savings_amount_match', {
+        'guide_description': '최종가·원가·savings가 모두 숫자일 때 원가-최종가와 savings가 다르면 이상입니다.',
         'detail_name': '할인 금액 일치',
         'field1': 'savings',
         'field2': 'original_sku_price|final_sku_price',
@@ -121,6 +141,7 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': 'original_sku_price-final_sku_price와 savings가 다릅니다.',
     }),
     ('final_missing', {
+        'guide_description': '원가 또는 savings가 있는데 최종가가 없으면 이상입니다.',
         'detail_name': '원가·savings 존재 시 최종가 확인',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price|savings',
@@ -131,6 +152,14 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '원가 또는 savings가 있는데 final_sku_price가 없습니다.',
     }),
     ('recommendation_intent', {
+        'guide_descriptions': {
+            'Bestbuy': '리뷰 수가 1 이상이면 NN% would recommend to a friend 형식이며 0~100%여야 합니다. 리뷰 수가 0이면 비어 있어야 합니다.',
+            'Lowes': '리뷰 수가 1 이상이면 NN% Recommend this product 형식이며 0~100%여야 합니다. 리뷰 수가 0이면 비어 있어야 합니다.',
+        },
+        'guide_description': (
+            '리뷰 수가 1 이상이면 Bestbuy는 NN% would recommend to a friend, Lowes는 NN% '
+            'Recommend this product 형식이며 0~100%여야 합니다. 리뷰 수가 0이면 비어 있어야 합니다.'
+        ),
         'detail_name': '추천 의향 형식',
         'field1': 'recommendation_intent',
         'field2': 'count_of_reviews',
@@ -310,12 +339,11 @@ def evaluate_sea_row(row):
         if (rating == 0) != (review_count == 0):
             errors.add('rating_count_presence')
 
-    if retailer == 'Bestbuy':
-        page_type = str(row.get('page_type') or '').strip().upper()
-        if page_type == 'MAIN' and not _has_value(row.get('main_rank')):
-            errors.add('rank_page_type')
-        if page_type == 'BSR' and not _has_value(row.get('bsr_rank')):
-            errors.add('rank_page_type')
+    page_type = str(row.get('page_type') or '').strip().upper()
+    if page_type == 'MAIN' and not _has_value(row.get('main_rank')):
+        errors.add('rank_page_type')
+    if page_type == 'BSR' and not _has_value(row.get('bsr_rank')):
+        errors.add('rank_page_type')
 
     final_present = _has_value(row.get('final_sku_price'))
     original_present = _has_value(row.get('original_sku_price'))
@@ -888,6 +916,11 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
             for row in finding_rows
             if str(row.get('account_name') or '').strip()
         ]
+        applicable_retailers = [
+            retailer for retailer in available_retailers
+            if _rule_applies_to_retailer(rule, retailer)
+        ]
+        spec = SEA_RULE_SPECS[rule['rule_key']]
         scoped_retailers = sorted({pair[0] for pair in pairs})
         if not scoped_retailers:
             scoped_retailers = [
@@ -911,6 +944,10 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
             'field1': rule['field1'],
             'field2': rule.get('field2'),
             'validation_type': rule['rule_key'],
+            'retailers': applicable_retailers,
+            'guide_name': spec['detail_name'],
+            'guide_descriptions': spec.get('guide_descriptions', {}),
+            'guide_description': spec.get('guide_description', spec['error_message']),
             'error_message': error_message,
             'error_count': rule['error_count'],
             'review_count': rule['review_count'],

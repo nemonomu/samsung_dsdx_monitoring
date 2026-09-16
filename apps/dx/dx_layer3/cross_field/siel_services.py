@@ -29,6 +29,7 @@ SIEL_NO_REVIEW_TEXT = 'No customer reviews'
 
 SIEL_RULE_SPECS = OrderedDict((
     ('rating_count_presence', {
+        'guide_description': '별점이 0보다 큰데 별점 수를 숫자로 읽을 수 없거나, 두 값이 숫자일 때 별점과 별점 수 중 한쪽만 0이면 이상입니다.',
         'detail_name': '별점과 별점 수 존재 일치',
         'field1': 'star_rating',
         'field2': 'count_of_star_ratings',
@@ -53,6 +54,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('rating_range', {
+        'guide_description': '값이 있는 별점은 숫자 0~5여야 합니다. Amazon의 No customer reviews 문구는 허용합니다.',
         'detail_name': '별점 숫자 형식 및 5점 이하',
         'field1': 'star_rating',
         'field2': None,
@@ -63,6 +65,10 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('rank_page_type', {
+        'guide_description': (
+            'MAIN이면 main_rank, BSR이면 bsr_rank가 있어야 합니다. 두 순위가 함께 있어도 정상입니다. 순위의 '
+            '연속성은 검사하지 않습니다.'
+        ),
         'detail_name': '페이지 유형과 순위 필드 일치',
         'field1': 'page_type',
         'field2': 'main_rank|bsr_rank',
@@ -73,6 +79,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('final_original_price', {
+        'guide_description': '두 가격이 숫자일 때 final_sku_price >= original_sku_price이면 이상입니다.',
         'detail_name': '최종가와 원가 순서',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -85,6 +92,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('discount_rate_90', {
+        'guide_description': '최종가와 원가가 모두 숫자이며 0보다 클 때 (원가-최종가)/원가 × 100이 90 이상이면 이상입니다.',
         'detail_name': '90% 이상 할인 검증',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -111,6 +119,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('review_count_missing', {
+        'guide_description': '리뷰본문이 있는데 리뷰 수를 숫자로 읽을 수 없거나 0이면 이상입니다.',
         'detail_name': '리뷰본문 존재 시 리뷰 수 확인',
         'field1': 'detailed_review_content',
         'field2': 'count_of_reviews',
@@ -125,6 +134,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('review_star_count_missing', {
+        'guide_description': '숫자 리뷰 수가 0보다 큰데 별점 수를 숫자로 읽을 수 없거나 0이면 이상입니다.',
         'detail_name': '리뷰 수 존재 시 별점 수 확인',
         'field1': 'count_of_reviews',
         'field2': 'count_of_star_ratings',
@@ -162,6 +172,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('original_missing', {
+        'guide_description': '숫자 최종가와 savings가 있는데 원가가 없으면 이상입니다.',
         'detail_name': '최종가·할인율 존재 시 원가 확인',
         'field1': 'original_sku_price',
         'field2': 'final_sku_price|savings',
@@ -188,6 +199,10 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('savings_rate_match', {
+        'guide_description': (
+            '두 가격이 숫자이고 원가 > 0, 최종가 <= 원가이며 savings가 있을 때 검사합니다. savings를 할인율로 읽을 수 '
+            '없거나 계산 할인율과 1%p 초과 차이가 나면 이상입니다.'
+        ),
         'detail_name': '표시 할인율과 가격 차이 일치',
         'field1': 'savings',
         'field2': 'original_sku_price|final_sku_price',
@@ -874,6 +889,11 @@ def get_siel_cross_field_summary(cursor, inspection_date, product_line):
             for row in error_rows
             if str(row.get('account_name') or '').strip()
         ]
+        applicable_retailers = [
+            retailer for retailer in available_retailers
+            if _rule_applies_to_retailer(rule, retailer)
+        ]
+        spec = SIEL_RULE_SPECS[rule['rule_key']]
         scoped_retailers = sorted({pair[0] for pair in pairs})
         if not scoped_retailers:
             scoped_retailers = [
@@ -889,6 +909,9 @@ def get_siel_cross_field_summary(cursor, inspection_date, product_line):
             'field1': rule['field1'],
             'field2': rule.get('field2'),
             'validation_type': rule['rule_key'],
+            'retailers': applicable_retailers,
+            'guide_name': spec['detail_name'],
+            'guide_description': spec.get('guide_description', spec['error_message']),
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
             'query': build_siel_display_query(

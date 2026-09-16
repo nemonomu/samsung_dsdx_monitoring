@@ -54,6 +54,7 @@ TSE_RULE_SPECS = OrderedDict((
         ),
     }),
     ('final_original_price', {
+        'guide_description': '두 가격이 숫자이고 원가가 0이 아닐 때 final_sku_price >= original_sku_price이면 이상입니다.',
         'detail_name': '최종가와 원가 순서',
         'field1': 'final_sku_price',
         'field2': 'original_sku_price',
@@ -66,6 +67,7 @@ TSE_RULE_SPECS = OrderedDict((
         'error_message': 'savings가 있지만 original_sku_price가 없습니다.',
     }),
     ('savings_format', {
+        'guide_description': 'savings와 원가가 있을 때 savings를 할인 금액 또는 할인율로 변환할 수 없으면 이상입니다.',
         'detail_name': '할인 정보 형식',
         'field1': 'savings',
         'field2': None,
@@ -78,12 +80,20 @@ TSE_RULE_SPECS = OrderedDict((
         'error_message': 'original_sku_price가 0입니다.',
     }),
     ('savings_amount_match', {
+        'guide_description': (
+            '두 가격과 savings를 해석할 수 있고 원가가 0이 아니며 최종가 < 원가일 때, 표시 할인 금액의 절댓값이 원가-최종가와 '
+            '다르면 이상입니다.'
+        ),
         'detail_name': '할인 금액 일치',
         'field1': 'savings',
         'field2': 'original_sku_price|final_sku_price',
         'error_message': '표시 할인 금액이 original_sku_price-final_sku_price와 다릅니다.',
     }),
     ('savings_rate_match', {
+        'guide_description': (
+            '두 가격과 savings를 해석할 수 있고 원가가 0이 아니며 최종가 < 원가일 때, 표시 할인율의 절댓값이 '
+            'FLOOR((원가-최종가)/원가 × 100)과 다르면 이상입니다.'
+        ),
         'detail_name': '할인율 일치',
         'field1': 'savings',
         'field2': 'original_sku_price|final_sku_price',
@@ -770,7 +780,9 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
             if tse_crossfield_rule_supported(
                 result['product_line'], retailer, rule['rule_key'],
             )
+            and _rule_applies_to_retailer(rule, retailer)
         ]
+        spec = TSE_RULE_SPECS[rule['rule_key']]
         scoped_pairs = [
             (
                 str(row.get('account_name')).strip(),
@@ -813,6 +825,9 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
             'field1': rule['field1'],
             'field2': rule.get('field2'),
             'validation_type': rule['rule_key'],
+            'retailers': supported_retailers,
+            'guide_name': spec['detail_name'],
+            'guide_description': spec.get('guide_description', spec['error_message']),
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
             'query': build_tse_display_query(
@@ -836,6 +851,9 @@ def get_tse_cross_field_summary(cursor, target_date, product_line):
         'table_name': result['table_name'],
         'date_col': result['date_col'],
         'no_review_texts': '',
+        'guide_notes': [
+            'Lotuss는 TV의 가격 관련 6개 규칙만 지원하며 REF·LDY 크로스필드 검사는 적용하지 않습니다. 활성 등록된 규칙만 아래 표시합니다.',
+        ],
         'retailers': result['retailers'],
         'page_exclusions': result['page_exclusions'],
     }

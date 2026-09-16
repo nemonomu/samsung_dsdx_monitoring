@@ -18,6 +18,7 @@ class CrossfieldConnectionTests(unittest.TestCase):
         connection = Mock()
         connection.cursor.return_value = cursor
         rules = [dict(rule_id=i, section_code='tv_retail', table_name='tv_retail_com',
+                      detail_name='price order', retailer='Bestbuy',
                       date_column='crawl_datetime', query=f'SELECT item FROM {{table}} WHERE rule_{i} = %s')
                  for i in (1, 2)]
 
@@ -39,6 +40,8 @@ class CrossfieldConnectionTests(unittest.TestCase):
     def test_all_rules_share_one_connection_and_close_it(self):
         result, cursor, connection, connect = self.run_rules()
         self.assertEqual(2, result['total_errors'])
+        self.assertEqual('Bestbuy', result['rule_results'][0]['retailer'])
+        self.assertEqual('price order', result['rule_results'][0]['detail_name'])
         connect.assert_called_once_with()
         cursor.close.assert_called_once_with()
         connection.close.assert_called_once_with()

@@ -234,6 +234,18 @@ class SielCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
+    def test_guide_scope_includes_normal_retailer_and_limits_amazon_rule(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(1, 'final_original_price', 'ALL'), _rule(2, 'rank_page_type', 'ALL')]},
+            {'fetchall': [_amazon_row(final_sku_price='2000', original_sku_price='1000'),
+                         _flipkart_row()]},
+            {'fetchall': []},
+        ])
+        result = siel_services.get_siel_cross_field_summary(cursor, date(2026, 9, 3), 'siel_tv')
+        rules = {rule['validation_type']: rule for rule in result['rule_summary']}
+        self.assertEqual(['Amazon', 'Flipkart'], rules['final_original_price']['retailers'])
+        self.assertEqual(['Amazon'], rules['rank_page_type']['retailers'])
+
     def test_detail_source_date_converts_utc_timestamp_to_kst_date(self):
         row = {
             'crawl_datetime': datetime(

@@ -146,6 +146,22 @@ class TseCrossfieldEvaluationTests(unittest.TestCase):
         self.assertEqual(errors, {'savings_format'})
 
 class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
+    def test_guide_scope_respects_product_policy_and_active_rule_retailer(self):
+        for product in ('tse_tv', 'tse_ref', 'tse_ldy'):
+            self._enable_lotuss(product)
+            for configured in ('ALL', 'Homepro'):
+                rule = _rule(1, 'final_original_price')
+                rule['retailer'] = configured
+                cursor = ScriptedCursor([
+                    {'fetchall': [rule]},
+                    {'fetchall': [_valid_row(final_sku_price='20000'),
+                                 _valid_row(id=11, account_name='Lotuss', item='L-1')]},
+                    {'fetchall': []},
+                ])
+                result = tse_services.get_tse_cross_field_summary(cursor, date(2026, 8, 10), product)
+                expected = ['Homepro', 'Lotuss'] if product == 'tse_tv' and configured == 'ALL' else ['Homepro']
+                self.assertEqual(expected, result['rule_summary'][0]['retailers'])
+
     def setUp(self):
         tse_services.get_tse_retailer_columns = lambda *_: {
             'Homepro': {
@@ -395,6 +411,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         query = result['rule_summary'][0]['query']
         self.assertIn("TRIM(account_name) ILIKE 'Homepro'", query)
         self.assertNotIn("TRIM(account_name) ILIKE 'Lotuss'", query)
+        self.assertEqual(['Homepro'], result['rule_summary'][0]['retailers'])
 
     def test_summary_omits_explicit_unsupported_lotuss_rule(self):
         self._enable_lotuss()

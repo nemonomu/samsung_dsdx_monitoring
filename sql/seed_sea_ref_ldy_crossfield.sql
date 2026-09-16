@@ -87,6 +87,11 @@ WITH products (
          'star_rating', 'count_of_star_ratings',
          'star_rating과 별점 수 또는 리뷰 수의 0 여부가 다릅니다.',
          'star_rating|count_of_star_ratings|count_of_reviews', 20),
+        ('Lowes', 'rank_page_type',
+         '페이지 유형과 순위 필드 일치',
+         'page_type', 'main_rank|bsr_rank',
+         'MAIN/BSR page_type에 해당하는 순위 필드가 없습니다.',
+         'page_type|main_rank|bsr_rank', 30),
         ('Lowes', 'final_original_price',
          '최종가와 원가 순서',
          'final_sku_price', 'original_sku_price',
@@ -260,7 +265,7 @@ WHERE product_line IN ('sea_ref', 'sea_ldy')
   AND is_active IS TRUE
   AND COALESCE(is_del, FALSE) IS FALSE;
 
--- Verification: expected 32 active rows (16 per product line).
+-- Verification: expected 42 active rows (Bestbuy 11 + Lowes 10 per product line).
 SELECT
     product_line,
     retailer,

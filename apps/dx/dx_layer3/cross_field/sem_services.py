@@ -26,7 +26,7 @@ _RULES = (
      'count_of_star_ratings',
      '리뷰 수와 평가 수가 일치하지 않습니다.'),
     ('final_original_price', '최종가와 원가 순서', 'final_sku_price',
-     'original_sku_price', '최종 판매가가 원가보다 크거나 같습니다.'),
+     'original_sku_price', '두 가격이 숫자이고 원가가 0이 아닐 때 최종 판매가가 원가보다 크거나 같으면 이상입니다.'),
     ('original_price_zero', '원가 0 검사', 'original_sku_price',
      None, 'original_sku_price가 0입니다.'),
 )
@@ -39,7 +39,7 @@ _HOMEDEPOT_RULES = (
      'savings', '최종가가 없는데 원가 또는 savings가 있습니다.'),
     ('savings_rate_match', 'HomeDepot 할인율 일치', 'savings',
      'original_sku_price',
-     '계산 할인율이 savings의 할인율 크기 이상, 그 값+1 미만 범위를 벗어납니다.'),
+     '최종가·원가·savings 형식이 유효하고 원가 > 0, 최종가 < 원가일 때 계산 할인율이 savings의 할인율 크기 이상, 그 값+1 미만 범위를 벗어나면 이상입니다.'),
 )
 _REVIEW_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
