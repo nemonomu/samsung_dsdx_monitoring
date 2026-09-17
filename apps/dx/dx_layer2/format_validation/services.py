@@ -109,35 +109,51 @@ SIEL_FORMAT_COMMON_FIELDS = (
     'detailed_review_content', 'original_sku_price', 'page_type',
     'product', 'product_url', 'star_rating',
 )
+SIEL_AMAZON_COMMON_FORMAT_FIELDS = (
+    'number_of_units_purchased_past_month', 'discount_type',
+    'sku_popularity', 'sku_status', 'delivery_availability',
+    'fastest_delivery', 'inventory_status',
+    'available_quantity_for_purchase',
+)
+SIEL_FLIPKART_COMMON_FORMAT_FIELDS = (
+    'savings', 'discount_type', 'delivery_availability',
+    'available_quantity_for_purchase', 'sku_status', 'sku_popularity',
+)
 SIEL_FORMAT_FIELDS = {
     'siel_tv': {
         'amazon': (
             'final_sku_price', 'count_of_star_ratings', 'screen_size',
             'estimated_annual_electricity_use', 'model_year',
+            *SIEL_AMAZON_COMMON_FORMAT_FIELDS,
         ),
         'flipkart': (
             'final_sku_price', 'count_of_reviews',
             'count_of_star_ratings', 'screen_size',
             'estimated_annual_electricity_use', 'model_year',
+            *SIEL_FLIPKART_COMMON_FORMAT_FIELDS,
         ),
     },
     'siel_ref': {
         'amazon': (
             'final_sku_price', 'count_of_star_ratings', 'ref_capacity',
+            *SIEL_AMAZON_COMMON_FORMAT_FIELDS,
         ),
         'flipkart': (
             'final_sku_price', 'count_of_reviews',
             'count_of_star_ratings', 'ref_capacity',
             'ref_refrigerator_type',
+            *SIEL_FLIPKART_COMMON_FORMAT_FIELDS,
         ),
     },
     'siel_ldy': {
         'amazon': (
             'final_sku_price', 'count_of_star_ratings', 'ldy_capacity',
+            *SIEL_AMAZON_COMMON_FORMAT_FIELDS,
         ),
         'flipkart': (
             'final_sku_price', 'count_of_reviews',
             'count_of_star_ratings', 'ldy_capacity',
+            *SIEL_FLIPKART_COMMON_FORMAT_FIELDS,
         ),
     },
 }
@@ -347,6 +363,75 @@ _SIEL_AMAZON_PRICE_STATUS_VALUES = frozenset({
     'No featured offers available',
 })
 _SIEL_AMAZON_STAR_STATUS_VALUES = frozenset({'No customer reviews'})
+_SIEL_AMAZON_DISCOUNT_TYPE_VALUES = frozenset({
+    'Limited time deal', 'Limited Time Offer', 'Hot deal',
+})
+_SIEL_AMAZON_SKU_POPULARITY_VALUES = frozenset({
+    "Amazon's Choice", 'Best seller', 'Best Seller',
+})
+_SIEL_AMAZON_SKU_STATUS_VALUES = frozenset({'Sponsored', 'Rollback'})
+_SIEL_AMAZON_PURCHASE_COUNT_PATTERN = re.compile(
+    r'^(?:[1-9]\d*|[1-9]\d*K)\+ bought in past month$'
+)
+_SIEL_AMAZON_WEEKDAY = (
+    r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)'
+)
+_SIEL_AMAZON_MONTH = (
+    r'(?:January|February|March|April|May|June|July|August|September|'
+    r'October|November|December)'
+)
+_SIEL_AMAZON_DAY = r'(?:[1-9]|[12]\d|3[01])'
+_SIEL_AMAZON_DATE = (
+    rf'{_SIEL_AMAZON_WEEKDAY}, {_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH}'
+)
+_SIEL_AMAZON_TIME = r'(?:[1-9]|1[0-2]) (?:am|pm)'
+_SIEL_AMAZON_PLURAL_COUNT = r'(?:[2-9]|[1-9]\d+)'
+_SIEL_AMAZON_DURATION = (
+    rf'(?:1 hr|{_SIEL_AMAZON_PLURAL_COUNT} hrs)'
+    rf'(?: (?:1 min|{_SIEL_AMAZON_PLURAL_COUNT} mins))?'
+)
+_SIEL_AMAZON_DELIVERY_PATTERN = re.compile(
+    rf'^(?:FREE scheduled delivery as soon as {_SIEL_AMAZON_DATE}, '
+    rf'{_SIEL_AMAZON_TIME} - {_SIEL_AMAZON_TIME}\.?|'
+    rf'FREE delivery (?:Today\.|'
+    rf'{_SIEL_AMAZON_DATE}(?: on your first order\.|'
+    rf'\.(?: Order within {_SIEL_AMAZON_DURATION}\.)?)|'
+    rf'{_SIEL_AMAZON_DAY} - {_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH}'
+    rf'(?:\. Order within {_SIEL_AMAZON_DURATION}\.)?))$'
+)
+_SIEL_AMAZON_FASTEST_DELIVERY_PATTERN = re.compile(
+    rf'^fastest delivery (?:Today by {_SIEL_AMAZON_TIME}|'
+    rf'Today {_SIEL_AMAZON_TIME} - {_SIEL_AMAZON_TIME}|'
+    rf'{_SIEL_AMAZON_DATE})\. Order within '
+    rf'{_SIEL_AMAZON_DURATION}\.$'
+)
+_SIEL_AMAZON_INVENTORY_STATUS_PATTERN = re.compile(
+    r'^(?:In stock|Only [1-9]\d* left in stock\.|'
+    r'Available to ship in [1-9]\d*-[1-9]\d* days)$'
+)
+_SIEL_AMAZON_AVAILABLE_QUANTITY_PATTERN = re.compile(
+    r'^Only [1-9]\d* left in stock\.$'
+)
+_SIEL_FLIPKART_SAVINGS_PATTERN = re.compile(
+    r'^(?:100|[1-9]?\d)%$'
+)
+_SIEL_FLIPKART_DISCOUNT_TYPE_VALUES = frozenset({
+    'Hot Deal', 'Lowest price since launch', 'Lowest price in the year',
+})
+_SIEL_FLIPKART_SKU_POPULARITY_VALUES = frozenset({
+    'Bestseller', "Flipkart's Choice", 'Trending',
+})
+_SIEL_FLIPKART_SKU_STATUS_VALUES = frozenset({'Sponsored'})
+_SIEL_FLIPKART_MONTH = (
+    r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
+)
+_SIEL_FLIPKART_DELIVERY_PATTERN = re.compile(
+    rf'^Delivery by {_SIEL_AMAZON_WEEKDAY}, '
+    rf'{_SIEL_AMAZON_DAY} {_SIEL_FLIPKART_MONTH}$'
+)
+_SIEL_FLIPKART_AVAILABLE_QUANTITY_PATTERN = re.compile(
+    r'^Only (?:few|[1-9]\d*) left$'
+)
 _SIEL_PAGE_TYPE_VALUES = frozenset({'main', 'bsr'})
 _SIEL_AMAZON_PRODUCT_URL_PATTERN = re.compile(
     r'^https://www\.amazon\.in/dp/[a-z0-9]{10}(?:[/?#][^\s]*)?$',
@@ -453,6 +538,61 @@ SIEL_FORMAT_RULE_DETAILS = {
         'field': 'final_sku_price',
         'description': '인도 루피 금액 형식',
         'pattern': '₹10,999',
+    },
+    'savings': {
+        'field': 'savings',
+        'description': 'Flipkart 정수 할인율 형식',
+        'pattern': '30%',
+    },
+    'discount_type': {
+        'field': 'discount_type',
+        'description': 'Amazon 할인 유형 허용값 (대소문자 구분)',
+        'pattern': 'Limited time deal, Limited Time Offer, Hot deal',
+    },
+    'number_of_units_purchased_past_month': {
+        'field': 'number_of_units_purchased_past_month',
+        'description': 'Amazon 최근 한 달 구매 수 문구',
+        'pattern': '100+ bought in past month, 1K+ bought in past month',
+    },
+    'sku_popularity': {
+        'field': 'sku_popularity',
+        'description': 'Amazon 제품 인기도 허용값',
+        'pattern': "Amazon's Choice, Best seller, Best Seller",
+    },
+    'sku_status': {
+        'field': 'sku_status',
+        'description': 'Amazon 제품 상태 허용값',
+        'pattern': 'Sponsored, Rollback',
+    },
+    'delivery_availability': {
+        'field': 'delivery_availability',
+        'description': 'Amazon 무료배송 날짜·시간 안내 문구',
+        'pattern': (
+            'FREE scheduled delivery as soon as Saturday, 19 September, '
+            '7 am - 9 pm. / FREE delivery Wednesday, 23 September. / '
+            'FREE delivery Today.'
+        ),
+    },
+    'fastest_delivery': {
+        'field': 'fastest_delivery',
+        'description': 'Amazon 가장 빠른 배송과 주문 가능 시간 문구',
+        'pattern': (
+            'fastest delivery Today by 1 pm. '
+            'Order within 7 hrs 16 mins.'
+        ),
+    },
+    'inventory_status': {
+        'field': 'inventory_status',
+        'description': 'Amazon 재고 상태 문구',
+        'pattern': (
+            'In stock / Only 1 left in stock. / '
+            'Available to ship in 1-2 days'
+        ),
+    },
+    'available_quantity_for_purchase': {
+        'field': 'available_quantity_for_purchase',
+        'description': 'Amazon 구매 가능 잔여 수량 문구',
+        'pattern': 'Only 1 left in stock.',
     },
     'count_of_reviews': {
         'field': 'count_of_reviews',
@@ -1430,6 +1570,109 @@ def evaluate_siel_format_row(row, source_key, retailer):
                 '₹10,999 인도 루피 금액 형식이 아닙니다.'
             )
 
+    savings = row.get('savings')
+    if (
+        'savings' in fields
+        and _has_siel_format_value(savings)
+        and not _SIEL_FLIPKART_SAVINGS_PATTERN.fullmatch(
+            str(savings).strip()
+        )
+    ):
+        errors['savings'] = '0%~100% 정수 할인율 형식이 아닙니다.'
+
+    purchased = row.get('number_of_units_purchased_past_month')
+    if (
+        'number_of_units_purchased_past_month' in fields
+        and _has_siel_format_value(purchased)
+        and not _SIEL_AMAZON_PURCHASE_COUNT_PATTERN.fullmatch(
+            str(purchased).strip()
+        )
+    ):
+        errors['number_of_units_purchased_past_month'] = (
+            '100+ 또는 1K+ bought in past month 형식이 아닙니다.'
+        )
+
+    discount_type = row.get('discount_type')
+    discount_values = (
+        _SIEL_AMAZON_DISCOUNT_TYPE_VALUES
+        if retailer_key == 'amazon'
+        else _SIEL_FLIPKART_DISCOUNT_TYPE_VALUES
+    )
+    if (
+        'discount_type' in fields
+        and _has_siel_format_value(discount_type)
+        and str(discount_type).strip() not in discount_values
+    ):
+        errors['discount_type'] = (
+            '허용된 Amazon 할인 유형이 아닙니다.'
+        )
+
+    sku_popularity = row.get('sku_popularity')
+    popularity_values = (
+        _SIEL_AMAZON_SKU_POPULARITY_VALUES
+        if retailer_key == 'amazon'
+        else _SIEL_FLIPKART_SKU_POPULARITY_VALUES
+    )
+    if (
+        'sku_popularity' in fields
+        and _has_siel_format_value(sku_popularity)
+        and str(sku_popularity).strip()
+        not in popularity_values
+    ):
+        errors['sku_popularity'] = '허용된 Amazon 제품 인기도가 아닙니다.'
+
+    sku_status = row.get('sku_status')
+    status_values = (
+        _SIEL_AMAZON_SKU_STATUS_VALUES
+        if retailer_key == 'amazon'
+        else _SIEL_FLIPKART_SKU_STATUS_VALUES
+    )
+    if (
+        'sku_status' in fields
+        and _has_siel_format_value(sku_status)
+        and str(sku_status).strip() not in status_values
+    ):
+        errors['sku_status'] = '허용된 제품 상태가 아닙니다.'
+
+    delivery_pattern = (
+        _SIEL_AMAZON_DELIVERY_PATTERN
+        if retailer_key == 'amazon'
+        else _SIEL_FLIPKART_DELIVERY_PATTERN
+    )
+    quantity_pattern = (
+        _SIEL_AMAZON_AVAILABLE_QUANTITY_PATTERN
+        if retailer_key == 'amazon'
+        else _SIEL_FLIPKART_AVAILABLE_QUANTITY_PATTERN
+    )
+
+    retailer_text_patterns = (
+        (
+            'delivery_availability', delivery_pattern,
+            '리테일러 배송 안내 형식이 아닙니다.',
+        ),
+        (
+            'fastest_delivery', _SIEL_AMAZON_FASTEST_DELIVERY_PATTERN,
+            'Amazon 가장 빠른 배송 안내 형식이 아닙니다.',
+        ),
+        (
+            'inventory_status', _SIEL_AMAZON_INVENTORY_STATUS_PATTERN,
+            'Amazon 재고 상태 형식이 아닙니다.',
+        ),
+        (
+            'available_quantity_for_purchase',
+            quantity_pattern,
+            '리테일러 구매 가능 잔여 수량 형식이 아닙니다.',
+        ),
+    )
+    for field, pattern, message in retailer_text_patterns:
+        value = row.get(field)
+        if (
+            field in fields
+            and _has_siel_format_value(value)
+            and not pattern.fullmatch(str(value).strip())
+        ):
+            errors[field] = message
+
     for field in ('count_of_reviews', 'count_of_star_ratings'):
         value = row.get(field)
         if (
@@ -2398,6 +2641,31 @@ def _get_siel_static_format_rules(source_key, retailer):
     retailer_key = str(retailer or '').strip().casefold()
     source = SIEL_SOURCE_CONFIG.get(source_key, {})
     retailer_value = _resolve_siel_format_retailer(source, retailer)
+    flipkart_overrides = {
+        'discount_type': {
+            'description': 'Flipkart 할인 유형 허용값 (대소문자 구분)',
+            'pattern': (
+                'Hot Deal, Lowest price since launch, '
+                'Lowest price in the year'
+            ),
+        },
+        'delivery_availability': {
+            'description': 'Flipkart 배송 예정일 문구',
+            'pattern': 'Delivery by Wednesday, 23 Sep',
+        },
+        'available_quantity_for_purchase': {
+            'description': 'Flipkart 구매 가능 잔여 수량 문구',
+            'pattern': 'Only few left, Only 2 left',
+        },
+        'sku_status': {
+            'description': 'Flipkart 제품 상태 허용값',
+            'pattern': 'Sponsored',
+        },
+        'sku_popularity': {
+            'description': 'Flipkart 제품 인기도 허용값',
+            'pattern': "Bestseller, Flipkart's Choice, Trending",
+        },
+    }
     for rule in rules:
         if rule['field'] == 'account_name' and retailer_value:
             rule['pattern'] = retailer_value
@@ -2421,6 +2689,8 @@ def _get_siel_static_format_rules(source_key, retailer):
                     '₹10,999 / Currently unavailable. / '
                     'No featured offers available'
                 )
+        if retailer_key == 'flipkart':
+            rule.update(flipkart_overrides.get(rule['field'], {}))
     return rules
 
 

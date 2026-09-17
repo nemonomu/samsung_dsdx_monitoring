@@ -7,6 +7,8 @@ from tests.unit.support import (
     load_module,
     module_stub,
     package_stub,
+    seg_validation_stub,
+    sem_validation_stub,
 )
 
 
@@ -85,6 +87,25 @@ def shared_stubs():
                 'detailed_review_content', 'original_sku_price',
                 'page_type', 'product', 'product_url', 'star_rating',
                 *(
+                    [
+                        'number_of_units_purchased_past_month',
+                        'discount_type', 'sku_popularity', 'sku_status',
+                        'delivery_availability', 'fastest_delivery',
+                        'inventory_status',
+                        'available_quantity_for_purchase',
+                    ]
+                    if str(retailer).lower() == 'amazon' else []
+                ),
+                *(
+                    [
+                        'savings', 'discount_type',
+                        'delivery_availability',
+                        'available_quantity_for_purchase', 'sku_status',
+                        'sku_popularity',
+                    ]
+                    if str(retailer).lower() == 'flipkart' else []
+                ),
+                *(
                     ['final_sku_price', 'count_of_star_ratings',
                      'screen_size', 'estimated_annual_electricity_use',
                      'model_year']
@@ -95,6 +116,8 @@ def shared_stubs():
         ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
+        'apps.dx.dx_layer2.seg_validation': seg_validation_stub(),
+        'apps.dx.dx_layer2.sem_validation': sem_validation_stub(),
         'apps.dx.dx_layer2.common': package_stub(
             'apps.dx.dx_layer2.common'
         ),
@@ -144,6 +167,227 @@ class SIELFormatValidationTests(unittest.TestCase):
                 self.assertFalse({
                     'rank_1', 'rank_2', 'main_rank', 'bsr_rank',
                 } & fields)
+
+    def test_amazon_discount_type_allowlist_for_all_product_lines(self):
+        for source_key in SIEL_SOURCES:
+            for value, valid in (
+                ('Limited time deal', True),
+                ('Limited Time Offer', True),
+                ('Hot deal', True),
+                (None, True),
+                ('', True),
+                ('   ', True),
+                ('Lightning Deal', False),
+                ('Coupon', False),
+                ('limited time offer', False),
+                ('Hot Deal', False),
+                ('Limited Time Offers', False),
+                ('Hot deal today', False),
+                ('N/A', False),
+                ('null', False),
+                (0, False),
+            ):
+                with self.subTest(source_key=source_key, value=value):
+                    errors = self.service.evaluate_siel_format_row(
+                        {'discount_type': value}, source_key, 'Amazon'
+                    )
+                    self.assertEqual(not valid, 'discount_type' in errors)
+
+    def test_discount_type_rules_are_retailer_specific(self):
+        for source_key in SIEL_SOURCES:
+            with self.subTest(source_key=source_key):
+                amazon_rules = self.service.get_format_rules(
+                    None, source_key, 'Amazon'
+                )['rules']
+                rule = next(
+                    rule for rule in amazon_rules
+                    if rule['field'] == 'discount_type'
+                )
+                self.assertEqual(
+                    'Limited time deal, Limited Time Offer, Hot deal',
+                    rule['pattern'],
+                )
+                flipkart_rules = self.service.get_format_rules(
+                    None, source_key, 'Flipkart'
+                )['rules']
+                flipkart_rule = next(
+                    rule for rule in flipkart_rules
+                    if rule['field'] == 'discount_type'
+                )
+                self.assertEqual(
+                    'Hot Deal, Lowest price since launch, '
+                    'Lowest price in the year',
+                    flipkart_rule['pattern'],
+                )
+                self.assertNotIn(
+                    'discount_type', self.service.evaluate_siel_format_row(
+                        {'discount_type': 'Hot Deal'}, source_key, 'Flipkart'
+                    )
+                )
+                self.assertIn(
+                    'discount_type', self.service.evaluate_siel_format_row(
+                        {'discount_type': 'Special Price'},
+                        source_key, 'Flipkart',
+                    )
+                )
+
+    def test_discount_type_outliers_appear_in_detail_for_all_product_lines(self):
+        rows = [
+            {'id': 1, 'discount_type': 'Limited time deal'},
+            {'id': 2, 'discount_type': 'Hot deal'},
+            {'id': 3, 'discount_type': 'Lightning Deal'},
+        ]
+        for source_key in SIEL_SOURCES:
+            with self.subTest(source_key=source_key), patch.object(
+                self.service, '_fetch_siel_format_rows', return_value=rows
+            ), patch.object(
+                self.service, '_load_siel_format_normal_reviews', return_value={}
+            ):
+                result = self.service._get_siel_format_detail(
+                    ScriptedCursor([]), date(2026, 9, 15),
+                    f'{source_key}_retail', 'Amazon', 1,
+                )
+                self.assertEqual([3], [row['id'] for row in result['results']])
+                self.assertEqual({'discount_type': 1}, result['field_counts'])
+                self.assertEqual(1, result['total_format_count'])
+                self.assertIn('discount_type', result['column_names'])
+                self.assertIn('discount_type', result['editable_cols'])
+
+    def test_requested_amazon_rules_are_exposed_only_for_amazon(self):
+        amazon_only_fields = {
+            'number_of_units_purchased_past_month',
+            'fastest_delivery', 'inventory_status',
+        }
+        shared_retailer_fields = {
+            'discount_type', 'sku_popularity', 'sku_status',
+            'delivery_availability', 'available_quantity_for_purchase',
+        }
+        for source_key in SIEL_SOURCES:
+            with self.subTest(source_key=source_key):
+                amazon_fields = {
+                    rule['field'] for rule in self.service.get_format_rules(
+                        None, source_key, 'Amazon'
+                    )['rules']
+                }
+                flipkart_fields = {
+                    rule['field'] for rule in self.service.get_format_rules(
+                        None, source_key, 'Flipkart'
+                    )['rules']
+                }
+                self.assertTrue(amazon_only_fields.issubset(amazon_fields))
+                self.assertFalse(amazon_only_fields & flipkart_fields)
+                self.assertTrue(shared_retailer_fields.issubset(amazon_fields))
+                self.assertTrue(shared_retailer_fields.issubset(flipkart_fields))
+                self.assertIn('savings', flipkart_fields)
+                self.assertNotIn('savings', amazon_fields)
+
+    def test_requested_amazon_values_validate_for_all_product_lines(self):
+        valid_row = {
+            'number_of_units_purchased_past_month': (
+                '1K+ bought in past month'
+            ),
+            'discount_type': 'Limited time deal',
+            'sku_popularity': "Amazon's Choice",
+            'sku_status': 'Rollback',
+            'delivery_availability': (
+                'FREE scheduled delivery as soon as Saturday, '
+                '19 September, 7 am - 9 pm.'
+            ),
+            'fastest_delivery': (
+                'fastest delivery Today by 1 pm. '
+                'Order within 7 hrs 16 mins.'
+            ),
+            'inventory_status': 'Available to ship in 1-2 days',
+            'available_quantity_for_purchase': 'Only 2 left in stock.',
+        }
+        invalid_row = {
+            'number_of_units_purchased_past_month': '100 bought last month',
+            'discount_type': 'Lightning Deal',
+            'sku_popularity': 'Popular',
+            'sku_status': 'Clearance',
+            'delivery_availability': 'Delivery tomorrow',
+            'fastest_delivery': 'Fast delivery today',
+            'inventory_status': 'Few remaining',
+            'available_quantity_for_purchase': '2',
+        }
+        for source_key in SIEL_SOURCES:
+            with self.subTest(source_key=source_key):
+                self.assertEqual({}, self.service.evaluate_siel_format_row(
+                    valid_row, source_key, 'Amazon'
+                ))
+                self.assertEqual(
+                    set(invalid_row),
+                    set(self.service.evaluate_siel_format_row(
+                        invalid_row, source_key, 'Amazon'
+                    )),
+                )
+                flipkart_errors = self.service.evaluate_siel_format_row(
+                    invalid_row, source_key, 'Flipkart'
+                )
+                self.assertFalse({
+                    'number_of_units_purchased_past_month',
+                    'fastest_delivery', 'inventory_status',
+                } & set(flipkart_errors))
+
+    def test_requested_flipkart_values_validate_for_all_product_lines(self):
+        valid_row = {
+            'savings': '75%',
+            'discount_type': 'Lowest price since launch',
+            'delivery_availability': 'Delivery by Wednesday, 23 Sep',
+            'available_quantity_for_purchase': 'Only few left',
+            'sku_status': 'Sponsored',
+            'sku_popularity': "Flipkart's Choice",
+        }
+        invalid_row = {
+            'savings': '101%',
+            'discount_type': 'Hot deal',
+            'delivery_availability': 'Delivery Wednesday, 23 September',
+            'available_quantity_for_purchase': 'Only 0 left',
+            'sku_status': 'Rollback',
+            'sku_popularity': 'Popular',
+        }
+        for source_key in SIEL_SOURCES:
+            with self.subTest(source_key=source_key):
+                self.assertEqual({}, self.service.evaluate_siel_format_row(
+                    valid_row, source_key, 'Flipkart'
+                ))
+                self.assertEqual(
+                    set(invalid_row),
+                    set(self.service.evaluate_siel_format_row(
+                        invalid_row, source_key, 'Flipkart'
+                    )),
+                )
+
+    def test_requested_flipkart_empty_values_are_skipped(self):
+        row = {
+            'savings': None,
+            'discount_type': '',
+            'delivery_availability': '   ',
+            'available_quantity_for_purchase': None,
+            'sku_status': '',
+            'sku_popularity': '   ',
+        }
+        self.assertEqual({}, self.service.evaluate_siel_format_row(
+            row, 'siel_tv', 'Flipkart'
+        ))
+
+    def test_amazon_delivery_repeated_formats_and_csv_variants(self):
+        values = (
+            'FREE scheduled delivery as soon as Saturday, '
+            '19 September, 7 am - 9 pm.',
+            'FREE delivery Wednesday, 23 September.',
+            'FREE delivery Today.',
+            'FREE delivery 19 - 21 September. '
+            'Order within 2 hrs 1 min.',
+            'FREE delivery Monday, 21 September on your first order.',
+            'FREE delivery Monday, 5 October. Order within 2 hrs.',
+        )
+        for value in values:
+            with self.subTest(value=value):
+                errors = self.service.evaluate_siel_format_row(
+                    {'delivery_availability': value}, 'siel_tv', 'Amazon'
+                )
+                self.assertNotIn('delivery_availability', errors)
 
     def test_amazon_price_statuses_are_valid_but_bad_rupee_is_not(self):
         for price in (
@@ -300,6 +544,10 @@ class SIELFormatValidationTests(unittest.TestCase):
             'B001', 'SKU-1', 'TV 1', 'w36', 'review1 - Good',
             '₹12,999', 'https://www.amazon.in/dp/B0FNCLVRW5', '4.3',
             '₹10,999', '10', '43 Inches', '164.25 Kilowatt Hours', '2026',
+            '100+ bought in past month', 'Hot deal', 'Best seller',
+            'Sponsored', 'FREE delivery Today.',
+            'fastest delivery Today by 1 pm. Order within 7 hrs.',
+            'In stock', 'Only 1 left in stock.',
             datetime(2026, 9, 2, 23, 10, tzinfo=timezone.utc),
         )
         cursor = ScriptedCursor([{'fetchall': [row]}])
@@ -322,6 +570,8 @@ class SIELFormatValidationTests(unittest.TestCase):
         self.assertEqual(5, len(params))
         self.assertEqual('2026-09-03', params[0])
         self.assertEqual('B001', result[0]['item'])
+        self.assertIn('source.discount_type', sql)
+        self.assertEqual('Hot deal', result[0]['discount_type'])
 
     def test_detail_displays_timestamptz_in_kst(self):
         row = {
@@ -354,8 +604,20 @@ class SIELFormatValidationTests(unittest.TestCase):
     def test_stats_append_all_three_siel_cards(self):
         validation = {'tables': [{'table': 'tv_retail'}]}
         cursor = ScriptedCursor([{}, {}])
+
+        def format_rows(_cursor, _start, _end, _source, retailer):
+            if retailer == 'Amazon':
+                return [
+                    {'id': 1, 'discount_type': 'Hot deal'},
+                    {'id': 2, 'discount_type': 'Lightning Deal'},
+                ]
+            return [
+                {'id': 3, 'discount_type': 'Hot Deal'},
+                {'id': 4, 'discount_type': 'Special Price'},
+            ]
+
         with patch.object(
-            self.service, '_fetch_siel_format_rows', return_value=[]
+            self.service, '_fetch_siel_format_rows', side_effect=format_rows
         ), patch.object(
             self.service, '_load_siel_format_normal_reviews', return_value={}
         ):
@@ -363,11 +625,17 @@ class SIELFormatValidationTests(unittest.TestCase):
                 cursor, date(2026, 9, 3), validation
             )
 
-        self.assertEqual(0, total)
+        self.assertEqual(6, total)
         self.assertEqual(
             ['siel_tv_retail', 'siel_ref_retail', 'siel_ldy_retail'],
             [table['table'] for table in validation['tables'][1:]],
         )
+        for table in validation['tables'][1:]:
+            self.assertEqual(2, table['total_issues'])
+            self.assertEqual(
+                {'Amazon': 1, 'Flipkart': 1},
+                {row['retailer']: row['issue_count'] for row in table['retailers']},
+            )
 
 
 class SIELDuplicateValidationTests(unittest.TestCase):

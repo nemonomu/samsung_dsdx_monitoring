@@ -63,6 +63,32 @@ class SielRetailCommonTests(unittest.TestCase):
         self.assertIn('ref_refrigerator_type', flipkart_ref)
         self.assertNotIn('batch_id', amazon_tv)
         self.assertNotIn('crawl_datetime', flipkart_ref)
+        amazon_only_format_fields = {
+            'number_of_units_purchased_past_month',
+            'fastest_delivery', 'inventory_status',
+        }
+        shared_retailer_format_fields = {
+            'discount_type', 'sku_popularity', 'sku_status',
+            'delivery_availability', 'available_quantity_for_purchase',
+        }
+        for source_key in SIEL_SOURCE_CONFIG:
+            with self.subTest(source_key=source_key):
+                amazon_fields = set(get_siel_format_editable_columns(
+                    source_key, 'Amazon'
+                ))
+                flipkart_fields = set(get_siel_format_editable_columns(
+                    source_key, 'Flipkart'
+                ))
+                self.assertTrue(amazon_only_format_fields.issubset(amazon_fields))
+                self.assertFalse(amazon_only_format_fields & flipkart_fields)
+                self.assertTrue(
+                    shared_retailer_format_fields.issubset(amazon_fields)
+                )
+                self.assertTrue(
+                    shared_retailer_format_fields.issubset(flipkart_fields)
+                )
+                self.assertIn('savings', flipkart_fields)
+                self.assertNotIn('savings', amazon_fields)
 
     def test_crossfield_edit_allowlist_matches_retailer_rules(self):
         amazon = get_siel_crossfield_editable_columns('siel_tv', 'Amazon')

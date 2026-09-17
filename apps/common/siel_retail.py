@@ -59,35 +59,51 @@ SIEL_FORMAT_COMMON_EDITABLE_COLUMNS = (
     'detailed_review_content', 'original_sku_price', 'page_type',
     'product', 'product_url', 'star_rating',
 )
+SIEL_AMAZON_COMMON_FORMAT_EDITABLE_COLUMNS = (
+    'number_of_units_purchased_past_month', 'discount_type',
+    'sku_popularity', 'sku_status', 'delivery_availability',
+    'fastest_delivery', 'inventory_status',
+    'available_quantity_for_purchase',
+)
+SIEL_FLIPKART_COMMON_FORMAT_EDITABLE_COLUMNS = (
+    'savings', 'discount_type', 'delivery_availability',
+    'available_quantity_for_purchase', 'sku_status', 'sku_popularity',
+)
 SIEL_FORMAT_EDITABLE_COLUMNS = {
     'siel_tv': {
         'amazon': (
             'final_sku_price', 'count_of_star_ratings', 'screen_size',
             'estimated_annual_electricity_use', 'model_year',
+            *SIEL_AMAZON_COMMON_FORMAT_EDITABLE_COLUMNS,
         ),
         'flipkart': (
             'final_sku_price', 'count_of_reviews',
             'count_of_star_ratings', 'screen_size',
             'estimated_annual_electricity_use', 'model_year',
+            *SIEL_FLIPKART_COMMON_FORMAT_EDITABLE_COLUMNS,
         ),
     },
     'siel_ref': {
         'amazon': (
             'final_sku_price', 'count_of_star_ratings', 'ref_capacity',
+            *SIEL_AMAZON_COMMON_FORMAT_EDITABLE_COLUMNS,
         ),
         'flipkart': (
             'final_sku_price', 'count_of_reviews',
             'count_of_star_ratings', 'ref_capacity',
             'ref_refrigerator_type',
+            *SIEL_FLIPKART_COMMON_FORMAT_EDITABLE_COLUMNS,
         ),
     },
     'siel_ldy': {
         'amazon': (
             'final_sku_price', 'count_of_star_ratings', 'ldy_capacity',
+            *SIEL_AMAZON_COMMON_FORMAT_EDITABLE_COLUMNS,
         ),
         'flipkart': (
             'final_sku_price', 'count_of_reviews',
             'count_of_star_ratings', 'ldy_capacity',
+            *SIEL_FLIPKART_COMMON_FORMAT_EDITABLE_COLUMNS,
         ),
     },
 }
