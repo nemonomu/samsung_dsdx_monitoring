@@ -6,8 +6,8 @@
  *
  * (의존: format.js — formatLocalDate, ui.js — showToast)
  *
- * - getPersistedDate()             : 저장된 조회 날짜 반환 (URL파라미터 > sessionStorage > 오늘)
- * - setPersistedDate(dateStr)      : 조회 날짜를 sessionStorage에 저장
+ * - getPersistedDate()             : DS 조회 날짜 반환 (URL파라미터 > localStorage > 전날)
+ * - setPersistedDate(dateStr)      : DS 조회 날짜를 localStorage에 저장
  * - validateQueryDate(dateStr)     : 미래 날짜 여부 체크 (미래면 false + 토스트)
  * - date input 자동 보정            : 년도 4자리 제한, 8자리 숫자 자동 포맷
  */
@@ -23,19 +23,21 @@ function getPersistedDate() {
         return urlDate;
     }
 
-    // 2. sessionStorage 확인
-    const storedDate = sessionStorage.getItem(DATE_STORAGE_KEY);
+    // 2. 브라우저를 다시 열어도 DS의 마지막 조회 날짜 유지
+    const storedDate = localStorage.getItem(DATE_STORAGE_KEY);
     if (storedDate && /^\d{4}-\d{2}-\d{2}$/.test(storedDate)) {
         return storedDate;
     }
 
-    // 3. 기본값: 오늘
-    return formatLocalDate(new Date());
+    // 3. DS 기본값: 전날
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return formatLocalDate(yesterday);
 }
 
 function setPersistedDate(dateStr) {
     if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        sessionStorage.setItem(DATE_STORAGE_KEY, dateStr);
+        localStorage.setItem(DATE_STORAGE_KEY, dateStr);
     }
 }
 

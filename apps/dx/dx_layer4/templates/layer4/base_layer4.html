@@ -56,15 +56,15 @@
         var storageKey = section === 'unified_inspection'
             ? 'unifiedInspectionDate'
             : 'monitoringSelectedDate';
-        var saved = localStorage.getItem(storageKey);
+        var saved = sessionStorage.getItem(storageKey);
         var today = formatLocalDate(new Date());
         var defaultDate = saved || today;
 
         var urlDate = new URLSearchParams(window.location.search).get('date');
-        if (urlDate) { defaultDate = urlDate; localStorage.setItem(storageKey, urlDate); }
+        if (urlDate) { defaultDate = urlDate; sessionStorage.setItem(storageKey, urlDate); }
 
         function onDateChange() {
-            localStorage.setItem(storageKey, filterBar.getDate());
+            sessionStorage.setItem(storageKey, filterBar.getDate());
         }
 
         if (section === 'tools') {

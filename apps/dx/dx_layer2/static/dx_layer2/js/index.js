@@ -72,7 +72,7 @@
         const dateInput = document.getElementById('target-date');
         const urlParams = new URLSearchParams(window.location.search);
         const urlDate = urlParams.get('date');
-        const saved = localStorage.getItem('monitoringSelectedDate');
+        const saved = sessionStorage.getItem('monitoringSelectedDate');
 
         if (urlDate) {
             dateInput.value = urlDate;
@@ -81,15 +81,15 @@
         } else {
             dateInput.value = formatLocalDate(new Date());
         }
-        localStorage.setItem('monitoringSelectedDate', dateInput.value);
+        sessionStorage.setItem('monitoringSelectedDate', dateInput.value);
 
         const today = new Date();
         dateInput.max = formatLocalDate(today);
 
-        // 날짜 변경 시 요일 업데이트 + localStorage 저장
+        // 날짜 변경 시 요일 업데이트 + sessionStorage 저장
         dateInput.addEventListener('change', function() {
             updateWeekday();
-            localStorage.setItem('monitoringSelectedDate', dateInput.value);
+            sessionStorage.setItem('monitoringSelectedDate', dateInput.value);
         });
         updateWeekday();
     }
@@ -99,7 +99,7 @@
         const current = new Date(dateInput.value);
         current.setDate(current.getDate() + 1);
         dateInput.value = formatLocalDate(current);
-        localStorage.setItem('monitoringSelectedDate', dateInput.value);
+        sessionStorage.setItem('monitoringSelectedDate', dateInput.value);
         updateWeekday();
         handleSearch();
     }
@@ -109,7 +109,7 @@
         const current = new Date(dateInput.value);
         current.setDate(current.getDate() - 1);
         dateInput.value = formatLocalDate(current);
-        localStorage.setItem('monitoringSelectedDate', dateInput.value);
+        sessionStorage.setItem('monitoringSelectedDate', dateInput.value);
         updateWeekday();
         handleSearch();
     }

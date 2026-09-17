@@ -113,7 +113,7 @@ var L1 = (function() {
 
             // URL date 파라미터가 있으면 FilterBar 날짜로 설정
             var urlDate = new URLSearchParams(window.location.search).get('date');
-            if (urlDate) localStorage.setItem('monitoringSelectedDate', urlDate);
+            if (urlDate) sessionStorage.setItem('monitoringSelectedDate', urlDate);
 
             // FilterBar 초기화
             initFilterBar(options.filterBarOptions);
@@ -241,12 +241,12 @@ function getSelectedDate() {
 }
 
 function initFilterBar(options) {
-    var saved = localStorage.getItem('monitoringSelectedDate');
+    var saved = sessionStorage.getItem('monitoringSelectedDate');
     var today = formatLocalDate(new Date());
     var defaultDate = saved || today;
 
     function onDateChange() {
-        localStorage.setItem('monitoringSelectedDate', filterBar.getDate());
+        sessionStorage.setItem('monitoringSelectedDate', filterBar.getDate());
     }
 
     var config = {

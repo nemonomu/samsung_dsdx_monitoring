@@ -52,15 +52,15 @@
     var filterBar;
 
     function initFilterBar() {
-        var saved = localStorage.getItem('monitoringSelectedDate');
+        var saved = sessionStorage.getItem('monitoringSelectedDate');
         var today = formatLocalDate(new Date());
         var defaultDate = saved || today;
 
         var urlDate = new URLSearchParams(window.location.search).get('date');
-        if (urlDate) { defaultDate = urlDate; localStorage.setItem('monitoringSelectedDate', urlDate); }
+        if (urlDate) { defaultDate = urlDate; sessionStorage.setItem('monitoringSelectedDate', urlDate); }
 
         function onDateChange() {
-            localStorage.setItem('monitoringSelectedDate', filterBar.getDate());
+            sessionStorage.setItem('monitoringSelectedDate', filterBar.getDate());
         }
 
         var section = (window.LAYER3 && window.LAYER3.section) || 'dashboard';
