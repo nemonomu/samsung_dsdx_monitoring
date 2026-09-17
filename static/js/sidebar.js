@@ -52,4 +52,71 @@ function toggleSidebarSubgroup(buttonEl) {
     if (children) children.hidden = !willExpand;
 }
 
+function setSidebarIssueBadge(target, count) {
+    if (!target) return;
+    var normalizedCount = Math.max(0, Number(count) || 0);
+    var badge = target.querySelector(':scope > .sidebar-issue-badge');
+
+    if (normalizedCount === 0) {
+        if (badge) badge.remove();
+        return;
+    }
+
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'sidebar-issue-badge';
+        badge.setAttribute('aria-label', '이상치 건수');
+        var arrow = target.querySelector(
+            ':scope > .sidebar-arrow, :scope > .sidebar-subgroup-arrow'
+        );
+        target.insertBefore(badge, arrow || null);
+    }
+    badge.textContent = normalizedCount.toLocaleString();
+    badge.title = '이상치 ' + normalizedCount.toLocaleString() + '건';
+}
+
+function clearSidebarIssueBadges(groupKeys) {
+    (groupKeys || []).forEach(function(groupKey) {
+        var group = document.querySelector(
+            '.sidebar-group[data-sidebar-group="' + groupKey + '"]'
+        );
+        if (!group) return;
+        group.querySelectorAll('.sidebar-issue-badge').forEach(function(badge) {
+            badge.remove();
+        });
+    });
+}
+
+function updateSidebarIssueBadges(groupKey, totalCount, itemCounts) {
+    var group = document.querySelector(
+        '.sidebar-group[data-sidebar-group="' + groupKey + '"]'
+    );
+    if (!group) return;
+
+    group.querySelectorAll('.sidebar-issue-badge').forEach(function(badge) {
+        badge.remove();
+    });
+    setSidebarIssueBadge(
+        group.querySelector(':scope > .sidebar-item-row'), totalCount
+    );
+
+    var sidebarItems = group.querySelectorAll('[data-sidebar-item-name]');
+    (itemCounts || []).forEach(function(item) {
+        var itemName = String(item.name || '');
+        var detailCode = String(item.detailCode || item.detail_code || '');
+        sidebarItems.forEach(function(element) {
+            var nameMatches = itemName
+                && element.dataset.sidebarItemName === itemName;
+            var detailMatches = detailCode
+                && element.dataset.sidebarDetailCode === detailCode;
+            if (!nameMatches && !detailMatches) return;
+
+            var target = element.classList.contains('sidebar-subgroup')
+                ? element.querySelector(':scope > .sidebar-subgroup-title')
+                : element;
+            setSidebarIssueBadge(target, item.count);
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initSidebar);

@@ -125,6 +125,33 @@
     transition: transform 0.2s;
 }
 
+.dx-sidebar .sidebar-issue-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    margin-left: auto;
+    border-radius: 9px;
+    background: #fee2e2;
+    color: #dc2626;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.dx-sidebar .sidebar-issue-badge + .sidebar-arrow,
+.dx-sidebar .sidebar-issue-badge + .sidebar-subgroup-arrow {
+    margin-left: 5px;
+}
+
+.dx-sidebar .sidebar-subitem .sidebar-issue-badge {
+    float: right;
+    margin-left: 8px;
+}
+
 .dx-sidebar .sidebar-group.expanded .sidebar-arrow {
     transform: rotate(90deg);
 }
@@ -252,6 +279,17 @@
     justify-content: center;
     padding: 12px;
     gap: 0;
+    position: relative;
+}
+
+.dx-sidebar.collapsed .sidebar-item-row > .sidebar-issue-badge {
+    position: absolute;
+    top: 3px;
+    right: 2px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    font-size: 9px;
 }
 
 .dx-sidebar.collapsed .sidebar-text {

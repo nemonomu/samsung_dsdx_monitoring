@@ -234,6 +234,62 @@ function createLayer3StatsState(date) {
     };
 }
 
+const LAYER3_SIDEBAR_GROUP_BY_CATEGORY = {
+    '크로스 필드 검증': 'cross_field',
+    '카테고리별 특성': 'category_spec'
+};
+
+const LAYER3_CROSSFIELD_SIDEBAR_REGIONS = [
+    { name: 'SEA Retail', detailCodes: ['tv', 'sea_ref', 'sea_ldy'] },
+    { name: 'SIEL Retail', detailCodes: ['siel_tv', 'siel_ref', 'siel_ldy'] },
+    { name: 'SEG Retail', detailCodes: ['seg_tv', 'seg_ref', 'seg_ldy'] },
+    { name: 'SEM Retail', detailCodes: ['sem_tv', 'sem_ref', 'sem_ldy'] },
+    { name: 'TSE Retail', detailCodes: ['tse_tv', 'tse_ref', 'tse_ldy'] }
+];
+
+function resetLayer3SidebarIssueBadges() {
+    if (typeof clearSidebarIssueBadges !== 'function') return;
+    clearSidebarIssueBadges(Object.values(LAYER3_SIDEBAR_GROUP_BY_CATEGORY));
+}
+
+function updateLayer3SidebarIssueBadges(data) {
+    if (typeof updateSidebarIssueBadges !== 'function') return;
+
+    Object.entries(LAYER3_SIDEBAR_GROUP_BY_CATEGORY).forEach(function(entry) {
+        const categoryName = entry[0];
+        const groupKey = entry[1];
+        const checks = (data.checks || []).filter(function(check) {
+            return check.category === categoryName && !check.load_error;
+        });
+        if (checks.length === 0) return;
+
+        const itemCounts = checks.map(function(check) {
+            return {
+                name: getLayer3DisplayName(check.name, check.detail_code || ''),
+                detailCode: check.detail_code || '',
+                count: Number(check.failed || 0)
+            };
+        });
+
+        if (groupKey === 'cross_field') {
+            LAYER3_CROSSFIELD_SIDEBAR_REGIONS.forEach(function(region) {
+                const regionCount = checks.reduce(function(total, check) {
+                    const detailCode = String(check.detail_code || '').toLowerCase();
+                    return region.detailCodes.includes(detailCode)
+                        ? total + Number(check.failed || 0)
+                        : total;
+                }, 0);
+                itemCounts.push({ name: region.name, count: regionCount });
+            });
+        }
+
+        const totalCount = checks.reduce(function(total, check) {
+            return total + Number(check.failed || 0);
+        }, 0);
+        updateSidebarIssueBadges(groupKey, totalCount, itemCounts);
+    });
+}
+
 function refreshLayer3Summary(data) {
     const checks = (data.checks || []).filter(function(check) {
         return !check.load_error;
@@ -302,6 +358,8 @@ async function loadData() {
     const date = getSelectedDate();
     const section = (window.LAYER3 && window.LAYER3.section) || 'dashboard';
     const requestId = ++layer3StatsRequestId;
+
+    resetLayer3SidebarIssueBadges();
 
     // 인라인 상세보기 중이면 현재 보고 있는 항목 저장 (날짜 변경 후 복원용)
     let reopenDetail = null;
@@ -424,6 +482,8 @@ async function loadData() {
 function renderData(data) {
     const section = (window.LAYER3 && window.LAYER3.section) || 'dashboard';
     const filterCategory = SECTION_CATEGORY_MAP[section] || null;
+
+    updateLayer3SidebarIssueBadges(data);
 
     // Summary 업데이트 (대시보드에서만 표시)
     if (!filterCategory) {

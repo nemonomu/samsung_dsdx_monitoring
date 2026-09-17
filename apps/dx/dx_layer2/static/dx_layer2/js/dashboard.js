@@ -177,6 +177,50 @@ function createLayer2StatsState(date) {
     };
 }
 
+const LAYER2_SIDEBAR_GROUP_BY_TYPE = {
+    null: 'null_validation',
+    format: 'format_validation',
+    duplicate: 'anomaly_validation'
+};
+
+function resetLayer2SidebarIssueBadges() {
+    if (typeof clearSidebarIssueBadges !== 'function') return;
+    clearSidebarIssueBadges(Object.values(LAYER2_SIDEBAR_GROUP_BY_TYPE));
+}
+
+function updateLayer2SidebarIssueBadges(data) {
+    if (typeof updateSidebarIssueBadges !== 'function') return;
+
+    (data.validation_types || []).forEach(function(validationType) {
+        const groupKey = LAYER2_SIDEBAR_GROUP_BY_TYPE[validationType.type];
+        if (!groupKey) return;
+
+        const tables = validationType.tables || [];
+        const itemCounts = tables.map(function(table) {
+            return {
+                name: table.table_name || '',
+                detailCode: table.table || '',
+                count: Number(table.total_issues || 0)
+            };
+        });
+
+        LAYER2_NULL_TABLE_GROUPS.forEach(function(tableGroup) {
+            const groupCount = tables.reduce(function(total, table) {
+                return tableGroup.tableCodes.includes(table.table)
+                    ? total + Number(table.total_issues || 0)
+                    : total;
+            }, 0);
+            itemCounts.push({ name: tableGroup.name, count: groupCount });
+        });
+
+        updateSidebarIssueBadges(
+            groupKey,
+            Number(validationType.total_issues || 0),
+            itemCounts
+        );
+    });
+}
+
 function mergeLayer2Stats(target, source) {
     const issueKeyByType = {
         null: 'null_issues',
@@ -241,6 +285,7 @@ function markLayer2SectionError(target, section) {
 
 function renderLayer2Stats(data) {
     prepareLayer2DisplayData(data);
+    updateLayer2SidebarIssueBadges(data);
     dxData = data;
     renderDXSummary(data);
     renderDXValidationTypes(data);
@@ -266,6 +311,8 @@ async function fetchDXStats(tableTarget) {
     const section = (window.LAYER2 && window.LAYER2.section) || 'dashboard';
     const requestId = ++layer2StatsRequestId;
     const container = document.getElementById('dx-validation-container');
+
+    resetLayer2SidebarIssueBadges();
 
     if (container) {
         container.innerHTML = '<div class="loading"><p>검증 데이터를 불러오는 중...</p></div>';
