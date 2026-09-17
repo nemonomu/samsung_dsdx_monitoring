@@ -95,8 +95,10 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
                  'Sponsored|Rollback', 'NULL'),
             ),
             'pick_up_availability': (
-                ('Pick up Sat, Sep 19', 'Pick up Tue, Jan 5', 'Pick up today'),
+                ('Pick up Sat, Sep 19', 'Pick up Tue, Jan 5', 'Pick up today',
+                 'Pick up tomorrow'),
                 ('Pick up', 'Pick up abc', 'Pick up today extra',
+                 'Pick up tomorrow extra', 'Pick up Tomorrow',
                  'Pick up Foo, Sep 19', 'Pick up Sat, Foo 19',
                  'Pick up Sat, Sep 0', 'Pick up Sat, Sep 32'),
             ),
@@ -166,7 +168,7 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
         cases = {
             'pick_up_availability': (
                 ('Pickup Ready Today', 'Pickup Ready by Tue, Sep 22', 'Pickup Ready by Wed, Oct 1'),
-                ('Pick up today', 'Pickup Ready today', 'Pickup Ready by Tue, Sep 0',
+                ('Pick up today', 'Pick up tomorrow', 'Pickup Ready today', 'Pickup Ready by Tue, Sep 0',
                  'Pickup Ready by Tue, Sep 32', 'Pickup Ready by Tue, 9 22',
                  'Pickup Ready by XXX, Sep 22', 'Pickup Ready Today extra'),
             ),
