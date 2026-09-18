@@ -14,6 +14,7 @@ var layer1StatsRequestId = 0;
 async function loadStats() {
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
+    loadDdayCollection(selectedDate);
     let data = null;
     currentCheckStatus = null;
     currentRetailSummary = null;
@@ -60,6 +61,8 @@ function renderLayer1Stats(data) {
     // 데일리 / 분석대상일별 분류 (API 응답의 display_group 기반)
     const dailyChecks = data.checks.filter(c => c.display_group === 'daily');
     const periodChecks = data.checks.filter(c => c.display_group === 'periodic');
+    const periodSection = document.getElementById('period-checks-section');
+    if (periodSection) periodSection.hidden = periodChecks.length === 0;
 
     // 체크 렌더링 함수 — L1.renderers에서 check_type별 렌더러 참조
     function renderCheck(check, checkIdx) {

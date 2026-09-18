@@ -158,7 +158,9 @@ function renderRetailRankRow(categoryName, period, retailerName, row, status, sh
         '&retailer=' + encodeURIComponent(retailerName) +
         '&period=' + encodeURIComponent(period) +
         '&date=' + encodeURIComponent(getSelectedDate());
-    var collectionLabels = { PENDING: '수집 예정', COLLECTING: '수집 시간', ENDED: '예정 시간 종료' };
+    var collectionLabels = { PENDING: '수집 예정', COLLECTING: '수집 시간', ENDED: '예정 시간 종료',
+        '9/20 수집 예정': '9/20 수집 예정', '수집 대기': '수집 대기',
+        '수집 확인 · 건수 기준 미정': '수집 확인 · 건수 기준 미정' };
     var collectionHtml = status === 'UNASSESSED' && collectionLabels[collectionStatus]
         ? '<span style="display:block;font-size:11px;color:#64748b;">' + collectionLabels[collectionStatus] + '</span>' : '';
     return '<tr>' +

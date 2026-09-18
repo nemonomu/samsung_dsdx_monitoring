@@ -751,7 +751,7 @@ function renderDXTableDetail(vType, table) {
             const reviewState = hasIssue ? 'unreviewed'
                 : (automaticCount > 0 ? 'automatic' : (reviewedCount > 0 ? 'manual' : 'clear'));
             const loadError = String(retailer.status || '').toUpperCase() === 'ERROR';
-            const cardClass = loadError ? 'error'
+            const cardClass = retailer.validation_label ? 'pending' : loadError ? 'error'
                 : (supportsReview ? 'null-review-' + reviewState : (retailer.status || 'ok').toLowerCase());
             const countLabel = loadError ? '조회 실패' : hasIssue ? `확인 필요 ${nullCount}건`
                 : (automaticCount > 0 ? `자동확인 ${automaticCount}건`
@@ -779,7 +779,7 @@ function renderDXTableDetail(vType, table) {
                          ${!(hasIssue || queryCount > 0) ? 'style="cursor: default;"' : 'style="cursor: pointer;"'}>
                         <div class="retailer-header">
                             <span class="retailer-name">${retailer.retailer}</span>
-                            <span class="retailer-issue-count ${cardClass}">${supportsReview ? countLabel : nullCount + '건'}</span>
+                            <span class="retailer-issue-count ${cardClass}">${retailer.validation_label || (supportsReview ? countLabel : nullCount + '건')}</span>
                         </div>
                         <div class="retailer-detail">
                             ${supportsReview ? `총 ${totalCount.toLocaleString()}건 검사 · 필수값 NULL 항목` : `총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드`}
@@ -808,7 +808,7 @@ function renderDXTableDetail(vType, table) {
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}">
                     <div class="retailer-header">
                         <span class="retailer-name">${retailer.retailer}</span>
-                        <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${issueCount}건</span>
+                        <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${retailer.validation_label || issueCount + '건'}</span>
                     </div>
                     <div class="retailer-detail">
                         총 ${totalCount.toLocaleString()}건 중 형식 오류 레코드
@@ -871,7 +871,7 @@ function renderDXTableDetail(vType, table) {
                      ${!hasIssue ? 'style="cursor: default;"' : ''}>
                     <div class="retailer-header">
                         <span class="retailer-name">${retailer.retailer}</span>
-                        <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${dupGroups}건</span>
+                        <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${retailer.validation_label || dupGroups + '건'}</span>
                     </div>
                     <div class="retailer-detail">${detailText}</div>
                 </div>

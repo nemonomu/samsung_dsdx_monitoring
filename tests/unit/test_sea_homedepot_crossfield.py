@@ -13,7 +13,7 @@ from tests.unit.test_layer3_sea_data_edit import services as edit_services, Fake
 
 def homedepot_row(**overrides):
     row = _bestbuy_row(account_name='HomeDepot', page_type=None, item='HD1',
-                       batch_id='h20260918_015939', crawl_strdatetime='2026-09-18T01:59:39+00:00',
+                       batch_id='h20260918_015939', crawl_strdatetime='2026-09-22T01:59:39+00:00',
                        final_sku_price='$1,699.00', original_sku_price='$1,899.00',
                        savings='$200.00 (11%)', detailed_review_content=None, recommendation_intent=None)
     row.update(overrides)
@@ -35,12 +35,12 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         for product in ('sea_ref', 'sea_ldy'):
             rules = [_rule(i, key, 'HomeDepot', product) for i, key in enumerate(keys, 1)]
             cursor = ScriptedCursor([{'fetchall': rules}, {'fetchall': [homedepot_row()]}, {'fetchall': []}])
-            result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 9, 18), product)
+            result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 9, 22), product)
             self.assertEqual(7, len(result['rule_summary']))
             self.assertEqual(0, result['total_anomalies'])
             self.assertEqual(['HomeDepot'], [r['retailer'] for r in result['retailers']])
             self.assertEqual(7, len(result['retailers'][0]['rules']))
-            self.assertEqual('2026-09-17', result['source_date'])
+            self.assertEqual('2026-09-21', result['source_date'])
 
     def test_excluded_rules_do_not_apply_even_if_configured(self):
         excluded = ['discount_rate_90', 'rank_page_type', 'review_body_count', 'recommendation_intent']
@@ -81,41 +81,41 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
 
     def test_query_uses_new_york_date_and_includes_null_page_type(self):
         cursor = ScriptedCursor([{'fetchall': []}])
-        sea_services.load_latest_sea_rows(cursor, date(2026, 9, 18), 'sea_ref', from_date=date(2026, 9, 16))
+        sea_services.load_latest_sea_rows(cursor, date(2026, 9, 22), 'sea_ref', from_date=date(2026, 9, 20))
         sql, params = cursor.calls[0]
         self.assertIn('America/New_York', sql)
         self.assertIn("IN ('bestbuy', 'lowes', 'homedepot')", sql)
         self.assertIn("LOWER(TRIM(account_name)) = 'homedepot' OR", sql)
         self.assertIn('anchor.batch_id = source.batch_id', sql)
         self.assertIn('anchor.batch_rank = 1', sql)
-        self.assertEqual(('2026-09-15', '2026-09-17') * 2, params)
+        self.assertEqual(('2026-09-19', '2026-09-21') * 2, params)
 
     def test_history_uses_ny_dates_and_only_current_findings(self):
-        rows = [homedepot_row(id=9, crawl_strdatetime='2026-09-17T01:59:39+00:00'),
+        rows = [homedepot_row(id=9, crawl_strdatetime='2026-09-21T01:59:39+00:00'),
                 homedepot_row(id=10, savings='$201.00 (11%)')]
         cursor = ScriptedCursor([{'fetchall': [_rule(1, 'savings_amount_match', 'HomeDepot')]},
                                  {'fetchall': rows}, {'fetchall': []}])
-        result = sea_services.get_sea_cross_field_rule_detail(cursor, date(2026, 9, 18), 'sea_ref', 1, days=3)
+        result = sea_services.get_sea_cross_field_rule_detail(cursor, date(2026, 9, 22), 'sea_ref', 1, days=3)
         self.assertTrue(result['found'])
         self.assertEqual(1, result['total_anomalies'])
         anomalies = result['anomalies']
         self.assertEqual(['comparison_history', 'target'], [row['row_role'] for row in anomalies])
-        self.assertEqual(['2026-09-16', '2026-09-17'], [row['row_source_date'] for row in anomalies])
+        self.assertEqual(['2026-09-20', '2026-09-21'], [row['row_source_date'] for row in anomalies])
         self.assertIn('HomeDepot', result['retailer_columns'])
         self.assertIn('America/New_York', result['query'])
 
     def test_new_york_boundary_and_non_homedepot_text_dates(self):
-        self.assertEqual('2026-09-17', appliance_source_date_value(homedepot_row()))
+        self.assertEqual('2026-09-21', appliance_source_date_value(homedepot_row()))
         self.assertEqual('2026-01-17', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-01-18T04:59:59Z')))
-        self.assertEqual('2026-09-18', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-09-18T04:00:00Z')))
+        self.assertEqual('2026-09-22', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-09-22T04:00:00Z')))
         self.assertEqual('2026-08-30', appliance_source_date_value(_bestbuy_row()))
 
     def test_copy_query_uses_selected_inspection_date_latest_batches_and_escapes_items(self):
-        query = sea_services.build_sea_display_query(date(2026, 9, 18), 'sea_ldy',
+        query = sea_services.build_sea_display_query(date(2026, 9, 22), 'sea_ldy',
                     dict(rule_key='savings_amount_match'), days=3, retailer='HomeDepot',
                     retailer_item_pairs=[('HomeDepot', "item'1")])
         self.assertIn('America/New_York', query)
-        self.assertIn("BETWEEN '2026-09-15' AND '2026-09-17'", query)
+        self.assertIn("BETWEEN '2026-09-19' AND '2026-09-21'", query)
         self.assertIn('latest_batches', query)
         self.assertIn("item IN ('item''1')", query)
         self.assertNotIn('CURRENT_DATE', query)
@@ -125,7 +125,7 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
                                  {'fetchall': [homedepot_row(savings='$201.00 (11%)')]},
                                  {'fetchall': [dict(record_id=10, column_name='savings', memo='', reason='',
                                                    created_id='tester', created_at='', rule_id=1)]}])
-        result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 9, 18), 'sea_ref')
+        result = sea_services.get_sea_cross_field_summary(cursor, date(2026, 9, 22), 'sea_ref')
         self.assertEqual(0, result['total_anomalies'])
 
     def test_value_edit_and_normal_review_keep_the_same_d_minus_one_batch_scope(self):
@@ -133,17 +133,17 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         cursor = ScriptedCursor([{'fetchone': ('$201.00 (11%)', None, 'HomeDepot', 'HD1')}, {}, {}])
         with patch.object(edit_services, 'get_editable_columns', return_value=['savings']):
             result = edit_services.update_cell_value(cursor, conn, 'public.ref_retail_com', 10, 'savings',
-                                                     '$200.00 (11%)', '2026-09-18', 'cross_field', 'tester', '', 1)
+                                                     '$200.00 (11%)', '2026-09-22', 'cross_field', 'tester', '', 1)
         self.assertTrue(result['success'])
         self.assertIn('America/New_York', cursor.calls[0][0])
         self.assertIn("LOWER(TRIM(source.account_name)) = 'homedepot' OR", cursor.calls[0][0])
-        self.assertEqual((10, '2026-09-17', '2026-09-17'), cursor.calls[0][1])
+        self.assertEqual((10, '2026-09-21', '2026-09-21'), cursor.calls[0][1])
         cursor = ScriptedCursor([{'fetchone': ('$200.00 (11%)', 'HomeDepot', 'HD1')}, {'fetchone': None}, {}])
         result = edit_services.save_review(cursor, FakeConnection(), 'public.ldy_retail_com', 10, 'savings',
-                                           'normal', 'checked', 'reason', '2026-09-18', 'cross_field', 'tester', 1)
+                                           'normal', 'checked', 'reason', '2026-09-22', 'cross_field', 'tester', 1)
         self.assertTrue(result['success'])
         self.assertIn('America/New_York', cursor.calls[0][0])
-        self.assertEqual((10, '2026-09-17', '2026-09-17'), cursor.calls[0][1])
+        self.assertEqual((10, '2026-09-21', '2026-09-21'), cursor.calls[0][1])
 
 
 if __name__ == '__main__':

@@ -7,6 +7,9 @@ from apps.common.sea_layer2 import (
     source_date_sql, page_scope_sql, annotate_source_date,
 )
 from datetime import date, datetime, timedelta
+from apps.common.sea_collection import (
+    HOMEDEPOT_FIRST_SOURCE_DATE, homedepot_source_enabled, homedepot_inspection_label,
+)
 import re
 from zoneinfo import ZoneInfo
 
@@ -904,6 +907,10 @@ def _get_sea_format_fields(product_key, retailer):
 def _fetch_sea_format_rows(
         cursor, start_date, end_date, source, retailer_value):
     """Fetch each day's latest appliance batch using the retailer's page policy."""
+    if is_homedepot(retailer_value):
+        if not homedepot_source_enabled(end_date):
+            return []
+        start_date = max(str(start_date), HOMEDEPOT_FIRST_SOURCE_DATE.isoformat())
     canonical_table = source['table_name']
     date_column = source['date_column']
     product_key = source['product_key']
@@ -1151,7 +1158,8 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
                     'retailer': retailer_value,
                     'total': len(rows),
                     'issue_count': issue_count,
-                    'status': get_status(issue_count),
+                    'status': 'PENDING' if is_homedepot(retailer_value) and not rows else get_status(issue_count),
+                    'validation_label': homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else '',
                 })
                 table_checked += len(rows)
                 table_issues += issue_count

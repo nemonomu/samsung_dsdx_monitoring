@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from apps.common.sea_dates import appliance_source_date_sql
+from apps.common.sea_collection import homedepot_launch_scope_sql
 
 
 HOMEDEPOT = 'HomeDepot'
@@ -56,8 +57,13 @@ def page_scope_sql(alias='', *, anchor=False, retailer=None):
     page = f"UPPER(TRIM(COALESCE({prefix}page_type, '')))"
     legacy = f"{page} = 'MAIN'" if anchor else f"{page} IN ('MAIN', 'BSR')"
     if retailer is not None:
-        return 'TRUE' if is_homedepot(retailer) else legacy
-    return f"(LOWER(TRIM({prefix}account_name)) = 'homedepot' OR {legacy})"
+        if not is_homedepot(retailer):
+            return legacy
+        return homedepot_launch_scope_sql(
+            source_date_sql('crawl_strdatetime', alias, retailer), "'HomeDepot'")
+    return (f"(LOWER(TRIM({prefix}account_name)) = 'homedepot' OR {legacy}) AND "
+            + homedepot_launch_scope_sql(
+                source_date_sql('crawl_strdatetime', alias), prefix + 'account_name'))
 
 
 def annotate_source_date(row, retailer=None):

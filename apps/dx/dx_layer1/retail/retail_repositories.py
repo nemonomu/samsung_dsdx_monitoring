@@ -2,6 +2,7 @@
 
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_dates import appliance_source_date_sql
+from apps.common.sea_collection import homedepot_source_enabled
 
 
 def _timestamp_expression(date_field):
@@ -149,7 +150,8 @@ def get_retailer_raw_data_list(cursor, table_name, columns, retailer,
 def get_latest_appliance_main_batch(cursor, table_name, date_column,
                                     target_date, retailer):
     """Return the latest daily batch; HomeDepot has no MAIN page marker."""
-
+    if str(retailer).strip().lower() == 'homedepot' and not homedepot_source_enabled(target_date):
+        return None
     cursor.execute(f"""
         SELECT batch_id
         FROM {table_name}

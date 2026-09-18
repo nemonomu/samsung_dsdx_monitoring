@@ -5,6 +5,7 @@ cursor + params 를 받아 plain dict 를 반환한다.
 
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
+from apps.common.sea_collection import homedepot_source_enabled, homedepot_inspection_label
 from apps.common.sea_layer2 import (
     is_homedepot, layer2_sources, page_scope_sql, source_date_sql,
 )
@@ -173,6 +174,8 @@ def _resolve_sea_duplicate_retailer(source, retailer):
 
 def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
     """Fetch the latest SEA appliance batch using each retailer's date/page policy."""
+    if is_homedepot(retailer_value) and not homedepot_source_enabled(source_date):
+        return []
     canonical_table = source['table_name']
     date_column = source['date_column']
     date_sql = source_date_sql(date_column, 'source', retailer_value)
@@ -378,7 +381,8 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                     'total': len(rows),
                     'duplicate_groups': duplicate_count,
                     'duplicate_keys': ['item' if is_homedepot(retailer_value) else 'page_type + item'],
-                    'status': get_status(duplicate_count),
+                    'status': 'PENDING' if is_homedepot(retailer_value) and not rows else get_status(duplicate_count),
+                    'validation_label': homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else '',
                 })
                 table_records += len(rows)
                 table_issues += duplicate_count

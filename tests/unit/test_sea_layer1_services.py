@@ -664,18 +664,15 @@ class HomeDepotLayer1Tests(unittest.TestCase):
                     self.assertEqual(['HomeDepot'], category['unassessed_retailers'])
                     self.assertEqual('2026-09-18', category['source_date'])
 
-    def test_schedule_uses_inspection_day_kst_without_changing_assessment(self):
-        from datetime import timezone, timedelta
+    def test_first_inspection_date_controls_waiting_without_a_count_threshold(self):
         service = load_service(RepoStub())
-        for now, expected in (
-            (datetime(2026, 9, 19, 12, 59), 'PENDING'),
-            (datetime(2026, 9, 19, 13), 'COLLECTING'),
-            (datetime(2026, 9, 19, 13, 59), 'COLLECTING'),
-            (datetime(2026, 9, 19, 14), 'ENDED'),
-            (datetime(2026, 9, 19, 4, tzinfo=timezone.utc), 'COLLECTING'),
-            (datetime(2026, 9, 20, 1, tzinfo=timezone(timedelta(hours=9))), 'ENDED'),
+        for inspection_date, expected in (
+            (date(2026, 9, 19), '9/20 수집 예정'),
+            (date(2026, 9, 20), '9/20 수집 예정'),
+            (date(2026, 9, 21), '수집 대기'),
+            (date(2026, 9, 22), '수집 대기'),
         ):
-            result = service.get_layer1_stats(object(), date(2026, 9, 19), now)
+            result = service.get_layer1_stats(object(), inspection_date, datetime(2026, 9, 22, 14))
             row = result['check']['categories'][1]['time_slots'][0]['retailers'][-1]
             self.assertEqual(expected, row['collection_status'])
             self.assertEqual('UNASSESSED', row['status'])

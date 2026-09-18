@@ -75,20 +75,20 @@ class HomeDepotLayer2Tests(unittest.TestCase):
     def test_null_scope_uses_ny_latest_batch_without_page_type_requirement(self):
         source = self.null.SEA_RETAIL_SOURCES['ref']
         cursor = ScriptedCursor([{'fetchone': ('h20260918',)}])
-        self.assertEqual('h20260918', self.null._get_sea_null_anchor_batch(cursor, source, '2026-09-17', 'HomeDepot'))
+        self.assertEqual('h20260918', self.null._get_sea_null_anchor_batch(cursor, source, '2026-09-22', 'HomeDepot'))
         sql, params = cursor.calls[0]
         self.assertIn('America/New_York', sql)
         self.assertNotIn('page_type', sql)
-        self.assertEqual(('2026-09-17', 'HomeDepot'), params)
-        scope, params = self.null._build_sea_null_scope(source, '2026-09-17', 'HomeDepot', 'h20260918')
+        self.assertEqual(('2026-09-22', 'HomeDepot'), params)
+        scope, params = self.null._build_sea_null_scope(source, '2026-09-22', 'HomeDepot', 'h20260918')
         self.assertIn('America/New_York', scope)
         self.assertNotIn('page_type', scope)
         self.assertIn('batch_id = %s', scope)
-        self.assertEqual(['2026-09-17', 'HomeDepot', 'h20260918'], params)
+        self.assertEqual(['2026-09-22', 'HomeDepot', 'h20260918'], params)
 
     def test_format_fetch_has_eleven_fields_and_no_main_anchor_for_homedepot(self):
         cursor = ScriptedCursor([{'fetchall': []}])
-        self.format._fetch_sea_format_rows(cursor, date(2026, 9, 15), date(2026, 9, 17),
+        self.format._fetch_sea_format_rows(cursor, date(2026, 9, 20), date(2026, 9, 22),
                                            self.format.SEA_RETAIL_SOURCES['ldy'], 'HomeDepot')
         sql, params = cursor.calls[0]
         self.assertIn('America/New_York', sql)
@@ -100,7 +100,7 @@ class HomeDepotLayer2Tests(unittest.TestCase):
             self.assertIn('source.' + field, sql)
         self.assertNotIn("COALESCE(source.country", sql)
         self.assertIn('source.ldy_capacity', sql)
-        self.assertEqual(('2026-09-15', '2026-09-17', 'HomeDepot') * 2, params)
+        self.assertEqual(('2026-09-20', '2026-09-22', 'HomeDepot') * 2, params)
 
     def test_format_rules_validate_actual_shapes_and_reject_malformed_values(self):
         cases = {'final_sku_price': (['$1,249.00', '$0.00'], ['1249.00', '$1,24.00', '$-1']),

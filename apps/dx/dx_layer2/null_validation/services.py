@@ -3,6 +3,7 @@ NULL 검증 서비스 — 순수 비즈니스 로직 (DB cursor/conn을 받아 �
 """
 
 import time
+from apps.common.sea_collection import homedepot_source_enabled, homedepot_inspection_label
 from apps.common.sea_layer2 import (
     is_homedepot, homedepot_null_columns, homedepot_format_columns,
     source_date_sql, page_scope_sql, annotate_source_date,
@@ -440,6 +441,8 @@ def _resolve_youtube_null_date(target_date):
 
 def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
     """Use only the newest MAIN row on the exact SEA source date."""
+    if is_homedepot(retailer) and not homedepot_source_enabled(source_date):
+        return None
     table_name = source['table_name']
     date_column = source['date_column']
     cursor.execute(f"""
@@ -2468,6 +2471,9 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None):
                     'fields_detail': fields_detail,
                     **review_stats,
                 }
+                if sea_source and is_homedepot(retailer_name) and total == 0:
+                    retailer_stats.update(status='PENDING',
+                        validation_label=homedepot_inspection_label(target_date))
                 if monitoring_date:
                     retailer_stats.update({
                         'inspection_date': monitoring_date['inspection_date'],

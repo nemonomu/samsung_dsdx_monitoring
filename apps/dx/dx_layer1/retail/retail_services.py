@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 from apps.common.db import dx_connection
 from apps.common.dx_schedules import get_retail_time_slots, get_kst_time_info
@@ -10,6 +10,7 @@ from apps.common.retail_columns import (
 )
 from apps.common.response import log_error
 from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_retail_source
+from apps.common.sea_collection import homedepot_inspection_label
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 
 from . import retail_repositories as repo
@@ -36,16 +37,8 @@ def _get_layer1_source(value):
     return source
 
 
-def _homedepot_collection_status(inspection_date, now=None):
-    kst = timezone(timedelta(hours=9))
-    current = now or datetime.now(kst)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=kst)
-    current = current.astimezone(kst)
-    day = date.fromisoformat(str(_inspection_value(inspection_date)))
-    start = datetime.combine(day, time.fromisoformat(HOMEDEPOT_COLLECTION_WINDOW['start_kst']), kst)
-    end = datetime.combine(day, time.fromisoformat(HOMEDEPOT_COLLECTION_WINDOW['end_kst']), kst)
-    return 'PENDING' if current < start else 'COLLECTING' if current < end else 'ENDED'
+def _homedepot_collection_status(inspection_date, now=None, count=0):
+    return homedepot_inspection_label(_inspection_value(inspection_date), count)
 
 
 def _inspection_value(value):
@@ -318,7 +311,7 @@ def _build_category(cursor, source, inspection_date, now):
     for retailer in retailer_details:
         if retailer['status'] == 'UNASSESSED':
             retailer['collection_window'] = dict(HOMEDEPOT_COLLECTION_WINDOW)
-            retailer['collection_status'] = _homedepot_collection_status(inspection_date, now)
+            retailer['collection_status'] = _homedepot_collection_status(inspection_date, now, retailer['count'])
             continue
         retailer_slots = [
             slot for slot in schedule_slots
@@ -622,7 +615,7 @@ def get_retail_summary(target_date, product_line):
             summary_data.append({
                 'retailer': retailer,
                 'status': 'UNASSESSED' if retailer == HOMEDEPOT else None,
-                'collection_status': _homedepot_collection_status(target_date) if retailer == HOMEDEPOT else None,
+                'collection_status': _homedepot_collection_status(target_date, count=total) if retailer == HOMEDEPOT else None,
                 'rows': [row_data],
                 'total': total,
                 'batch_id': row_data['batch_id'],

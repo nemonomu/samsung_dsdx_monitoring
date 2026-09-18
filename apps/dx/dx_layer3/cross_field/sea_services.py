@@ -16,6 +16,7 @@ from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_columns import get_editable_columns
 from apps.common.sea_retail import get_sea_retail_source
+from apps.common.sea_collection import homedepot_source_enabled
 from apps.common.sea_dates import (
     appliance_source_date_sql, appliance_source_date_value, appliance_page_scope_sql,
 )
@@ -612,7 +613,9 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
         ORDER BY ({appliance_source_date_sql('source.' + date_column, 'source.account_name')}),
                  LOWER(TRIM(source.account_name)), source.id
     """, (start_date, end_date, start_date, end_date))
-    return _rows_as_dicts(cursor)
+    return [row for row in _rows_as_dicts(cursor)
+            if _retailer_name(row.get('account_name')) != 'HomeDepot'
+            or homedepot_source_enabled(appliance_source_date_value(row, date_column))]
 
 
 def _load_normal_corrections(

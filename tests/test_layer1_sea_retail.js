@@ -248,9 +248,9 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260918-homedepot1"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260918-homedepot1"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260915-perf1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260918-launch1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260918-launch1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260918-dday1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=13"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));

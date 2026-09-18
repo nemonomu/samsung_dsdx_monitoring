@@ -5,6 +5,7 @@ import re
 from apps.common.db import dx_connection
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.sea_dates import appliance_source_date_sql
+from apps.common.sea_collection import homedepot_source_enabled
 
 from .email_registry import EMAIL_REPORT_SOURCES
 
@@ -321,6 +322,8 @@ def _query_retailer(cursor, source, retailer, target_date):
     """Return one retailer's actual collection and Missing quantities."""
     if (source['key'] in {'sea_ref', 'sea_ldy'}
             and _normalize_name(retailer['name']) == 'homedepot'):
+        if not homedepot_source_enabled(target_date):
+            return _empty_retailer(retailer)
         source = {**source, 'date_mode': 'sea_homedepot',
                   'has_page_type': False, 'collection_scope': 'all',
                   'business_timezone': None}

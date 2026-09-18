@@ -1,5 +1,5 @@
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from tests.unit.support import (
@@ -43,7 +43,7 @@ SEA_SOURCES = {
 def resolve_date(inspection_date, _country, source_key):
     return {
         'inspection_date': str(inspection_date),
-        'source_date': '2026-08-31',
+        'source_date': (date.fromisoformat(str(inspection_date)) - timedelta(days=1)).isoformat(),
         'offset_days': -1,
         'source_key': source_key,
     }
@@ -354,7 +354,7 @@ class SEADuplicateValidationTests(unittest.TestCase):
                 source = self.service.SEA_RETAIL_SOURCES[product]
                 cursor = ScriptedCursor([{'fetchall': []}])
                 result = self.service._get_sea_anomaly_detail(
-                    cursor, '2026-09-01', f'sea_{product}_retail',
+                    cursor, '2026-09-21', f'sea_{product}_retail',
                     'HomeDepot', 1, 20,
                 )
                 sql, params = cursor.calls[0]
@@ -362,7 +362,7 @@ class SEADuplicateValidationTests(unittest.TestCase):
                 self.assertIn('IS NOT DISTINCT FROM latest_batch.batch_id', sql)
                 self.assertNotIn("= 'MAIN'", sql)
                 self.assertNotIn("IN ('MAIN', 'BSR')", sql)
-                self.assertEqual(('2026-08-31', 'HomeDepot') * 2, params)
+                self.assertEqual(('2026-09-20', 'HomeDepot') * 2, params)
                 self.assertFalse(result['readonly'])
                 self.assertNotIn('page_type', result['select_cols']['group'])
                 self.assertEqual(source['table_name'], result['actual_table'])
@@ -374,7 +374,7 @@ class SEADuplicateValidationTests(unittest.TestCase):
                               [{'item': 'A'}, {'item': 'A'}]
                               if retailer == 'HomeDepot' else [])):
             self.assertEqual(2, self.service._append_sea_anomaly_stats(
-                cursor, '2026-09-01', validation))
+                cursor, '2026-09-21', validation))
         for table in validation['tables']:
             retailer = next(r for r in table['retailers'] if r['retailer'] == 'HomeDepot')
             self.assertEqual(['item'], retailer['duplicate_keys'])

@@ -14,6 +14,7 @@ function pending(kind, requestDate) {
 }
 const sandbox = {
     console, getSelectedDate: () => date,
+    loadDdayCollection() {},
     loadCheckStatus: day => pending('status', day),
     loadSeaRetailSummaries: day => pending('summary', day),
     fetch: () => pending('stats', date),

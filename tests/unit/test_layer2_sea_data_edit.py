@@ -35,6 +35,8 @@ class SEALayer2DataEditTests(unittest.TestCase):
         stubs = {
             'apps.dx.dx_layer2.seda_null_validation': seda_null_validation_stub(),
             'apps': package_stub('apps'),
+            'apps.dx': package_stub('apps.dx'),
+            'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
             'apps.common': package_stub('apps.common'),
             'apps.common.monitoring_exclusions': module_stub(
                 'apps.common.monitoring_exclusions',
