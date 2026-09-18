@@ -282,12 +282,14 @@ function ensureProductUrlColumn(columns, selectCols) {
     return result;
 }
 
-function arrangeRetailInspectionColumns(columns, availableKeys) {
+function arrangeRetailInspectionColumns(columns, availableKeys, inspectedField) {
     var nameColumn = columns.find(function(col) { return col.key === 'retailer_sku_name'; });
     if (!nameColumn && availableKeys.includes('retailer_sku_name')) {
         nameColumn = { key: 'retailer_sku_name', label: 'retailer_sku_name', width: 200 };
     }
-    var hiddenKeys = ['account_name', 'country', 'retailer_sku_name'];
+    var hiddenKeys = ['account_name', 'country', 'retailer_sku_name'].filter(function(key) {
+        return key === 'retailer_sku_name' || key !== inspectedField;
+    });
     var accountIndex = columns.findIndex(function(col) { return col.key === 'account_name'; });
     var result = columns.filter(function(col) { return !hiddenKeys.includes(col.key); });
     if (nameColumn) {
@@ -624,7 +626,8 @@ function renderDetailWithTable(options) {
     }
     if (!isRowspan && /^(?:(?:tv|hhp)_retail|(?:sea|seda|siel|seg|sem|tse)_(?:tv|ref|ldy)_retail)$/.test(tableParam)) {
         defaultCols = arrangeRetailInspectionColumns(defaultCols,
-            (selectCols || []).concat(data.flatMap(function(row) { return Object.keys(row); })));
+            (selectCols || []).concat(data.flatMap(function(row) { return Object.keys(row); })),
+            type === 'format' ? options.formatReviewField : '');
     }
 
     detailViewState.type = type;

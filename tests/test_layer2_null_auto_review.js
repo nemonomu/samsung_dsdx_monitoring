@@ -597,6 +597,31 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
 }
 
 (async () => {
+    for (const field of ['account_name', 'calendar_week', 'country', 'product']) {
+        const sandbox = commonSandbox();
+        const row = { id: 1, item: 'HD1', account_name: 'HomeDepot', country: 'SEM',
+            calendar_week: 'w38', product: 'TV', retailer_sku_name: 'HomeDepot appliance',
+            error_fields: [field], crawl_strdatetime: '2026-09-18T01:59:39+00:00', _source_date: '2026-09-17' };
+        sandbox.getDetailBody = () => ({ innerHTML: '' });
+        sandbox.buildDetailContainerHtml = () => '';
+        sandbox.renderCountryFlagLabel = value => value;
+        sandbox.ViewStack = { push() {} };
+        sandbox.modalState.tableParam = 'sea_ref_retail';
+        sandbox.modalState.tableName = 'SEA REF';
+        sandbox.modalState.retailer = 'HomeDepot';
+        sandbox.modalState.formatFieldsData = {
+            date: '2026-09-18', source_date: '2026-09-17', date_column: 'crawl_strdatetime',
+            column_names: Object.keys(row), results: [row], editable_cols: [field]
+        };
+        vm.runInContext(fs.readFileSync('apps/dx/dx_layer2/static/dx_layer2/js/format_validation.js', 'utf8'), sandbox);
+        sandbox.showFormatFieldDetail(field);
+        const keys = Array.from(sandbox.detailViewState.columns, column => column.key);
+        assert(keys.includes(field), 'the inspected format field must be visible: ' + field);
+        assert.strictEqual(new Set(keys).size, keys.length);
+        for (const contextKey of ['account_name', 'country']) {
+            assert.strictEqual(keys.includes(contextKey), field === contextKey);
+        }
+    }
     testRelatedReviewMetricsAreVisibleBeforeReviewActions();
     testPendingProductsComeFirstWithAscendingHistoryAcrossCountries();
     testRefreshedConfirmationAndCancellationReorderWholeProduct();

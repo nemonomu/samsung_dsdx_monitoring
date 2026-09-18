@@ -13,6 +13,7 @@ HOMEDEPOT_NULL_COMMON = (
     'count_of_star_ratings', 'count_of_reviews',
 )
 HOMEDEPOT_FORMAT_COMMON = (
+    'account_name', 'calendar_week', 'country', 'product',
     'final_sku_price', 'original_sku_price', 'savings',
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )

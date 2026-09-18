@@ -903,7 +903,7 @@ def _get_sea_format_fields(product_key, retailer):
 
 def _fetch_sea_format_rows(
         cursor, start_date, end_date, source, retailer_value):
-    """Fetch each day's latest SEA MAIN-anchored appliance batch."""
+    """Fetch each day's latest appliance batch using the retailer's page policy."""
     canonical_table = source['table_name']
     date_column = source['date_column']
     product_key = source['product_key']
@@ -914,6 +914,12 @@ def _fetch_sea_format_rows(
         date_column, 'product_url',
     )))
     date_expression = source_date_sql(date_column, 'source', retailer_value)
+    # Country is a validated value for HomeDepot, not a source selector.
+    country_scope = 'TRUE' if is_homedepot(retailer_value) else """(
+        UPPER(TRIM(COALESCE(source.country, ''))) = 'SEA'
+        OR source.country IS NULL
+        OR TRIM(CAST(source.country AS TEXT)) = ''
+    )"""
     cursor.execute(f"""
         WITH latest_batches AS (
             SELECT DISTINCT ON ({date_expression})
@@ -939,11 +945,7 @@ def _fetch_sea_format_rows(
               OR source.account_name IS NULL
               OR TRIM(CAST(source.account_name AS TEXT)) = ''
           )
-          AND (
-              UPPER(TRIM(COALESCE(source.country, ''))) = 'SEA'
-              OR source.country IS NULL
-              OR TRIM(CAST(source.country AS TEXT)) = ''
-          )
+          AND {country_scope}
           AND {page_scope_sql('source', retailer=retailer_value)}
         ORDER BY source.item, {date_expression}, source.id
     """, (

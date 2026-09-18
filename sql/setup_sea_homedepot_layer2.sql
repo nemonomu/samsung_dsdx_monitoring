@@ -1,4 +1,4 @@
--- SEA HomeDepot REF/LDY Layer 2: 11 NULL fields and 7 format fields per product.
+-- SEA HomeDepot REF/LDY Layer 2: 11 NULL fields and 11 format fields per product.
 -- Idempotent. Does not alter SEM HomeDepot, other retailers, source data or Layer 3 rules.
 BEGIN;
 
@@ -26,7 +26,7 @@ CREATE TEMP TABLE _hd_columns (
     PRIMARY KEY (product_line, column_name)
 ) ON COMMIT DROP;
 
--- Ten required common fields, plus six optional fields.
+-- Ten required common fields, plus seven optional fields.
 -- Each product adds its required capacity and optional product type below.
 WITH field(column_name, duplicate_key, skip_missing_check, is_editable) AS (
     VALUES
@@ -45,7 +45,8 @@ WITH field(column_name, duplicate_key, skip_missing_check, is_editable) AS (
     ('main_rank',              FALSE, TRUE,  FALSE),
     ('bsr_rank',               FALSE, TRUE,  FALSE),
     ('crawl_strdatetime',         FALSE, TRUE,  FALSE),
-    ('calendar_week',          FALSE, TRUE,  FALSE)
+    ('calendar_week',          FALSE, TRUE,  TRUE),
+    ('product',                FALSE, TRUE,  TRUE)
 )
 INSERT INTO _hd_columns
     (product_line, column_name, duplicate_key, skip_missing_check, is_editable)
@@ -205,6 +206,10 @@ CREATE TEMP TABLE _hd_format_templates (
     name text PRIMARY KEY, check_type text, pattern text, description text
 ) ON COMMIT DROP;
 INSERT INTO _hd_format_templates VALUES
+ ('SEA_HOMEDEPOT_ENUM', 'enum', NULL, 'HomeDepot allowed identity values'),
+ ('SEA_HOMEDEPOT_WEEK', 'regex',
+  $pattern$^[0-9]{4}-W(?:0[1-9]|[1-4][0-9]|5[0-3])$$pattern$,
+  'HomeDepot year and week, e.g. 2026-W38'),
  ('SEA_HOMEDEPOT_USD', 'regex',
   $pattern$^[$](?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)(?:\.[0-9]{1,2})?$$pattern$,
   'HomeDepot USD price, e.g. $1,249.00'),
@@ -236,6 +241,9 @@ INSERT INTO _hd_format_rules
 SELECT SPLIT_PART(source.table_name, '.', 2), rule.column_name, rule.template_name,
        rule.rule_value, rule.error_message
 FROM _hd_sources source CROSS JOIN (VALUES
+ ('account_name', 'SEA_HOMEDEPOT_ENUM', 'HomeDepot', 'account_name은 HomeDepot이어야 합니다.'),
+ ('calendar_week', 'SEA_HOMEDEPOT_WEEK', NULL, 'calendar_week는 2026-W38 같은 YYYY-W01~W53 형식이어야 합니다.'),
+ ('country', 'SEA_HOMEDEPOT_ENUM', 'SEA', 'country는 SEA여야 합니다.'),
  ('final_sku_price', 'SEA_HOMEDEPOT_USD', NULL::text, '가격은 $1,249.00 같은 달러 금액 형식이어야 합니다.'),
  ('original_sku_price', 'SEA_HOMEDEPOT_USD', NULL, '원가는 $1,249.00 같은 달러 금액 형식이어야 합니다.'),
  ('savings', 'SEA_HOMEDEPOT_SAVINGS', NULL, '할인은 $150.00 (11%) 같은 금액·할인율 형식이어야 합니다.'),
@@ -246,6 +254,11 @@ FROM _hd_sources source CROSS JOIN (VALUES
 INSERT INTO _hd_format_rules
 SELECT SPLIT_PART(table_name, '.', 2), CASE WHEN product_line = 'sea_ref' THEN 'ref_capacity' ELSE 'ldy_capacity' END,
        'SEA_HOMEDEPOT_CAPACITY', NULL, '용량은 21 cu ft 또는 0.75 cu ft 같은 형식이어야 합니다.'
+FROM _hd_sources;
+
+INSERT INTO _hd_format_rules
+SELECT SPLIT_PART(table_name, '.', 2), 'product', 'SEA_HOMEDEPOT_ENUM',
+       UPPER(SPLIT_PART(product_line, '_', 2)), 'product가 테이블 제품군(REF/LDY)과 일치해야 합니다.'
 FROM _hd_sources;
 
 UPDATE public.monitoring_format_rules target

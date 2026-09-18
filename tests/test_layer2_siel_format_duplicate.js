@@ -52,7 +52,7 @@ assert(format.includes(
 assert(format.includes('isSielRetail || isSegRetail'));
 assert(format.includes('isSemRetail || isTseRetail'));
 assert(format.includes('isSemRetail && Array.isArray(data.select_cols)'));
-assert(format.includes('return isSemRetail || !contextOnlyKeys.has(key)'));
+assert(format.includes('return isSemRetail || key === fieldName || !contextOnlyKeys.has(key)'));
 assert(format.includes("tableName: 'dx_sem.dx_sem_tv_retail_com'"));
 assert(format.includes("tableName: 'dx_sem.dx_sem_ref_retail_com'"));
 assert(format.includes("tableName: 'dx_sem.dx_sem_ldy_retail_com'"));
@@ -75,10 +75,10 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260918-homedepot2"
+    "dx_layer2/js/layer2-common.js' %}?v=20260918-homedepot-fields3"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260918-homedepot2"
+    "dx_layer2/js/format_validation.js' %}?v=20260918-homedepot-fields3"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260918-sidebar-cache1"

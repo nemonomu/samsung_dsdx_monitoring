@@ -109,13 +109,12 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             columns.push({ key: k, label: k === 'product_url' ? 'URL' : k, width: k === 'id' ? 80 : 120 });
         });
         columns.push(reasonCol);
-        // 국가/리테일러/페이지는 상세 제목과 선택한 카드에서 이미
-        // 확인되므로 모든 리테일 형식 검증 표와 컬럼 선택에서 제외한다.
+        // 문맥 컬럼은 기본 숨김이지만 현재 검수하는 오류 필드는 표시한다.
         var contextOnlyKeys = new Set(['country', 'account_name', 'page_type']);
         var selectableColumns = isSemRetail && Array.isArray(data.select_cols)
             ? data.select_cols : columnNames;
         selectCols = selectableColumns.filter(function(key) {
-            return isSemRetail || !contextOnlyKeys.has(key);
+            return isSemRetail || key === fieldName || !contextOnlyKeys.has(key);
         });
     } else if (columnNames.length > 0) {
         columns = columnNames.map(function(col) {
@@ -305,6 +304,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         data: detailRecords,
         tableParam: tableParam,
         type: 'format',
+        formatReviewField: fieldName,
         editableCols: data.editable_cols || [],
         actualTable: data.actual_table || '',
         crawlDate: date,
