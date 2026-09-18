@@ -41,6 +41,7 @@ config/create_admin.py
 *.pfx
 *.sql
 !sql/update_lowes_ref_capacity_liter.sql
+!sql/update_lowes_ref_discount_pickup.sql
 !sql/disable_tse_lazada_powerbuy_monitoring.sql
 !sql/setup_sem_liverpool_monitoring.sql
 !sql/setup_sem_homedepot_monitoring.sql

@@ -48,10 +48,16 @@ def load_seed_validator():
             is_enum = template == 'SEA_APPLIANCE_ENUM'
             for table in ('ref_retail_com', 'ldy_retail_com'):
                 for retailer in retailers:
+                    selected_template = template
+                    if table == 'ref_retail_com' and retailer == 'Lowes':
+                        selected_template = {
+                            'pick_up_availability': 'SEA_APPLIANCE_LOWES_REF_PICKUP',
+                            'discount_type': 'SEA_APPLIANCE_LOWES_REF_DISCOUNT',
+                        }.get(field, template)
                     rows.append(dict(
                         table_name=table, column_name=field, account_name=retailer,
                         check_type='enum' if is_enum else 'regex',
-                        pattern=None if is_enum else templates[template],
+                        pattern=None if is_enum else templates[selected_template],
                         rule_value=rest.split("'")[1] if is_enum else None,
                         error_message=f'{field} 형식 오류',
                     ))
@@ -163,6 +169,42 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
             self.assertEqual(set(FIELDS), set(detail['results'][0]['error_fields']))
             self.assertTrue(set(FIELDS).issubset(detail['column_names']))
             self.assertNotIn('retailer_sku_name_similar', detail['column_names'])
+
+    def test_lowes_ref_new_discount_and_pickup_values_are_scoped_and_bounded(self):
+        cases = {
+            'discount_type': (
+                ('Buy More, Save More', 'Buy 1 And Get 1', 'Buy 2 And Get 3', 'Buy 12 And Get 10'),
+                ('Buy More Save More', 'buy More, Save More', 'Buy 1 and Get 1',
+                 'Buy 0 And Get 1', 'Buy 1 And Get 0', 'Buy -1 And Get 1',
+                 'Buy 1.5 And Get 1', 'Buy 1 And Get 1 extra', 'Buy 01 And Get 1'),
+            ),
+            'pick_up_availability': (
+                ('Pickup Ready Tomorrow',),
+                ('Pickup Ready tomorrow', 'Pickup Ready Tomorrow extra'),
+            ),
+        }
+        for field, (allowed, invalid) in cases.items():
+            for value in allowed:
+                with self.subTest(field=field, value=value):
+                    self.assertIsNone(self.validator.validate_field('ref_retail_com', field, value, 'Lowes'))
+                    self.assertIsNotNone(self.validator.validate_field('ldy_retail_com', field, value, 'Lowes'))
+            for value in invalid:
+                with self.subTest(field=field, value=value):
+                    self.assertIsNotNone(self.validator.validate_field('ref_retail_com', field, value, 'Lowes'))
+        self.assertIsNotNone(self.validator.validate_field(
+            'ref_retail_com', 'pick_up_availability', 'Pickup Ready Tomorrow', 'Bestbuy'))
+
+        root = Path(__file__).resolve().parents[2]
+        migration = (root / 'sql/update_lowes_ref_discount_pickup.sql').read_text(encoding='utf-8')
+        patterns = re.findall(r'\$pattern\$(.*?)\$pattern\$', migration, re.S)
+        expected = [row['pattern'] for row in self.rules
+                    if row['table_name'] == 'ref_retail_com' and row['account_name'] == 'Lowes'
+                    and row['column_name'] in cases]
+        self.assertEqual(set(expected), set(patterns))
+        seed = (root / 'sql/seed_sea_ref_ldy_format.sql').read_text(encoding='utf-8')
+        for field in cases:
+            self.assertIn("product.table_name = 'ref_retail_com' AND rule.column_name = '" + field + "'", seed)
+        self.assertIn("WHERE table_name = 'ref_retail_com' AND account_name = 'Lowes'", migration)
 
     def test_lowes_text_and_quantity_values(self):
         cases = {
