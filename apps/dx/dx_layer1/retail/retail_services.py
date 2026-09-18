@@ -1,5 +1,5 @@
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from apps.common.db import dx_connection
 from apps.common.dx_schedules import get_retail_time_slots, get_kst_time_info
@@ -17,6 +17,8 @@ from . import retail_repositories as repo
 
 OK_THRESHOLD = 200
 DEFAULT_EXPECTED_COUNT = 300
+HOMEDEPOT = 'HomeDepot'
+HOMEDEPOT_COLLECTION_WINDOW = {'start_kst': '13:00', 'end_kst': '14:00'}
 LDY_LOWES_MAIN_MIN = 150
 LDY_LOWES_BSR_MIN = 90
 
@@ -25,6 +27,25 @@ ALLOWED_TABLES = {
 }
 ALLOWED_DATE_FIELDS = {'crawl_datetime::timestamp', 'crawl_strdatetime'}
 ALLOWED_RANK_FIELDS = {'promotion_position'}
+
+
+def _get_layer1_source(value):
+    source = get_sea_retail_source(value)
+    if source['product_key'] in ('ref', 'ldy'):
+        return {**source, 'retailers': (*source['retailers'], HOMEDEPOT)}
+    return source
+
+
+def _homedepot_collection_status(inspection_date, now=None):
+    kst = timezone(timedelta(hours=9))
+    current = now or datetime.now(kst)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=kst)
+    current = current.astimezone(kst)
+    day = date.fromisoformat(str(_inspection_value(inspection_date)))
+    start = datetime.combine(day, time.fromisoformat(HOMEDEPOT_COLLECTION_WINDOW['start_kst']), kst)
+    end = datetime.combine(day, time.fromisoformat(HOMEDEPOT_COLLECTION_WINDOW['end_kst']), kst)
+    return 'PENDING' if current < start else 'COLLECTING' if current < end else 'ENDED'
 
 
 def _inspection_value(value):
@@ -97,7 +118,7 @@ def _slot_retailers(source, schedule_slots):
     return [
         {
             'name': name,
-            'expected_count': retailer_map.get(
+            'expected_count': 0 if name == HOMEDEPOT else retailer_map.get(
                 name.lower(),
                 {'expected_count': DEFAULT_EXPECTED_COUNT},
             )['expected_count'],
@@ -121,6 +142,9 @@ def _daily_schedule_status(schedule_slots):
 
 def _retailer_criteria(category, retailer):
     """Return the completed-collection rule for one SEA retailer."""
+
+    if category.upper() in ('REF', 'LDY') and retailer.lower() == 'homedepot':
+        return None
 
     if (
         str(category or '').strip().upper() == 'LDY'
@@ -178,7 +202,7 @@ def check_retailer_data(rows, category='TV', slot_retailers=None):
             for retailer in slot_retailers
         }
     else:
-        source = get_sea_retail_source(category)
+        source = _get_layer1_source(category)
         retailer_names = [name.lower() for name in source['retailers']]
         display_names = {
             name.lower(): name for name in source['retailers']
@@ -221,7 +245,7 @@ def check_retailer_data(rows, category='TV', slot_retailers=None):
         total_count += count
         expected = expected_map.get(retailer, DEFAULT_EXPECTED_COUNT)
         criteria = _retailer_criteria(category, retailer)
-        status = (
+        status = 'UNASSESSED' if criteria is None else (
             'OK' if _meets_retailer_criteria(data, criteria)
             else 'CRITICAL'
         )
@@ -239,10 +263,11 @@ def check_retailer_data(rows, category='TV', slot_retailers=None):
         retailer_details.append({
             'retailer': display_names.get(retailer, retailer.capitalize()),
             'count': count,
-            'expected': expected,
-            'ok_threshold': criteria.get('total_min'),
+            'expected': None if criteria is None else expected,
+            'ok_threshold': (criteria or {}).get('total_min'),
             'criteria': criteria,
-            'criteria_actual': _criteria_actual(data, criteria),
+            'criteria_actual': _criteria_actual(data, criteria or {}),
+            'criteria_note': '최소 수집 건수 미정' if criteria is None else '',
             'status': status,
             'items': items,
             'batch_id': (
@@ -291,6 +316,10 @@ def _build_category(cursor, source, inspection_date, now):
     )
 
     for retailer in retailer_details:
+        if retailer['status'] == 'UNASSESSED':
+            retailer['collection_window'] = dict(HOMEDEPOT_COLLECTION_WINDOW)
+            retailer['collection_status'] = _homedepot_collection_status(inspection_date, now)
+            continue
         retailer_slots = [
             slot for slot in schedule_slots
             if any(
@@ -333,6 +362,7 @@ def _build_category(cursor, source, inspection_date, now):
         'time_slots': [time_slot],
         'has_extra_rank': source['extra_rank_field'] is not None,
         'extra_rank_name': source['extra_rank_name'],
+        'unassessed_retailers': [r['retailer'] for r in retailer_details if r['status'] == 'UNASSESSED'],
         **_contract_fields(contract),
     }
 
@@ -367,7 +397,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     for product_key in ('tv', 'ref', 'ldy'):
         category, category_failures, contract = _build_category(
             cursor,
-            SEA_RETAIL_SOURCES[product_key],
+            _get_layer1_source(product_key),
             target_date,
             now,
         )
@@ -423,6 +453,7 @@ def get_layer1_stats(cursor, target_date, now=None):
             'retailer_start_times': (('Walmart', '16:55'),),
         },
         'is_dst': am_kst['is_dst'],
+        'homedepot': dict(HOMEDEPOT_COLLECTION_WINDOW),
     }
 
     check = {
@@ -461,7 +492,7 @@ def get_retail_detail(target_date, product_line):
     if str(product_line or '').strip().lower() == 'hhp':
         return _empty_product_result(target_date, product_line)
 
-    source = get_sea_retail_source(product_line)
+    source = _get_layer1_source(product_line)
     contract, source_date = _resolve_source(target_date, source)
     with dx_connection() as (_conn, cursor):
         if source['product_key'] == 'tv':
@@ -522,7 +553,7 @@ def get_retail_summary(target_date, product_line):
     if str(product_line or '').strip().lower() == 'hhp':
         return _empty_summary(target_date, product_line)
 
-    source = get_sea_retail_source(product_line)
+    source = _get_layer1_source(product_line)
     contract, source_date = _resolve_source(target_date, source)
     next_day = source_date + timedelta(days=1)
     slot_start = f'{source_date} 00:00:00'
@@ -590,6 +621,8 @@ def get_retail_summary(target_date, product_line):
             }
             summary_data.append({
                 'retailer': retailer,
+                'status': 'UNASSESSED' if retailer == HOMEDEPOT else None,
+                'collection_status': _homedepot_collection_status(target_date) if retailer == HOMEDEPOT else None,
                 'rows': [row_data],
                 'total': total,
                 'batch_id': row_data['batch_id'],
@@ -670,7 +703,7 @@ def get_retailer_raw_data(category, retailer, period, target_date):
             'error': 'HHP Retail is excluded from monitoring.',
         }
 
-    source = get_sea_retail_source(category)
+    source = _get_layer1_source(category)
     contract, source_date = _resolve_source(target_date, source)
     canonical_retailers = {
         name.lower(): name for name in source['retailers']

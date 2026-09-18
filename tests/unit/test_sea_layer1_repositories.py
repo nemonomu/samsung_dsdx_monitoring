@@ -4,6 +4,38 @@ from tests.unit.support import ScriptedCursor, load_module
 
 
 class SeaLayer1RepositoryTests(unittest.TestCase):
+    def test_homedepot_null_page_type_uses_latest_batch_in_all_paths(self):
+        for table in ('public.ref_retail_com', 'public.ldy_retail_com'):
+            count_cursor = ScriptedCursor([
+                {'fetchone': ('h-batch',)}, {'fetchone': (300, 100, 0, 300)},
+            ])
+            counts = self.repo.query_appliance_counts_by_retailer(
+                count_cursor, table, 'crawl_strdatetime', '2026-09-18', 'HomeDepot')
+            self.assertEqual((300, 100, 0, 300, 'h-batch'), counts)
+            raw_cursor = ScriptedCursor([{'fetchone': ('h-batch',)}, {'fetchall': []}])
+            self.repo.get_appliance_raw_data_list(
+                raw_cursor, table, ['id'], 'HomeDepot', 'crawl_strdatetime', '2026-09-18')
+            detail_cursor = ScriptedCursor([
+                {'fetchone': ('h-batch',)}, {'fetchone': (300, 300, 100, 295)},
+            ])
+            self.repo.get_appliance_retail_detail_list(
+                detail_cursor, table, 'crawl_strdatetime', '2026-09-18', ['HomeDepot'])
+            for cursor in (count_cursor, raw_cursor, detail_cursor):
+                for sql, params in cursor.calls:
+                    self.assertNotIn('page_type', sql)
+                    self.assertIn('LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10) = %s', sql)
+                    self.assertEqual('2026-09-18', params[0])
+                    self.assertEqual('HomeDepot', params[1])
+                self.assertIn('ORDER BY id DESC', cursor.calls[0][0])
+                self.assertEqual(('2026-09-18', 'HomeDepot', 'h-batch'), cursor.calls[1][1])
+                self.assertIn('batch_id IS NOT DISTINCT FROM %s', cursor.calls[1][0])
+
+    def test_homedepot_no_batch_returns_zero_without_previous_day_fallback(self):
+        cursor = ScriptedCursor([{'fetchone': None}])
+        self.assertEqual((0, 0, 0, 0, None), self.repo.query_appliance_counts_by_retailer(
+            cursor, 'public.ref_retail_com', 'crawl_strdatetime', '2026-09-17', 'HomeDepot'))
+        self.assertEqual(1, len(cursor.calls))
+
     @classmethod
     def setUpClass(cls):
         cls.repo = load_module(

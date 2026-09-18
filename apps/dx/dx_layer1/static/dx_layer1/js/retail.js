@@ -4,8 +4,8 @@
 
 var SEA_RETAIL_PRODUCTS = [
     { key: 'tv', category: 'TV', retailers: ['Amazon', 'Bestbuy', 'Walmart'] },
-    { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes'] },
-    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes'] }
+    { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes', 'HomeDepot'] },
+    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot'] }
 ];
 var seaRetailSummaryCache = {};
 var seaRetailSummaryDate = '';
@@ -107,6 +107,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
                 L1.retailQuery.button('SEA', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + retailCount(cat.total).toLocaleString() + '</span>' +
                 getStatusBadge(cat.status) +
+                ((cat.unassessed_retailers || []).length ? ' <span class="status-badge pending">최소 건수 미판정 포함</span>' : '') +
             '</div>' +
         '</div>' +
         timeSlotsHtml +
@@ -147,7 +148,7 @@ function getRetailItemCount(retailer, names) {
     return 0;
 }
 
-function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId) {
+function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId, collectionStatus) {
     if (showExtra === undefined) showExtra = true;
     var batchId = row.batch_id || retailerBatchId || '';
     var batchHtml = batchId
@@ -157,13 +158,16 @@ function renderRetailRankRow(categoryName, period, retailerName, row, status, sh
         '&retailer=' + encodeURIComponent(retailerName) +
         '&period=' + encodeURIComponent(period) +
         '&date=' + encodeURIComponent(getSelectedDate());
+    var collectionLabels = { PENDING: '수집 예정', COLLECTING: '수집 시간', ENDED: '예정 시간 종료' };
+    var collectionHtml = status === 'UNASSESSED' && collectionLabels[collectionStatus]
+        ? '<span style="display:block;font-size:11px;color:#64748b;">' + collectionLabels[collectionStatus] + '</span>' : '';
     return '<tr>' +
         '<td class="rt-name"><a href="' + detailUrl + '">' + esc(retailerName) + '</a>' + batchHtml + '</td>' +
         '<td>' + retailCount(row.main).toLocaleString() + '</td>' +
         '<td>' + retailCount(row.bsr).toLocaleString() + '</td>' +
         (showExtra ? '<td class="rt-extra">' + retailCount(row.extra).toLocaleString() + '</td>' : '') +
         '<td class="rt-total">' + retailCount(row.total).toLocaleString() + '</td>' +
-        '<td class="rt-status ct-nc">' + getStatusBadge(status) + '</td>' +
+        '<td class="rt-status ct-nc">' + getStatusBadge(status) + collectionHtml + '</td>' +
     '</tr>';
 }
 
@@ -180,11 +184,13 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
 
     // 리테일러별 status 매핑 (slot.retailers에서 가져옴)
     var statusMap = {};
+    var collectionStatusMap = {};
     var slotRetailerSet = {};
     if (slot.retailers) {
         slot.retailers.forEach(function(r) {
             var retailerKey = String(r.retailer || '').toLowerCase();
             statusMap[retailerKey] = r.status;
+            collectionStatusMap[retailerKey] = r.collection_status;
             slotRetailerSet[retailerKey] = true;
         });
     }
@@ -214,10 +220,10 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             if (showExtra) totals.extra += retailCount(row.extra);
             totals.total += retailCount(row.total);
             var retailerKey = String(ret.retailer).toLowerCase();
-            var rStatus = statusMap[retailerKey] || 'PENDING';
+            var rStatus = statusMap[retailerKey] || ret.status || (retailerKey === 'homedepot' ? 'UNASSESSED' : 'PENDING');
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row, rStatus,
-                showExtra, ret.batch_id
+                showExtra, ret.batch_id, collectionStatusMap[retailerKey] || ret.collection_status
             );
             renderedRows += 1;
         });
@@ -239,7 +245,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             totals.total += retailCount(row.total);
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row,
-                ret.status || 'PENDING', showExtra, ret.batch_id
+                ret.status || 'PENDING', showExtra, ret.batch_id, ret.collection_status
             );
             renderedRows += 1;
         });
@@ -333,7 +339,7 @@ function buildSeaRetailFallbackCategories() {
                 retailer: retailerName,
                 count: retailCount(summaryRetailer && summaryRetailer.total),
                 batch_id: summaryRetailer && summaryRetailer.batch_id || '',
-                status: 'PENDING',
+                status: retailerName === 'HomeDepot' ? 'UNASSESSED' : 'PENDING',
                 items: []
             };
         });
@@ -386,6 +392,7 @@ function renderRetailCheck(check, checkIdx) {
     const pmRetailerTimes = pmRetailerStarts.map(function(item) {
         return item[0] + ' ' + item[1] + ' 시작';
     }).join(' · ');
+    const homedepotWindow = timeInfo.homedepot || { start_kst: '13:00', end_kst: '14:00' };
 
     const timeHeader = '<div class="time-slot-item" style="margin-bottom: 16px;">' +
         '<div class="time-slot-header" style="cursor: default;">' +
@@ -396,6 +403,7 @@ function renderRetailCheck(check, checkIdx) {
                         ' / 수집 완료 시간 KST ' + amCompletion + ' (' + amRetailerTimes + ')</span>' +
                     '<span class="utc">[오후] US(NY) ' + pmUsTime + ' ' + kstLabel + ' ' + pmInfo.kst +
                         ' / 수집 완료 시간 KST ' + pmCompletion + ' (' + pmRetailerTimes + ')</span>' +
+                    '<span class="utc">HomeDepot REF·LDY: KST ' + esc(homedepotWindow.start_kst) + ' 시작 / ' + esc(homedepotWindow.end_kst) + ' 완료 예정 · 최소 수집 건수 미판정</span>' +
                 '</span>' +
             '</div>' +
         '</div>' +

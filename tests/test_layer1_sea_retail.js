@@ -248,8 +248,8 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260915-perf1"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260915-perf1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260918-homedepot1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260918-homedepot1"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260915-perf1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=13"));
@@ -258,7 +258,43 @@ function categoryFromSummary(key) {
     assert.ok(!youtubeSource.includes("(offset_days="));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/youtube.js' %}?v=20260901-1"));
 
-    console.log('Layer1 SEA retail frontend tests passed');
+    const commonSource = fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/layer1-common.js', 'utf8');
+    vm.runInNewContext(commonSource.slice(commonSource.indexOf('function getStatusBadge('),
+        commonSource.indexOf('function formatLocalDate(')), context);
+    assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
+    const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
+    assert(baseSource.includes("layer1-common.js' %}?v=15"));
+    assert(baseSource.includes("retail-query.js' %}?v=4"));
+    assert.strictEqual(context.getStatusClass('UNASSESSED'), 'pending');
+    assert.strictEqual(context.getRetailerStatusClass('UNASSESSED'), 'pending');
+    for (const [product, total] of [['ref', 300], ['ldy', 265]]) {
+        summaries[product].summary.push({retailer: 'HomeDepot', total, batch_id: 'h-batch',
+            status: 'UNASSESSED', collection_status: 'COLLECTING',
+            rows: [{time_slot: '일일', main: total, bsr: 100, total, batch_id: 'h-batch'}]});
+        summaries[product].totals.grand_total += total;
+        const cat = categoryFromSummary(product);
+        cat.unassessed_retailers = ['HomeDepot'];
+        cat.time_slots[0].retailers.at(-1).status = 'UNASSESSED';
+        const html = context.renderRetailCategory(cat, 0, 0);
+        assert(html.includes('retailer=HomeDepot'));
+        assert(html.includes('category=' + product.toUpperCase()));
+        assert(html.includes('h-batch'));
+        assert(html.includes('최소 건수 미판정 포함'));
+        assert(html.includes('미판정'));
+        assert(html.includes('수집 시간'));
+        assert(html.includes('>' + total + '</td>'));
+        assert(html.includes('>100</td>'));
+        const query = context.L1.retailQuery.buildQuery('SEA', product.toUpperCase(), 'HomeDepot', 'h-batch', '2026-08-19');
+        assert(query.includes('public.' + product + '_retail_com'));
+        assert(query.includes("LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10) = '2026-08-19'"));
+        assert(!query.includes('page_type'));
+        assert(query.includes("batch_id = 'h-batch'"));
+    }
+    const fallback = context.buildSeaRetailFallbackCategories();
+    assert(fallback[1].time_slots[0].retailers.some(r => r.retailer === 'HomeDepot' && r.status === 'UNASSESSED'));
+    assert(!fallback[0].time_slots[0].retailers.some(r => r.retailer === 'HomeDepot'));
+    assert(fallbackHtml.includes('KST 13:00 시작 / 14:00 완료 예정'));
+    console.log('Layer1 SEA retail and HomeDepot frontend tests passed');
 })().catch(function(error) {
     console.error(error);
     process.exitCode = 1;

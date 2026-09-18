@@ -184,12 +184,12 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         ))
 
         ref = check['categories'][1]
-        self.assertEqual(['Bestbuy', 'Lowes'], [
+        self.assertEqual(['Bestbuy', 'Lowes', 'HomeDepot'], [
             retailer['retailer']
             for retailer in ref['time_slots'][0]['retailers']
         ])
         self.assertTrue(all(
-            retailer['batch_id']
+            retailer['batch_id'] or retailer['status'] == 'UNASSESSED'
             for retailer in ref['time_slots'][0]['retailers']
         ))
 
@@ -227,7 +227,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            ['Bestbuy', 'Lowes'],
+            ['Bestbuy', 'Lowes', 'HomeDepot'],
             [
                 retailer['retailer']
                 for retailer in check['categories'][1]['time_slots'][0][
@@ -373,7 +373,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             for category in result['check']['categories']
         ))
         self.assertTrue(all(
-            retailer['status'] == 'COLLECTING'
+            retailer['status'] == ('UNASSESSED' if retailer['retailer'] == 'HomeDepot' else 'COLLECTING')
             for category in result['check']['categories']
             for retailer in category['time_slots'][0]['retailers']
         ))
@@ -406,7 +406,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             for category in result['check']['categories']
         ))
         self.assertTrue(all(
-            retailer['status'] == 'COLLECTING'
+            retailer['status'] == ('UNASSESSED' if retailer['retailer'] == 'HomeDepot' else 'COLLECTING')
             for category in result['check']['categories']
             for retailer in category['time_slots'][0]['retailers']
         ))
@@ -438,7 +438,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             for category in result['check']['categories']
         ))
         self.assertTrue(all(
-            retailer['status'] == 'OK'
+            retailer['status'] == ('UNASSESSED' if retailer['retailer'] == 'HomeDepot' else 'OK')
             for category in result['check']['categories']
             for retailer in category['time_slots'][0]['retailers']
         ))
@@ -470,7 +470,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            ['Bestbuy', 'Lowes'],
+            ['Bestbuy', 'Lowes', 'HomeDepot'],
             [
                 retailer['retailer']
                 for retailer in categories[1]['time_slots'][0]['retailers']
@@ -565,7 +565,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         self.assertEqual('', result['extra_rank_name'])
         self.assertEqual(623, result['totals']['grand_total'])
         self.assertEqual(
-            ['bestbuy-ref', 'lowes-ref'],
+            ['bestbuy-ref', 'lowes-ref', ''],
             [row['batch_id'] for row in result['summary']],
         )
 
@@ -640,6 +640,78 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         ), raw['columns'])
         raw_call = next(call for call in repo.calls if call[0] == 'appliance_raw')
         self.assertEqual(date(2026, 8, 19), raw_call[-1])
+
+
+class HomeDepotLayer1Tests(unittest.TestCase):
+    def test_counts_never_imply_a_minimum_threshold_or_failure(self):
+        for count in (0, 1, 265, 1000):
+            with self.subTest(count=count):
+                repo = SeaLayer1ServiceTests()._all_ok_repo()
+                for table in ('public.ref_retail_com', 'public.ldy_retail_com'):
+                    repo.appliance_rows[table].append(('HomeDepot', count, count, min(100, count), 0, 'h-batch'))
+                service = load_service(repo)
+                result = service.get_layer1_stats(object(), date(2026, 9, 19), datetime(2026, 9, 19, 15))
+                self.assertEqual([], result['failed_items'])
+                self.assertEqual(2100 + count * 2, result['check']['actual'])
+                self.assertEqual(2100, result['check']['expected'])
+                for category in result['check']['categories'][1:]:
+                    row = category['time_slots'][0]['retailers'][-1]
+                    self.assertEqual('HomeDepot', row['retailer'])
+                    self.assertEqual('UNASSESSED', row['status'])
+                    self.assertIsNone(row['criteria'])
+                    self.assertIsNone(row['expected'])
+                    self.assertIsNone(row['ok_threshold'])
+                    self.assertEqual(['HomeDepot'], category['unassessed_retailers'])
+                    self.assertEqual('2026-09-18', category['source_date'])
+
+    def test_schedule_uses_inspection_day_kst_without_changing_assessment(self):
+        from datetime import timezone, timedelta
+        service = load_service(RepoStub())
+        for now, expected in (
+            (datetime(2026, 9, 19, 12, 59), 'PENDING'),
+            (datetime(2026, 9, 19, 13), 'COLLECTING'),
+            (datetime(2026, 9, 19, 13, 59), 'COLLECTING'),
+            (datetime(2026, 9, 19, 14), 'ENDED'),
+            (datetime(2026, 9, 19, 4, tzinfo=timezone.utc), 'COLLECTING'),
+            (datetime(2026, 9, 20, 1, tzinfo=timezone(timedelta(hours=9))), 'ENDED'),
+        ):
+            result = service.get_layer1_stats(object(), date(2026, 9, 19), now)
+            row = result['check']['categories'][1]['time_slots'][0]['retailers'][-1]
+            self.assertEqual(expected, row['collection_status'])
+            self.assertEqual('UNASSESSED', row['status'])
+
+    def test_layer1_extension_does_not_change_other_layers_or_tv(self):
+        service = load_service(RepoStub())
+        for key in ('ref', 'ldy'):
+            self.assertIn('HomeDepot', service._get_layer1_source(key)['retailers'])
+            self.assertNotIn('HomeDepot', sea_retail.get_sea_retail_source(key)['retailers'])
+        self.assertNotIn('HomeDepot', service._get_layer1_source('tv')['retailers'])
+
+    def test_summary_detail_and_raw_use_same_d_minus_one_batch(self):
+        repo = RepoStub()
+        service = load_service(repo)
+        @contextmanager
+        def connection():
+            yield object(), object()
+        service.dx_connection = connection
+        for product, count in (('ref', 300), ('ldy', 265)):
+            table = f'public.{product}_retail_com'
+            repo.summary_counts[(table, 'HomeDepot')] = (count, 100, 0, count, 'h-batch')
+            repo.detail_rows = [('HomeDepot', count, count, 100, count, 'h-batch')]
+            repo.raw_batch = 'h-batch'
+            repo.raw_rows = [(1, 'HomeDepot', None, 'item', 1, 1, '2026-09-18T01:59:39+00:00', 'h-batch')]
+            summary = service.get_retail_summary(date(2026, 9, 19), product)
+            row = summary['summary'][-1]
+            self.assertEqual(count, row['total'])  # BSR overlaps MAIN; do not add it twice.
+            self.assertEqual('UNASSESSED', row['status'])
+            detail = service.get_retail_detail(date(2026, 9, 19), product)
+            raw = service.get_retailer_raw_data(product, 'homedepot', '일일', date(2026, 9, 19))
+            for data in (summary, detail, raw):
+                self.assertEqual('2026-09-18', data['source_date'])
+                self.assertEqual(-1, data['offset_days'])
+            self.assertEqual('h-batch', raw['batch_id'])
+            self.assertEqual(repo.raw_rows, raw['data'])
+            self.assertEqual(count, detail['total_products'])
 
 
 if __name__ == '__main__':

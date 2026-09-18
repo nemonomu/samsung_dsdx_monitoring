@@ -207,6 +207,7 @@ function getStatusBadge(status) {
         'REVIEW': { class: 'warning', text: '확인필요' },
         'CRITICAL': { class: 'critical', text: '심각' },
         'PENDING': { class: 'pending', text: '대기중' },
+        'UNASSESSED': { class: 'pending', text: '미판정' },
         'COLLECTING': { class: 'collecting', text: '수집중' },
         'ANALYZING': { class: 'collecting', text: '분석중' }
     };
@@ -215,11 +216,13 @@ function getStatusBadge(status) {
 }
 
 function getStatusClass(status) {
+    if (status === 'UNASSESSED') return 'pending';
     if (status === 'REVIEW') return 'warning';
     return status ? status.toLowerCase() : 'pending';
 }
 
 function getRetailerStatusClass(status) {
+    if (status === 'UNASSESSED') return 'pending';
     var classMap = { 'OK': 'ok', 'WARNING': 'warning', 'REVIEW': 'warning', 'CRITICAL': 'critical', 'PENDING': 'pending', 'COLLECTING': 'collecting' };
     return classMap[status] || 'ok';
 }

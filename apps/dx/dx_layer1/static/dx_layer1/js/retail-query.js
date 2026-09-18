@@ -34,6 +34,9 @@
             ? config.dateColumn + ' >= (' + literal(day) + "::date::timestamp AT TIME ZONE 'Asia/Seoul')"
             : config.dateColumn + ' >= ' + literal(day);
         var accountName = retailer.trim().toLowerCase();
+        if (country === 'SEA' && product !== 'TV' && accountName === 'homedepot') {
+            dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
+        }
         // SEDA cards display "Casas Bahia"; the collected account is CasasBahia.
         if (country === 'SEDA' && accountName.replace(/\s+/g, '') === 'casasbahia') {
             accountName = 'casasbahia';

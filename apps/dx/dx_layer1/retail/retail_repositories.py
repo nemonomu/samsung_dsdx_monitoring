@@ -38,6 +38,15 @@ def _normalized_page_type(alias=''):
     return f"LOWER(BTRIM(CAST({prefix}page_type AS TEXT)))"
 
 
+def _appliance_page_scope(retailer, *, anchor=False):
+    # SEA HomeDepot stores MAIN/BSR ranks together, with no page_type.
+    if str(retailer or '').strip().lower() == 'homedepot':
+        return 'TRUE'
+    if anchor:
+        return f"{_normalized_page_type()} = 'main'"
+    return f"{_normalized_page_type()} IN ('main', 'bsr')"
+
+
 def query_retail_counts(cursor, table_name, date_field, extra_rank_field,
                         slot_start, slot_end, daily_retailers=None):
     """Return inclusive SEA TV collection counts for one source-date range."""
@@ -132,14 +141,14 @@ def get_retailer_raw_data_list(cursor, table_name, columns, retailer,
 
 def get_latest_appliance_main_batch(cursor, table_name, date_column,
                                     target_date, retailer):
-    """Return the exact-date latest MAIN anchor batch for one retailer."""
+    """Return the latest daily batch; HomeDepot has no MAIN page marker."""
 
     cursor.execute(f"""
         SELECT batch_id
         FROM {table_name}
         WHERE {_text_date_condition(date_column)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
-          AND {_normalized_page_type()} = 'main'
+          AND {_appliance_page_scope(retailer, anchor=True)}
         ORDER BY id DESC
         LIMIT 1
     """, (str(target_date)[:10], retailer))
@@ -149,7 +158,7 @@ def get_latest_appliance_main_batch(cursor, table_name, date_column,
 
 def query_appliance_counts_by_retailer(cursor, table_name, date_column,
                                        target_date, retailer):
-    """Return MAIN+BSR counts from one retailer's latest MAIN batch."""
+    """Count ranks and distinct rows in the retailer's latest daily batch."""
 
     batch_id = get_latest_appliance_main_batch(
         cursor, table_name, date_column, target_date, retailer,
@@ -167,7 +176,7 @@ def query_appliance_counts_by_retailer(cursor, table_name, date_column,
         WHERE {_text_date_condition(date_column)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND batch_id IS NOT DISTINCT FROM %s
-          AND {_normalized_page_type()} IN ('main', 'bsr')
+          AND {_appliance_page_scope(retailer)}
     """, (str(target_date)[:10], retailer, batch_id))
     row = cursor.fetchone() or (0, 0, 0, 0)
     return (
@@ -215,7 +224,7 @@ def get_appliance_retail_detail_list(cursor, table_name, date_column,
             WHERE {_text_date_condition(date_column)}
               AND {_normalized_account()} = LOWER(BTRIM(%s))
               AND batch_id IS NOT DISTINCT FROM %s
-              AND {_normalized_page_type()} IN ('main', 'bsr')
+              AND {_appliance_page_scope(retailer)}
         """, (str(target_date)[:10], retailer, batch_id))
         row = cursor.fetchone() or (0, 0, 0, 0)
         results.append((
@@ -240,7 +249,7 @@ def get_appliance_raw_data_list(cursor, table_name, columns, retailer,
         WHERE {_text_date_condition(date_column)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND batch_id IS NOT DISTINCT FROM %s
-          AND {_normalized_page_type()} IN ('main', 'bsr')
+          AND {_appliance_page_scope(retailer)}
         ORDER BY id DESC
         LIMIT 500
     """, (str(target_date)[:10], retailer, batch_id))
