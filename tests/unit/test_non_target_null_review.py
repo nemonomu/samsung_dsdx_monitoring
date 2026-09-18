@@ -35,6 +35,37 @@ def state(rows, decisions, day=DAY, manual=None, columns=COLUMNS, context=CONTEX
 
 
 class NonTargetNullReviewTests(unittest.TestCase):
+    def test_sem_item_1195391749_inherits_sku_exclusion_for_appliance_fields(self):
+        context = dict(table_name='dx_sem.dx_sem_ldy_retail_com', country='SEM',
+                       product_line='LDY', retailer='Liverpool')
+        previous = record(id=3349, item='1195391749',
+                          retailer_sku_name='Lavadora con luz y sonido juego de rol para niños',
+                          ldy_capacity=None, ldy_loading_type=None)
+        basis = captured_evidence(context, record=previous, column='sku', reason=evidence.NON_TARGET_REASON)
+        basis.update(inspection_date=date(2026, 9, 17), auto_apply_from=date(2026, 9, 18),
+                     reviewed_at=datetime(2026, 9, 17, 10, 41, tzinfo=evidence.KOREA))
+        target = dict(previous, id=3649)
+        columns = ['ldy_capacity', 'ldy_loading_type']
+        cursor = ScriptedCursor([{'fetchall': [basis]}])
+        loaded = evidence.load_evidence(cursor, inspection_date=date(2026, 9, 18),
+                                        records=[target], columns=columns, **context)
+        sql, params = cursor.calls[0]
+        self.assertIn('UNNEST(%s::text[], %s::text[])', sql)
+        self.assertNotIn('1195391749', sql)
+        self.assertIn(['1195391749'], params)
+        reviews, stats, _ = state([target], loaded, day=date(2026, 9, 18), columns=columns, context=context)
+        self.assertEqual(2, stats['auto_reviewed_count'])
+        for field in columns:
+            self.assertEqual('sku', reviews[f'3649_{field}']['source_column'])
+
+    def test_product_exclusion_carries_specs_in_all_six_countries(self):
+        for country in evidence.COUNTRIES:
+            context = dict(CONTEXT, country=country)
+            basis = captured_evidence(context, record=record(), column='sku', reason=evidence.NON_TARGET_REASON)
+            reviews, stats, _ = state([record(id=43)], [basis], day=date(2026, 9, 13), context=context)
+            self.assertEqual({'43_sku', '43_screen_size', '43_model_year'}, set(reviews))
+            self.assertEqual(3, stats['auto_reviewed_count'])
+
     def test_same_collection_links_specs_but_six_metrics_remain_findings(self):
         row = record()
         basis = decision(row)
@@ -69,12 +100,57 @@ class NonTargetNullReviewTests(unittest.TestCase):
                     reviews, _, _ = state([row], [], manual=legacy, columns=[column])
                     self.assertEqual({}, reviews)
 
-    def test_non_metric_carry_forward_stays_field_specific(self):
+    def test_non_target_carries_across_fields_in_next_collection(self):
         original = record()
         reviews, _, _ = state([record(id=43)], [decision(original)], day=date(2026, 9, 13))
-        self.assertEqual({'43_sku'}, set(reviews))
+        self.assertEqual({'43_sku', '43_screen_size', '43_model_year'}, set(reviews))
         self.assertTrue(reviews['43_sku']['auto_applied'])
         self.assertNotIn('same_record_applied', reviews['43_sku'])
+        self.assertEqual('sku', reviews['43_screen_size']['source_column'])
+        self.assertEqual('수집 대상 제외 자동확인', reviews['43_screen_size']['application_type'])
+
+    def test_carry_forward_requires_unchanged_product_and_active_manual_basis(self):
+        original = record()
+        basis = decision(original)
+        for change in ({'item': 'different'}, {'retailer_sku_name': 'changed'},
+                       {'item': None}, {'retailer_sku_name': None}):
+            reviews, _, _ = state([record(id=43, **change)], [basis], day=date(2026, 9, 13))
+            self.assertEqual({}, reviews)
+        for change in ({'revoked_at': datetime(2026, 9, 13, 1, tzinfo=evidence.KOREA)},
+                       {'reason': '상품페이지 내 항목 부재'},
+                       {'auto_apply_from': date(2026, 9, 14)}):
+            reviews, _, _ = state([record(id=43)], [dict(basis, **change)],
+                                   day=date(2026, 9, 13), columns=['screen_size'])
+            self.assertEqual({}, reviews)
+        # Do not resurrect an older product exclusion after a newer decision/cancellation.
+        for reason in (evidence.NON_TARGET_REASON, '상품페이지 내 항목 부재'):
+            newer = dict(basis, id=999, reason=reason,
+                         reviewed_at=datetime(2026, 9, 12, 23, tzinfo=evidence.KOREA),
+                         revoked_at=datetime(2026, 9, 13, 1, tzinfo=evidence.KOREA))
+            reviews, _, _ = state([record(id=43)], [basis, newer],
+                                   day=date(2026, 9, 13), columns=['screen_size'])
+            self.assertEqual({}, reviews)
+
+    def test_non_target_spec_propagation_cannot_override_revoked_target_or_cross_scope(self):
+        original = record()
+        basis = decision(original)
+        revoked = decision(original, column='screen_size', id=998,
+                           revoked_at=datetime(2026, 9, 13, 1, tzinfo=evidence.KOREA))
+        reviews, _, _ = state([record(id=43)], [basis, revoked],
+                               day=date(2026, 9, 13), columns=['screen_size'])
+        self.assertEqual({}, reviews)
+        for scope in ({'country': 'SEG'}, {'product_line': 'TV'},
+                      {'table_name': 'other'}, {'retailer': 'Bestbuy'}):
+            reviews, _, _ = state([record(id=43)], [basis], day=date(2026, 9, 13),
+                                   context=dict(CONTEXT, **scope), columns=['screen_size'])
+            self.assertEqual({}, reviews)
+
+    def test_metric_based_exclusion_cannot_authorize_other_specifications(self):
+        original = record()
+        for column in METRICS:
+            reviews, _, _ = state([record(id=43)], [decision(original, column)],
+                                   day=date(2026, 9, 13), columns=['screen_size'])
+            self.assertEqual({}, reviews)
 
     def test_new_batch_and_other_country_retailer_or_table_do_not_link(self):
         row = record()

@@ -440,6 +440,9 @@ function getCellHtml(row, col, tableParam) {
                 basisHtml += '<span class="null-review-note">같은 검수일·수집 건의 NULL 확인 및 크로스필드 제외'
                     + (review.source_column ? ' · 최초 항목: ' + esc(review.source_column) : '')
                     + '</span>';
+            } else if (review.reason === '수집 대상 제품 아님' && review.source_column && !review.same_record_applied) {
+                basisHtml += '<span class="null-review-note">동일 상품의 이전 수집 대상 제외 확인 적용 · 최초 항목: '
+                    + esc(review.source_column) + ' · 금액·별점·별점 수·리뷰 수 제외</span>';
             } else if (review.reason === '수집 대상 제품 아님'
                 && (review.same_record_applied || !review.auto_applied)) {
                 basisHtml += '<span class="null-review-note">같은 검수일·수집 건의 NULL 항목 연동 · 금액·별점·별점 수·리뷰 수 제외'
@@ -1286,8 +1289,8 @@ function _showReviewDialog(callback, options) {
         + '<select class="memo-dialog-select" id="review-reason-select"><option value="">불러오는 중...</option></select></div>'
         + (detailViewState.type === 'null' && detailViewState.supportsNullAutoReview
             ? '<p class="null-review-dialog-note">상품페이지 없음은 같은 검수일·수집 건의 다른 NULL 항목을 자동 확인하고 모든 크로스필드 검증에서 제외합니다.</p>'
-                + '<p class="null-review-dialog-note">수집 대상 제품 아님은 같은 검수일·수집 건의 다른 NULL 항목을 자동 확인합니다. 금액·별점·별점 수·리뷰 수의 NULL은 이 사유로 확인할 수 없으며 이상치로 남습니다.</p>'
-                + '<p class="null-review-dialog-note">수집 대상 제품 아님, 상품페이지 내 항목 부재, 해당값 정상 확인은 같은 국가·리테일러·제품군의 상품·NULL 항목·값이 일치할 때 실제 확인일 다음 검수일부터 자동 적용됩니다. item·제품명 정보가 부족한 건은 이번 검수만 수동확인합니다.</p>' : '')
+                + '<p class="null-review-dialog-note">수집 대상 제품 아님은 같은 검수일·수집 건의 다른 NULL 항목을 자동 확인합니다. 같은 국가·리테일러·제품군의 item·제품명이 일치하면 실제 확인일 다음 검수일부터 다른 NULL 항목에도 이어집니다. 금액·별점·별점 수·리뷰 수의 NULL은 이 사유로 확인할 수 없으며 이상치로 남습니다.</p>'
+                + '<p class="null-review-dialog-note">상품페이지 내 항목 부재, 해당값 정상 확인은 같은 국가·리테일러·제품군의 상품·NULL 항목·값이 일치할 때 실제 확인일 다음 검수일부터 자동 적용됩니다. item·제품명 정보가 부족한 건은 이번 검수만 수동확인합니다.</p>' : '')
         + '<div class="memo-dialog-field"><label class="memo-dialog-label">메모'
         + (memoRequired ? ' <span style="color:#dc2626;">*</span>' : '')
         + '</label>'

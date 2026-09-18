@@ -50,12 +50,14 @@ class _EvidenceCollection(list):
         self.by_subject = {}
         self.by_record = {}
         self.by_page = {}
+        self.by_product = {}
         for row in self:
             self.by_subject.setdefault(row.get('subject_key'), []).append(row)
             key = (str(row.get('record_id')), row.get('column_name'),
                    str(row.get('inspection_date')))
             self.by_record.setdefault(key, []).append(row)
             self.by_page.setdefault(str(row.get('record_id')), []).append(row)
+            self.by_product.setdefault((row.get('item'), row.get('product_name')), []).append(row)
 
 
 def _date(value):
@@ -263,10 +265,12 @@ def save_manual_evidence(
 def load_evidence(
         cursor, *, inspection_date, records, columns,
         table_name, country, product_line, retailer):
-    """Load only subjects present in this collection, without a time expiry.
+    """Load current subjects and product decisions, without a time expiry.
 
     Do not filter revoked or non-eligible approvals here: a newer revoked or
     differently justified manual review must prevent fallback to an older one.
+    Product decisions must also be available when their original field is not
+    part of the current detail query (for example, SKU versus capacity).
     """
     if not uses_new_policy(inspection_date, country):
         return []
@@ -279,6 +283,9 @@ def load_evidence(
         if (key := _subject_key(record, column, **context)) is not None
     })
     record_ids = sorted({int(record['id']) for record in records if record.get('id') is not None})
+    products = sorted({(_text(row.get('item')), _text(row.get('retailer_sku_name')))
+                       for row in records
+                       if _text(row.get('item')) and _text(row.get('retailer_sku_name'))})
     if not columns or not (subjects or record_ids):
         return []
     day = _date(inspection_date)
@@ -297,6 +304,9 @@ def load_evidence(
                   subject_key = ANY(%s)
                   OR (inspection_date = %s AND record_id = ANY(%s)
                       AND (column_name = ANY(%s) OR reason = ANY(%s)))
+                  OR (item, product_name) IN (
+                      SELECT * FROM UNNEST(%s::text[], %s::text[])
+                  )
               )
         ), latest AS (
             SELECT DISTINCT ON (subject_key) {', '.join(_EVIDENCE_COLUMNS)}
@@ -312,6 +322,7 @@ def load_evidence(
           _text(product_line).upper(), _text(retailer).lower(), day, end_time,
           day, record_ids, list(RECORD_REVIEW_REASONS),
           subjects, day, record_ids, columns, list(RECORD_REVIEW_REASONS),
+          [item for item, _ in products], [name for _, name in products],
           day, record_ids, columns, list(RECORD_REVIEW_REASONS)))
     return _EvidenceCollection(_as_dict(row) for row in cursor.fetchall())
 
@@ -370,7 +381,55 @@ def linked_null_review(record, column, inspection_date, evidence, **context):
         )
         if review and review['source_column'] != column:
             return review
-    return None
+    return _carried_non_target_review(record, column, inspection_date, evidence, **context)
+
+
+def _carried_non_target_review(record, column, inspection_date, evidence, **context):
+    """Carry a product exclusion to other NULL specs in subsequent collections."""
+    day = _date(inspection_date)
+    if (not uses_new_policy(day, context['country']) or column not in record
+            or is_non_target_metric(column, NON_TARGET_REASON)
+            or not _subject_key(record, column, **context)):
+        return None
+    product = (_text(record.get('item')), _text(record.get('retailer_sku_name')))
+    entries = evidence.by_product.get(product, ()) if isinstance(evidence, _EvidenceCollection) else evidence
+    latest_by_column = {}
+    order = lambda entry: (_korean_time(entry['reviewed_at']), int(entry['id']))
+    for raw in entries:
+        entry = _as_dict(raw)
+        source_column = entry.get('column_name')
+        reviewed_on = _date(entry.get('inspection_date'))
+        if (entry.get('policy_version') != POLICY_VERSION
+                or (entry.get('item'), entry.get('product_name')) != product
+                or _table_name(entry.get('table_name')) != _table_name(context['table_name'])
+                or entry.get('country') != _text(context['country']).upper()
+                or entry.get('product_line') != _text(context['product_line']).upper()
+                or _text(entry.get('retailer')).casefold() != _text(context['retailer']).casefold()
+                or entry.get('subject_key') != _subject_key(record, source_column, **context)
+                or not reviewed_on or not POLICY_START <= reviewed_on <= day
+                or not POLICY_START <= _korean_time(entry['reviewed_at']).date() <= day):
+            continue
+        previous = latest_by_column.get(source_column)
+        if previous is None or order(entry) > order(previous):
+            latest_by_column[source_column] = entry
+    # A direct decision on the target cell must not be bypassed by another field.
+    target = latest_by_column.get(column)
+    if target and (target.get('reason') != NON_TARGET_REASON or
+                   (target.get('revoked_at') and _korean_time(target['revoked_at']).date() <= day)):
+        return None
+    candidates = [entry for source_column, entry in latest_by_column.items()
+                  if source_column != column and entry.get('reason') == NON_TARGET_REASON
+                  and not is_non_target_metric(source_column, NON_TARGET_REASON)
+                  and _date(entry.get('auto_apply_from')) is not None
+                  and day >= _date(entry['auto_apply_from'])
+                  and day > _date(entry['inspection_date'])
+                  and not (entry.get('revoked_at') and _korean_time(entry['revoked_at']).date() <= day)]
+    if not candidates:
+        return None
+    original = max(candidates, key=order)
+    return {**_metadata(original, automatic=True),
+            'source_column': original['column_name'],
+            'application_type': '수집 대상 제외 자동확인'}
 
 
 def exclude_page_absent_records(cursor, inspection_date, records, *,
