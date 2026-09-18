@@ -9,6 +9,7 @@ from apps.common.retail_columns import get_editable_columns
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.sea_dates import appliance_source_date_sql, appliance_page_scope_sql
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_TABLE_TO_PRODUCT_LINE,
@@ -156,16 +157,15 @@ def _select_sea_record(
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
-          AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
-          AND UPPER(TRIM(COALESCE(source.page_type, '')))
-              IN ('MAIN', 'BSR')
+          AND ({appliance_source_date_sql('source.' + date_column, 'source.account_name')}) = %s
+          AND {appliance_page_scope_sql('source')}
           AND source.batch_id = (
               SELECT anchor.batch_id
               FROM {table_name} anchor
-              WHERE LEFT(TRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+              WHERE ({appliance_source_date_sql('anchor.' + date_column, 'anchor.account_name')}) = %s
                 AND LOWER(TRIM(anchor.account_name)) =
                     LOWER(TRIM(source.account_name))
-                AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+                AND {appliance_page_scope_sql('anchor', anchor=True)}
               ORDER BY anchor.id DESC
               LIMIT 1
           )

@@ -45,6 +45,7 @@ config/create_admin.py
 !sql/setup_sem_liverpool_monitoring.sql
 !sql/setup_sem_homedepot_monitoring.sql
 !sql/setup_sea_homedepot_layer2.sql
+!sql/setup_sea_homedepot_crossfield.sql
 !sql/setup_seda_layer2_null.sql
 !sql/create_null_review_evidence.sql
 

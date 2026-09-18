@@ -5,6 +5,7 @@ from apps.common import (
     inspection_dates,
     retail_validation,
     sea_retail,
+    seg_retail,
     siel_retail,
     tse_retail,
 )
@@ -28,6 +29,7 @@ services = load_module(
         'apps.common.inspection_dates': inspection_dates,
         'apps.common.retail_validation': retail_validation,
         'apps.common.sea_retail': sea_retail,
+        'apps.common.seg_retail': seg_retail,
         'apps.common.siel_retail': siel_retail,
         'apps.common.tse_retail': tse_retail,
     },

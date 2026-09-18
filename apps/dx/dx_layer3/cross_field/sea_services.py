@@ -2,7 +2,8 @@
 
 Database rows in ``monitoring_validation_rules`` enable and describe rules.
 Validation itself stays allow-listed here so a stored query cannot widen the
-exact D-1/latest-MAIN-batch scope used by the SEA monitoring contract.
+exact D-1/latest-batch scope used by the SEA monitoring contract. HomeDepot
+uses New York source dates and accepts batches without a page_type marker.
 """
 
 from collections import OrderedDict
@@ -15,12 +16,25 @@ from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_columns import get_editable_columns
 from apps.common.sea_retail import get_sea_retail_source
+from apps.common.sea_dates import (
+    appliance_source_date_sql, appliance_source_date_value, appliance_page_scope_sql,
+)
 
 
 SEA_PRODUCT_KEYS = {
     'sea_ref': 'ref',
     'sea_ldy': 'ldy',
 }
+
+HOMEDEPOT_RULE_KEYS = frozenset({
+    'review_count_match', 'rating_count_presence', 'final_original_price',
+    'savings_missing', 'original_missing', 'savings_amount_match', 'final_missing',
+})
+
+
+def _retailer_name(value):
+    text = str(value or '').strip()
+    return 'HomeDepot' if text.casefold() == 'homedepot' else text.title()
 
 LOWES_REVIEW_ISSUES = OrderedDict((
     ('body_missing', '리뷰 수 있음 · 리뷰본문 없음'),
@@ -130,6 +144,9 @@ SEA_RULE_SPECS = OrderedDict((
         'error_message': '최종가와 savings가 있는데 original_sku_price가 없습니다.',
     }),
     ('savings_amount_match', {
+        'guide_descriptions': {
+            'HomeDepot': 'savings의 $금액 (할인율%) 중 금액 부분을 추출해 원가-최종가와 센트 단위로 비교합니다. 표시 할인율은 이 유형에서 비교하지 않습니다.',
+        },
         'guide_description': '최종가·원가·savings가 모두 숫자일 때 원가-최종가와 savings가 다르면 이상입니다.',
         'detail_name': '할인 금액 일치',
         'field1': 'savings',
@@ -241,6 +258,14 @@ def parse_sea_money(value):
         return None
 
 
+def parse_sea_savings(value, retailer):
+    if retailer != 'HomeDepot':
+        return parse_sea_money(value)
+    match = re.fullmatch(r'\$((?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)(?:\.[0-9]{1,2})?) \((?:[0-9]|[1-9][0-9]|100)%\)',
+                         str(value or '').strip())
+    return parse_sea_money(match.group(1)) if match else None
+
+
 def _review_body_numbers(value):
     if not _has_value(value):
         return []
@@ -257,7 +282,7 @@ def _review_body_max(value):
 def _review_body_detail_fields(row, issue_code=None):
     numbers = _review_body_numbers(row.get('detailed_review_content'))
     review_count = parse_sea_number(row.get('count_of_reviews'))
-    retailer = str(row.get('account_name') or '').strip().title()
+    retailer = _retailer_name(row.get('account_name'))
 
     if retailer == 'Bestbuy' and review_count is not None and review_count > 0:
         expected = min(int(review_count), 20)
@@ -278,7 +303,7 @@ def _review_body_detail_fields(row, issue_code=None):
 
 def evaluate_lowes_review_body(row):
     """Return a non-critical Lowes review-body issue code, if any."""
-    retailer = str(row.get('account_name') or '').strip().title()
+    retailer = _retailer_name(row.get('account_name'))
     if retailer != 'Lowes':
         return None
 
@@ -320,8 +345,8 @@ def _recommendation_valid(retailer, review_count, value):
 def evaluate_sea_row(row):
     """Return canonical SEA rule keys failed by one REF/LDY source row."""
     errors = set()
-    retailer = str(row.get('account_name') or '').strip().title()
-    if retailer not in ('Bestbuy', 'Lowes'):
+    retailer = _retailer_name(row.get('account_name'))
+    if retailer not in ('Bestbuy', 'Lowes', 'HomeDepot'):
         return errors
 
     review_count = parse_sea_number(row.get('count_of_reviews'))
@@ -350,7 +375,7 @@ def evaluate_sea_row(row):
     savings_present = _has_value(row.get('savings'))
     final_price = parse_sea_money(row.get('final_sku_price'))
     original_price = parse_sea_money(row.get('original_sku_price'))
-    savings = parse_sea_money(row.get('savings'))
+    savings = parse_sea_savings(row.get('savings'), retailer)
 
     if final_price is not None and original_price is not None:
         if final_price >= original_price:
@@ -371,11 +396,11 @@ def evaluate_sea_row(row):
         # Lowes review/body combinations are review candidates, not anomalies.
         # They are evaluated separately by evaluate_lowes_review_body().
 
-        if not _recommendation_valid(
+        if retailer != 'HomeDepot' and not _recommendation_valid(
                 retailer, review_count, row.get('recommendation_intent')):
             errors.add('recommendation_intent')
 
-    if retailer in ('Bestbuy', 'Lowes'):
+    if retailer in ('Bestbuy', 'Lowes', 'HomeDepot'):
         if (
             final_price is not None
             and original_price is not None
@@ -396,7 +421,7 @@ def evaluate_sea_row(row):
         ):
             errors.add('savings_amount_match')
 
-    return errors
+    return errors & HOMEDEPOT_RULE_KEYS if retailer == 'HomeDepot' else errors
 
 
 def _rows_as_dicts(cursor):
@@ -423,6 +448,8 @@ def _resolve_rule_key(rule):
 
 
 def _retailer_supported(rule_key, retailer):
+    if _retailer_name(retailer) == 'HomeDepot':
+        return rule_key in HOMEDEPOT_RULE_KEYS
     supported = SEA_RULE_SPECS[rule_key]['retailers']
     retailer_key = str(retailer or '').strip().casefold()
     return retailer_key in {value.casefold() for value in supported}
@@ -539,7 +566,7 @@ def _date_contract(inspection_date, source):
 
 
 def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
-    """Load exact D-1 rows from each retailer's newest MAIN anchor batch."""
+    """Load exact D-1 rows from each retailer's newest eligible anchor batch."""
     source = _source_for_product_line(product_line)
     end_contract = _date_contract(inspection_date, source)
     start_contract = _date_contract(from_date or inspection_date, source)
@@ -550,17 +577,17 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
     cursor.execute(f"""
         WITH main_batches AS (
             SELECT
-                LEFT(TRIM(CAST({date_column} AS TEXT)), 10) AS source_date,
+                ({appliance_source_date_sql(date_column)}) AS source_date,
                 account_name,
                 batch_id,
                 MAX(id) AS max_id
             FROM {table_name}
-            WHERE LEFT(TRIM(CAST({date_column} AS TEXT)), 10)
+            WHERE ({appliance_source_date_sql(date_column)})
                       BETWEEN %s AND %s
-              AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes')
-              AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'
+              AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes', 'homedepot')
+              AND {appliance_page_scope_sql(anchor=True)}
               AND NULLIF(TRIM(batch_id), '') IS NOT NULL
-            GROUP BY LEFT(TRIM(CAST({date_column} AS TEXT)), 10),
+            GROUP BY ({appliance_source_date_sql(date_column)}),
                      account_name, batch_id
         ), ranked_batches AS (
             SELECT source_date, account_name, batch_id,
@@ -574,15 +601,15 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
         FROM {table_name} source
         JOIN ranked_batches anchor
           ON anchor.source_date =
-             LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)
+             ({appliance_source_date_sql('source.' + date_column, 'source.account_name')})
          AND LOWER(TRIM(anchor.account_name)) =
              LOWER(TRIM(source.account_name))
          AND anchor.batch_id = source.batch_id
          AND anchor.batch_rank = 1
-        WHERE LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)
+        WHERE ({appliance_source_date_sql('source.' + date_column, 'source.account_name')})
                   BETWEEN %s AND %s
-          AND UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR')
-        ORDER BY LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10),
+          AND {appliance_page_scope_sql('source')}
+        ORDER BY ({appliance_source_date_sql('source.' + date_column, 'source.account_name')}),
                  LOWER(TRIM(source.account_name)), source.id
     """, (start_date, end_date, start_date, end_date))
     return _rows_as_dicts(cursor)
@@ -653,7 +680,7 @@ def build_sea_crossfield_result(
 
     retailer_rows = {}
     for row in rows:
-        retailer = str(row.get('account_name') or 'Unknown').strip().title()
+        retailer = _retailer_name(row.get('account_name') or 'Unknown')
         row['account_name'] = retailer
         retailer_rows.setdefault(retailer, []).append(row)
 
@@ -666,7 +693,7 @@ def build_sea_crossfield_result(
         error_details = []
         review_details = []
         for row in rows:
-            retailer = str(row.get('account_name') or 'Unknown').strip().title()
+            retailer = _retailer_name(row.get('account_name') or 'Unknown')
             row_id = str(row.get('id'))
             if not _rule_applies_to_retailer(rule, retailer):
                 continue
@@ -698,7 +725,8 @@ def build_sea_crossfield_result(
             detail = dict(row)
             if rule['rule_key'] == 'review_body_count':
                 detail.update(_review_body_detail_fields(row))
-            detail['validation_tag'] = rule['error_message']
+            detail['validation_tag'] = (SEA_RULE_SPECS[rule['rule_key']]['error_message']
+                                        if retailer == 'HomeDepot' else rule['error_message'])
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
             error_details.append(detail)
@@ -728,7 +756,7 @@ def build_sea_crossfield_result(
         retailer_error_count = 0
         retailer_review_count = 0
         for result in rule_results:
-            if not _retailer_supported(result['rule_key'], retailer):
+            if not _rule_applies_to_retailer(result, retailer):
                 continue
             details = [
                 detail for detail in result['error_details']
@@ -883,6 +911,33 @@ def build_sea_display_query(
     if filters:
         scope_sql = '\n  AND ' + '\n  AND '.join(filters)
 
+    if any(_retailer_name(value) == 'HomeDepot' for value in retailer_values):
+        contract = _date_contract(inspection_date, source)
+        end_date = contract['source_date_value']
+        start_date = end_date - timedelta(days=day_count - 1)
+        date_expr = f'({appliance_source_date_sql(date_column)})'
+        row_date_expr = f"({appliance_source_date_sql('source.' + date_column, 'source.account_name')})"
+        return f"""WITH latest_batches AS (
+    SELECT DISTINCT ON ({date_expr}, LOWER(TRIM(account_name)))
+           {date_expr} AS source_date,
+           LOWER(TRIM(account_name)) AS retailer_key, batch_id
+    FROM {source['table_name']}
+    WHERE {date_expr} BETWEEN '{start_date}' AND '{end_date}'
+      AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes', 'homedepot')
+      AND {appliance_page_scope_sql(anchor=True)}
+      AND NULLIF(TRIM(batch_id), '') IS NOT NULL
+    ORDER BY {date_expr}, LOWER(TRIM(account_name)), id DESC
+)
+SELECT
+{select_sql}
+FROM {source['table_name']} source
+JOIN latest_batches latest
+  ON {row_date_expr} = latest.source_date
+ AND LOWER(TRIM(source.account_name)) = latest.retailer_key
+ AND source.batch_id = latest.batch_id
+WHERE {appliance_page_scope_sql('source')}{scope_sql}
+ORDER BY item, {date_column}, id;"""
+
     date_expression = f'LEFT(TRIM({date_column}), 10)'
     return f"""SELECT
 {select_sql}
@@ -985,7 +1040,7 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
 
 
 def _detail_row_source_date(row, date_column):
-    return str(row.get(date_column) or '').strip()[:10]
+    return appliance_source_date_value(row, date_column)
 
 
 def _detail_row_item_key(row):
@@ -1026,7 +1081,7 @@ def get_sea_cross_field_rule_detail(
         for row in anomalies:
             row['review_body_count'] = len(_review_body_numbers(row.get('detailed_review_content')))
     retailers = sorted({
-        str(row.get('account_name') or 'Unknown').strip().title()
+        _retailer_name(row.get('account_name') or 'Unknown')
         for row in anomalies
     })
     editable_columns = set()
@@ -1063,7 +1118,7 @@ def get_sea_cross_field_rule_detail(
 
     retailer_summary = {}
     for row in anomalies:
-        retailer = str(row.get('account_name') or 'Unknown').strip().title()
+        retailer = _retailer_name(row.get('account_name') or 'Unknown')
         summary = retailer_summary.setdefault(retailer, {
             'count': 0,
             'review_count': 0,
@@ -1087,7 +1142,7 @@ def get_sea_cross_field_rule_detail(
 
     retailer_pairs = {retailer: [] for retailer in retailer_summary}
     for row in anomalies:
-        retailer = str(row.get('account_name') or 'Unknown').strip().title()
+        retailer = _retailer_name(row.get('account_name') or 'Unknown')
         retailer_pairs.setdefault(retailer, []).append((
             retailer,
             None if row.get('item') is None or str(row.get('item')) == ''
@@ -1141,6 +1196,7 @@ def get_sea_cross_field_rule_detail(
         'retailer_columns': retailer_columns,
         'query': build_sea_display_query(
             inspection_date, result['product_line'], selected, days=days,
+            retailers=retailers if 'HomeDepot' in retailers else None,
         ),
         'queries': display_queries,
     }

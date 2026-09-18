@@ -1,5 +1,24 @@
 """SQL source-date expressions for SEA appliance collection timestamps."""
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+def appliance_source_date_value(row, date_column='crawl_strdatetime'):
+    raw = str(row.get(date_column) or '').strip()
+    if str(row.get('account_name') or '').strip().casefold() == 'homedepot' and raw:
+        stamp = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+        if stamp.tzinfo:
+            return stamp.astimezone(ZoneInfo('America/New_York')).date().isoformat()
+    return raw[:10]
+
+
+def appliance_page_scope_sql(alias='', *, anchor=False):
+    prefix = f'{alias}.' if alias else ''
+    page = f"UPPER(TRIM(COALESCE({prefix}page_type, '')))"
+    legacy = f"{page} = 'MAIN'" if anchor else f"{page} IN ('MAIN', 'BSR')"
+    return f"(LOWER(TRIM({prefix}account_name)) = 'homedepot' OR {legacy})"
+
 
 def appliance_source_date_sql(date_column, account_column='account_name'):
     """Use New York dates for HomeDepot's offset-bearing UTC timestamps.
