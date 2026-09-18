@@ -159,6 +159,7 @@ function prepareLayer2DisplayData(data) {
 }
 
 let layer2StatsRequestId = 0;
+let layer2SidebarRequestId = 0;
 
 function createLayer2StatsState(date) {
     return {
@@ -283,9 +284,9 @@ function markLayer2SectionError(target, section) {
     });
 }
 
-function renderLayer2Stats(data) {
+function renderLayer2Stats(data, updateSidebar = true) {
     prepareLayer2DisplayData(data);
-    updateLayer2SidebarIssueBadges(data);
+    if (updateSidebar) updateLayer2SidebarIssueBadges(data);
     dxData = data;
     renderDXSummary(data);
     renderDXValidationTypes(data);
@@ -310,6 +311,7 @@ async function fetchDXStats(tableTarget) {
     const date = getSelectedDate();
     const section = (window.LAYER2 && window.LAYER2.section) || 'dashboard';
     const requestId = ++layer2StatsRequestId;
+    const sidebarRequestId = ++layer2SidebarRequestId;
     const container = document.getElementById('dx-validation-container');
 
     resetLayer2SidebarIssueBadges();
@@ -319,17 +321,31 @@ async function fetchDXStats(tableTarget) {
     }
 
     if (section !== 'dashboard') {
-        try {
-            const table = currentFocusTable || new URLSearchParams(window.location.search).get('focus');
-            const data = await fetchLayer2StatsSection(date, section, table);
+        const table = currentFocusTable || new URLSearchParams(window.location.search).get('focus');
+        const detailRequest = fetchLayer2StatsSection(date, section, table);
+        const detailTask = detailRequest.then(function(data) {
             if (requestId !== layer2StatsRequestId) return;
-            renderLayer2Stats(data);
-        } catch (error) {
+            // A focused response is only a subset of the sidebar's totals.
+            renderLayer2Stats(data, false);
+        }).catch(function(error) {
             if (requestId !== layer2StatsRequestId) return;
             console.error('DX Error:', error);
             if (container) container.innerHTML =
                 '<div class="loading"><p style="color: var(--color-critical);">DX 데이터 로딩 실패</p></div>';
-        }
+        });
+        const sidebarTasks = Object.values(LAYER2_SIDEBAR_GROUP_BY_TYPE).map(function(statsSection) {
+            // Reuse the overview response when it already includes every country.
+            const request = !table && statsSection === section
+                ? detailRequest : fetchLayer2StatsSection(date, statsSection);
+            return request.then(function(data) {
+                if (sidebarRequestId !== layer2SidebarRequestId) return;
+                updateLayer2SidebarIssueBadges(data);
+            }).catch(function(error) {
+                if (sidebarRequestId !== layer2SidebarRequestId) return;
+                console.error(`DX sidebar ${statsSection} Error:`, error);
+            });
+        });
+        await Promise.allSettled([detailTask, ...sidebarTasks]);
         return;
     }
 
