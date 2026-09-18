@@ -9,6 +9,7 @@ from apps.common.inspection_dates import (
 )
 from apps.common.response import log_error
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.sea_dates import appliance_source_date_sql
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_SOURCE_CONFIG,
@@ -29,7 +30,7 @@ def _sea_backup_source(product_key):
         'source_table': source['table_name'],
         'backup_table': source['backup_table'],
         'date_column': f"a.{source['date_column']}",
-        'date_mode': source['date_mode'],
+        'date_mode': 'sea_appliance' if product_key in ('ref', 'ldy') else source['date_mode'],
     }
 
 
@@ -203,6 +204,8 @@ def _date_condition(date_column, target_date, mode='timestamp'):
 
     if mode == 'text_prefix':
         return f"AND LEFT(TRIM({date_column}), 10) = %s", (date_value,)
+    if mode == 'sea_appliance':
+        return f"AND ({appliance_source_date_sql(date_column, 'a.account_name')}) = %s", (date_value,)
     if mode == 'timestamp':
         return f"AND DATE({date_column}::timestamp) = %s", (date_value,)
     if mode == 'siel_kst_timestamp':

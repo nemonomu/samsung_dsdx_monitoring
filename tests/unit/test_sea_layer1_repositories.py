@@ -10,24 +10,25 @@ class SeaLayer1RepositoryTests(unittest.TestCase):
                 {'fetchone': ('h-batch',)}, {'fetchone': (300, 100, 0, 300)},
             ])
             counts = self.repo.query_appliance_counts_by_retailer(
-                count_cursor, table, 'crawl_strdatetime', '2026-09-18', 'HomeDepot')
+                count_cursor, table, 'crawl_strdatetime', '2026-09-17', 'HomeDepot')
             self.assertEqual((300, 100, 0, 300, 'h-batch'), counts)
             raw_cursor = ScriptedCursor([{'fetchone': ('h-batch',)}, {'fetchall': []}])
             self.repo.get_appliance_raw_data_list(
-                raw_cursor, table, ['id'], 'HomeDepot', 'crawl_strdatetime', '2026-09-18')
+                raw_cursor, table, ['id'], 'HomeDepot', 'crawl_strdatetime', '2026-09-17')
             detail_cursor = ScriptedCursor([
                 {'fetchone': ('h-batch',)}, {'fetchone': (300, 300, 100, 295)},
             ])
             self.repo.get_appliance_retail_detail_list(
-                detail_cursor, table, 'crawl_strdatetime', '2026-09-18', ['HomeDepot'])
+                detail_cursor, table, 'crawl_strdatetime', '2026-09-17', ['HomeDepot'])
             for cursor in (count_cursor, raw_cursor, detail_cursor):
                 for sql, params in cursor.calls:
                     self.assertNotIn('page_type', sql)
-                    self.assertIn('LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10) = %s', sql)
-                    self.assertEqual('2026-09-18', params[0])
+                    self.assertIn("AT TIME ZONE 'America/New_York'", sql)
+                    self.assertIn('END) = %s', sql)
+                    self.assertEqual('2026-09-17', params[0])
                     self.assertEqual('HomeDepot', params[1])
                 self.assertIn('ORDER BY id DESC', cursor.calls[0][0])
-                self.assertEqual(('2026-09-18', 'HomeDepot', 'h-batch'), cursor.calls[1][1])
+                self.assertEqual(('2026-09-17', 'HomeDepot', 'h-batch'), cursor.calls[1][1])
                 self.assertIn('batch_id IS NOT DISTINCT FROM %s', cursor.calls[1][0])
 
     def test_homedepot_no_batch_returns_zero_without_previous_day_fallback(self):

@@ -700,18 +700,21 @@ class HomeDepotLayer1Tests(unittest.TestCase):
             repo.detail_rows = [('HomeDepot', count, count, 100, count, 'h-batch')]
             repo.raw_batch = 'h-batch'
             repo.raw_rows = [(1, 'HomeDepot', None, 'item', 1, 1, '2026-09-18T01:59:39+00:00', 'h-batch')]
-            summary = service.get_retail_summary(date(2026, 9, 19), product)
+            summary = service.get_retail_summary(date(2026, 9, 18), product)
             row = summary['summary'][-1]
             self.assertEqual(count, row['total'])  # BSR overlaps MAIN; do not add it twice.
             self.assertEqual('UNASSESSED', row['status'])
-            detail = service.get_retail_detail(date(2026, 9, 19), product)
-            raw = service.get_retailer_raw_data(product, 'homedepot', '일일', date(2026, 9, 19))
+            detail = service.get_retail_detail(date(2026, 9, 18), product)
+            raw = service.get_retailer_raw_data(product, 'homedepot', '일일', date(2026, 9, 18))
             for data in (summary, detail, raw):
-                self.assertEqual('2026-09-18', data['source_date'])
+                self.assertEqual('2026-09-17', data['source_date'])
                 self.assertEqual(-1, data['offset_days'])
             self.assertEqual('h-batch', raw['batch_id'])
             self.assertEqual(repo.raw_rows, raw['data'])
             self.assertEqual(count, detail['total_products'])
+            self.assertIn(('appliance_summary', table, date(2026, 9, 17), 'HomeDepot'), repo.calls)
+            self.assertIn(('appliance_detail', table, date(2026, 9, 17)), repo.calls)
+            self.assertEqual(date(2026, 9, 17), repo.calls[-1][-1])
 
 
 if __name__ == '__main__':

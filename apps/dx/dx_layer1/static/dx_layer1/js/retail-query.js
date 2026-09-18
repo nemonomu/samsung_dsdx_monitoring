@@ -35,7 +35,9 @@
             : config.dateColumn + ' >= ' + literal(day);
         var accountName = retailer.trim().toLowerCase();
         if (country === 'SEA' && product !== 'TV' && accountName === 'homedepot') {
-            dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
+            dateFilter = "(CASE WHEN LOWER(BTRIM(account_name)) = 'homedepot' THEN " +
+                "TO_CHAR(NULLIF(BTRIM(CAST(" + config.dateColumn +
+                " AS TEXT)), '')::timestamptz AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') END) = " + literal(day);
         }
         // SEDA cards display "Casas Bahia"; the collected account is CasasBahia.
         if (country === 'SEDA' && accountName.replace(/\s+/g, '') === 'casasbahia') {

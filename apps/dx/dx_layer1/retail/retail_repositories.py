@@ -1,6 +1,7 @@
 """DX Layer 1 SEA retail database queries."""
 
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.sea_dates import appliance_source_date_sql
 
 
 def _timestamp_expression(date_field):
@@ -31,6 +32,12 @@ def _text_date_condition(date_column, alias=''):
 def _normalized_account(alias=''):
     prefix = f'{alias}.' if alias else ''
     return f"LOWER(BTRIM(CAST({prefix}account_name AS TEXT)))"
+
+
+def _appliance_date_condition(date_column, retailer):
+    if str(retailer or '').strip().lower() == 'homedepot':
+        return f"({appliance_source_date_sql(date_column)}) = %s"
+    return _text_date_condition(date_column)
 
 
 def _normalized_page_type(alias=''):
@@ -146,7 +153,7 @@ def get_latest_appliance_main_batch(cursor, table_name, date_column,
     cursor.execute(f"""
         SELECT batch_id
         FROM {table_name}
-        WHERE {_text_date_condition(date_column)}
+        WHERE {_appliance_date_condition(date_column, retailer)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND {_appliance_page_scope(retailer, anchor=True)}
         ORDER BY id DESC
@@ -173,7 +180,7 @@ def query_appliance_counts_by_retailer(cursor, table_name, date_column,
             0 as extra_count,
             COUNT(*) as total
         FROM {table_name}
-        WHERE {_text_date_condition(date_column)}
+        WHERE {_appliance_date_condition(date_column, retailer)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND batch_id IS NOT DISTINCT FROM %s
           AND {_appliance_page_scope(retailer)}
@@ -221,7 +228,7 @@ def get_appliance_retail_detail_list(cursor, table_name, date_column,
                 COUNT(CASE WHEN bsr_rank IS NOT NULL THEN 1 END) as bsr_count,
                 COUNT(CASE WHEN final_sku_price IS NOT NULL THEN 1 END) as price_count
             FROM {table_name}
-            WHERE {_text_date_condition(date_column)}
+            WHERE {_appliance_date_condition(date_column, retailer)}
               AND {_normalized_account()} = LOWER(BTRIM(%s))
               AND batch_id IS NOT DISTINCT FROM %s
               AND {_appliance_page_scope(retailer)}
@@ -246,7 +253,7 @@ def get_appliance_raw_data_list(cursor, table_name, columns, retailer,
     cursor.execute(f"""
         SELECT {', '.join(columns)}
         FROM {table_name}
-        WHERE {_text_date_condition(date_column)}
+        WHERE {_appliance_date_condition(date_column, retailer)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND batch_id IS NOT DISTINCT FROM %s
           AND {_appliance_page_scope(retailer)}

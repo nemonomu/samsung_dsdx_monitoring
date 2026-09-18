@@ -1,4 +1,5 @@
 import unittest
+from apps.common import sea_dates
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from datetime import date, timedelta
@@ -195,6 +196,7 @@ def load_backup(connection, errors=None):
                 'apps.common.response',
                 log_error=lambda error, category='': errors.append((error, category)),
             ),
+            'apps.common.sea_dates': sea_dates,
             'apps.common.sea_retail': module_stub(
                 'apps.common.sea_retail',
                 SEA_RETAIL_SOURCES=SEA_RETAIL_SOURCES,
@@ -219,6 +221,26 @@ def load_backup(connection, errors=None):
 
 
 class BackupTests(unittest.TestCase):
+    def test_sea_appliance_pending_and_insert_share_local_source_date(self):
+        cursor = BackupCursor()
+        backup = load_backup(BackupConnection(cursor))
+        for product in ('ref', 'ldy'):
+            source = backup._sea_backup_source(product)
+            mapping = {'inspection_date': '2026-09-18', 'source_date': '2026-09-17',
+                       'offset_days': -1, 'source_key': source['source_key']}
+            backup._count_pending_source(cursor, source, mapping['source_date'])
+            backup._backup_source(cursor, source, 'tester', mapping)
+            predicate, params = backup._date_condition(
+                source['date_column'], mapping['source_date'], source['date_mode'])
+            scoped_calls = [(sql, bound) for sql, bound in cursor.calls
+                            if source['source_table'] + ' a' in sql]
+            self.assertEqual(2, len(scoped_calls))
+            for sql, bound in scoped_calls:
+                self.assertIn(' '.join(predicate.split()), sql)
+                self.assertEqual(('2026-09-17',), bound)
+            self.assertIn("AT TIME ZONE 'America/New_York'", predicate)
+            self.assertEqual(('2026-09-17',), params)
+
     def test_seg_backup_uses_existing_tables_and_same_day_ids(self):
         cursor = BackupCursor(
             pending={'dx_seg_tv_retail_com_backup': 2},
@@ -303,7 +325,8 @@ class BackupTests(unittest.TestCase):
         self.assertIn('FROM public.ref_retail_com a', count_calls[1][0])
         self.assertIn('FROM public.ldy_retail_com a', count_calls[2][0])
         self.assertTrue(all(
-            'LEFT(TRIM(a.crawl_strdatetime), 10) = %s' in sql
+            "AT TIME ZONE 'America/New_York'" in sql
+            and 'ELSE LEFT(BTRIM(CAST(a.crawl_strdatetime AS TEXT)), 10)' in sql
             for sql, _ in count_calls[1:3]
         ))
         self.assertTrue(all(
