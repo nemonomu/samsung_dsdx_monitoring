@@ -65,6 +65,12 @@ WITH seed (name, description, check_type, pattern) AS (
         ('SEA_APPLIANCE_LOWES_REF_DISCOUNT',
          'Lowes REF discount phrases including Buy More and Buy N And Get N', 'regex',
          $refdiscount$^(Exclusive Appliance Bundle|Unlock Member Deal|Get [$][1-9][0-9]* Off In Cart On Purchase Of [1-9][0-9]* Items|[$][1-9][0-9]* Instant Savings|Buy [1-9][0-9]*[+] Get ([1-9][0-9]?|100)% Off|Buy More, Save More|Buy [1-9][0-9]* And Get [1-9][0-9]*)$$refdiscount$),
+        ('SEA_APPLIANCE_LOWES_LDY_PICKUP',
+         'Lowes LDY pickup date, Pickup Ready Today or Pickup Ready Tomorrow', 'regex',
+         $ldypickup$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$ldypickup$),
+        ('SEA_APPLIANCE_LOWES_LDY_DISCOUNT',
+         'Lowes LDY discount phrases including Buy More and Buy N And Get N', 'regex',
+         $ldydiscount$^(Exclusive Appliance Bundle|Unlock Member Deal|Get [$][1-9][0-9]* Off In Cart On Purchase Of [1-9][0-9]* Items|[$][1-9][0-9]* Instant Savings|Buy [1-9][0-9]*[+] Get ([1-9][0-9]?|100)% Off|Buy More, Save More|Buy [1-9][0-9]* And Get [1-9][0-9]*)$$ldydiscount$),
         ('SEA_APPLIANCE_RATING',
          'Star rating from 0 through 5', 'range_float', NULL),
         ('SEA_APPLIANCE_USD',
@@ -282,12 +288,16 @@ WITH products (
                 THEN 'SEA_APPLIANCE_LOWES_REF_PICKUP'
             WHEN product.table_name = 'ref_retail_com' AND rule.column_name = 'discount_type'
                 THEN 'SEA_APPLIANCE_LOWES_REF_DISCOUNT'
+            WHEN product.table_name = 'ldy_retail_com' AND rule.column_name = 'pick_up_availability'
+                THEN 'SEA_APPLIANCE_LOWES_LDY_PICKUP'
+            WHEN product.table_name = 'ldy_retail_com' AND rule.column_name = 'discount_type'
+                THEN 'SEA_APPLIANCE_LOWES_LDY_DISCOUNT'
             ELSE rule.template_name
         END AS template_name,
         rule.rule_value,
         NULL::text AS extra_allowed,
         CASE
-            WHEN product.table_name = 'ref_retail_com' AND rule.column_name = 'pick_up_availability'
+            WHEN rule.column_name = 'pick_up_availability'
                 THEN 'pick_up_availability는 Pickup Ready by 요일, 월 일, Pickup Ready Today 또는 Pickup Ready Tomorrow 형식이어야 합니다.'
             ELSE rule.error_message
         END AS error_message
