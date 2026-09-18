@@ -12,8 +12,8 @@ vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/collection-status.js', 'utf8'), sandbox);
 function data(day, states) {
     return { source_date: day, retailers: states.map((status, i) => ({
-        retailer: ['Amazon', 'Walmart', 'HomeDepot', 'HomeDepot'][i],
-        product: ['TV', 'TV', 'REF', 'LDY'][i], status,
+        retailer: ['Walmart', 'HomeDepot', 'HomeDepot'][i],
+        product: ['TV', 'REF', 'LDY'][i], status,
         scheduled_at: day + 'T13:00:00+09:00',
         count: status === 'received' ? 300 : status === 'error' ? null : 0,
         main_count: status === 'received' ? 300 : status === 'error' ? null : 0,
@@ -25,14 +25,16 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
 (async function() {
     const old = sandbox.loadDdayCollection('2026-09-20');
     const next = sandbox.loadDdayCollection('2026-09-21');
-    respond(1, data('2026-09-21', ['received', 'waiting', 'scheduled', 'error']));
+    respond(1, data('2026-09-21', ['received', 'waiting', 'scheduled']));
     await next;
     let html = elements['dday-collection-list'].innerHTML;
-    for (const text of ['SEA Amazon TV', 'SEA Walmart TV', 'SEA HomeDepot REF', 'SEA HomeDepot LDY',
-                        '수집 확인', '수집 대기', '수집 예정', '조회 실패', '300건', '13:10:00 KST']) {
+    for (const text of ['SEA Walmart TV', 'SEA HomeDepot REF', 'SEA HomeDepot LDY',
+                        '수집 확인', '수집 대기', '수집 예정', '300건', '13:10:00 KST']) {
         assert(html.includes(text), text);
     }
     assert(!html.includes('정상'));
+    assert(!html.includes('Amazon'));
+    assert(sandbox.renderDdayCollection(data('2026-09-21', ['error', 'waiting', 'waiting'])).includes('조회 실패'));
     assert(!html.includes('수집 완료'));
     assert.strictEqual((html.match(/<details /g) || []).length, 4);
     assert.strictEqual((html.match(/<table class="ct ct-grid"/g) || []).length, 3);
@@ -45,7 +47,7 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.strictEqual(total.mainCount, 600);
     assert.strictEqual(total.bsrCount, 200);
     assert.strictEqual(total.count, 600);
-    respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting', 'waiting']));
+    respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);
     assert(html.includes('수집 대상일: 2026-09-21'));

@@ -46,11 +46,13 @@ class CollectionCardTests(unittest.TestCase):
         self.results[('HomeDepot', 'REF')] = (300, '2026-09-20 13:23:00', 'h20', 300, 100)
         result = self.service.get_collection_status(date(2026, 9, 20), datetime(2026, 9, 20, 14, tzinfo=KST))
         self.assertEqual('2026-09-20', result['source_date'])
-        self.assertEqual(['waiting', 'waiting', 'received', 'waiting'],
+        self.assertEqual(['waiting', 'received', 'waiting'],
                          [r['status'] for r in result['retailers']])
-        self.assertEqual(300, result['retailers'][2]['count'])
-        self.assertEqual(300, result['retailers'][2]['main_count'])
-        self.assertEqual(100, result['retailers'][2]['bsr_count'])
+        self.assertEqual(300, result['retailers'][1]['count'])
+        self.assertEqual(300, result['retailers'][1]['main_count'])
+        self.assertEqual(100, result['retailers'][1]['bsr_count'])
+        self.assertEqual(['Walmart', 'HomeDepot', 'HomeDepot'],
+                         [r['retailer'] for r in result['retailers']])
         self.assertTrue(all(day == '2026-09-20' for _, day in self.calls))
         self.assertNotIn('failed', result)
 
@@ -58,15 +60,15 @@ class CollectionCardTests(unittest.TestCase):
         for hour, minute, status in ((12, 59, 'scheduled'), (13, 0, 'waiting'), (14, 0, 'waiting')):
             self.calls.clear()
             result = self.service.get_collection_status(date(2026, 9, 18), datetime(2026, 9, 18, hour, minute, tzinfo=KST))
-            self.assertEqual([status, status, 'scheduled', 'scheduled'],
+            self.assertEqual([status, 'scheduled', 'scheduled'],
                              [r['status'] for r in result['retailers']])
-            self.assertEqual(2, len(self.calls))
+            self.assertEqual(1, len(self.calls))
             self.assertEqual('2026-09-20T13:00:00+09:00', result['retailers'][2]['scheduled_at'])
 
     def test_query_failure_is_separate_from_no_collection(self):
-        self.results[('Amazon', 'TV')] = ValueError('unavailable')
+        self.results[('Walmart', 'TV')] = ValueError('unavailable')
         result = self.service.get_collection_status(date(2026, 9, 21), datetime(2026, 9, 21, 14, tzinfo=KST))
-        self.assertEqual(['error', 'waiting', 'waiting', 'waiting'],
+        self.assertEqual(['error', 'waiting', 'waiting'],
                          [r['status'] for r in result['retailers']])
         self.assertIsNone(result['retailers'][0]['count'])
         self.assertIsNone(result['retailers'][0]['main_count'])

@@ -3,7 +3,6 @@ from apps.common.sea_dates import appliance_source_date_sql
 
 
 SOURCES = (
-    ('Amazon', 'TV', 'tv_retail_com', 'crawl_datetime'),
     ('Walmart', 'TV', 'tv_retail_com', 'crawl_datetime'),
     ('HomeDepot', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
     ('HomeDepot', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
