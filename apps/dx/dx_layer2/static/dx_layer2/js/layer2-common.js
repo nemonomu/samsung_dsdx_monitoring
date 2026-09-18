@@ -630,6 +630,15 @@ function renderDetailWithTable(options) {
             { key: '_null_review_reason', label: '확인 사유', width: 200 },
             { key: '_null_review_basis', label: '확인 근거', width: 210 }
         ];
+        var productUrlColumn = defaultCols.find(function(col) {
+            return col.key === 'product_url';
+        });
+        if (productUrlColumn) {
+            defaultCols = defaultCols.filter(function(col) {
+                return col.key !== 'product_url';
+            });
+            reviewColumns.splice(1, 0, productUrlColumn);
+        }
         var fieldIndex = defaultCols.findIndex(function(col) {
             return col.key === detailViewState.nullReviewField;
         });

@@ -570,6 +570,8 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
             assert.deepStrictEqual(keys.filter(key => metrics.includes(key)), metrics, tableParam + ':' + field);
             assert.strictEqual(new Set(keys).size, keys.length);
             assert(keys.indexOf('_null_review_status') > keys.indexOf('review_body_count'));
+            assert.strictEqual(keys.indexOf('product_url'), keys.indexOf('_null_review_status') + 1);
+            assert.strictEqual(keys.indexOf('_null_review_reason'), keys.indexOf('product_url') + 1);
             assert.deepStrictEqual(config.map(column => column.key), ['item', field, 'product_url']);
             assert.deepStrictEqual(row.null_fields, [field]);
             assert.deepStrictEqual(Array.from(sandbox.detailViewState.editableCols), [field]);

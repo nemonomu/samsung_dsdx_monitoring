@@ -75,7 +75,7 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260915-perf1"
+    "dx_layer2/js/layer2-common.js' %}?v=20260918-url-order1"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/format_validation.js' %}?v=20260913-1"
