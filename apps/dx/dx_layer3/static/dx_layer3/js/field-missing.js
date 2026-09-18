@@ -62,22 +62,45 @@ function switchFieldMissingTab(pl) {
 
 // 리테일러별 누락 데이터 캐시 (모달 표시용)
 let retailerMissingCache = {};
+let fieldMissingRequestId = 0;
+let fieldMissingSidebarDate = '';
+let fieldMissingSidebarCounts = {};
+
+function updateFieldMissingSidebarCounts() {
+    if (typeof updateSidebarIssueBadges !== 'function') return;
+    const items = Object.entries(fieldMissingSidebarCounts).map(([detailCode, count]) => ({ detailCode, count }));
+    const total = items.reduce((sum, item) => sum + item.count, 0);
+    items.push({ name: 'SEA Retail', count: total });
+    updateSidebarIssueBadges('field_missing', total, items);
+}
 
 // 모든 리테일러 데이터 로드
 async function loadAllRetailersMissing() {
     const date = getSelectedDate();
-    const retailers = fieldMissingRetailers[currentFieldMissingPL] || [];
+    const productLine = currentFieldMissingPL;
+    const requestId = ++fieldMissingRequestId;
+    const retailers = fieldMissingRetailers[productLine] || [];
+    if (fieldMissingSidebarDate !== date) {
+        fieldMissingSidebarDate = date;
+        fieldMissingSidebarCounts = {};
+        retailerMissingCache = {};
+    }
+    delete fieldMissingSidebarCounts[productLine];
+    updateFieldMissingSidebarCounts();
     let totalMissing = 0;
     let totalFields = 0;
+    let allLoaded = true;
 
     for (const retailer of retailers) {
         try {
-            const data = await fetchAPI(`/layer3/api/field-missing/?date=${date}&type=${currentFieldMissingPL}&retailer=${retailer}`);
+            const data = await fetchAPI(`/layer3/api/field-missing/?date=${date}&type=${productLine}&retailer=${retailer}`);
+            if (requestId !== fieldMissingRequestId || date !== getSelectedDate()) return;
+            if (data.error) throw new Error(data.error);
             const inspectionDate = data.inspection_date || date;
             const sourceDate = data.source_date || data.date || date;
 
-            const missingCount = data.summary?.total_missing_cases || 0;
-            const fieldsCount = data.summary?.fields_with_issues || 0;
+            const missingCount = Number(data.summary?.total_missing_cases || 0);
+            const fieldsCount = Number(data.summary?.fields_with_issues || 0);
             totalMissing += missingCount;
             totalFields += fieldsCount;
 
@@ -111,6 +134,8 @@ async function loadAllRetailersMissing() {
                 dateScopeEl.textContent = `검수일 ${inspectionDate} · 데이터일 ${sourceDate} · D-1`;
             }
         } catch (error) {
+            if (requestId !== fieldMissingRequestId || date !== getSelectedDate()) return;
+            allLoaded = false;
             console.error(`Error loading ${retailer}:`, error);
             const badgeEl = document.getElementById(`badge-${currentFieldMissingPL}-${retailer}`);
             if (badgeEl) {
@@ -119,6 +144,9 @@ async function loadAllRetailersMissing() {
             }
         }
     }
+
+    if (allLoaded) fieldMissingSidebarCounts[productLine] = totalMissing;
+    updateFieldMissingSidebarCounts();
 
     // 헤더 요약 업데이트 (대시보드에만 존재)
     const elTotal = document.getElementById('field-missing-total');

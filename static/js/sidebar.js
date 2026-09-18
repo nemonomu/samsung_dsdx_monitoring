@@ -109,7 +109,12 @@ function updateSidebarIssueBadges(groupKey, totalCount, itemCounts) {
                 && element.dataset.sidebarItemName === itemName;
             var detailMatches = detailCode
                 && element.dataset.sidebarDetailCode === detailCode;
-            if (!nameMatches && !detailMatches) return;
+            // Product codes take precedence over shared parent/child labels.
+            var matches = detailCode
+                ? detailMatches || (nameMatches && !element.dataset.sidebarDetailCode
+                    && !element.classList.contains('sidebar-subgroup'))
+                : nameMatches && !element.dataset.sidebarDetailCode;
+            if (!matches) return;
 
             var target = element.classList.contains('sidebar-subgroup')
                 ? element.querySelector(':scope > .sidebar-subgroup-title')

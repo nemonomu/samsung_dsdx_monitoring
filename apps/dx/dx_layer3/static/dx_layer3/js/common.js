@@ -235,6 +235,7 @@ function createLayer3StatsState(date) {
 }
 
 const LAYER3_SIDEBAR_GROUP_BY_CATEGORY = {
+    '시계열 이상치': 'time_series',
     '크로스 필드 검증': 'cross_field',
     '카테고리별 특성': 'category_spec'
 };
@@ -249,7 +250,7 @@ const LAYER3_CROSSFIELD_SIDEBAR_REGIONS = [
 
 function resetLayer3SidebarIssueBadges() {
     if (typeof clearSidebarIssueBadges !== 'function') return;
-    clearSidebarIssueBadges(Object.values(LAYER3_SIDEBAR_GROUP_BY_CATEGORY));
+    clearSidebarIssueBadges(Object.values(LAYER3_SIDEBAR_GROUP_BY_CATEGORY).concat('field_missing'));
 }
 
 function updateLayer3SidebarIssueBadges(data) {
@@ -261,7 +262,7 @@ function updateLayer3SidebarIssueBadges(data) {
         const checks = (data.checks || []).filter(function(check) {
             return check.category === categoryName && !check.load_error;
         });
-        if (checks.length === 0) return;
+        if (!(data.checks || []).some(check => check.category === categoryName)) return;
 
         const itemCounts = checks.map(function(check) {
             return {
@@ -269,6 +270,14 @@ function updateLayer3SidebarIssueBadges(data) {
                 detailCode: check.detail_code || '',
                 count: Number(check.failed || 0)
             };
+        });
+        checks.forEach(function(check) {
+            if (/Sentiment↔리뷰 일관성$/.test(check.name)) {
+                itemCounts.push({
+                    name: check.name.replace('Sentiment↔리뷰 일관성', 'Sentiment 논리적 일관성'),
+                    count: Number(check.failed || 0)
+                });
+            }
         });
 
         if (groupKey === 'cross_field') {
@@ -375,14 +384,24 @@ async function loadData() {
     const focusParam = urlParams.get('focus');
     const detailCodeParam = urlParams.get('detail_code') || '';
 
-    // focus가 있으면 stats 건너뛰고 바로 상세 로드
+    // 상세 화면은 즉시 열고 메뉴 건수는 별도로 갱신한다.
     if (focusParam) {
+        if (SECTION_CATEGORY_MAP[section]) {
+            fetchAPI(`/layer3/api/stats/?date=${encodeURIComponent(date)}&type=all&section=${section}`)
+                .then(function(data) {
+                    if (requestId !== layer3StatsRequestId) return;
+                    updateLayer3SidebarIssueBadges(data);
+                })
+                .catch(function(error) {
+                    console.error('Layer3 sidebar counts:', error);
+                });
+        }
         // 사이드바 하위메뉴 active 동기화
         var expGroup = document.querySelector('.sidebar-group.expanded');
         if (expGroup) {
             expGroup.querySelectorAll('.sidebar-subitem').forEach(function(item) {
-                const itemName = item.dataset.itemName || item.textContent.trim();
-                const itemDetailCode = item.dataset.detailCode || '';
+                const itemName = item.dataset.sidebarItemName || item.dataset.itemName || item.textContent.trim();
+                const itemDetailCode = item.dataset.sidebarDetailCode || item.dataset.detailCode || '';
                 item.classList.toggle(
                     'active',
                     itemName === focusParam
@@ -397,9 +416,9 @@ async function loadData() {
             try {
                 const sectionParam = `&section=${section}`;
                 const data = await fetchAPI(`/layer3/api/stats/?date=${date}&type=all${sectionParam}`);
+                if (requestId !== layer3StatsRequestId) return;
                 currentData = data;
                 renderData(data);
-                loadAllRetailersMissing();
                 switchFieldMissingTab(detailCodeParam || focusParam.toLowerCase());
             } catch (error) {
                 console.error('Error:', error);
@@ -780,8 +799,8 @@ async function showDetail(category, checkName, detailCode) {
     var expGroup = document.querySelector('.sidebar-group.expanded');
     if (expGroup) {
         expGroup.querySelectorAll('.sidebar-subitem').forEach(function(item) {
-            const itemName = item.dataset.itemName || item.textContent.trim();
-            const itemDetailCode = item.dataset.detailCode || '';
+            const itemName = item.dataset.sidebarItemName || item.dataset.itemName || item.textContent.trim();
+            const itemDetailCode = item.dataset.sidebarDetailCode || item.dataset.detailCode || '';
             item.classList.toggle(
                 'active',
                 itemName === checkName

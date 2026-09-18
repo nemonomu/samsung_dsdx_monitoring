@@ -103,7 +103,7 @@ class Layer3TseSidebarAssetTests(unittest.TestCase):
             source,
         )
         self.assertIn(
-            'const itemName = item.dataset.itemName || item.textContent.trim();',
+            'const itemName = item.dataset.sidebarItemName || item.dataset.itemName || item.textContent.trim();',
             source,
         )
         self.assertIn("if (date) params.push('date=' + date);", source)
