@@ -858,6 +858,8 @@ function renderDXTableDetail(vType, table) {
                 detailText = 'batch_id + comp_brand + comp_sku 중복';
             } else if (isTseRetail) {
                 detailText = '완전 중복 및 Item↔Retailer SKU Name 매핑 충돌';
+            } else if (isSeaRetail && String(retailer.retailer).toLowerCase() === 'homedepot') {
+                detailText = '최신 배치의 Item 중복 및 상품 매핑 충돌';
             } else if (isSeaRetail || isSegRetail) {
                 detailText = '최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌';
             } else if (isSielRetail) {

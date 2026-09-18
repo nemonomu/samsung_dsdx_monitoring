@@ -102,6 +102,7 @@ _SEA_TV_RETAILERS = (
 _SEA_APPLIANCE_RETAILERS = (
     _retailer('Bestbuy', 'BestBuy'),
     _retailer('Lowes', "Lowe's", 'Lowe’s'),
+    _retailer('HomeDepot', optional_if_unconfigured=True),
 )
 _SEDA_RETAILERS = (
     _retailer('Magalu'),

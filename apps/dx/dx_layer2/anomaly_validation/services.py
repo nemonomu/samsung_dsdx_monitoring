@@ -5,6 +5,9 @@ cursor + params 를 받아 plain dict 를 반환한다.
 
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
+from apps.common.sea_layer2 import (
+    is_homedepot, layer2_sources, page_scope_sql, source_date_sql,
+)
 
 from apps.common.retail_columns import (
     get_editable_columns, get_duplicate_key_columns,
@@ -35,6 +38,8 @@ try:
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
+
+SEA_RETAIL_SOURCES = layer2_sources(SEA_RETAIL_SOURCES)
 
 try:
     from apps.common.siel_retail import (
@@ -167,12 +172,10 @@ def _resolve_sea_duplicate_retailer(source, retailer):
 
 
 def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
-    """Fetch one retailer's latest MAIN-anchored SEA appliance batch."""
+    """Fetch the latest SEA appliance batch using each retailer's date/page policy."""
     canonical_table = source['table_name']
     date_column = source['date_column']
-    source_date_sql = (
-        f"LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)"
-    )
+    date_sql = source_date_sql(date_column, 'source', retailer_value)
     select_columns = [
         'id', 'batch_id', 'country', 'account_name', 'page_type', 'item',
         'sku', 'retailer_sku_name', 'final_sku_price', date_column,
@@ -182,16 +185,16 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
         WITH latest_batch AS (
             SELECT source.batch_id
             FROM {canonical_table} source
-            WHERE {source_date_sql} = %s
+            WHERE {date_sql} = %s
               AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
-              AND UPPER(TRIM(COALESCE(source.page_type, ''))) = 'MAIN'
+              AND {page_scope_sql('source', anchor=True, retailer=retailer_value)}
             ORDER BY source.id DESC
             LIMIT 1
         )
         SELECT {', '.join('source.' + column for column in select_columns)}
         FROM {canonical_table} source
         CROSS JOIN latest_batch
-        WHERE {source_date_sql} = %s
+        WHERE {date_sql} = %s
           AND (
               LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
               OR source.account_name IS NULL
@@ -203,8 +206,7 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
               OR TRIM(CAST(source.country AS TEXT)) = ''
           )
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
-          AND UPPER(TRIM(COALESCE(source.page_type, '')))
-              IN ('MAIN', 'BSR')
+          AND {page_scope_sql('source', retailer=retailer_value)}
         ORDER BY UPPER(TRIM(source.page_type)), source.item, source.id
     """, (
         str(source_date), retailer_value,
@@ -223,15 +225,17 @@ def _serialize_sea_duplicate_row(row):
     }
 
 
-def build_sea_duplicate_groups(rows):
-    """Group duplicate page_type+item rows and classify mapping conflicts."""
+def build_sea_duplicate_groups(rows, retailer=None):
+    """HomeDepot uses item; other retailers use page_type+item."""
     grouped = {}
     for row in rows:
-        page_type_key = _duplicate_key(row.get('page_type'))
+        retailer_key = _duplicate_key(row.get('account_name') or retailer)
+        page_type_key = ('all' if is_homedepot(retailer_key)
+                         else _duplicate_key(row.get('page_type')))
         item_key = _duplicate_key(row.get('item'))
         if not page_type_key or not item_key:
             continue
-        grouped.setdefault((page_type_key, item_key), []).append(row)
+        grouped.setdefault((retailer_key, page_type_key, item_key), []).append(row)
 
     groups = []
     for duplicate_rows in grouped.values():
@@ -250,7 +254,9 @@ def build_sea_duplicate_groups(rows):
         duplicate_type = (
             '상품 매핑 충돌' if is_mapping_conflict else '완전 중복'
         )
-        page_type = _duplicate_text(first.get('page_type')).upper()
+        home_depot = is_homedepot(first.get('account_name') or retailer)
+        page_type = '' if home_depot else _duplicate_text(first.get('page_type')).upper()
+        scope_label = 'HomeDepot' if home_depot else page_type
         item = _duplicate_text(first.get('item'))
         groups.append({
             'duplicate_type': duplicate_type,
@@ -263,10 +269,10 @@ def build_sea_duplicate_groups(rows):
             })),
             'dup_count': len(duplicate_rows),
             'reason': (
-                f'{page_type}의 동일 item에 서로 다른 SKU/상품명이 '
+                f'{scope_label}의 동일 item에 서로 다른 SKU/상품명이 '
                 f'{len(duplicate_rows)}건 연결됨'
                 if is_mapping_conflict else
-                f'{page_type}의 동일 item이 최신 배치에 '
+                f'{scope_label}의 동일 item이 최신 배치에 '
                 f'{len(duplicate_rows)}건 수집됨'
             ),
             'records': [
@@ -304,7 +310,7 @@ def _get_sea_anomaly_detail(
     rows = _fetch_sea_duplicate_rows(
         cursor, source_date, source, retailer_value
     )
-    groups = build_sea_duplicate_groups(rows)
+    groups = build_sea_duplicate_groups(rows, retailer_value)
     total_groups = len(groups)
     total_pages = (
         (total_groups + page_size - 1) // page_size if total_groups else 0
@@ -320,7 +326,7 @@ def _get_sea_anomaly_detail(
         'retailer': retailer_value,
         'select_cols': {
             'group': [
-                'duplicate_type', 'page_type', 'item',
+                'duplicate_type', *([] if is_homedepot(retailer_value) else ['page_type']), 'item',
                 'retailer_sku_name', 'dup_count', 'reason',
             ],
             'record': [
@@ -366,12 +372,12 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                 rows = _fetch_sea_duplicate_rows(
                     cursor, source_date, source, retailer_value
                 )
-                duplicate_count = len(build_sea_duplicate_groups(rows))
+                duplicate_count = len(build_sea_duplicate_groups(rows, retailer_value))
                 retailer_rows.append({
                     'retailer': retailer_value,
                     'total': len(rows),
                     'duplicate_groups': duplicate_count,
-                    'duplicate_keys': ['page_type + item'],
+                    'duplicate_keys': ['item' if is_homedepot(retailer_value) else 'page_type + item'],
                     'status': get_status(duplicate_count),
                 })
                 table_records += len(rows)
@@ -1538,13 +1544,11 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
                        anchor.batch_id,
                        anchor.id
                 FROM {actual_table} anchor
-                WHERE LEFT(
-                          TRIM(CAST(anchor.{date_column} AS TEXT)), 10
-                      ) = %s
+                WHERE {source_date_sql(date_column, 'anchor')} = %s
                   AND LOWER(TRIM(anchor.account_name)) IN (
                       {retailer_placeholders}
                   )
-                  AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+                  AND {page_scope_sql('anchor', anchor=True)}
                 ORDER BY retailer_key, anchor.id DESC
             )
             SELECT DISTINCT ON (t.id)
@@ -1558,9 +1562,9 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
                  OR TRIM(CAST(t.account_name AS TEXT)) = ''
              )
             WHERE t.id IN ({id_placeholders})
-              AND LEFT(TRIM(CAST(t.{date_column} AS TEXT)), 10) = %s
-              AND UPPER(TRIM(COALESCE(t.page_type, '')))
-                  IN ('MAIN', 'BSR')
+              AND {source_date_sql(date_column, 't', account_column='latest.retailer_key')} = %s
+              AND (latest.retailer_key = 'homedepot' OR {page_scope_sql('t')})
+              AND (UPPER(TRIM(COALESCE(t.country, ''))) IN ('SEA', ''))
             ORDER BY t.id
         """, (
             source_date,
@@ -1604,7 +1608,9 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
             record_dict = record_data
 
         # 백업 (dup_group_key: 중복 판별 기준 컬럼명 + period 실제값)
-        if use_period:
+        if sea_source and is_homedepot(record_dict.get('account_name')):
+            group_key_meta = 'item'
+        elif use_period:
             date_val = str(record_dict.get(date_col, ''))
             try:
                 hour = int(date_val[11:13])

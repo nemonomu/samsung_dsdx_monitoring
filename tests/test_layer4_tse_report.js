@@ -125,6 +125,18 @@ const reportData = {
     }
 };
 
+// The same retailer/item in SEA and SEM must remain separate in every section.
+for (const type of ['null_check', 'format_check', 'duplicate_check', 'cross_field']) {
+    for (const product of ['ref', 'ldy']) {
+        for (const table of [`public.${product}_retail_com`, `dx_sem.dx_sem_${product}_retail_com`]) {
+            const rows = reportData.grouped_details[type][table] || [];
+            rows.push({ retailer: 'HomeDepot', status: 'corrected', item: 'HD1',
+                column_name: 'sku', detail_code: 'price', rule_name: '가격 일치', memo: '중복 삭제' });
+            reportData.grouped_details[type][table] = rows;
+        }
+    }
+}
+
 const sandbox = {
     console,
     document: {
@@ -164,6 +176,13 @@ sandbox.L4._sectionHandler.report();
 
 setImmediate(() => {
     const html = renderedRows.join('\n');
+    for (const type of ['NULL 검증', '형식 검증', '중복 검증', '크로스필드 검증']) {
+        const summary = renderedRows.find(row => row.includes(type));
+        for (const product of ['REF', 'LDY']) {
+            assert(summary.includes(`SEA HOMEDEPOT ${product} 수정 1건`), type + product);
+            assert(summary.includes(`SEM HomeDepot ${product} 수정 1건`), type + product);
+        }
+    }
     assert(html.includes('TSE HOMEPRO TV'));
     assert(html.includes('TSE HOMEPRO REF'));
     assert(html.includes('TSE HOMEPRO LDY'));
@@ -207,6 +226,6 @@ setImmediate(() => {
     assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=9"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=10"));
     console.log('Layer 4 retail report label tests passed');
 });

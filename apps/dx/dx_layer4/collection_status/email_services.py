@@ -4,6 +4,7 @@ import re
 
 from apps.common.db import dx_connection
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.sea_dates import appliance_source_date_sql
 
 from .email_registry import EMAIL_REPORT_SOURCES
 
@@ -27,6 +28,8 @@ def _normalize_name(value):
 
 def _date_condition(source, alias='source'):
     column = source['date_column']
+    if source['date_mode'] == 'sea_homedepot':
+        return f"({appliance_source_date_sql(alias + '.' + column, alias + '.account_name')}) = %s"
     if source['date_mode'] == 'batch':
         return (
             f"substring(COALESCE(CAST({alias}.{column} AS TEXT), '') "
@@ -316,6 +319,11 @@ def _query_redirect_count(cursor, source, retailer, target_date, batch_id):
 
 def _query_retailer(cursor, source, retailer, target_date):
     """Return one retailer's actual collection and Missing quantities."""
+    if (source['key'] in {'sea_ref', 'sea_ldy'}
+            and _normalize_name(retailer['name']) == 'homedepot'):
+        source = {**source, 'date_mode': 'sea_homedepot',
+                  'has_page_type': False, 'collection_scope': 'all',
+                  'business_timezone': None}
     table_name = source['table_name']
     scope = _source_scope(source, retailer)
     base_params = _retailer_params(retailer) + _date_params(

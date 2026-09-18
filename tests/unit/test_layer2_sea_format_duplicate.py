@@ -282,7 +282,7 @@ class SEADuplicateValidationTests(unittest.TestCase):
 
         fetch.assert_called_once_with(
             unittest.mock.ANY, date(2026, 8, 31),
-            SEA_SOURCES['ldy'], 'Lowes',
+            self.service.SEA_RETAIL_SOURCES['ldy'], 'Lowes',
         )
         self.assertEqual('2026-08-31', result['source_date'])
         self.assertFalse(result['readonly'])
@@ -335,6 +335,72 @@ class SEADuplicateValidationTests(unittest.TestCase):
             'DELETE FROM public.ref_retail_com WHERE id IN (%s, %s)',
             cursor.calls[-1][0],
         )
+
+    def test_homedepot_uses_item_without_page_type_and_ignores_blank_item(self):
+        groups = self.service.build_sea_duplicate_groups([
+            {'id': 1, 'item': 'A', 'page_type': None, 'sku': 'S'},
+            {'id': 2, 'item': 'A', 'page_type': '', 'sku': 'S'},
+            {'id': 3, 'item': 'B', 'page_type': None, 'sku': 'X'},
+            {'id': 4, 'item': 'B', 'page_type': None, 'sku': 'Y'},
+            {'id': 5, 'item': None}, {'id': 6, 'item': ''},
+        ], 'HomeDepot')
+        self.assertEqual(['A', 'B'], [group['item'] for group in groups])
+        self.assertEqual(['완전 중복', '상품 매핑 충돌'],
+                         [group['duplicate_type'] for group in groups])
+
+    def test_homedepot_detail_and_stats_use_latest_batch_d_minus_one(self):
+        for product in ('ref', 'ldy'):
+            with self.subTest(product=product):
+                source = self.service.SEA_RETAIL_SOURCES[product]
+                cursor = ScriptedCursor([{'fetchall': []}])
+                result = self.service._get_sea_anomaly_detail(
+                    cursor, '2026-09-01', f'sea_{product}_retail',
+                    'HomeDepot', 1, 20,
+                )
+                sql, params = cursor.calls[0]
+                self.assertIn("AT TIME ZONE 'America/New_York'", sql)
+                self.assertIn('IS NOT DISTINCT FROM latest_batch.batch_id', sql)
+                self.assertNotIn("= 'MAIN'", sql)
+                self.assertNotIn("IN ('MAIN', 'BSR')", sql)
+                self.assertEqual(('2026-08-31', 'HomeDepot') * 2, params)
+                self.assertFalse(result['readonly'])
+                self.assertNotIn('page_type', result['select_cols']['group'])
+                self.assertEqual(source['table_name'], result['actual_table'])
+
+        cursor = ScriptedCursor([{}, {}])
+        validation = {'tables': []}
+        with patch.object(self.service, '_fetch_sea_duplicate_rows',
+                          side_effect=lambda _c, _d, _s, retailer: (
+                              [{'item': 'A'}, {'item': 'A'}]
+                              if retailer == 'HomeDepot' else [])):
+            self.assertEqual(2, self.service._append_sea_anomaly_stats(
+                cursor, '2026-09-01', validation))
+        for table in validation['tables']:
+            retailer = next(r for r in table['retailers'] if r['retailer'] == 'HomeDepot')
+            self.assertEqual(['item'], retailer['duplicate_keys'])
+            self.assertEqual(1, retailer['duplicate_groups'])
+        self.assertNotIn('HomeDepot', SEA_SOURCES['ref']['retailers'])
+
+    def test_homedepot_cleanup_preserves_country_product_retailer_in_audit(self):
+        for product in ('ref', 'ldy'):
+            cursor = ScriptedCursor([
+                {'fetchall': [(7, {'id': 7, 'item': 'HD7', 'page_type': None,
+                                   'account_name': 'HomeDepot', 'country': 'SEA'})]},
+                {}, {}, {}, {'rowcount': 1},
+            ])
+            self.service.cleanup_duplicates(
+                cursor, object(), f'sea_{product}_retail', [7],
+                '2026-09-01', 'tester',
+            )
+            sql, params = cursor.calls[0]
+            self.assertIn("AT TIME ZONE 'America/New_York'", sql)
+            self.assertIn('homedepot', params)
+            self.assertIn("latest.retailer_key = 'homedepot'", sql)
+            self.assertEqual('item', cursor.calls[2][1][3])
+            audit = cursor.calls[3][1]
+            self.assertEqual(f'public.{product}_retail_com', audit[3])
+            self.assertEqual('HomeDepot', audit[10])
+            self.assertEqual('HD7', audit[11])
 
 
 if __name__ == '__main__':
