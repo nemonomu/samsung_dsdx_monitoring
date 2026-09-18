@@ -282,6 +282,23 @@ function ensureProductUrlColumn(columns, selectCols) {
     return result;
 }
 
+function arrangeRetailInspectionColumns(columns, availableKeys) {
+    var nameColumn = columns.find(function(col) { return col.key === 'retailer_sku_name'; });
+    if (!nameColumn && availableKeys.includes('retailer_sku_name')) {
+        nameColumn = { key: 'retailer_sku_name', label: 'retailer_sku_name', width: 200 };
+    }
+    var hiddenKeys = ['account_name', 'country', 'retailer_sku_name'];
+    var accountIndex = columns.findIndex(function(col) { return col.key === 'account_name'; });
+    var result = columns.filter(function(col) { return !hiddenKeys.includes(col.key); });
+    if (nameColumn) {
+        var nameIndex = accountIndex >= 0
+            ? columns.slice(0, accountIndex).filter(function(col) { return !hiddenKeys.includes(col.key); }).length
+            : result.findIndex(function(col) { return col.key === 'item'; }) + 1;
+        result.splice(nameIndex, 0, nameColumn);
+    }
+    return result;
+}
+
 function flattenRecords(type, records, tableParam) {
     var flat = [];
     var groupNum = 0;
@@ -598,6 +615,10 @@ function renderDetailWithTable(options) {
     var defaultCols = ensureProductUrlColumn(getAllColumns(config), selectCols).slice();
     if (type === 'null' || type === 'format') {
         defaultCols = normalizeRetailSourceDateColumns(defaultCols);
+    }
+    if (!isRowspan && /^(?:(?:tv|hhp)_retail|(?:sea|seda|siel|seg|sem|tse)_(?:tv|ref|ldy)_retail)$/.test(tableParam)) {
+        defaultCols = arrangeRetailInspectionColumns(defaultCols,
+            (selectCols || []).concat(data.flatMap(function(row) { return Object.keys(row); })));
     }
 
     detailViewState.type = type;

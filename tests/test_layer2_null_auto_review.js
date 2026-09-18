@@ -561,9 +561,11 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
             'siel_ref_retail', 'sem_ref_retail', 'seg_ref_retail', 'tse_ref_retail']) {
             const sandbox = commonSandbox();
             const row = { id: 1, item: 'A', star_rating: null, count_of_star_ratings: '10',
+                account_name: 'Amazon', country: 'SIEL', retailer_sku_name: 'Product A',
                 count_of_reviews: '5', review_body_count: 3, detailed_review_content: 'review1 - text',
                 crawl_datetime: '2026-09-13', null_fields: [field] };
-            const config = [{ key: 'item' }, { key: field }, { key: 'product_url' }];
+            const originalKeys = ['item', 'account_name', 'country', field, 'product_url', 'retailer_sku_name'];
+            const config = originalKeys.map(key => ({ key }));
             renderRows(sandbox, { tableParam, data: [row], config, nullReviewField: field,
                 editableCols: [field], normalReviews: {} });
             const keys = Array.from(sandbox.detailViewState.columns, column => column.key);
@@ -572,7 +574,12 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
             assert(keys.indexOf('_null_review_status') > keys.indexOf('review_body_count'));
             assert.strictEqual(keys.indexOf('product_url'), keys.indexOf('_null_review_status') + 1);
             assert.strictEqual(keys.indexOf('_null_review_reason'), keys.indexOf('product_url') + 1);
-            assert.deepStrictEqual(config.map(column => column.key), ['item', field, 'product_url']);
+            assert.deepStrictEqual(keys.slice(0, 2), ['item', 'retailer_sku_name']);
+            assert(!keys.includes('account_name'));
+            assert(!keys.includes('country'));
+            assert.strictEqual(row.account_name, 'Amazon');
+            assert.strictEqual(row.country, 'SIEL');
+            assert.deepStrictEqual(config.map(column => column.key), originalKeys);
             assert.deepStrictEqual(row.null_fields, [field]);
             assert.deepStrictEqual(Array.from(sandbox.detailViewState.editableCols), [field]);
         }
