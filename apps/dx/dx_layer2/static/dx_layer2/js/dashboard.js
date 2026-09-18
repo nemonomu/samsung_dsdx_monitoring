@@ -160,6 +160,86 @@ function prepareLayer2DisplayData(data) {
 
 let layer2StatsRequestId = 0;
 let layer2SidebarRequestId = 0;
+let layer2SidebarSnapshot = null;
+let layer2SidebarDate = null;
+let layer2SidebarGeneration = 0;
+const layer2SidebarPending = new Map();
+const LAYER2_SIDEBAR_TTL = 30000;
+
+function getLayer2SidebarSnapshot(date) {
+    if (layer2SidebarSnapshot && layer2SidebarSnapshot.date === date) return layer2SidebarSnapshot;
+    try {
+        const saved = JSON.parse(window.sessionStorage.getItem(
+            'layer2Sidebar:v1:' + (window.LAYER2.username || '')));
+        if (saved && saved.date === date && saved.sections) {
+            layer2SidebarSnapshot = saved;
+            return saved;
+        }
+    } catch (_) { /* Storage may be disabled. Keep the in-memory fallback. */ }
+    layer2SidebarSnapshot = { date: date, sections: {} };
+    return layer2SidebarSnapshot;
+}
+
+function saveLayer2SidebarSnapshot() {
+    try {
+        window.sessionStorage.setItem('layer2Sidebar:v1:' + (window.LAYER2.username || ''),
+            JSON.stringify(layer2SidebarSnapshot));
+    } catch (_) { /* Counts still work when storage is unavailable. */ }
+}
+
+function rememberLayer2SidebarStats(date, data) {
+    if (data.scoped_table) return;
+    const snapshot = getLayer2SidebarSnapshot(date);
+    (data.validation_types || []).forEach(function(validation) {
+        if (validation.status === 'ERROR') return;
+        const section = LAYER2_SIDEBAR_GROUP_BY_TYPE[validation.type];
+        if (!section) return;
+        // Persist counts only, never product rows or review evidence.
+        snapshot.sections[section] = { savedAt: Date.now(), data: {
+            date: date, validation_types: [{ type: validation.type,
+                total_issues: validation.total_issues,
+                tables: (validation.tables || []).map(function(table) {
+                    return { table: table.table, table_name: table.table_name, total_issues: table.total_issues };
+                }) }]
+        } };
+    });
+    saveLayer2SidebarSnapshot();
+}
+
+function restoreLayer2SidebarStats(date) {
+    if (layer2SidebarDate !== date) resetLayer2SidebarIssueBadges();
+    layer2SidebarDate = date;
+    const snapshot = getLayer2SidebarSnapshot(date);
+    Object.values(snapshot.sections).forEach(function(entry) {
+        if (Date.now() - entry.savedAt < 300000) updateLayer2SidebarIssueBadges(entry.data);
+    });
+}
+
+function invalidateLayer2SidebarStats(date) {
+    layer2SidebarGeneration += 1;
+    layer2SidebarRequestId += 1;
+    layer2SidebarPending.clear();
+    const snapshot = getLayer2SidebarSnapshot(date);
+    Object.values(snapshot.sections).forEach(function(entry) { entry.savedAt = 0; });
+    saveLayer2SidebarSnapshot();
+}
+
+function fetchLayer2SidebarStats(date, section) {
+    const entry = getLayer2SidebarSnapshot(date).sections[section];
+    if (entry && Date.now() - entry.savedAt < LAYER2_SIDEBAR_TTL) return Promise.resolve(entry.data);
+    const key = date + ':' + section;
+    if (layer2SidebarPending.has(key)) return layer2SidebarPending.get(key);
+    const generation = layer2SidebarGeneration;
+    const request = fetchLayer2StatsSection(date, section).then(function(data) {
+        if (generation !== layer2SidebarGeneration) return null;
+        if (layer2SidebarSnapshot && layer2SidebarSnapshot.date === date) rememberLayer2SidebarStats(date, data);
+        return data;
+    }).finally(function() {
+        if (layer2SidebarPending.get(key) === request) layer2SidebarPending.delete(key);
+    });
+    layer2SidebarPending.set(key, request);
+    return request;
+}
 
 function createLayer2StatsState(date) {
     return {
@@ -314,7 +394,7 @@ async function fetchDXStats(tableTarget) {
     const sidebarRequestId = ++layer2SidebarRequestId;
     const container = document.getElementById('dx-validation-container');
 
-    resetLayer2SidebarIssueBadges();
+    restoreLayer2SidebarStats(date);
 
     if (container) {
         container.innerHTML = '<div class="loading"><p>검증 데이터를 불러오는 중...</p></div>';
@@ -336,9 +416,10 @@ async function fetchDXStats(tableTarget) {
         const sidebarTasks = Object.values(LAYER2_SIDEBAR_GROUP_BY_TYPE).map(function(statsSection) {
             // Reuse the overview response when it already includes every country.
             const request = !table && statsSection === section
-                ? detailRequest : fetchLayer2StatsSection(date, statsSection);
+                ? detailRequest : fetchLayer2SidebarStats(date, statsSection);
             return request.then(function(data) {
-                if (sidebarRequestId !== layer2SidebarRequestId) return;
+                if (!data || sidebarRequestId !== layer2SidebarRequestId) return;
+                if (!table && statsSection === section) rememberLayer2SidebarStats(date, data);
                 updateLayer2SidebarIssueBadges(data);
             }).catch(function(error) {
                 if (sidebarRequestId !== layer2SidebarRequestId) return;
@@ -358,6 +439,7 @@ async function fetchDXStats(tableTarget) {
             const data = await fetchLayer2StatsSection(date, statsSection);
             if (requestId !== layer2StatsRequestId) return;
             successCount += 1;
+            rememberLayer2SidebarStats(date, data);
             mergeLayer2Stats(state, data);
             renderLayer2Stats(state);
         } catch (error) {

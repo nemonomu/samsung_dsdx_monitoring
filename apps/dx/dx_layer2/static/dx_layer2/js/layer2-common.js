@@ -1168,7 +1168,10 @@ function _doSaveEdits(memo) {
                 failCount++;
             }
         });
-        if (successCount > 0) showToast(successCount + '건 저장 완료', 'success');
+        if (successCount > 0) {
+            showToast(successCount + '건 저장 완료', 'success');
+            if (typeof invalidateLayer2SidebarStats === 'function') invalidateLayer2SidebarStats(getSelectedDate());
+        }
         if (failCount > 0) showToast(failCount + '건 저장 실패', 'error');
         _updateSaveButton();
         if (successCount > 0 && failCount === 0 && detailViewState.type === 'null'
@@ -1484,6 +1487,7 @@ function _submitNullReviews(cells, status, memo, reason) {
         detailViewState.selectedCell = null;
         if (successCount > 0) {
             showToast(successCount + '건 확인 처리 완료', 'success');
+            if (typeof invalidateLayer2SidebarStats === 'function') invalidateLayer2SidebarStats(getSelectedDate());
         }
         if (failCount > 0) {
             var failureDetail = failureMessages.length > 0
@@ -1869,6 +1873,7 @@ function formatLocalDate(date) {
 }
 
 function handleSearch() {
+    if (typeof invalidateLayer2SidebarStats === 'function') invalidateLayer2SidebarStats(getSelectedDate());
     checkBackupStatus();
     dxData = null;
     ViewStack.stack = [];

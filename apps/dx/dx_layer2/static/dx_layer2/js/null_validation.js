@@ -430,6 +430,7 @@ function showNullFieldDetail(fieldName, pushStack = true) {
 async function refreshNullReviewDetail() {
     const fieldName = modalState.selectedField;
     const date = modalState.nullFieldsData?.date || getSelectedDate();
+    if (typeof invalidateLayer2SidebarStats === 'function') invalidateLayer2SidebarStats(date);
     const query = new URLSearchParams({
         type: 'null', table: modalState.tableParam,
         retailer: modalState.retailer || '', date: date
