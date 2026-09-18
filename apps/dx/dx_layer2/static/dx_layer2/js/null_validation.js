@@ -590,9 +590,19 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                         return 'source.' + column;
                     }).join(', ')
                     : 'source.*';
+                const homeDepot = isSeaAppliance && retailerName.trim().toLowerCase() === 'homedepot';
+                const seaDateExpr = homeDepot
+                    ? `TO_CHAR(${dateColumn}::timestamptz AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')`
+                    : `LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10)`;
+                const seaRowDateExpr = homeDepot
+                    ? `TO_CHAR(source.${dateColumn}::timestamptz AT TIME ZONE 'America/New_York', 'YYYY-MM-DD')`
+                    : `LEFT(TRIM(CAST(source.${dateColumn} AS TEXT)), 10)`;
+                const seaAnchorPages = homeDepot ? 'TRUE' : "UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'";
+                const seaPages = homeDepot ? 'TRUE' : "UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')";
+                const seaRowPages = homeDepot ? 'TRUE' : "UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR')";
                 const seaApplianceHistoryQuery = currentDays > 1
-                    ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10))\n         LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND account_name = '${retailerName}'\n    AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'\n  ORDER BY LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10), id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON LEFT(TRIM(CAST(source.${dateColumn} AS TEXT)), 10) = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE source.account_name = '${retailerName}'\n  AND source.item IN (${inClause})\n  AND UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR')\nORDER BY source.item, source.${dateColumn} ASC;`
-                    : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND LEFT(TRIM(CAST(${dateColumn} AS TEXT)), 10) = '${sourceDate}'\n  AND batch_id = '${batchId}'\n  AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')\nORDER BY item, ${dateColumn} ASC;`;
+                    ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (${seaDateExpr})\n         ${seaDateExpr} AS source_date,\n         batch_id\n  FROM ${tblName}\n  WHERE ${seaDateExpr} BETWEEN '${historyStartDate}' AND '${sourceDate}'\n    AND account_name = '${retailerName}'\n    AND ${seaAnchorPages}\n  ORDER BY ${seaDateExpr}, id DESC\n)\nSELECT ${seaQueryCols}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON ${seaRowDateExpr} = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE source.account_name = '${retailerName}'\n  AND source.item IN (${inClause})\n  AND ${seaRowPages}\nORDER BY source.item, source.${dateColumn} ASC;`
+                    : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND ${seaDateExpr} = '${sourceDate}'\n  AND batch_id = '${batchId}'\n  AND ${seaPages}\nORDER BY item, ${dateColumn} ASC;`;
                 const seaTvHistoryQuery = `SELECT ${queryCols}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND ${dateColumn}::timestamp >= '${historyStartDate}'::timestamp\n  AND ${dateColumn}::timestamp < '${_tseNextDate(sourceDate)}'::timestamp\nORDER BY item, ${dateColumn} ASC;`;
                 const seaHistoryQuery = isSeaAppliance
                     ? seaApplianceHistoryQuery
@@ -671,7 +681,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         const reviews = data.normal_reviews || {};
         const targetDate = data.source_date || date;
         records.forEach(function(row) {
-            if (row[dateColumn] && String(row[dateColumn]).substring(0, 10) !== targetDate) return;
+            if (row[dateColumn] && (row._source_date || String(row[dateColumn]).substring(0, 10)) !== targetDate) return;
             if (!(row.null_fields || []).includes(fieldName)) return;
             const review = reviews[row.id + '_' + fieldName];
             if (review) counts[review.auto_applied ? 'automatic' : 'manual']++;

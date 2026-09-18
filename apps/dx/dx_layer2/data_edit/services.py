@@ -5,6 +5,7 @@ cursor + params 를 받아 plain dict 를 반환한다.
 
 import re
 from datetime import datetime
+from apps.common.sea_layer2 import source_date_sql, page_scope_sql
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.dx.dx_layer2 import seda_null_validation
@@ -422,18 +423,15 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             SELECT {select_columns}
             FROM {table_name} source
             WHERE source.id = %s
-              AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
-              AND UPPER(TRIM(COALESCE(source.page_type, '')))
-                  IN ('MAIN', 'BSR')
+              AND {source_date_sql(date_column, 'source')} = %s
+              AND {page_scope_sql('source')}
               AND source.batch_id = (
                   SELECT anchor.batch_id
                   FROM {table_name} anchor
-                  WHERE LEFT(
-                            TRIM(CAST(anchor.{date_column} AS TEXT)), 10
-                        ) = %s
+                  WHERE {source_date_sql(date_column, 'anchor')} = %s
                     AND LOWER(TRIM(anchor.account_name)) =
                         LOWER(TRIM(source.account_name))
-                    AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+                    AND {page_scope_sql('anchor', anchor=True)}
                   ORDER BY anchor.id DESC
                   LIMIT 1
               )

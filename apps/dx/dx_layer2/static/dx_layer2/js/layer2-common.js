@@ -339,12 +339,16 @@ function _reviewAttr(row, key) {
     // 다일치 조회 시 현재 검수 대상 데이터일만 수정 가능
     if ((modalState.days || 1) > 1 && detailViewState.crawlDate) {
         var dateCol = detailViewState.dateColumn || (modalState.nullFieldsData && modalState.nullFieldsData.date_column) || 'crawl_datetime';
-        var recDate = (row[dateCol] || '').substring(0, 10);
+        var recDate = retailSourceDate(row, dateCol);
         var editableDate = detailViewState.editableDate
             || detailViewState.crawlDate;
         if (recDate !== editableDate) return '';
     }
     return ' data-row-id="' + rowId + '" data-col="' + esc(key) + '"';
+}
+
+function retailSourceDate(row, dateColumn) {
+    return row._source_date || String(row[dateColumn] || '').trim().substring(0, 10);
 }
 
 function _nullReviewForRow(row) {
@@ -362,7 +366,7 @@ function _annotateNullReviewRows(rows) {
         var review = _nullReviewForRow(row);
         var dateColumn = detailViewState.dateColumn;
         var isHistory = dateColumn && row[dateColumn]
-            && String(row[dateColumn]).substring(0, 10) !== detailViewState.editableDate;
+            && retailSourceDate(row, dateColumn) !== detailViewState.editableDate;
         var hasNull = (row.null_fields || []).includes(detailViewState.nullReviewField);
         row._null_review_status = review
             ? (review.auto_applied ? '자동확인' : '수동확인')
@@ -409,8 +413,7 @@ function _sortNullReviewGroups(rows) {
     groups.forEach(function(group) {
         group.rows.sort(function(a, b) {
             var dateColumn = detailViewState.dateColumn;
-            return String(a[dateColumn] || '').trim().substring(0, 10)
-                .localeCompare(String(b[dateColumn] || '').trim().substring(0, 10));
+            return retailSourceDate(a, dateColumn).localeCompare(retailSourceDate(b, dateColumn));
         });
         group.rows.forEach(function(row) { ordered.push(row); });
     });
@@ -490,7 +493,7 @@ function getCellHtml(row, col, tableParam) {
         && RETAIL_SOURCE_DATE_COLUMNS.has(key)
     ) {
         var rawDateValue = val === null || val === undefined ? '' : String(val);
-        var sourceDateValue = rawDateValue.substring(0, 10) || '-';
+        var sourceDateValue = retailSourceDate(row, key) || '-';
         var targetSourceDate = detailViewState.editableDate
             || detailViewState.crawlDate || '';
         var isTargetSourceDate = sourceDateValue === targetSourceDate;

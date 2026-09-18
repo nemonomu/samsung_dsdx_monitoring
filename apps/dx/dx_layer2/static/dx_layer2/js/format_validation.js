@@ -67,7 +67,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         var sourceDateColumn = data.date_column || 'crawl_datetime';
         var errorItems = new Set();
         records.forEach(function(record) {
-            var recDate = (record[sourceDateColumn] || '').substring(0, 10);
+            var recDate = record._source_date || (record[sourceDateColumn] || '').substring(0, 10);
             if (recDate === targetDateStr && (record.error_fields || []).includes(fieldName)) {
                 if (record.item) errorItems.add(record.item);
             }
@@ -246,7 +246,15 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             const retailerName = modalState.retailer || '';
             const dateCol = querySource.dateColumn;
             const inClause = items.map(item => `'${item}'`).join(', ');
-            const query3Days = `SELECT id, ${dateCol}, account_name, item, ${fieldName}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND DATE(${dateCol}::timestamp) >= DATE('${date}') - INTERVAL '2 days'\n  AND DATE(${dateCol}::timestamp) <= DATE('${date}')\nORDER BY item, ${dateCol} ASC;`;
+            const homeDepot = ['sea_ref_retail', 'sea_ldy_retail'].includes(tableParam)
+                && retailerName.trim().toLowerCase() === 'homedepot';
+            const sourceDate = homeDepot ? (data.source_date || date) : date;
+            const queryDate = homeDepot
+                ? `(${dateCol}::timestamptz AT TIME ZONE 'America/New_York')::date`
+                : `DATE(${dateCol}::timestamp)`;
+            const query3Days = homeDepot
+                ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (${queryDate}) ${queryDate} AS source_date, batch_id\n  FROM ${tblName}\n  WHERE account_name = '${retailerName}'\n    AND ${queryDate} BETWEEN DATE('${sourceDate}') - INTERVAL '2 days' AND DATE('${sourceDate}')\n  ORDER BY ${queryDate}, id DESC\n)\nSELECT source.id, source.${dateCol}, source.account_name, source.item, source.${fieldName}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON (source.${dateCol}::timestamptz AT TIME ZONE 'America/New_York')::date = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE source.account_name = '${retailerName}' AND source.item IN (${inClause})\nORDER BY source.item, source.${dateCol} ASC;`
+                : `SELECT id, ${dateCol}, account_name, item, ${fieldName}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND ${queryDate} >= DATE('${sourceDate}') - INTERVAL '2 days'\n  AND ${queryDate} <= DATE('${sourceDate}')\nORDER BY item, ${dateCol} ASC;`;
             itemQueryHtml += `<div class="item-query-section">
                 <div class="item-list-box">
                     <div class="item-copy-header"><span class="item-copy-title">Item 목록 (${items.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>

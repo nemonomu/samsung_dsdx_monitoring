@@ -3,6 +3,10 @@ NULL 검증 서비스 — 순수 비즈니스 로직 (DB cursor/conn을 받아 �
 """
 
 import time
+from apps.common.sea_layer2 import (
+    is_homedepot, homedepot_null_columns, homedepot_format_columns,
+    source_date_sql, page_scope_sql, annotate_source_date,
+)
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from apps.common.db import execute_dx_query, dx_table
@@ -34,6 +38,8 @@ except (ImportError, AttributeError):
 try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
+    from apps.common.sea_layer2 import layer2_sources
+    SEA_RETAIL_SOURCES = layer2_sources(SEA_RETAIL_SOURCES)
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -439,9 +445,9 @@ def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
     cursor.execute(f"""
         SELECT anchor.batch_id
         FROM {table_name} anchor
-        WHERE LEFT(TRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+        WHERE {source_date_sql(date_column, 'anchor', retailer)} = %s
           AND LOWER(TRIM(anchor.account_name)) = LOWER(TRIM(%s))
-          AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+          AND {page_scope_sql('anchor', anchor=True, retailer=retailer)}
         ORDER BY anchor.id DESC
         LIMIT 1
     """, (source_date, retailer))
@@ -452,14 +458,14 @@ def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
 def _build_sea_null_scope(source, source_date, retailer, batch_id):
     return (
         f"""
-            LEFT(TRIM(CAST({source['date_column']} AS TEXT)), 10) = %s
+            {source_date_sql(source['date_column'], retailer=retailer)} = %s
             AND (
                 LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
                 OR account_name IS NULL
                 OR TRIM(CAST(account_name AS TEXT)) = ''
             )
             AND batch_id = %s
-            AND UPPER(TRIM(COALESCE(page_type, ''))) IN ('MAIN', 'BSR')
+            AND {page_scope_sql(retailer=retailer)}
         """,
         [source_date, retailer, batch_id],
     )
@@ -481,20 +487,19 @@ def _build_sea_latest_batch_record_query(source, column_name):
                    anchor.account_name,
                    anchor.batch_id
             FROM {table_name} anchor
-            WHERE LEFT(
-                      TRIM(CAST(anchor.{date_column} AS TEXT)), 10
-                  ) = %s
+            WHERE {source_date_sql(date_column, 'anchor')} = %s
               AND LOWER(TRIM(anchor.account_name)) IN (
                   {retailer_placeholders}
               )
-              AND UPPER(TRIM(COALESCE(anchor.page_type, ''))) = 'MAIN'
+              AND {page_scope_sql('anchor', anchor=True)}
             ORDER BY LOWER(TRIM(anchor.account_name)), anchor.id DESC
         ) resolved
           ON resolved.batch_id IS NOT DISTINCT FROM source.batch_id
         WHERE source.id = %s
-          AND LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
-          AND UPPER(TRIM(COALESCE(source.page_type, '')))
-              IN ('MAIN', 'BSR')
+          AND {source_date_sql(date_column, 'source', account_column="COALESCE(NULLIF(TRIM(source.account_name), ''), resolved.account_name)")} = %s
+          AND (LOWER(TRIM(resolved.account_name)) = 'homedepot' OR {page_scope_sql('source')})
+          AND (LOWER(TRIM(source.account_name)) = LOWER(TRIM(resolved.account_name))
+               OR source.account_name IS NULL OR TRIM(source.account_name) = '')
     """
     return query, [retailer.lower() for retailer in retailers]
 
@@ -650,7 +655,8 @@ def load_null_check_config():
                 )
                 if (
                     sea_retailer is None
-                    or check_column not in SEA_NULL_COLUMNS[product]
+                    or check_column not in (homedepot_null_columns(product)
+                                            if is_homedepot(sea_retailer) else SEA_NULL_COLUMNS[product])
                 ):
                     continue
                 category = SEA_NULL_CATEGORY_BY_PRODUCT[product]
@@ -2759,9 +2765,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                     start_source_date = end_source_date - timedelta(
                         days=days - 1
                     )
-                    date_text = (
-                        f"LEFT(TRIM(CAST({date_col} AS TEXT)), 10)"
-                    )
+                    date_text = source_date_sql(date_col, retailer=retailer)
                     expand_query = f"""
                         WITH latest_batches AS (
                             SELECT DISTINCT ON ({date_text})
@@ -2771,14 +2775,13 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                             WHERE {date_text} >= %s
                               AND {date_text} <= %s
                               AND LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
-                              AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'
+                              AND {page_scope_sql(anchor=True, retailer=retailer)}
                             ORDER BY {date_text}, id DESC
                         )
                         SELECT source.*
                         FROM {actual_table} source
                         JOIN latest_batches latest
-                          ON LEFT(TRIM(CAST(source.{date_col} AS TEXT)), 10)
-                             = latest.source_date
+                          ON {source_date_sql(date_col, 'source', retailer)} = latest.source_date
                          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
                         WHERE (
                                 LOWER(TRIM(source.account_name)) =
@@ -2786,8 +2789,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                                 OR source.account_name IS NULL
                                 OR TRIM(CAST(source.account_name AS TEXT)) = ''
                               )
-                          AND UPPER(TRIM(COALESCE(source.page_type, '')))
-                              IN ('MAIN', 'BSR')
+                          AND {page_scope_sql('source', retailer=retailer)}
                           AND source.item IN ({placeholders})
                         ORDER BY source.item, source.{date_col}, source.id
                     """
@@ -2844,6 +2846,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                 else:
                     record_data[col_name] = val
         record_data['null_fields'] = [column] if (col_idx is not None and _is_field_null(row[col_idx], check_type)) else []
+        if sea_source and sea_source.get('latest_main_batch'):
+            annotate_source_date(record_data, retailer)
         results.append(record_data)
 
     # display_config, query_config 생성
@@ -2943,7 +2947,7 @@ def _null_evidence_save_source(table_name):
 
 
 def _capture_null_review_record(cursor, table_name, record_id, column_name,
-                                inspection_date, evidence_source):
+                                inspection_date, evidence_source, retailer=None):
     """Lock and capture the value plus identity from the validated source row."""
     country, _product, source = evidence_source
     day = datetime.strptime(str(inspection_date), '%Y-%m-%d').date()
@@ -2952,7 +2956,8 @@ def _capture_null_review_record(cursor, table_name, record_id, column_name,
         date_where, date_params = _siel_date_bounds(source, str(source_day))
     else:
         date_column = source.get('date_column', 'crawl_datetime')
-        date_where = f"LEFT(TRIM(CAST({date_column} AS TEXT)), 10) = %s"
+        date_where = (f"{source_date_sql(date_column, retailer=retailer)} = %s" if country == 'SEA' and source.get('latest_main_batch')
+                      else f"LEFT(TRIM(CAST({date_column} AS TEXT)), 10) = %s")
         date_params = [str(source_day)]
     # table_name and column_name have already passed the normal-review
     # allowlists; the source/date identifiers above are server-owned constants.
@@ -3010,7 +3015,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
     if (
         sea_source
-        and column_name not in SEA_NULL_COLUMNS[sea_source['product_key']]
+        and column_name not in set(SEA_NULL_COLUMNS[sea_source['product_key']]).union(
+            homedepot_null_columns(sea_source['product_key']), homedepot_format_columns(sea_source['product_key']))
     ):
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
 
@@ -3149,6 +3155,13 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if seda_product_line and not seda_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
+    if sea_source:
+        allowed = (homedepot_format_columns(sea_source['product_key'])
+                   if is_homedepot(retailer) and correction_type_value == 'format_check'
+                   else homedepot_null_columns(sea_source['product_key']) if is_homedepot(retailer)
+                   else SEA_NULL_COLUMNS[sea_source['product_key']])
+        if column_name not in allowed:
+            return {'error': '허용되지 않은 리테일러별 컬럼', 'status_code': 400}
     if seda_product_line:
         retailer = seda_null_validation.display_seda_retailer(retailer)
     item_value = (
@@ -3222,7 +3235,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         if inspection_day > datetime.now(ZoneInfo('Asia/Seoul')).date():
             return {'error': '미래 검수일의 확인은 저장할 수 없습니다', 'status_code': 400}
         evidence_record = _capture_null_review_record(
-            cursor, table_name, record_id, column_name, crawl_date, evidence_source,
+            cursor, table_name, record_id, column_name, crawl_date, evidence_source, retailer=retailer,
         )
         if not evidence_record or not _is_field_null(evidence_record[column_name], 'both'):
             conn.rollback()

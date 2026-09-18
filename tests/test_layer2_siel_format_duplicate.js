@@ -75,10 +75,10 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260918-non-target2"
+    "dx_layer2/js/layer2-common.js' %}?v=20260918-homedepot2"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260913-1"
+    "dx_layer2/js/format_validation.js' %}?v=20260918-homedepot2"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260918-sidebar-cache1"

@@ -524,7 +524,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         self.assertIn("IN ('MAIN', 'BSR')", scope_sql)
         self.assertEqual(
             (
-                '2026-08-30', 'bestbuy', 'lowes', 42,
+                '2026-08-30', 'bestbuy', 'lowes', 'homedepot', 42,
                 '2026-08-30',
             ),
             scope_params,
@@ -560,7 +560,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
         )
         self.assertEqual(
             (
-                '2026-08-30', 'bestbuy', 'lowes', 77,
+                '2026-08-30', 'bestbuy', 'lowes', 'homedepot', 77,
                 '2026-08-30',
             ),
             scope_params,

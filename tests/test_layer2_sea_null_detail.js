@@ -117,7 +117,7 @@ const youtubeSandbox = {
     getDetailBody() { return { innerHTML: '' }; },
     getSelectedDate() { return '2026-08-31'; },
     isInlineMode() { return true; },
-    buildDetailContainerHtml() { return '<div id="youtube-detail"></div>'; },
+    buildDetailContainerHtml(options) { return '<div id="youtube-detail">' + options.itemQueryHtml + '</div>'; },
     renderDetailWithTable(options) { youtubeTableOptions = options; },
     ViewStack: {
         push(html) { youtubeDetailHtml = html; },
@@ -216,6 +216,39 @@ const commonSandbox = {
 };
 vm.createContext(commonSandbox);
 vm.runInContext(layer2CommonSource, commonSandbox);
+// UTC collection day differs from the US source day. Current rows must remain reviewable.
+vm.runInContext(`
+    detailViewState.type = 'null';
+    detailViewState.supportsNullAutoReview = true;
+    detailViewState.nullReviewField = 'ldy_capacity';
+    detailViewState.crawlDate = '2026-09-18';
+    detailViewState.editableDate = '2026-09-17';
+    detailViewState.dateColumn = 'crawl_strdatetime';
+    modalState.days = 3;
+`, commonSandbox);
+const homeDepotCurrent = { id: 99, account_name: 'HomeDepot', item: 'HD1', ldy_capacity: null,
+    crawl_strdatetime: '2026-09-18T01:59:39+00:00', _source_date: '2026-09-17', null_fields: ['ldy_capacity'] };
+const homeDepotHistory = { ...homeDepotCurrent, id: 98, _source_date: '2026-09-16' };
+commonSandbox._annotateNullReviewRows([homeDepotCurrent, homeDepotHistory]);
+assert.strictEqual(homeDepotCurrent._null_review_status, '확인 필요');
+assert.strictEqual(homeDepotHistory._null_review_status, '비교 이력');
+assert(commonSandbox._reviewAttr(homeDepotCurrent, 'ldy_capacity').includes('data-row-id="99"'));
+assert.strictEqual(commonSandbox._reviewAttr(homeDepotHistory, 'ldy_capacity'), '');
+assert(commonSandbox.getCellHtml(homeDepotCurrent, { key: 'crawl_strdatetime' }, 'sea_ldy_retail').includes('수정 대상'));
+vm.runInContext(`modalState.retailer = 'HomeDepot'; modalState.days = 3;`, youtubeSandbox);
+youtubeSandbox.isInlineMode = () => false;
+youtubeSandbox.buildDetailContainerHtml = options => { youtubeDetailHtml = options.itemQueryHtml; return youtubeDetailHtml; };
+youtubeSandbox.renderNullFieldDetailView('ldy_capacity', {
+    results: [homeDepotCurrent],
+    display_config: { ldy_capacity: { select_columns: ['id', 'item', 'ldy_capacity', 'crawl_strdatetime'] } },
+    query_config: { ldy_capacity: ['id', 'item', 'ldy_capacity', 'crawl_strdatetime'] },
+    actual_table: 'public.ldy_retail_com', inspection_date: '2026-09-18', source_date: '2026-09-17',
+    date: '2026-09-18', date_column: 'crawl_strdatetime', supports_day_history: true, history_days: 3
+}, true);
+assert(youtubeDetailHtml.includes('America/New_York'));
+assert(youtubeDetailHtml.includes('latest_batches'));
+assert(!youtubeDetailHtml.includes("IN ('MAIN', 'BSR')"));
+assert.strictEqual(youtubeTableOptions.editableDate, '2026-09-17');
 const productUrlColumns = commonSandbox.ensureProductUrlColumn(
     [{ key: 'item', label: 'item' }],
     ['id', 'item', 'product_url']

@@ -2,6 +2,10 @@
 형식 검증 서비스 — 순수 비즈니스 로직 (DB 커넥션/HTTP 무관)
 """
 
+from apps.common.sea_layer2 import (
+    is_homedepot, homedepot_format_columns,
+    source_date_sql, page_scope_sql, annotate_source_date,
+)
 from datetime import date, datetime, timedelta
 import re
 from zoneinfo import ZoneInfo
@@ -50,6 +54,8 @@ except (ImportError, AttributeError):
 try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
+    from apps.common.sea_layer2 import layer2_sources
+    SEA_RETAIL_SOURCES = layer2_sources(SEA_RETAIL_SOURCES)
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -884,6 +890,8 @@ def _resolve_sea_format_retailer(source, retailer):
 
 
 def _get_sea_format_fields(product_key, retailer):
+    if is_homedepot(retailer):
+        return homedepot_format_columns(product_key)
     return tuple(dict.fromkeys(
         SEA_FORMAT_COMMON_FIELDS + SEA_FORMAT_EXTRA_FIELDS.get(
             product_key, ()
@@ -905,29 +913,27 @@ def _fetch_sea_format_rows(
         'item', 'sku', 'retailer_sku_name', *format_fields,
         date_column, 'product_url',
     )))
-    source_date_sql = (
-        f"LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)"
-    )
+    date_expression = source_date_sql(date_column, 'source', retailer_value)
     cursor.execute(f"""
         WITH latest_batches AS (
-            SELECT DISTINCT ON ({source_date_sql})
-                   {source_date_sql} AS crawl_date,
+            SELECT DISTINCT ON ({date_expression})
+                   {date_expression} AS crawl_date,
                    source.batch_id,
                    source.id
             FROM {canonical_table} source
-            WHERE {source_date_sql} >= %s
-              AND {source_date_sql} <= %s
+            WHERE {date_expression} >= %s
+              AND {date_expression} <= %s
               AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
-              AND UPPER(TRIM(COALESCE(source.page_type, ''))) = 'MAIN'
+              AND {page_scope_sql('source', anchor=True, retailer=retailer_value)}
             ORDER BY crawl_date, source.id DESC
         )
         SELECT {', '.join('source.' + column for column in select_columns)}
         FROM {canonical_table} source
         JOIN latest_batches latest
-          ON {source_date_sql} = latest.crawl_date
+          ON {date_expression} = latest.crawl_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-        WHERE {source_date_sql} >= %s
-          AND {source_date_sql} <= %s
+        WHERE {date_expression} >= %s
+          AND {date_expression} <= %s
           AND (
               LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
               OR source.account_name IS NULL
@@ -938,9 +944,8 @@ def _fetch_sea_format_rows(
               OR source.country IS NULL
               OR TRIM(CAST(source.country AS TEXT)) = ''
           )
-          AND UPPER(TRIM(COALESCE(source.page_type, '')))
-              IN ('MAIN', 'BSR')
-        ORDER BY source.item, {source_date_sql}, source.id
+          AND {page_scope_sql('source', retailer=retailer_value)}
+        ORDER BY source.item, {date_expression}, source.id
     """, (
         str(start_date), str(end_date), retailer_value,
         str(start_date), str(end_date), retailer_value,
@@ -969,6 +974,7 @@ def evaluate_sea_format_row(row, product_key, retailer):
 
 
 def _format_sea_record(row, product_key, retailer):
+    row = annotate_source_date(dict(row), retailer)
     record = {
         key: (str(value) if value is not None and key != 'id' else value)
         for key, value in row.items()

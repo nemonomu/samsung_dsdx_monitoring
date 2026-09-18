@@ -7,6 +7,7 @@ from tests.unit.support import (
     load_module,
     module_stub,
     package_stub,
+    seda_null_validation_stub,
 )
 
 
@@ -32,6 +33,7 @@ class SEALayer2DataEditTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         stubs = {
+            'apps.dx.dx_layer2.seda_null_validation': seda_null_validation_stub(),
             'apps': package_stub('apps'),
             'apps.common': package_stub('apps.common'),
             'apps.common.monitoring_exclusions': module_stub(

@@ -44,6 +44,7 @@ config/create_admin.py
 !sql/disable_tse_lazada_powerbuy_monitoring.sql
 !sql/setup_sem_liverpool_monitoring.sql
 !sql/setup_sem_homedepot_monitoring.sql
+!sql/setup_sea_homedepot_layer2.sql
 !sql/setup_seda_layer2_null.sql
 !sql/create_null_review_evidence.sql
 
