@@ -64,6 +64,8 @@ _REF_TYPE_VALUES = {
     },
 }
 _REF_TYPE_ADDITIONAL_ALLOWED = {
+    'freezer-on-top',
+    'full-space refrigerator',
     'compact freezer-on-bottom',
     'compact without freezer compartment',
     'cross door',
