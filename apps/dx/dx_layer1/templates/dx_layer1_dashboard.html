@@ -3,6 +3,10 @@
 
 {% block page_title %}대시보드{% endblock %}
 
+{% block layer1_css %}
+<link rel="stylesheet" href="{% static 'dx_layer1/css/collection-status.css' %}?v=1">
+{% endblock %}
+
 {% block layer1_content %}
 <!-- Stats Grid -->
 <div class="stats-grid" id="stats-grid">
@@ -58,10 +62,6 @@
 <!-- 모달은 AppModal로 동적 생성 -->
 <div class="checks-section" id="dday-collection-section">
     <div class="checks-header">D-DAY 수집 현황</div>
-    <div class="check-item">
-        <div class="check-description" id="dday-collection-date"></div>
-        <div class="check-description">SEA 당일 수집 여부 안내 · 위쪽 D-1 검수 및 이상치 집계와 별도입니다. 수집 확인은 수집 완료 판정이 아닙니다.</div>
-    </div>
     <div id="dday-collection-list" aria-live="polite">수집 현황을 불러오는 중...</div>
 </div>
 
@@ -84,6 +84,6 @@
 <script src="{% static 'dx_layer1/js/market_promotion.js' %}?v=2"></script>
 -->
 <script src="{% static 'dx_layer1/js/macro.js' %}?v=2"></script>
-<script src="{% static 'dx_layer1/js/collection-status.js' %}?v=20260918-1"></script>
+<script src="{% static 'dx_layer1/js/collection-status.js' %}?v=20260918-2"></script>
 <script src="{% static 'dx_layer1/js/dashboard.js' %}?v=20260918-dday1"></script>
 {% endblock %}

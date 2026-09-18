@@ -32,10 +32,15 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     }
     assert(!html.includes('정상'));
     assert(!html.includes('수집 완료'));
+    assert.strictEqual((html.match(/<details /g) || []).length, 4);
+    assert.strictEqual((html.match(/<table class="ct ct-grid"/g) || []).length, 3);
+    assert(html.includes('sentiment-category-header'));
+    assert(html.includes('rt-sum'));
+    assert(html.includes('status-badge ok'));
     respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);
-    assert(elements['dday-collection-date'].textContent.includes('2026-09-21'));
+    assert(html.includes('수집 대상일: 2026-09-21'));
     assert(requests[1].url.endsWith('date=2026-09-21'));
     const failed = sandbox.loadDdayCollection('2026-09-22');
     requests[2].resolve({ ok: false });
