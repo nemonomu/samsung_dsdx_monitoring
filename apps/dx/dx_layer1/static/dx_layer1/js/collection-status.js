@@ -12,11 +12,13 @@ function ddayStatusBadge(status) {
 
 function ddaySummary(rows) {
     const count = rows.reduce((total, row) => total + (Number(row.count) || 0), 0);
+    const mainCount = rows.reduce((total, row) => total + (Number(row.main_count) || 0), 0);
+    const bsrCount = rows.reduce((total, row) => total + (Number(row.bsr_count) || 0), 0);
     const status = rows.some(row => row.status === 'error') ? 'error'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received') ? 'partial'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';
-    return { count, status };
+    return { count, mainCount, bsrCount, status };
 }
 
 function renderDdayCollection(data) {
@@ -30,6 +32,8 @@ function renderDdayCollection(data) {
             const batch = row.batch_id ? ' <span class="dday-batch">/ ' + esc(row.batch_id) + '</span>' : '';
             return '<tr aria-label="SEA ' + esc(row.retailer) + ' ' + product + '">' +
                 '<td class="rt-name">' + esc(row.retailer) + batch + '</td>' +
+                '<td>' + (row.main_count == null ? '-' : Number(row.main_count).toLocaleString()) + '</td>' +
+                '<td>' + (row.bsr_count == null ? '-' : Number(row.bsr_count).toLocaleString()) + '</td>' +
                 '<td>' + esc(scheduled) + ' KST</td>' +
                 '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' KST' : '') + '</td>' +
                 '<td class="rt-total">' + (row.count === null ? '-' : Number(row.count).toLocaleString()) + '</td>' +
@@ -46,10 +50,11 @@ function renderDdayCollection(data) {
             '<div class="sentiment-column-stats"><span class="sentiment-column-count">' + summary.count.toLocaleString() +
             '건</span>' + ddayStatusBadge(summary.status) + '</div></div>' +
             '<div class="retail-rank-wrap"><table class="ct ct-grid"><colgroup>' +
-            '<col style="width:24%"><col style="width:24%"><col style="width:24%"><col style="width:13%"><col style="width:15%">' +
-            '</colgroup><thead><tr><th style="text-align:left">리테일러</th><th>수집 예정 시각</th>' +
+            '<col style="width:20%"><col style="width:8%"><col style="width:8%"><col style="width:21%"><col style="width:21%"><col style="width:10%"><col style="width:12%">' +
+            '</colgroup><thead><tr><th style="text-align:left">리테일러</th><th>MAIN</th><th>BSR</th><th>수집 예정 시각</th>' +
             '<th>마지막 수집 시각</th><th>총 건수</th><th>수집 상태</th></tr></thead><tbody>' + body +
             '<tr class="rt-sum"><td>' + (summary.status === 'error' ? '확인된 합계' : '합계') +
+            '</td><td>' + summary.mainCount.toLocaleString() + '</td><td>' + summary.bsrCount.toLocaleString() +
             '</td><td></td><td></td><td>' + summary.count.toLocaleString() + '</td><td></td></tr>' +
             '</tbody></table></div></div></div></details>';
     }).join('');

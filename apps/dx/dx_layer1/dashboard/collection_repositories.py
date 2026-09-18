@@ -28,10 +28,11 @@ def fetch_collection(cursor, source, target_date):
         )
         SELECT COUNT(*),
                TO_CHAR(MAX({stamp}) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS'),
-               MAX(source.batch_id)
+               MAX(source.batch_id),
+               COUNT(source.main_rank), COUNT(source.bsr_rank)
         FROM {table} source JOIN latest
           ON source.batch_id IS NOT DISTINCT FROM latest.batch_id
         WHERE ({day}) = %s
           AND LOWER(TRIM(source.account_name)) = LOWER(%s)
     """, (str(target_date), retailer, str(target_date), retailer))
-    return cursor.fetchone() or (0, None, None)
+    return cursor.fetchone() or (0, None, None, 0, 0)

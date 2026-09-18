@@ -16,6 +16,8 @@ function data(day, states) {
         product: ['TV', 'TV', 'REF', 'LDY'][i], status,
         scheduled_at: day + 'T13:00:00+09:00',
         count: status === 'received' ? 300 : status === 'error' ? null : 0,
+        main_count: status === 'received' ? 300 : status === 'error' ? null : 0,
+        bsr_count: status === 'received' ? 100 : status === 'error' ? null : 0,
         last_collected_at: status === 'received' ? day + ' 13:10:00' : null
     })) };
 }
@@ -37,6 +39,12 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert(html.includes('sentiment-category-header'));
     assert(html.includes('rt-sum'));
     assert(html.includes('status-badge ok'));
+    assert.strictEqual((html.match(/<th>MAIN<\/th><th>BSR<\/th>/g) || []).length, 3);
+    assert(html.includes('<td>300</td><td>100</td>'));
+    const total = sandbox.ddaySummary(data('2026-09-21', ['received', 'received']).retailers);
+    assert.strictEqual(total.mainCount, 600);
+    assert.strictEqual(total.bsrCount, 200);
+    assert.strictEqual(total.count, 600);
     respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);

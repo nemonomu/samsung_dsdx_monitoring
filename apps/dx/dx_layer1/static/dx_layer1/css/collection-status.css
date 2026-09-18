@@ -9,6 +9,6 @@
 #dday-collection-section .dday-batch { font-size: 12px; font-weight: 400; color: var(--text-secondary); }
 #dday-collection-section .dday-notice { padding: 16px 20px; margin-bottom: 16px; background: white; border: 1px solid var(--border-color); border-radius: 8px; font-size: 13px; color: var(--text-secondary); }
 #dday-collection-section .retail-rank-wrap { overflow-x: auto; }
-#dday-collection-section .retail-rank-wrap table { min-width: 780px; }
+#dday-collection-section .retail-rank-wrap table { min-width: 1040px; }
 #dday-collection-section .sentiment-category-header { gap: 12px; flex-wrap: wrap; }
 #dday-collection-section .sentiment-category-info { flex-wrap: wrap; }

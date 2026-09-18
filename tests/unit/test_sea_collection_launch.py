@@ -27,7 +27,7 @@ class CollectionCardTests(unittest.TestCase):
 
         def fetch(cursor, source, target_date):
             self.calls.append((source[:2], str(target_date)))
-            result = self.results.get(source[:2], (0, None, None))
+            result = self.results.get(source[:2], (0, None, None, 0, 0))
             if isinstance(result, Exception):
                 raise result
             return result
@@ -43,12 +43,14 @@ class CollectionCardTests(unittest.TestCase):
             })
 
     def test_first_collection_is_not_a_d_minus_one_query(self):
-        self.results[('HomeDepot', 'REF')] = (300, '2026-09-20 13:23:00', 'h20')
+        self.results[('HomeDepot', 'REF')] = (300, '2026-09-20 13:23:00', 'h20', 300, 100)
         result = self.service.get_collection_status(date(2026, 9, 20), datetime(2026, 9, 20, 14, tzinfo=KST))
         self.assertEqual('2026-09-20', result['source_date'])
         self.assertEqual(['waiting', 'waiting', 'received', 'waiting'],
                          [r['status'] for r in result['retailers']])
         self.assertEqual(300, result['retailers'][2]['count'])
+        self.assertEqual(300, result['retailers'][2]['main_count'])
+        self.assertEqual(100, result['retailers'][2]['bsr_count'])
         self.assertTrue(all(day == '2026-09-20' for _, day in self.calls))
         self.assertNotIn('failed', result)
 
@@ -67,10 +69,12 @@ class CollectionCardTests(unittest.TestCase):
         self.assertEqual(['error', 'waiting', 'waiting', 'waiting'],
                          [r['status'] for r in result['retailers']])
         self.assertIsNone(result['retailers'][0]['count'])
+        self.assertIsNone(result['retailers'][0]['main_count'])
+        self.assertIsNone(result['retailers'][0]['bsr_count'])
 
     def test_sql_uses_only_exact_date_and_latest_batch_and_kst_display(self):
         for source in self.repo.SOURCES:
-            cursor = ScriptedCursor([{'fetchone': (0, None, None)}])
+            cursor = ScriptedCursor([{'fetchone': (0, None, None, 0, 0)}])
             self.repo.fetch_collection(cursor, source, date(2026, 9, 20))
             sql, params = cursor.calls[0]
             self.assertEqual(('2026-09-20', source[0]) * 2, params)
@@ -78,6 +82,8 @@ class CollectionCardTests(unittest.TestCase):
             self.assertIn('IS NOT DISTINCT FROM latest.batch_id', sql)
             self.assertIn("AT TIME ZONE 'Asia/Seoul'", sql)
             self.assertNotIn('page_type', sql)
+            self.assertIn('COUNT(source.main_rank)', sql)
+            self.assertIn('COUNT(source.bsr_rank)', sql)
 
 
 class HomeDepotLaunchTests(unittest.TestCase):
