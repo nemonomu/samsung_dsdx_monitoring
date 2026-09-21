@@ -430,7 +430,7 @@ _SIEL_FLIPKART_SAVINGS_PATTERN = re.compile(
     r'^(?:100|[1-9]?\d)%$'
 )
 _SIEL_FLIPKART_DISCOUNT_TYPE_VALUES = frozenset({
-    'Hot Deal', 'Lowest price since launch', 'Lowest price in the year',
+    'Hot Deal', 'Super Deals', 'Lowest price since launch', 'Lowest price in the year',
 })
 _SIEL_FLIPKART_SKU_POPULARITY_VALUES = frozenset({
     'Bestseller', "Flipkart's Choice", 'Trending',
@@ -1625,7 +1625,7 @@ def evaluate_siel_format_row(row, source_key, retailer):
         and str(discount_type).strip() not in discount_values
     ):
         errors['discount_type'] = (
-            '허용된 Amazon 할인 유형이 아닙니다.'
+            f'허용된 {retailer_value} 할인 유형이 아닙니다.'
         )
 
     sku_popularity = row.get('sku_popularity')
@@ -2671,7 +2671,7 @@ def _get_siel_static_format_rules(source_key, retailer):
         'discount_type': {
             'description': 'Flipkart 할인 유형 허용값 (대소문자 구분)',
             'pattern': (
-                'Hot Deal, Lowest price since launch, '
+                'Hot Deal, Super Deals, Lowest price since launch, '
                 'Lowest price in the year'
             ),
         },

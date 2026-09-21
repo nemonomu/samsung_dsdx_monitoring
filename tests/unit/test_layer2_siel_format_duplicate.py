@@ -185,6 +185,7 @@ class SIELFormatValidationTests(unittest.TestCase):
                 ('Coupon', False),
                 ('limited time offer', False),
                 ('Hot Deal', False),
+                ('Super Deals', False),
                 ('Limited Time Offers', False),
                 ('Hot deal today', False),
                 ('N/A', False),
@@ -219,7 +220,7 @@ class SIELFormatValidationTests(unittest.TestCase):
                     if rule['field'] == 'discount_type'
                 )
                 self.assertEqual(
-                    'Hot Deal, Lowest price since launch, '
+                    'Hot Deal, Super Deals, Lowest price since launch, '
                     'Lowest price in the year',
                     flipkart_rule['pattern'],
                 )
@@ -227,6 +228,16 @@ class SIELFormatValidationTests(unittest.TestCase):
                     'discount_type', self.service.evaluate_siel_format_row(
                         {'discount_type': 'Hot Deal'}, source_key, 'Flipkart'
                     )
+                )
+                self.assertNotIn(
+                    'discount_type', self.service.evaluate_siel_format_row(
+                        {'discount_type': 'Super Deals'}, source_key, 'Flipkart'
+                    )
+                )
+                self.assertIn(
+                    'Flipkart', self.service.evaluate_siel_format_row(
+                        {'discount_type': 'Special Price'}, source_key, 'Flipkart'
+                    )['discount_type']
                 )
                 self.assertIn(
                     'discount_type', self.service.evaluate_siel_format_row(
