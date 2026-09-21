@@ -104,8 +104,6 @@ def _get_sidebar_items():
         for code, source in SEDA_SOURCE_CONFIG.items()
         if source['section_code'] in active_sections
     ]
-    if seda_children:
-        crossfield_items.append({'name': 'SEDA Retail', 'children': seda_children})
     sea_children = [
         dict(child)
         for section_code, child in sea_sections.items()
@@ -202,6 +200,15 @@ def _get_sidebar_items():
         crossfield_items.insert(tse_index, {
             'name': 'SEM Retail',
             'children': sem_children,
+        })
+
+    if seda_children:
+        insert_at = next((
+            index + 1 for index, item in enumerate(crossfield_items)
+            if isinstance(item, dict) and item.get('name') == 'SEA Retail'
+        ), 0)
+        crossfield_items.insert(insert_at, {
+            'name': 'SEDA Retail', 'children': seda_children,
         })
 
     sidebar['cross_field'] = crossfield_items

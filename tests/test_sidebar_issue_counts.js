@@ -148,11 +148,13 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     vm.runInContext(read(layer3Path + 'field-missing.js'), sandbox);
     sandbox.fetchAPI = async () => ({ summary: { total_missing_cases: 1, fields_with_issues: 1 } });
     await sandbox.loadAllRetailersMissing();
-    assert.strictEqual(count(groups.field_missing.entries[1]), 3);
+    assert.strictEqual(count(groups.field_missing.entries[1]), 0, 'missing fields have no sidebar issue badge');
+    assert.strictEqual(vm.runInContext('fieldMissingSidebarCounts.tv', sandbox), 3);
     vm.runInContext("currentFieldMissingPL = 'sea_ref'", sandbox);
     await sandbox.loadAllRetailersMissing();
-    assert.strictEqual(count(groups.field_missing.entries[2]), 2);
-    assert.strictEqual(count(groups.field_missing.entries[0].title), 5);
+    assert.strictEqual(count(groups.field_missing.entries[2]), 0);
+    assert.strictEqual(count(groups.field_missing.entries[0].title), 0);
+    assert.strictEqual(vm.runInContext('fieldMissingSidebarCounts.sea_ref', sandbox), 2);
     selectedDate = '2026-09-20';
     sandbox.fetchAPI = async () => ({ summary: { total_missing_cases: 0 } });
     await sandbox.loadAllRetailersMissing();
@@ -168,7 +170,8 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     await sandbox.loadAllRetailersMissing();
     resolveOld({ summary: { total_missing_cases: 99 } });
     await oldLoad;
-    assert.strictEqual(count(groups.field_missing.header), 4, 'stale product response ignored');
+    assert.strictEqual(count(groups.field_missing.header), 0, 'missing fields are excluded from sidebar alerts');
+    assert.strictEqual(vm.runInContext('fieldMissingSidebarCounts.sea_ref', sandbox), 4, 'stale product response ignored');
 
     for (const file of fs.readdirSync('apps/dx/dx_layer3/templates')) {
         const source = read('apps/dx/dx_layer3/templates/' + file);

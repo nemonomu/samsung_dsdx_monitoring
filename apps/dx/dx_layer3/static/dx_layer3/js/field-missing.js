@@ -67,11 +67,10 @@ let fieldMissingSidebarDate = '';
 let fieldMissingSidebarCounts = {};
 
 function updateFieldMissingSidebarCounts() {
-    if (typeof updateSidebarIssueBadges !== 'function') return;
-    const items = Object.entries(fieldMissingSidebarCounts).map(([detailCode, count]) => ({ detailCode, count }));
-    const total = items.reduce((sum, item) => sum + item.count, 0);
-    items.push({ name: 'SEA Retail', count: total });
-    updateSidebarIssueBadges('field_missing', total, items);
+    // 필드 누락 건수는 상세 화면에 표시하고 메뉴의 이상치 배지에서는 제외한다.
+    if (typeof clearSidebarIssueBadges === 'function') {
+        clearSidebarIssueBadges(['field_missing']);
+    }
 }
 
 // 모든 리테일러 데이터 로드
