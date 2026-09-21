@@ -248,8 +248,8 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260921-batches1"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260921-batches1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260921-batches2"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260921-batches2"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260918-dday1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260921-batches1"));
@@ -264,7 +264,7 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1-common.js' %}?v=15"));
-    assert(baseSource.includes("retail-query.js' %}?v=5"));
+    assert(baseSource.includes("retail-query.js' %}?v=20260921-batches2"));
     assert.strictEqual(context.getStatusClass('UNASSESSED'), 'pending');
     assert.strictEqual(context.getRetailerStatusClass('UNASSESSED'), 'pending');
     for (const [product, total] of [['ref', 300], ['ldy', 265]]) {

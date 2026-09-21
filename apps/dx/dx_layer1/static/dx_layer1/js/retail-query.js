@@ -129,6 +129,16 @@
         document.getElementById('l1-query-copy').disabled = !active.query;
     }
 
+    function showSql(title, sql) {
+        active = { query: sql || '' };
+        AppModal.create(modal, { style: 'wide', closeOnOverlay: true });
+        AppModal.setTitle(modal, title);
+        AppModal.setBody(modal, '<div class="l1-retail-query-box"><div class="l1-retail-query-header"><span>배치 원본 조회 SQL</span>' +
+            '<button type="button" onclick="L1.retailQuery.copy()">복사</button></div><pre id="l1-query-sql"></pre></div>');
+        document.getElementById('l1-query-sql').textContent = active.query;
+        AppModal.open(modal);
+    }
+
     async function copy() {
         if (!active || !active.query) return;
         try {
@@ -151,5 +161,5 @@
     }
 
     L1.retailQuery = { button: button, open: open, update: update, copy: copy,
-        buildQuery: buildQuery, options: options };
+        buildQuery: buildQuery, options: options, showSql: showSql };
 })();

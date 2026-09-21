@@ -1,0 +1,11 @@
+.l1-batch-toggle { border: 0; cursor: pointer; font: inherit; font-size: 12px; }
+.l1-batch-toggle:focus-visible { outline: 2px solid var(--color-critical); outline-offset: 3px; }
+.l1-batch-detail[hidden] { display: none; }
+.l1-batch-detail > td { padding: 0 !important; white-space: normal; }
+.l1-batch-panel { padding: 16px; background: var(--bg-secondary, #f8fafc); text-align: left; }
+.l1-batch-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.l1-batch-note { margin: 8px 0 12px; color: var(--text-secondary, #64748b); font-size: 12px; }
+.l1-batch-table-wrap { overflow-x: auto; }
+.l1-batch-table-wrap table { min-width: 740px; background: var(--bg-primary, #fff); }
+.l1-batch-table-wrap .ct td { text-align: center; white-space: normal; overflow: visible; text-overflow: clip; }
+.l1-batch-table-wrap .ct td.l1-batch-id { text-align: left; overflow-wrap: anywhere; }

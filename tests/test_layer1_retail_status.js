@@ -119,9 +119,11 @@ for (const [type, country, prefix, retailer] of countries) {
 context.currentRetailSummary = { tv: { summary: [{ retailer: 'Walmart', batch_id: 'latest',
     rows: [{ time_slot: '일일', main: 300, bsr: 100, total: 400 }] }] } };
 const rankHtml = context.renderRetailSlotCard({ name: '일일', retailers: [
-    { retailer: 'Walmart', count: 400, status: 'OK', batch_count: 2 },
+    { retailer: 'Walmart', count: 400, status: 'OK', batch_count: 2,
+        batch_context: { check_type: 'retail', product_line: 'tv', source_date: '2026-09-20', retailer: 'Walmart' } },
 ] }, 0, 0, 0, 'TV', { name: 'TV' });
-assert(rankHtml.includes('class="status-badge critical">배치 2개'));
+assert(rankHtml.includes('class="status-badge critical l1-batch-toggle"'));
+assert(rankHtml.includes('배치 2개 ▾'));
 
 function classList() {
     const values = new Set();

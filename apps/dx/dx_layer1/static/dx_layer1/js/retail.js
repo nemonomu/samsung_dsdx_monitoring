@@ -148,7 +148,7 @@ function getRetailItemCount(retailer, names) {
     return 0;
 }
 
-function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId, collectionStatus, batchCount) {
+function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId, collectionStatus, batchMetadata) {
     if (showExtra === undefined) showExtra = true;
     var batchId = row.batch_id || retailerBatchId || '';
     var batchHtml = batchId
@@ -169,7 +169,7 @@ function renderRetailRankRow(categoryName, period, retailerName, row, status, sh
         '<td>' + retailCount(row.bsr).toLocaleString() + '</td>' +
         (showExtra ? '<td class="rt-extra">' + retailCount(row.extra).toLocaleString() + '</td>' : '') +
         '<td class="rt-total">' + retailCount(row.total).toLocaleString() + '</td>' +
-        '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge({ status: status, batch_count: batchCount }) + collectionHtml + '</td>' +
+        '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(Object.assign({}, batchMetadata, { status: status })) + collectionHtml + '</td>' +
     '</tr>';
 }
 
@@ -193,7 +193,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
         slot.retailers.forEach(function(r) {
             var retailerKey = String(r.retailer || '').toLowerCase();
             statusMap[retailerKey] = r.status;
-            batchCountMap[retailerKey] = r.batch_count;
+            batchCountMap[retailerKey] = r;
             collectionStatusMap[retailerKey] = r.collection_status;
             slotRetailerSet[retailerKey] = true;
         });
@@ -250,7 +250,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             totals.total += retailCount(row.total);
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row,
-                ret.status || 'PENDING', showExtra, ret.batch_id, ret.collection_status, ret.batch_count
+                ret.status || 'PENDING', showExtra, ret.batch_id, ret.collection_status, ret
             );
             renderedRows += 1;
         });

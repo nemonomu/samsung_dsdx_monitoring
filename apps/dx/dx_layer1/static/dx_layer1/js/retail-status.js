@@ -24,6 +24,11 @@
 
     function rowBadge(retailer) {
         var count = batchCount(retailer);
+        if (count >= 2 && retailer.batch_context) {
+            return '<button type="button" class="status-badge critical l1-batch-toggle" aria-expanded="false" ' +
+                'data-batch-count="' + count + '" data-batch-context="' + esc(JSON.stringify(retailer.batch_context)).replace(/"/g, '&quot;') + '" ' +
+                'onclick="event.stopPropagation();L1.retailBatches.toggle(this)">배치 ' + count + '개 ▾</button>';
+        }
         return count >= 2
             ? '<span class="status-badge critical">배치 ' + count + '개</span>'
             : getStatusBadge(retailer.status);

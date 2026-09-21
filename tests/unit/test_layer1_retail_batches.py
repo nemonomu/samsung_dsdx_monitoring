@@ -58,6 +58,10 @@ class RetailBatchTests(unittest.TestCase):
         self.assertEqual(['2026-09-20', '2026-09-19'], [call.args[3] for call in fetch.call_args_list])
         rows = [row for cat in check['categories'] for slot in cat['time_slots'] for row in slot['retailers']]
         self.assertEqual([2, 0, 1], [row.pop('batch_count') for row in rows])
+        contexts = [row.pop('batch_context') for row in rows]
+        self.assertEqual('2026-09-20', contexts[0]['source_date'])
+        self.assertEqual('Amazon', contexts[0]['retailer'])
+        self.assertEqual('sea_ref', contexts[2]['product_line'])
         self.assertEqual(before, check)
 
     def test_seda_names_match_and_tse_uses_selected_date(self):
@@ -90,6 +94,34 @@ class RetailBatchTests(unittest.TestCase):
         cursor = Mock()
         batches.add_batch_counts(cursor, {'check_type': 'youtube', 'categories': [{}]}, '2026-09-21')
         cursor.execute.assert_not_called()
+
+    def test_details_use_latest_main_anchor_and_parameterized_exact_batch_sql(self):
+        cursor = Mock()
+        cursor.fetchall.return_value = [("b'1,2", '2026-09-21 09:00', '2026-09-21 09:30', 280, 100, False, 300)]
+        cursor.mogrify.return_value = b'SELECT * FROM exact_batch;'
+        result = batches.fetch_batch_details(cursor, 'seg_retail', 'seg_tv', '2026-09-21', 'Amazon')
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("WHERE LOWER(BTRIM(CAST(page_type AS TEXT))) = 'main' ORDER BY id DESC", sql)
+        self.assertIn("FILTER (WHERE LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr'))", sql)
+        self.assertEqual(('2026-09-21', 'amazon'), params)
+        self.assertEqual(('2026-09-21', 'amazon', "b'1,2"), cursor.mogrify.call_args.args[1])
+        self.assertIn('IS NOT DISTINCT FROM %s', cursor.mogrify.call_args.args[0])
+        self.assertEqual(False, result['batches'][0]['applied'])
+        self.assertEqual("b'1,2", result['batches'][0]['batch_id'])
+        self.assertEqual('SELECT * FROM exact_batch;', result['batches'][0]['sql'])
+
+    def test_sea_tv_details_apply_all_batches_but_appliances_use_an_anchor(self):
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+        batches.fetch_batch_details(cursor, 'retail', 'tv', '2026-09-20', 'Amazon')
+        sql, params = cursor.execute.call_args.args
+        self.assertIn('BOOL_OR(TRUE)', sql)
+        self.assertEqual(('2026-09-20', '2026-09-21', 'amazon'), params)
+        batches.fetch_batch_details(cursor, 'retail', 'ref', '2026-09-20', 'HomeDepot')
+        sql = cursor.execute.call_args.args[0]
+        self.assertIn('WHERE TRUE ORDER BY id DESC', sql)
+        self.assertIn('America/New_York', sql)
+        self.assertIn('(SELECT batch_id FROM latest) IS NOT NULL', sql)
 
 
 if __name__ == '__main__':
