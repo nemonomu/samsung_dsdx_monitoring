@@ -90,7 +90,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=13"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260921-batches1"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',

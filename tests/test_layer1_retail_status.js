@@ -56,6 +56,20 @@ for (const row of [
 }
 assert.strictEqual(status.render({ categories: [] }, 0, 'retail'), '');
 assert.strictEqual(status.render(sea, 0, 'youtube'), '');
+for (const count of [0, 1, undefined, null, 'unknown']) {
+    assert.strictEqual(status.rowBadge({ status: 'OK', batch_count: count }), '<status>OK</status>');
+}
+for (const count of [2, 3, 10]) {
+    assert.strictEqual(status.rowBadge({ status: 'OK', batch_count: count }),
+        '<span class="status-badge critical">배치 ' + count + '개</span>');
+}
+assert(status.render({ categories: [], batch_count_error: true }, 0, 'retail').includes('배치 조회 실패'));
+const combined = status.render({ categories: [{ name: 'TV', retailers: [
+    missing('Amazon'), { retailer: 'Walmart', count: 300, status: 'OK', batch_count: 3 },
+] }] }, 0, 'retail');
+assert(combined.includes('Amazon</a> TV 미수집'));
+assert(combined.includes('Walmart</a> TV 배치 2개 이상'));
+assert(!combined.includes('Walmart</a> TV 미수집'));
 const duplicate = status.render({ categories: [{ name: 'TV', retailers: [missing('Bestbuy')],
     time_slots: [{ retailers: [missing('BESTBUY')] }] }] }, 0, 'retail');
 assert.strictEqual((duplicate.match(/TV 미수집/g) || []).length, 1);
@@ -87,7 +101,27 @@ for (const [type, country, prefix, retailer] of countries) {
         assert(header.includes('href="#' + prefix + '-cat-4-2"'));
         assert(header.includes('event.stopPropagation();L1.retailStatus.open(this, 4)'));
     }
+    // The warning is visible while collapsed and overrides the row's OK badge.
+    for (const cat of categories) {
+        const rows = type === 'retail' ? cat.time_slots[0].retailers : cat.retailers;
+        rows[0].batch_count = 3;
+        rows[0].status = 'OK';
+        rows[0].count = rows[0].raw_count = 300;
+    }
+    const batchHtml = context.L1.renderers[type]({ name: country + ' Retail', check_type: type,
+        status: 'OK', categories, actual: 900, raw_count: 900 }, 4);
+    const batchHeader = batchHtml.slice(0, batchHtml.indexOf('<div class="time-slots-container"'));
+    assert.strictEqual((batchHeader.match(/배치 2개 이상/g) || []).length, 3, country);
+    assert.strictEqual((batchHtml.match(/class="status-badge critical">배치 3개/g) || []).length, 3, country);
 }
+
+// SEA's separately loaded rank summary must not discard batch metadata from stats.
+context.currentRetailSummary = { tv: { summary: [{ retailer: 'Walmart', batch_id: 'latest',
+    rows: [{ time_slot: '일일', main: 300, bsr: 100, total: 400 }] }] } };
+const rankHtml = context.renderRetailSlotCard({ name: '일일', retailers: [
+    { retailer: 'Walmart', count: 400, status: 'OK', batch_count: 2 },
+] }, 0, 0, 0, 'TV', { name: 'TV' });
+assert(rankHtml.includes('class="status-badge critical">배치 2개'));
 
 function classList() {
     const values = new Set();

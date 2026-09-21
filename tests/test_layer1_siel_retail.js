@@ -89,7 +89,7 @@ assert(checkHtml.includes('/static/img/flags/in.svg'));
 assert(checkHtml.includes('<span>SIEL Retail</span>'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
 assert(/layer1-common\.js' %}\?v=\d+/.test(baseSource));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=7"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=20260921-batches1"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 
 const commonContext = {

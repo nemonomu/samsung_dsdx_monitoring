@@ -2,6 +2,7 @@ import unittest
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
+from apps.dx.dx_layer1.common import retail_batches
 
 from tests.unit.support import load_module, module_stub, package_stub
 
@@ -32,6 +33,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
     def setUpClass(cls):
         empty_service = module_stub('empty_layer1_service')
         stubs = {
+            'apps.dx.dx_layer1.common.retail_batches': retail_batches,
             'apps': package_stub('apps'),
             'apps.common': package_stub('apps.common'),
             'apps.common.db': module_stub(

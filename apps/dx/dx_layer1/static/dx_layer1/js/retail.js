@@ -148,7 +148,7 @@ function getRetailItemCount(retailer, names) {
     return 0;
 }
 
-function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId, collectionStatus) {
+function renderRetailRankRow(categoryName, period, retailerName, row, status, showExtra, retailerBatchId, collectionStatus, batchCount) {
     if (showExtra === undefined) showExtra = true;
     var batchId = row.batch_id || retailerBatchId || '';
     var batchHtml = batchId
@@ -169,7 +169,7 @@ function renderRetailRankRow(categoryName, period, retailerName, row, status, sh
         '<td>' + retailCount(row.bsr).toLocaleString() + '</td>' +
         (showExtra ? '<td class="rt-extra">' + retailCount(row.extra).toLocaleString() + '</td>' : '') +
         '<td class="rt-total">' + retailCount(row.total).toLocaleString() + '</td>' +
-        '<td class="rt-status ct-nc">' + getStatusBadge(status) + collectionHtml + '</td>' +
+        '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge({ status: status, batch_count: batchCount }) + collectionHtml + '</td>' +
     '</tr>';
 }
 
@@ -186,12 +186,14 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
 
     // 리테일러별 status 매핑 (slot.retailers에서 가져옴)
     var statusMap = {};
+    var batchCountMap = {};
     var collectionStatusMap = {};
     var slotRetailerSet = {};
     if (slot.retailers) {
         slot.retailers.forEach(function(r) {
             var retailerKey = String(r.retailer || '').toLowerCase();
             statusMap[retailerKey] = r.status;
+            batchCountMap[retailerKey] = r.batch_count;
             collectionStatusMap[retailerKey] = r.collection_status;
             slotRetailerSet[retailerKey] = true;
         });
@@ -225,7 +227,8 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             var rStatus = statusMap[retailerKey] || ret.status || (retailerKey === 'homedepot' ? 'UNASSESSED' : 'PENDING');
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row, rStatus,
-                showExtra, ret.batch_id, collectionStatusMap[retailerKey] || ret.collection_status
+                showExtra, ret.batch_id, collectionStatusMap[retailerKey] || ret.collection_status,
+                batchCountMap[retailerKey]
             );
             renderedRows += 1;
         });
@@ -247,7 +250,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
             totals.total += retailCount(row.total);
             rowsHtml += renderRetailRankRow(
                 categoryName, period, ret.retailer, row,
-                ret.status || 'PENDING', showExtra, ret.batch_id, ret.collection_status
+                ret.status || 'PENDING', showExtra, ret.batch_id, ret.collection_status, ret.batch_count
             );
             renderedRows += 1;
         });

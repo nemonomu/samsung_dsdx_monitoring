@@ -7,6 +7,7 @@ from apps.common.db import dx_connection
 from apps.common.response import log_error
 from apps.common.dx_schedules import load_collection_schedules, is_target_date as check_target_date
 from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
+from apps.dx.dx_layer1.common.retail_batches import add_batch_counts
 
 from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
@@ -383,6 +384,11 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                     comp_batch_id = svc_result['comp_batch_id']
 
                 check_data = svc_result['check']
+                try:
+                    add_batch_counts(cursor, check_data, target_date)
+                except Exception as exc:
+                    log_error(exc)
+                    check_data['batch_count_error'] = True
                 check_data['display_group'] = 'daily' if check_type in daily_types else 'periodic'
                 check_data['is_target_date'] = check_type in target_date_types
                 results['checks'].append(check_data)

@@ -17,6 +17,18 @@
         return false;
     }
 
+    function batchCount(retailer) {
+        var count = Number(retailer.batch_count);
+        return Number.isInteger(count) && count >= 0 ? count : 0;
+    }
+
+    function rowBadge(retailer) {
+        var count = batchCount(retailer);
+        return count >= 2
+            ? '<span class="status-badge critical">배치 ' + count + '개</span>'
+            : getStatusBadge(retailer.status);
+    }
+
     function render(check, checkIdx, checkType) {
         var prefix = categoryPrefixes[checkType];
         if (!prefix) return '';
@@ -32,7 +44,9 @@
             retailers.forEach(function(retailer) {
                 var name = String(retailer.retailer || '').trim();
                 var key = product + ':' + name.toLowerCase();
-                if (!name || !isMissing(retailer) || seen.has(key)) return;
+                var missing = isMissing(retailer);
+                var multiple = batchCount(retailer) >= 2;
+                if (!name || (!missing && !multiple) || seen.has(key)) return;
                 seen.add(key);
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
@@ -42,13 +56,20 @@
                         '&date=' + encodeURIComponent(cat.inspection_date || check.inspection_date || getSelectedDate());
                     onclick = 'event.stopPropagation()';
                 }
-                items.push('<span class="retail-missing-item"><a href="' + esc(href) +
-                    '" onclick="' + onclick + '">' + esc(name) + '</a> ' +
-                    esc(product) + ' 미수집</span>');
+                var link = '<a href="' + esc(href) + '" onclick="' + onclick + '">' + esc(name) + '</a> ';
+                if (missing) {
+                    items.push('<span class="retail-missing-item">' + link + esc(product) + ' 미수집</span>');
+                }
+                if (multiple) {
+                    items.push('<span class="retail-missing-item">' + link + esc(product) + ' 배치 2개 이상</span>');
+                }
             });
         });
+        if (check.batch_count_error) {
+            items.push('<span class="retail-missing-item">배치 조회 실패</span>');
+        }
         return items.length
-            ? '<div class="retail-missing-summary" aria-label="수집 시간 경과 미수집">' + items.join('') + '</div>'
+            ? '<div class="retail-missing-summary" aria-label="미수집 및 복수 배치 알림">' + items.join('') + '</div>'
             : '';
     }
 
@@ -79,5 +100,5 @@
         if (icon) icon.classList.add('expanded');
     }
 
-    L1.retailStatus = { render: render, toggle: toggle, open: open };
+    L1.retailStatus = { render: render, toggle: toggle, open: open, rowBadge: rowBadge };
 })();

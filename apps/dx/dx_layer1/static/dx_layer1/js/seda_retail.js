@@ -14,7 +14,7 @@
             '<td>' + count(row.main_count) + '</td>' +
             '<td>' + count(row.bsr_count) + '</td>' +
             '<td class="rt-total">' + count(row.raw_count) + '</td>' +
-            '<td class="rt-status ct-nc">' + getStatusBadge(row.status) + '</td></tr>';
+            '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(row) + '</td></tr>';
     }
 
     function category(cat, checkIdx, catIdx) {

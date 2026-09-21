@@ -23,7 +23,7 @@ function renderSielRetailerRow(retailer) {
         '<td>' + mainCount.toLocaleString() + '</td>' +
         '<td>' + bsrCount.toLocaleString() + '</td>' +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
-        '<td class="rt-status ct-nc">' + getStatusBadge(retailer.status) + '</td>' +
+        '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(retailer) + '</td>' +
     '</tr>';
 }
 
