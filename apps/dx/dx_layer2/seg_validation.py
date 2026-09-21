@@ -82,6 +82,12 @@ _FINAL_PRICE_ALLOWED_TEXT = {
     'Derzeit nicht auf Lager.',
 }
 _STAR_RATING_ALLOWED_TEXT = {'No customer reviews'}
+_AMAZON_DISCOUNT_TYPE_VALUES = frozenset({
+    'Limited Time Offer', 'Hot deal',
+})
+_AMAZON_DISCOUNT_COUNTDOWN_PATTERN = re.compile(
+    r'Ends in [0-9]+:[0-5][0-9]:[0-5][0-9]'
+)
 
 
 def product_line_for(value):
@@ -213,6 +219,17 @@ def evaluate_format_row(row, product_line, retailer):
         if text not in allowed and not pattern.fullmatch(text):
             errors[field] = reason
 
+    discount_type = row.get('discount_type')
+    if (
+        'discount_type' in fields
+        and not _missing(discount_type)
+        and str(discount_type).strip() not in _AMAZON_DISCOUNT_TYPE_VALUES
+        and not _AMAZON_DISCOUNT_COUNTDOWN_PATTERN.fullmatch(str(discount_type).strip())
+    ):
+        errors['discount_type'] = (
+            'discount_type은 Limited Time Offer, Hot deal 또는 Ends in 시간:분:초 형식이어야 합니다.'
+        )
+
     if 'final_sku_price' in fields:
         allowed = (
             _FINAL_PRICE_ALLOWED_TEXT if retailer_key == 'amazon' else ()
@@ -334,6 +351,11 @@ def _serialize_format_row(row, product_line, retailer):
 
 
 _FORMAT_RULE_DETAILS = {
+    'discount_type': {
+        'field': 'discount_type',
+        'description': 'Amazon 할인 유형 허용값 (대소문자 구분)',
+        'pattern': 'Limited Time Offer, Hot deal, Ends in 시간:분:초',
+    },
     'final_sku_price': {
         'field': 'final_sku_price',
         'description': '독일 유로 금액 또는 허용된 Amazon 가격 상태',

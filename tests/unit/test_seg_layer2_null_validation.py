@@ -223,6 +223,64 @@ class SegDuplicateValidationTests(unittest.TestCase):
 
 
 class SegFormatValidationTests(unittest.TestCase):
+    def test_discount_type_allowlist_is_amazon_only_and_skips_missing_values(self):
+        for product_line in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            for value, valid in (
+                ('Limited Time Offer', True), ('Hot deal', True),
+                (None, True), ('', True), ('   ', True),
+                ('Lightning Deal', False), ('Coupon', False),
+                ('limited time offer', False), ('Hot Deal', False),
+                ('Limited Time Offers', False), ('Hot deal today', False),
+                ('N/A', False), ('null', False), (0, False),
+            ):
+                with self.subTest(product_line=product_line, value=value):
+                    errors = seg_validation.evaluate_format_row(
+                        {'discount_type': value}, product_line, 'Amazon'
+                    )
+                    self.assertEqual(not valid, 'discount_type' in errors)
+            for retailer in ('Mediamarkt', 'OTTO'):
+                with self.subTest(product_line=product_line, retailer=retailer):
+                    self.assertNotIn(
+                        'discount_type', get_seg_format_columns(product_line, retailer)
+                    )
+                    self.assertEqual({}, seg_validation.evaluate_format_row(
+                        {'discount_type': 'Special Price'}, product_line, retailer
+                    ))
+            self.assertNotIn('discount_type', get_seg_null_columns(product_line, 'Amazon'))
+            rule = next(
+                rule for rule in seg_validation.get_format_rule_details(product_line, 'Amazon')
+                if rule['field'] == 'discount_type'
+            )
+            self.assertEqual('Limited Time Offer, Hot deal, Ends in 시간:분:초', rule['pattern'])
+
+    @patch('apps.dx.dx_layer2.seg_validation._load_normal_reviews', return_value={})
+    @patch('apps.dx.dx_layer2.seg_validation._latest_rows')
+    def test_discount_type_outliers_are_counted_and_editable(self, latest_rows, _reviews):
+        latest_rows.return_value = ([
+            {'id': 1, 'discount_type': 'Limited Time Offer'},
+            {'id': 2, 'discount_type': 'Hot deal'},
+            {'id': 3, 'discount_type': 'Lightning Deal'},
+            {'id': 4, 'discount_type': None},
+        ], {'inspection_date': '2026-09-15', 'source_date': '2026-09-15'})
+        validation = {'tables': []}
+        total = seg_validation.append_format_stats(None, date(2026, 9, 15), validation)
+        self.assertEqual(2, total)
+        for table in validation['tables']:
+            for retailer in table['retailers']:
+                self.assertEqual(
+                    int(retailer['retailer'] == 'Amazon'), retailer['issue_count']
+                )
+        for product_line in ('seg_tv', 'seg_ref'):
+            with self.subTest(product_line=product_line):
+                detail = seg_validation.format_detail(
+                    None, date(2026, 9, 15), product_line, 'Amazon', days=1
+                )
+                self.assertEqual([3], [row['id'] for row in detail['results']])
+                self.assertEqual({'discount_type': 1}, detail['field_counts'])
+                self.assertEqual(1, detail['total_format_count'])
+                self.assertIn('discount_type', detail['column_names'])
+                self.assertIn('discount_type', detail['editable_cols'])
+
     def test_requested_context_fields_are_not_format_rules(self):
         fields = set(get_seg_format_columns('seg_tv', 'Amazon'))
 
@@ -476,6 +534,34 @@ class SegFormatValidationTests(unittest.TestCase):
 
 
 class SegLayer2DataEditTests(unittest.TestCase):
+    def test_discount_type_can_only_be_edited_as_amazon_format_field(self):
+        for product_line in ('seg_tv', 'seg_ref'):
+            table = seg_validation.SEG_SOURCE_CONFIG[product_line]['table_name']
+            for retailer, validation_type, allowed in (
+                ('Amazon', 'format', True),
+                ('Amazon', 'null', False),
+                ('Mediamarkt', 'format', False),
+                ('OTTO', 'format', False),
+            ):
+                with self.subTest(product_line=product_line, retailer=retailer,
+                                  validation_type=validation_type):
+                    cursor = ScriptedCursor([
+                        {'fetchone': ('Lightning Deal', retailer, 'item-1', 'batch-1')},
+                        {}, {},
+                    ])
+                    result = data_edit_services.update_cell_value(
+                        cursor, Mock(), table, 11, 'discount_type', 'Hot deal',
+                        date(2026, 9, 15), validation_type, 'tester', 'fixed',
+                    )
+                    if allowed:
+                        self.assertTrue(result['success'])
+                        self.assertIn('SET discount_type = %s', cursor.calls[1][0])
+                        self.assertEqual(('Hot deal', 11), cursor.calls[1][1])
+                        self.assertEqual('format_check', cursor.calls[2][1][1])
+                    else:
+                        self.assertEqual(403, result['status'])
+                        self.assertEqual(1, len(cursor.calls))
+
     def test_null_cell_update_is_scoped_and_retailer_allowlisted(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, 'Amazon', 'item-1', 'batch-1')},

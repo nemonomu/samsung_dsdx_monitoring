@@ -218,13 +218,15 @@ def get_seg_table_columns(product_line):
     ))
 
 
-def get_seg_format_columns(product_line, _retailer=None):
+def get_seg_format_columns(product_line, retailer=None):
+    """Return retailer fields, or all format fields for edit prechecks."""
     product_key = get_seg_product_line(product_line)
     if not product_key:
         return ()
-    return tuple(dict.fromkeys(
-        SEG_FORMAT_COMMON_COLUMNS + SEG_FORMAT_PRODUCT_COLUMNS[product_key]
-    ))
+    columns = SEG_FORMAT_COMMON_COLUMNS + SEG_FORMAT_PRODUCT_COLUMNS[product_key]
+    if retailer is None or str(retailer).strip().casefold() == 'amazon':
+        columns += ('discount_type',)
+    return tuple(dict.fromkeys(columns))
 
 
 def get_seg_average(counts):
