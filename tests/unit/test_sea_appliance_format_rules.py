@@ -218,10 +218,12 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
                  'Pickup Ready by XXX, Sep 22', 'Pickup Ready Today extra'),
             ),
             'delivery_availability': (
-                ('Delivery Sat, Sep 19', 'Shipping Mon, Sep 21', 'Delivery w/FREE Installation'),
+                ('Delivery Sat, Sep 19', 'Shipping Mon, Sep 21', 'Delivery w/FREE Installation',
+                 'Delivery Tomorrow', ' Delivery Tomorrow '),
                 ('Delivery as soon as Sat, Sep 19', 'Shipping today',
                  'Delivery w/free Installation', 'Delivery Sat, Sep 32',
-                 'Shipping Mon, Bad 21', 'Delivery Sat, Sep 19 extra'),
+                 'Shipping Mon, Bad 21', 'Delivery Sat, Sep 19 extra',
+                 'Delivery tomorrow', 'Delivery Tomorrow extra'),
             ),
             'recommendation_intent': (
                 ('0% Recommend this product', '83% Recommend this product', '100% Recommend this product'),
