@@ -3,6 +3,7 @@ from apps.common import null_review_evidence
 from apps.common import sea_layer2
 from apps.common import seda_retail
 from apps.dx.dx_layer2 import seda_null_validation
+from apps.dx.dx_layer2 import seda_duplicate_validation
 from apps.dx.dx_layer3.cross_field import seda_services
 
 import importlib.util
@@ -72,6 +73,15 @@ def seg_validation_stub():
         get_review_allowed_columns=lambda *_args, **_kwargs: (),
         get_format_rule_details=lambda *_args, **_kwargs: [],
         fetch_review_record=lambda *_args, **_kwargs: None,
+    )
+
+
+def seda_duplicate_validation_stub():
+    return module_stub(
+        'apps.dx.dx_layer2.seda_duplicate_validation',
+        product_line_for=lambda _value: None,
+        append_duplicate_stats=lambda *_args, **_kwargs: 0,
+        SEDA_SOURCE_CONFIG={},
     )
 
 

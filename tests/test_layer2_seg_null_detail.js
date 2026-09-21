@@ -32,7 +32,7 @@ assert(template.includes(
     "dx_layer2/js/null_validation.js' %}?v=20260918-homedepot2"
 ));
 assert(template.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20260918-sidebar-cache1"
+    "dx_layer2/js/dashboard.js' %}?v=20260921-seda-duplicate1"
 ));
 
 console.log('Layer2 SEG NULL frontend tests passed.');

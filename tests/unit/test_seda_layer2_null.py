@@ -202,7 +202,7 @@ class SedaNullTests(unittest.TestCase):
             self.assertEqual(400, result['status_code'])
             self.assertEqual([], cursor.calls)
 
-    def test_seda_sidebar_is_only_under_null_validation(self):
+    def test_seda_sidebar_supports_null_and_duplicate_validation(self):
         config = {'tv_retail': {'display_name': 'SEA TV'},
                   'seda_tv_retail': {'display_name': 'SEDA TV'},
                   'sem_tv_retail': {'display_name': 'SEM TV'}}
@@ -213,10 +213,10 @@ class SedaNullTests(unittest.TestCase):
         seda_menu = next(item for item in groups[0]['items'] if item['name'] == 'SEDA Retail')
         self.assertTrue(seda_menu['active'])
         self.assertEqual(3, len(seda_menu['children']))
-        for group in groups[1:3]:
-            self.assertFalse(any('SEDA' in item['name'] for item in group['items']))
-        for name in ('format', 'anomaly'):
-            self.assertFalse(any(item['key'].startswith('seda_') for item in menus[name]))
+        self.assertFalse(any('SEDA' in item['name'] for item in groups[1]['items']))
+        self.assertTrue(any('SEDA' in item['name'] for item in groups[2]['items']))
+        self.assertFalse(any(item['key'].startswith('seda_') for item in menus['format']))
+        self.assertTrue(any(item['key'].startswith('seda_') for item in menus['anomaly']))
 
     def test_null_dashboard_and_detail_route_to_seda_without_db_registration(self):
         self.add(id=1, sku=None)

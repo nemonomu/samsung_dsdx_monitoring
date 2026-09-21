@@ -154,7 +154,7 @@ def get_sidebar_items():
     return {
         'null': items,
         'format': [item for item in items if item['key'] not in SEDA_RETAIL_CATEGORIES],
-        'anomaly': [item for item in items if item['key'] not in SEDA_RETAIL_CATEGORIES],
+        'anomaly': items,
     }
 
 
@@ -283,18 +283,19 @@ def build_sidebar_groups(section, focus=''):
     }
     active_categories = set(get_all_categories())
 
-    seda_children = [
-        {**child, 'active': section == 'null_validation'
-         and focus in (child['name'], child['detail_code'])}
-        for child in SEDA_RETAIL_SIDEBAR_CHILDREN
-        if child['detail_code'] in active_categories
-    ]
-    if seda_children:
-        items = section_items['null_validation']
-        insert_at = next((index for index, item in enumerate(items)
-                          if item['name'] != 'SEA Retail'), len(items))
-        items.insert(insert_at, {'name': 'SEDA Retail', 'children': seda_children,
-                                'active': any(child['active'] for child in seda_children)})
+    for section_name in ('null_validation', 'anomaly_validation'):
+        seda_children = [
+            {**child, 'active': section == section_name
+             and focus in (child['name'], child['detail_code'])}
+            for child in SEDA_RETAIL_SIDEBAR_CHILDREN
+            if child['detail_code'] in active_categories
+        ]
+        if seda_children:
+            items = section_items[section_name]
+            insert_at = next((index for index, item in enumerate(items)
+                              if item['name'] != 'SEA Retail'), len(items))
+            items.insert(insert_at, {'name': 'SEDA Retail', 'children': seda_children,
+                                    'active': any(child['active'] for child in seda_children)})
 
     # Keep SEG in the same country order as the dashboard: SIEL, SEG, SEM.
     for section_name in (

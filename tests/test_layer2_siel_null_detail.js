@@ -203,7 +203,7 @@ assert.ok(commonSource.includes('requireMemo: false'));
 assert.ok(commonSource.includes('if (memoRequired && !memo)'));
 assert.ok(commonSource.includes("failureMessages.join(' / ')"));
 assert.ok(nullTemplateSource.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260918-homedepot-fields3"
+    "dx_layer2/js/layer2-common.js' %}?v=20260921-seda-duplicate1"
 ));
 
 console.log('Layer2 SIEL NULL frontend tests passed.');

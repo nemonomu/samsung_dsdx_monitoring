@@ -230,6 +230,13 @@ function getColumnConfig(type, tableParam) {
         if (/^siel_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_siel_retail;
         }
+        if (/^seda_(tv|ref|ldy)_retail$/.test(tableParam)) {
+            return {
+                group: DETAIL_COLUMNS.dup_sea_retail.group,
+                detail: [...DETAIL_COLUMNS.dup_sea_retail.detail,
+                    { key: 'batch_id', label: '배치 ID', width: 200 }],
+            };
+        }
         if (/^seg_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_sea_retail;
         }
@@ -256,6 +263,7 @@ function isReadOnlyDuplicateTable(tableParam) {
     return isTseDuplicateTable(tableParam)
         || /^sem_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
+        || /^seda_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^seg_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
 }
 

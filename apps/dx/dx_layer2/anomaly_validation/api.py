@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from apps.common.db import dx_connection
 from apps.common.response import safe_error
 from apps.common.params import parse_date
+from apps.common.seda_retail import get_seda_product_line, seda_retailer_key
 from . import services
 from .services import VALID_TABLES_ANOMALY, _DUP_TABLE_CONFIG
 
@@ -21,6 +22,8 @@ def anomaly_detail(request):
     if table not in VALID_TABLES_ANOMALY:
         return JsonResponse({'error': '잘못된 테이블 파라미터'}, status=400)
     retailer = request.GET.get('retailer', '')
+    if get_seda_product_line(table) and seda_retailer_key(retailer) not in ('magalu', 'casasbahia'):
+        return JsonResponse({'error': '잘못된 SEDA 리테일러 파라미터'}, status=400)
     try:
         days = max(1, int(request.GET.get('days', 1)))
     except (ValueError, TypeError):

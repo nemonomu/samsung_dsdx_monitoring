@@ -18,6 +18,7 @@ from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import seg_validation, sem_validation
+from apps.dx.dx_layer2 import seda_duplicate_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -87,6 +88,8 @@ VALID_TABLES_ANOMALY = {
 } | {
     source['section_code']
     for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
+} | {
+    source['section_code'] for source in seda_duplicate_validation.SEDA_SOURCE_CONFIG.values()
 }
 _YOUTUBE_VIDEO_DUP_KEYS = (
     'video_id', 'keyword', 'collection_country', 'collection_batch_id'
@@ -999,6 +1002,10 @@ def _build_dup_delete_query(table, retailer=''):
 
 def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
+    if seda_duplicate_validation.product_line_for(table):
+        return seda_duplicate_validation.duplicate_detail(
+            cursor, target_date, table, retailer, page, page_size,
+        )
     if seg_validation.product_line_for(table):
         return seg_validation.duplicate_detail(
             cursor, target_date, table, retailer, page, page_size
@@ -1972,6 +1979,11 @@ def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None)
         **({"category": category} if category else {})
     )
     total_anomaly_issues += sem_validation.append_duplicate_stats(
+        cursor, target_date, anomaly_validation,
+        **({"category": category} if category else {})
+    )
+
+    total_anomaly_issues += seda_duplicate_validation.append_duplicate_stats(
         cursor, target_date, anomaly_validation,
         **({"category": category} if category else {})
     )

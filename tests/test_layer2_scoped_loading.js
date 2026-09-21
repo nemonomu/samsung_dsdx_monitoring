@@ -228,7 +228,7 @@ function assertGlobalBadges() {
     for (const file of fs.readdirSync('apps/dx/dx_layer2/templates')) {
         const source = fs.readFileSync('apps/dx/dx_layer2/templates/' + file, 'utf8');
         if (source.includes('dx_layer2/js/dashboard.js')) {
-            assert(source.includes("dashboard.js' %}?v=20260918-sidebar-cache1"), file);
+            assert(source.includes("dashboard.js' %}?v=20260921-seda-duplicate1"), file);
         }
     }
     console.log('Layer2: synchronous dashboard cache restore, 30s reuse, in-flight deduplication, save invalidation, date isolation and all-country navigation passed.');
