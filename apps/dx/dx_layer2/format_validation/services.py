@@ -377,6 +377,9 @@ _SIEL_AMAZON_STAR_STATUS_VALUES = frozenset({'No customer reviews'})
 _SIEL_AMAZON_DISCOUNT_TYPE_VALUES = frozenset({
     'Limited time deal', 'Limited Time Offer', 'Hot deal',
 })
+_SIEL_AMAZON_DISCOUNT_COUNTDOWN_PATTERN = re.compile(
+    r'Ends in [0-9]+:[0-5][0-9]:[0-5][0-9]'
+)
 _SIEL_AMAZON_SKU_POPULARITY_VALUES = frozenset({
     "Amazon's Choice", 'Best seller', 'Best Seller',
 })
@@ -561,7 +564,7 @@ SIEL_FORMAT_RULE_DETAILS = {
     'discount_type': {
         'field': 'discount_type',
         'description': 'Amazon 할인 유형 허용값 (대소문자 구분)',
-        'pattern': 'Limited time deal, Limited Time Offer, Hot deal',
+        'pattern': 'Limited time deal, Limited Time Offer, Hot deal, Ends in 시간:분:초',
     },
     'number_of_units_purchased_past_month': {
         'field': 'number_of_units_purchased_past_month',
@@ -1623,6 +1626,10 @@ def evaluate_siel_format_row(row, source_key, retailer):
         'discount_type' in fields
         and _has_siel_format_value(discount_type)
         and str(discount_type).strip() not in discount_values
+        and not (
+            retailer_key == 'amazon'
+            and _SIEL_AMAZON_DISCOUNT_COUNTDOWN_PATTERN.fullmatch(str(discount_type).strip())
+        )
     ):
         errors['discount_type'] = (
             f'허용된 {retailer_value} 할인 유형이 아닙니다.'

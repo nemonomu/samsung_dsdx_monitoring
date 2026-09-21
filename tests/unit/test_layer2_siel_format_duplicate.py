@@ -178,6 +178,19 @@ class SIELFormatValidationTests(unittest.TestCase):
                 ('Limited time deal', True),
                 ('Limited Time Offer', True),
                 ('Hot deal', True),
+                ('Ends in 20:15:56', True),
+                ('Ends in 21:53:11', True),
+                ('Ends in 0:00:00', True),
+                ('Ends in 00:00:01', True),
+                (' Ends in 125:59:59 ', True),
+                ('Ends in 20:60:00', False),
+                ('Ends in 20:00:60', False),
+                ('Ends in -1:00:00', False),
+                ('Ends in 20:15', False),
+                ('Ends in 20:1:5', False),
+                ('Ends in ', False),
+                ('Ends in 20:15:56 extra', False),
+                ('ends in 20:15:56', False),
                 (None, True),
                 ('', True),
                 ('   ', True),
@@ -209,12 +222,17 @@ class SIELFormatValidationTests(unittest.TestCase):
                     if rule['field'] == 'discount_type'
                 )
                 self.assertEqual(
-                    'Limited time deal, Limited Time Offer, Hot deal',
+                    'Limited time deal, Limited Time Offer, Hot deal, Ends in 시간:분:초',
                     rule['pattern'],
                 )
                 flipkart_rules = self.service.get_format_rules(
                     None, source_key, 'Flipkart'
                 )['rules']
+                self.assertIn(
+                    'discount_type', self.service.evaluate_siel_format_row(
+                        {'discount_type': 'Ends in 20:15:56'}, source_key, 'Flipkart'
+                    )
+                )
                 flipkart_rule = next(
                     rule for rule in flipkart_rules
                     if rule['field'] == 'discount_type'
@@ -251,6 +269,8 @@ class SIELFormatValidationTests(unittest.TestCase):
             {'id': 1, 'discount_type': 'Limited time deal'},
             {'id': 2, 'discount_type': 'Hot deal'},
             {'id': 3, 'discount_type': 'Lightning Deal'},
+            {'id': 4, 'discount_type': 'Ends in 20:15:56'},
+            {'id': 5, 'discount_type': 'Ends in 21:53:11'},
         ]
         for source_key in SIEL_SOURCES:
             with self.subTest(source_key=source_key), patch.object(
