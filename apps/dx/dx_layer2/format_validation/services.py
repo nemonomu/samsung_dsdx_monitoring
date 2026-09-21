@@ -23,7 +23,7 @@ from apps.common.db import dx_table
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
-from apps.dx.dx_layer2 import seg_validation, sem_validation
+from apps.dx.dx_layer2 import seg_validation, sem_validation, seda_format_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -214,6 +214,8 @@ VALID_TABLES_RULES = {
 ) | set(
     getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})
 )
+VALID_TABLES_FORMAT |= {source['section_code'] for source in seda_format_validation.SEDA_SOURCE_CONFIG.values()}
+VALID_TABLES_RULES |= set(seda_format_validation.SEDA_SOURCE_CONFIG)
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
 
 
@@ -2063,6 +2065,8 @@ def get_format_detail(cursor, target_date, table, retailer, days):
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if seda_format_validation.product_line_for(table):
+        return seda_format_validation.format_detail(cursor, target_date, table, retailer, days)
     if seg_validation.product_line_for(table):
         return seg_validation.format_detail(
             cursor, target_date, table, retailer, days=days
@@ -2729,6 +2733,9 @@ def get_format_rules(cursor, table_name, retailer):
         return {
             'rules': _get_siel_static_format_rules(table_name, retailer)
         }
+    seda_product_line = seda_format_validation.product_line_for(table_name)
+    if seda_product_line:
+        return {'rules': seda_format_validation.get_format_rule_details(seda_product_line, retailer)}
     seg_product_line = seg_validation.product_line_for(table_name)
     if seg_product_line:
         return {
@@ -3236,6 +3243,9 @@ def get_format_stats(cursor, target_date, category=None):
     total_format_issues += _append_tse_format_stats(
         cursor, target_date, format_validation,
         **({"category": category} if category else {})
+    )
+    total_format_issues += seda_format_validation.append_format_stats(
+        cursor, target_date, format_validation, category=category
     )
     total_format_issues += seg_validation.append_format_stats(
         cursor, target_date, format_validation,

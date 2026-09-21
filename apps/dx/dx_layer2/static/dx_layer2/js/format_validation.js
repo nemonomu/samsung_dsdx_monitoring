@@ -51,10 +51,11 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
-        || isSeaRetail || isSielRetail || isSegRetail
+        || isSeaRetail || isSielRetail || isSegRetail || isSedaRetail
         || isSemRetail || isTseRetail;
     const currentDays = modalState.days
         || (typeof getDefaultFormatHistoryDays === 'function'
@@ -73,7 +74,11 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             }
         });
         if (errorItems.size > 0) {
-            filteredRecords = records.filter(function(record) { return errorItems.has(record.item); });
+            filteredRecords = records.filter(function(record) {
+                return errorItems.has(record.item) || (isSedaRetail && !record.item
+                    && String(record[sourceDateColumn] || '').substring(0, 10) === targetDateStr
+                    && (record.error_fields || []).includes(fieldName));
+            });
         } else {
             filteredRecords = records.filter(function(record) { return (record.error_fields || []).includes(fieldName); });
         }
@@ -98,9 +103,12 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     var selectCols = [];
     if (isRetail && columnNames.length > 0) {
         var retailDateColumn = data.date_column || 'crawl_datetime';
-        var defaultKeys = (isTseRetail || isSeaRetail || isSielRetail || isSegRetail || isSemRetail)
+        var defaultKeys = (isTseRetail || isSeaRetail || isSielRetail || isSegRetail || isSedaRetail || isSemRetail)
             ? ['id', 'item', 'retailer_sku_name', retailDateColumn, fieldName, 'product_url']
             : ['id', 'item', retailDateColumn, fieldName, 'product_url'];
+        if (isSedaRetail) {
+            defaultKeys.splice(defaultKeys.indexOf(fieldName), 1, ...((data.field_display_columns || {})[fieldName] || [fieldName]));
+        }
         var _seen = {};
         columns = [];
         defaultKeys.forEach(function(k) {
@@ -111,7 +119,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         columns.push(reasonCol);
         // 문맥 컬럼은 기본 숨김이지만 현재 검수하는 오류 필드는 표시한다.
         var contextOnlyKeys = new Set(['country', 'account_name', 'page_type']);
-        var selectableColumns = isSemRetail && Array.isArray(data.select_cols)
+        var selectableColumns = (isSemRetail || isSedaRetail) && Array.isArray(data.select_cols)
             ? data.select_cols : columnNames;
         selectCols = selectableColumns.filter(function(key) {
             return isSemRetail || key === fieldName || !contextOnlyKeys.has(key);
@@ -140,7 +148,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 <input type="date" id="fmt-modal-date" value="${date}"
                     onchange="reloadFormatData(this.value)">
             </div>
-            ${(isTseRetail || isSeaRetail || isSielRetail || isSegRetail || isSemRetail) ? `<div class="modal-date-picker">
+            ${(isTseRetail || isSeaRetail || isSielRetail || isSegRetail || isSedaRetail || isSemRetail) ? `<div class="modal-date-picker">
                 <label>일수:</label>
                 <input type="number" id="fmt-modal-days" value="${currentDays}" min="1" max="30"
                     style="width:58px;" onkeydown="if(event.key==='Enter')reloadFormatDays()">
@@ -172,7 +180,11 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     // Item/쿼리 섹션 (retail만)
     if (isRetail) {
         const items = [...new Set(filteredRecords.map(r => r.item).filter(Boolean))].sort();
-        if (isTseRetail) {
+        if (isSedaRetail) {
+            const query = (data.field_queries || {})[fieldName] || '';
+            const escaped = query.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            itemQueryHtml += `<div class="query-box"><div class="item-copy-header"><span>${currentDays}일치 조회 SQL · 데이터일 ${data.source_date}</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div><pre class="query-content">${escaped}</pre></div>`;
+        } else if (isTseRetail) {
             const queryColumns = ((data.query_config || {})[fieldName]) || [];
             itemQueryHtml += _buildTseNullQueryHtml(
                 fieldName, data, filteredRecords, queryColumns, date, currentDays

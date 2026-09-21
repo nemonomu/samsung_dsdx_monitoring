@@ -13,6 +13,7 @@ from tests.unit.support import (
     sem_validation_stub,
     seg_validation_stub,
     seda_duplicate_validation_stub,
+    seda_format_validation_stub,
     seda_null_validation_stub,
     null_review_dependency_stubs,
 )
@@ -46,6 +47,7 @@ def common_stubs():
         'apps.dx.dx_layer2.sem_validation': sem_validation_stub(),
         'apps.dx.dx_layer2.seg_validation': seg_validation_stub(),
         'apps.dx.dx_layer2.seda_duplicate_validation': seda_duplicate_validation_stub(),
+        'apps.dx.dx_layer2.seda_format_validation': seda_format_validation_stub(),
         'apps.dx.dx_layer2.common': package_stub('apps.dx.dx_layer2.common'),
         'apps.dx.dx_layer2.common.context': module_stub(
             'apps.dx.dx_layer2.common.context',

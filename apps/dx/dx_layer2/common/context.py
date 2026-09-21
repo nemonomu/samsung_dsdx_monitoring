@@ -153,7 +153,7 @@ def get_sidebar_items():
     ]
     return {
         'null': items,
-        'format': [item for item in items if item['key'] not in SEDA_RETAIL_CATEGORIES],
+        'format': items,
         'anomaly': items,
     }
 
@@ -283,7 +283,7 @@ def build_sidebar_groups(section, focus=''):
     }
     active_categories = set(get_all_categories())
 
-    for section_name in ('null_validation', 'anomaly_validation'):
+    for section_name in ('null_validation', 'format_validation', 'anomaly_validation'):
         seda_children = [
             {**child, 'active': section == section_name
              and focus in (child['name'], child['detail_code'])}

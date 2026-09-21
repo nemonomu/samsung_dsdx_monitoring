@@ -18,7 +18,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.null_review_evidence import uses_new_policy, is_non_target_metric
 from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.dx.dx_layer2.common.context import get_status
-from apps.dx.dx_layer2 import sem_validation, seda_null_validation
+from apps.dx.dx_layer2 import sem_validation, seda_null_validation, seda_format_validation
 
 try:
     from apps.dx.dx_layer2 import seg_validation
@@ -3015,9 +3015,11 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if not reason and not is_siel_format_review:
         return {'error': '이유 선택은 필수입니다', 'status_code': 400}
     if seda_product_line:
-        if correction_type not in {'null', 'null_check'}:
-            return {'error': 'SEDA는 NULL 검수만 지원합니다', 'status_code': 400}
-        if column_name not in seda_null_validation.get_seda_null_columns(seda_product_line):
+        if correction_type not in {'null', 'null_check', 'format'}:
+            return {'error': 'SEDA는 NULL/형식 검수만 지원합니다', 'status_code': 400}
+        seda_handler = seda_format_validation if correction_type == 'format' else seda_null_validation
+        seda_columns = seda_format_validation.get_format_columns if correction_type == 'format' else seda_null_validation.get_seda_null_columns
+        if column_name not in seda_columns(seda_product_line):
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
     if (
         sea_source
@@ -3089,7 +3091,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
 
     if seda_product_line:
         try:
-            row = seda_null_validation.select_record(
+            row = seda_handler.select_record(
                 cursor, crawl_date, seda_product_line, record_id, column_name
             )
         except (TypeError, ValueError):
@@ -3158,7 +3160,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 
     old_value = row[0]
-    if seda_product_line and not seda_null_validation.missing(old_value):
+    if seda_product_line and correction_type_value == 'null_check' and not seda_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
     if sea_source:
