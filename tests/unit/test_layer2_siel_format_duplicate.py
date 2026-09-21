@@ -391,6 +391,27 @@ class SIELFormatValidationTests(unittest.TestCase):
                 )
                 self.assertNotIn('delivery_availability', errors)
 
+    def test_delivery_dates_times_and_ranges_are_dynamic_for_all_products(self):
+        valid = (
+            'FREE scheduled delivery as soon as Friday, 01 January, 7:30 am - 9:45 pm.',
+            'FREE delivery Tomorrow.',
+            'FREE delivery 30 September - 2 October. Order within 25 mins.',
+            'FREE delivery Thursday, 31 December - Friday, 01 January.',
+            'FREE scheduled delivery as soon as Tomorrow, 8 am - 12 pm.',
+            'FREE delivery Today by 10:30 pm.',
+            'FREE\u00a0delivery Monday, 05 October. Order within 1 hr 1 min.',
+            'FREE scheduled delivery as soon as Sunday, 20 December, 7 am – 9 pm.',
+        )
+        invalid = ('FREE delivery Monday, 32 October.',
+                   'FREE scheduled delivery as soon as Friday, 1 January, 25 am - 9 pm.',
+                   'FREE delivery Monday, 5 Wrongmonth.', 'FREE delivery random text',
+                   'FREE delivery Today by 7:99 pm.')
+        for product in ('siel_tv', 'siel_ref', 'siel_ldy'):
+            for value in (*valid, *invalid):
+                with self.subTest(product=product, value=value):
+                    errors = self.service.evaluate_siel_format_row({'delivery_availability': value}, product, 'Amazon')
+                    self.assertEqual(value in invalid, 'delivery_availability' in errors)
+
     def test_amazon_price_statuses_are_valid_but_bad_rupee_is_not(self):
         for price in (
             '₹10,999', 'Currently unavailable.',

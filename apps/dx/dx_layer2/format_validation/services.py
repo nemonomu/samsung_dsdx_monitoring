@@ -389,24 +389,27 @@ _SIEL_AMAZON_MONTH = (
     r'(?:January|February|March|April|May|June|July|August|September|'
     r'October|November|December)'
 )
-_SIEL_AMAZON_DAY = r'(?:[1-9]|[12]\d|3[01])'
+_SIEL_AMAZON_DAY = r'(?:0?[1-9]|[12]\d|3[01])'
 _SIEL_AMAZON_DATE = (
     rf'{_SIEL_AMAZON_WEEKDAY}, {_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH}'
 )
-_SIEL_AMAZON_TIME = r'(?:[1-9]|1[0-2]) (?:am|pm)'
+_SIEL_AMAZON_TIME = r'(?:0?[1-9]|1[0-2])(?::[0-5]\d)?\s?(?:am|pm)'
 _SIEL_AMAZON_PLURAL_COUNT = r'(?:[2-9]|[1-9]\d+)'
 _SIEL_AMAZON_DURATION = (
-    rf'(?:1 hr|{_SIEL_AMAZON_PLURAL_COUNT} hrs)'
+    rf'(?:(?:1 hr|{_SIEL_AMAZON_PLURAL_COUNT} hrs)'
     rf'(?: (?:1 min|{_SIEL_AMAZON_PLURAL_COUNT} mins))?'
+    rf'|1 min|{_SIEL_AMAZON_PLURAL_COUNT} mins)'
+)
+_SIEL_AMAZON_DELIVERY_WHEN = (
+    rf'(?:Today|Tomorrow|{_SIEL_AMAZON_DATE}|'
+    rf'{_SIEL_AMAZON_DAY} - {_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH}|'
+    rf'{_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH} - {_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH}|'
+    rf'{_SIEL_AMAZON_DATE} - {_SIEL_AMAZON_DATE})'
 )
 _SIEL_AMAZON_DELIVERY_PATTERN = re.compile(
-    rf'^(?:FREE scheduled delivery as soon as {_SIEL_AMAZON_DATE}, '
-    rf'{_SIEL_AMAZON_TIME} - {_SIEL_AMAZON_TIME}\.?|'
-    rf'FREE delivery (?:Today\.|'
-    rf'{_SIEL_AMAZON_DATE}(?: on your first order\.|'
-    rf'\.(?: Order within {_SIEL_AMAZON_DURATION}\.)?)|'
-    rf'{_SIEL_AMAZON_DAY} - {_SIEL_AMAZON_DAY} {_SIEL_AMAZON_MONTH}'
-    rf'(?:\. Order within {_SIEL_AMAZON_DURATION}\.)?))$'
+    rf'FREE (?:scheduled delivery as soon as|delivery) {_SIEL_AMAZON_DELIVERY_WHEN}'
+    rf'(?:,? {_SIEL_AMAZON_TIME} - {_SIEL_AMAZON_TIME}| by {_SIEL_AMAZON_TIME})?'
+    rf'(?: on your first order)?\.?(?: Order within {_SIEL_AMAZON_DURATION}\.)?'
 )
 _SIEL_AMAZON_FASTEST_DELIVERY_PATTERN = re.compile(
     rf'^fastest delivery (?:Today by {_SIEL_AMAZON_TIME}|'
@@ -575,11 +578,11 @@ SIEL_FORMAT_RULE_DETAILS = {
     },
     'delivery_availability': {
         'field': 'delivery_availability',
-        'description': 'Amazon 무료배송 날짜·시간 안내 문구',
+        'description': 'Amazon 무료배송 안내 문구 (요일·월·날짜·시간 변동 허용)',
         'pattern': (
-            'FREE scheduled delivery as soon as Saturday, 19 September, '
-            '7 am - 9 pm. / FREE delivery Wednesday, 23 September. / '
-            'FREE delivery Today.'
+            'FREE scheduled delivery as soon as {요일}, {일} {월}, {시각} - {시각}. / '
+            'FREE delivery {요일}, {일} {월}. / FREE delivery Today·Tomorrow. '
+            '날짜 범위·분 단위 시간·Order within 남은 시간 허용'
         ),
     },
     'fastest_delivery': {
@@ -1682,10 +1685,13 @@ def evaluate_siel_format_row(row, source_key, retailer):
     )
     for field, pattern, message in retailer_text_patterns:
         value = row.get(field)
+        pattern_text = str(value).strip()
+        if retailer_key == 'amazon' and field in ('delivery_availability', 'fastest_delivery'):
+            pattern_text = re.sub(r'\s+', ' ', pattern_text).replace('–', '-').replace('—', '-')
         if (
             field in fields
             and _has_siel_format_value(value)
-            and not pattern.fullmatch(str(value).strip())
+            and not pattern.fullmatch(pattern_text)
         ):
             errors[field] = message
 
