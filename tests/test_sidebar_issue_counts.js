@@ -173,7 +173,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
     for (const file of fs.readdirSync('apps/dx/dx_layer3/templates')) {
         const source = read('apps/dx/dx_layer3/templates/' + file);
         if (source.includes('dx_layer3/js/common.js')) {
-            assert(source.includes("common.js' %}?v=20260918-sidebar2"), file);
+            assert(source.includes("common.js' %}?v=20260921-seda-recommendation"), file);
         }
     }
     console.log('Sidebar counts: focus, hierarchy, aliases, zero reset, dates and stale requests passed.');

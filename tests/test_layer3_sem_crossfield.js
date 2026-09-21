@@ -15,7 +15,7 @@ const detail = fs.readFileSync(
     'apps/dx/dx_layer3/templates/layer3_cross_field.html', 'utf8'
 );
 
-assert(common.includes("const regionGroups = { sea: [], siel: [], seg: [], sem: [], tse: [] }"));
+assert(common.includes("const regionGroups = { sea: [], seda: [], siel: [], seg: [], sem: [], tse: [] }"));
 assert(common.includes("{ key: 'sem', title: 'SEM Retail'"));
 assert(common.includes("detailCode === 'sem_tv' || checkName.includes('SEM TV')"));
 assert(common.includes("detailCode === 'sem_ref' || checkName.includes('SEM REF')"));
@@ -28,9 +28,9 @@ assert(common.includes("const loadedRules = isRetailCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
 assert(/common\.js' %}\?v=[\w-]+/.test(dashboard));
-assert(dashboard.includes("cross-field.js' %}?v=27"));
+assert(dashboard.includes("cross-field.js' %}?v=29"));
 assert(/common\.js' %}\?v=[\w-]+/.test(detail));
-assert(detail.includes("cross-field.js' %}?v=27"));
+assert(detail.includes("cross-field.js' %}?v=29"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
 

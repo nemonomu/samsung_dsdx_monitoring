@@ -9,6 +9,10 @@ from apps.common.retail_columns import get_editable_columns
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.seda_retail import (
+    SEDA_SOURCE_CONFIG, get_seda_product_line, get_seda_crossfield_editable_columns,
+)
+from apps.dx.dx_layer2.seda_null_validation import _scope as seda_scope
 from apps.common.sea_dates import appliance_source_date_sql, appliance_page_scope_sql
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
@@ -61,6 +65,8 @@ VALID_TABLES_UPDATE.update(TSE_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SIEL_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SEG_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SEM_TABLE_TO_PRODUCT_LINE)
+SEDA_TABLES = {source['table_name'] for source in SEDA_SOURCE_CONFIG.values()}
+VALID_TABLES_UPDATE.update(SEDA_TABLES)
 
 SIEL_CROSSFIELD_REVIEW_COLUMNS = frozenset({
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
@@ -132,6 +138,8 @@ def _get_sem_edit_context(table_name):
 
 
 def _get_product_line(table_name):
+    if table_name in SEDA_TABLES:
+        return get_seda_product_line(table_name)
     if _is_tse_table(table_name):
         return get_tse_product_line_for_table(table_name)
     if _is_siel_table(table_name):
@@ -144,6 +152,18 @@ def _get_product_line(table_name):
     if sea_context:
         return sea_context['product_line']
     return 'tv' if table_name == 'tv_retail_com' else 'hhp'
+
+
+def _select_seda_record(cursor, table_name, columns, row_id, inspection_date):
+    source = SEDA_SOURCE_CONFIG[get_seda_product_line(table_name)]
+    mapping = resolve_monitoring_date(inspection_date, 'SEDA', source['source_key'])
+    cte, scope, params = seda_scope(
+        source, mapping['source_date'], mapping['source_date'],
+        'Casas Bahia' if columns[0] == 'recommendation_intent' else None,
+    )
+    fields = ', '.join('source.' + column for column in columns)
+    cursor.execute(f'{cte} SELECT {fields} {scope} AND source.id = %s FOR UPDATE OF source',
+                   [*params, row_id])
 
 
 def _select_sea_record(
@@ -291,6 +311,8 @@ def _validate_edit_target(table_name, column_name):
         return {'error': '허용되지 않는 테이블', 'status': 400}
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(column_name or '')):
         return {'error': '잘못된 컬럼명', 'status': 400}
+    if table_name in SEDA_TABLES and column_name not in get_seda_crossfield_editable_columns(table_name):
+        return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     return None
 
 
@@ -369,7 +391,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             or _is_seg_table(table_name))
         else f"{column_name}, NULL AS batch_id, account_name, item"
     )
-    if _is_tse_table(table_name):
+    if table_name in SEDA_TABLES:
+        _select_seda_record(cursor, table_name,
+                            (column_name, 'batch_id', 'account_name', 'item'), row_id, crawl_date)
+    elif _is_tse_table(table_name):
         cursor.execute(f"""
             SELECT {select_columns}
             FROM {table_name}
@@ -407,7 +432,9 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     retailer = row[2]
     item_value = str(row[3]) if row[3] else ''
 
-    if sem_context:
+    if table_name in SEDA_TABLES:
+        editable_cols = get_seda_crossfield_editable_columns(product_line, retailer)
+    elif sem_context:
         editable_cols = get_sem_editable_columns(product_line, retailer)
     elif siel_context:
         editable_cols = get_siel_crossfield_editable_columns(
@@ -486,7 +513,10 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     except ValueError as exc:
         return {'error': str(exc), 'status': 403}
 
-    if _is_tse_table(table_name):
+    if table_name in SEDA_TABLES:
+        _select_seda_record(cursor, table_name,
+                            (column_name, 'account_name', 'item'), record_id, crawl_date)
+    elif _is_tse_table(table_name):
         cursor.execute(f"""
             SELECT {column_name}, account_name, item
             FROM {table_name}
@@ -526,6 +556,9 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else None
+
+    if table_name in SEDA_TABLES and column_name not in get_seda_crossfield_editable_columns(product_line, retailer):
+        return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 
     if _is_tse_table(table_name):
         editable_cols = get_editable_columns(product_line, retailer)

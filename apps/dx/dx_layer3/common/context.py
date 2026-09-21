@@ -11,6 +11,7 @@ from apps.common.siel_retail import SIEL_SOURCE_CONFIG
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
+from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 
 
 LAYER_CONTEXT = {
@@ -66,6 +67,7 @@ def _get_sidebar_items():
     sem_section_codes = {
         source['section_code'] for source in SEM_SOURCE_CONFIG.values()
     }
+    seda_section_codes = {source['section_code'] for source in SEDA_SOURCE_CONFIG.values()}
     crossfield_items = []
     seen_crossfield_sections = set()
     sea_item_index = None
@@ -82,6 +84,7 @@ def _get_sidebar_items():
             or section_code in seg_section_codes
             or section_code in sem_section_codes
             or section_code in tse_section_codes
+            or section_code in seda_section_codes
         ):
             continue
 
@@ -96,6 +99,13 @@ def _get_sidebar_items():
         str(rule.get('section_code') or '').strip()
         for rule in crossfield_rules
     }
+    seda_children = [
+        {'name': source['display_name'], 'label': source['category'], 'detail_code': code}
+        for code, source in SEDA_SOURCE_CONFIG.items()
+        if source['section_code'] in active_sections
+    ]
+    if seda_children:
+        crossfield_items.append({'name': 'SEDA Retail', 'children': seda_children})
     sea_children = [
         dict(child)
         for section_code, child in sea_sections.items()

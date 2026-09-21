@@ -49,6 +49,8 @@ config/create_admin.py
 !sql/setup_sea_homedepot_layer2.sql
 !sql/setup_sea_homedepot_crossfield.sql
 !sql/setup_seda_layer2_null.sql
+!sql/setup_seda_recommendation_crossfield.sql
+!sql/setup_seda_crossfield.sql
 !sql/create_null_review_evidence.sql
 
 # Nginx (서버에서 직접 설정)

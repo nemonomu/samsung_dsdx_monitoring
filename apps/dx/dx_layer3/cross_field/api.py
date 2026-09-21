@@ -13,6 +13,7 @@ from . import siel_services
 from . import seg_services
 from . import tse_services
 from . import sem_services
+from . import seda_services
 
 
 def cross_field_detail(request):
@@ -47,6 +48,21 @@ def cross_field_detail(request):
     section = section_map.get(product_line, f'{product_line}_retail')
 
     try:
+        if product_line_key in ('seda_tv', 'seda_ref', 'seda_ldy'):
+            with dx_connection() as (conn, cursor):
+                if rule_id:
+                    result = seda_services.get_seda_cross_field_rule_detail(
+                        cursor, target_date, product_line_key, rule_id, days,
+                    )
+                else:
+                    result = seda_services.get_seda_cross_field_summary(
+                        cursor, target_date, product_line_key,
+                    )
+            if rule_id and not result.get('found'):
+                return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})
+            result.pop('found', None)
+            return JsonResponse(result)
+
         if is_seg:
             with dx_connection() as (conn, cursor):
                 if rule_id:

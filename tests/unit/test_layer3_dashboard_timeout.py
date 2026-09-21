@@ -1,4 +1,7 @@
 import unittest
+from contextlib import nullcontext
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from apps.common import inspection_dates
 from tests.unit.support import load_module, module_stub, package_stub
@@ -127,6 +130,22 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
             'RELEASE SAVEPOINT layer3_timeseries_rule',
             cursor.calls[-1][0],
         )
+
+    def test_seda_review_candidates_are_not_counted_as_passed(self):
+        request = SimpleNamespace(GET={'date': '2026-09-21', 'type': 'seda_tv', 'section': 'cross_field'})
+        for failed, reviews, expected_status in ((0, 2, 'REVIEW_NEEDED'), (1, 2, 'CRITICAL'), (0, 0, 'OK')):
+            summary = {
+                'configured': True, 'label': 'SEDA TV', 'total_checked': 10,
+                'failed_records': failed, 'review_needed_records': reviews,
+                'total_anomalies': failed, 'passed_records': 10 - failed - reviews,
+            }
+            with patch.object(self.api, 'dx_connection', return_value=nullcontext((Mock(), Mock()))), \
+                    patch.object(self.api.seda_services, 'get_seda_cross_field_summary', return_value=summary):
+                result = self.api.layer_stats(request)
+            self.assertNotIn('error', result)
+            self.assertEqual(10 - failed - reviews, result['summary']['passed'])
+            self.assertEqual(reviews, result['summary']['review_needed'])
+            self.assertEqual(expected_status, result['summary']['status'])
 
 
 if __name__ == '__main__':

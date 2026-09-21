@@ -13,6 +13,7 @@ from apps.common.siel_retail import SIEL_SOURCE_CONFIG
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
+from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.dx.dx_layer3.cross_field import (
     sea_services,
     sem_services,
@@ -20,6 +21,7 @@ from apps.dx.dx_layer3.cross_field import (
     tse_services,
 )
 from apps.dx.dx_layer3.cross_field import seg_services
+from apps.dx.dx_layer3.cross_field import seda_services
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -510,6 +512,36 @@ def layer_stats(request):
                     'status': get_status(hhp_cross_errors, hhp_cross_total)
                 })
 
+            if run_crossfield:
+                seda_product_lines = (
+                    list(SEDA_SOURCE_CONFIG) if product_line == 'all'
+                    else [product_line] if product_line in SEDA_SOURCE_CONFIG else []
+                )
+                for seda_product_line in seda_product_lines:
+                    seda_result = seda_services.get_seda_cross_field_summary(
+                        cursor, target_date, seda_product_line,
+                    )
+                    if not seda_result['configured']:
+                        continue
+                    total_checked += seda_result['total_checked']
+                    total_anomalies += seda_result['total_anomalies']
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{seda_result['label']} 논리적 일관성",
+                        'detail_code': seda_product_line,
+                        'description': '리뷰·별점 수, 가격·순위, 리뷰본문·요약리뷰, 추천율 검증',
+                        'checked': seda_result['total_checked'],
+                        'passed': seda_result['passed_records'],
+                        'failed': seda_result['failed_records'],
+                        'finding_count': seda_result['total_anomalies'],
+                        'review_needed': seda_result['review_needed_records'],
+                        'status': (
+                            get_status(seda_result['failed_records'], seda_result['total_checked'])
+                            if seda_result['failed_records'] else 'REVIEW_NEEDED'
+                            if seda_result['review_needed_records'] else 'OK'
+                        ),
+                    })
+
             # SEM TV/REF/LDY는 검수일 D의 Liverpool 최신 배치를 검증한다.
             if run_crossfield:
                 sem_product_lines = (
@@ -773,14 +805,21 @@ def layer_stats(request):
 
     summary_checked = sum(check.get('checked', 0) for check in results['checks'])
     summary_failed = sum(check.get('failed', 0) for check in results['checks'])
-    summary_passed = summary_checked - summary_failed
+    summary_review_needed = sum(check.get('review_needed', 0) for check in results['checks'])
+    summary_passed = sum(
+        check.get('passed', check.get('checked', 0) - check.get('failed', 0))
+        for check in results['checks']
+    )
 
     results['summary'] = {
         'total_checked': summary_checked,
         'passed': summary_passed,
         'failed': summary_failed,
+        'review_needed': summary_review_needed,
         'pass_rate': round((summary_passed / summary_checked * 100), 2) if summary_checked > 0 else 0,
-        'status': 'OK' if summary_failed == 0 else ('WARNING' if summary_failed < summary_checked * 0.05 else 'CRITICAL')
+        'status': (
+            'WARNING' if summary_failed < summary_checked * 0.05 else 'CRITICAL'
+        ) if summary_failed else 'REVIEW_NEEDED' if summary_review_needed else 'OK'
     }
 
     return JsonResponse(results)

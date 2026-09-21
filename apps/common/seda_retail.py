@@ -91,3 +91,21 @@ def display_seda_retailer(value):
 def get_seda_average(counts):
     values = [int(value) for value in counts if int(value or 0) > 0]
     return sum(values) // len(values) if values else None
+
+
+_SEDA_CROSSFIELD_COLUMNS = (
+    'main_rank', 'bsr_rank', 'original_sku_price', 'final_sku_price',
+    'count_of_reviews', 'count_of_star_ratings', 'star_rating',
+    'detailed_review_content', 'summarized_review_content',
+)
+
+
+def get_seda_crossfield_editable_columns(product_line, retailer=None):
+    if get_seda_product_line(product_line) is None:
+        return ()
+    key = seda_retailer_key(retailer) if retailer is not None else None
+    if key is not None and key not in SEDA_RETAILER_KEYS:
+        return ()
+    return _SEDA_CROSSFIELD_COLUMNS + (
+        ('recommendation_intent',) if key in (None, 'casasbahia') else ()
+    )
