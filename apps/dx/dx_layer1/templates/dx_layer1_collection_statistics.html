@@ -2,30 +2,26 @@
 {% load static %}
 {% block page_title %}수집데이터 통계{% endblock %}
 {% block layer1_content %}
-<section class="cs-page" aria-label="주간 수집데이터 통계">
-    <div class="cs-intro"><div><p class="cs-eyebrow">WEEKLY COLLECTION</p><p>주별 수집량과 일평균을 확인하세요.</p></div><span id="cs-updated" class="cs-muted">집계 시각 확인 중</span></div>
+<section class="cs-page" aria-label="수집데이터 통계">
+    <div class="cs-intro"><div><p class="cs-eyebrow">DAILY COLLECTION</p><p>선택한 리테일러의 날짜별 수집 건수와 하루 평균을 확인하세요.</p></div><span id="cs-updated" class="cs-muted"></span></div>
     <form id="cs-filters" class="cs-filters">
-        <label>국가<select id="cs-country" name="country"><option>SEA</option><option>SEDA</option><option>SIEL</option><option>SEG</option><option>SEM</option><option>TSE</option></select></label>
-        <label>제품군<select id="cs-product" name="product"><option value="ALL">전체</option><option>TV</option><option>REF</option><option>LDY</option></select></label>
-        <label>업체<select id="cs-retailer" name="retailer"><option value="">전체 업체</option></select></label>
-        <label>기간<select id="cs-weeks" name="weeks"><option value="4">최근 4주</option><option value="8" selected>최근 8주</option><option value="12">최근 12주</option></select></label>
+        <label>국가<select id="cs-country" name="country" required><option value="">국가 선택</option><option>SEA</option><option>SEDA</option><option>SIEL</option><option>SEG</option><option>SEM</option><option>TSE</option></select></label>
+        <label>제품군<select id="cs-product" name="product" required><option value="">제품군 선택</option><option>TV</option><option>REF</option><option>LDY</option></select></label>
+        <label>리테일러<select id="cs-retailer" name="retailer" required disabled><option value="">리테일러 선택</option></select></label>
+        <label>기간<select id="cs-days" name="days"><option value="5" selected>최근 5일</option><option value="7">최근 1주 (7일)</option><option value="14">최근 2주 (14일)</option><option value="49">최근 7주 (49일)</option></select></label>
         <label>기준 데이터일<input id="cs-date" name="date" type="date" required></label>
         <button class="cs-primary" type="submit">조회</button>
     </form>
-    <div id="cs-message" role="status" aria-live="polite" class="cs-message">저장된 주간 통계를 불러오는 중입니다.</div>
+    <div id="cs-message" role="status" aria-live="polite" class="cs-message">국가·제품군·리테일러를 선택하면 최근 5일의 일별 수집 건수를 볼 수 있습니다.</div>
     <div id="cs-results" hidden>
         <div class="cs-summary" id="cs-summary"></div>
         <section class="cs-card">
-            <div class="cs-card-heading"><div><h3>주간 수집 추이</h3><p class="cs-muted">월요일–일요일 · 데이터일 기준</p></div><label class="cs-metric-label">표시 항목<select id="cs-metric"><option value="total">총 건수</option><option value="main">MAIN</option><option value="bsr">BSR</option></select></label></div>
-            <div id="cs-chart" class="cs-chart" aria-label="주간 수집 합계 그래프"></div>
+            <div class="cs-card-heading"><div><h3>일별 수집 내역</h3><p id="cs-selection" class="cs-muted"></p></div></div>
+            <div class="cs-table-scroll"><table class="cs-table"><thead><tr><th>데이터일</th><th>수집 시간대</th><th>MAIN</th><th>BSR</th><th>총 건수</th><th>상태</th></tr></thead><tbody id="cs-table-body"></tbody></table></div>
         </section>
-        <section class="cs-card">
-            <div class="cs-card-heading"><div><h3>주간 수집 내역</h3><p class="cs-muted">각 행의 상세를 열면 날짜별 수집 건수와 판정을 볼 수 있습니다.</p></div></div>
-            <div class="cs-table-scroll"><table class="cs-table"><thead><tr><th>주간</th><th>제품군 / 업체</th><th>MAIN 합계</th><th>BSR 합계</th><th>총 건수</th><th>일평균</th><th>집계 완료 / 대상일</th><th>상태</th><th><span class="cs-sr-only">상세 보기</span></th></tr></thead><tbody id="cs-table-body"></tbody></table></div>
-        </section>
-        <p class="cs-footnote">일평균에는 집계가 완료된 수집 대상일의 0건도 포함합니다. 미집계·조회 실패·수집 중인 날짜는 평균에서 제외하고 별도 표시합니다. 총 건수는 Layer1과 같은 기준이며 MAIN과 BSR을 더한 값이 아닙니다.</p>
+        <p class="cs-footnote">일평균은 집계가 완료된 날짜의 총 건수로 계산하며 0건도 포함합니다. 미집계·조회 실패·수집 중인 날짜는 제외합니다. 여러 수집 시간대가 있으면 해당 날짜의 건수를 합산합니다. 총 건수는 MAIN과 BSR을 더한 값이 아닙니다.</p>
         <p class="cs-footnote">수집량 비교: 이전 28일 중 비교 가능한 7일 이상의 중앙값 기준. 30% 이상 감소는 <span class="cs-low">이상</span>, 30% 이상 증가는 <span class="cs-high">확인 필요</span>로 표시합니다.</p>
     </div>
 </section>
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/collection-statistics.js' %}?v=1"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/collection-statistics.js' %}?v=2"></script>{% endblock %}
