@@ -52,9 +52,13 @@ def deploy(root, username, groupname, run=subprocess.run):
         raise RuntimeError('Run from a deployment with venv/bin/python and manage.py')
 
     def command(*args, **options):
+        if args[0] == 'sudo':
+            args = ('sudo', '-n', *args[1:])
         return run([str(arg) for arg in args], cwd=root, check=True, **options)
 
-    command('sudo', '-v')
+    # Validate execution permission, not the sudo password timestamp: sudo -v
+    # can require a password even when the effective command rule is NOPASSWD.
+    command('sudo', 'true')
     # Stop only our own jobs before changing their schema/code.
     for suffix in ('timer', 'service'):
         name = f'{UNIT}.{suffix}'

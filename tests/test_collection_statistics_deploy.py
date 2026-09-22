@@ -22,18 +22,33 @@ class DeploymentTests(unittest.TestCase):
             calls, installed = [], {}
             def fake_run(args, **kwargs):
                 calls.append(args)
-                if args[:2] == ['sudo', 'install']:
+                if args[:3] == ['sudo', '-n', 'install']:
                     installed[args[-1]] = Path(args[-2]).read_text(encoding='utf-8')
                 return subprocess.CompletedProcess(args, 1 if args[0] == 'systemctl' and args[1] == 'show' else 0,
                                                    stdout='not-found\n')
             deploy(root, 'ubuntu', 'ubuntu', run=fake_run)
             migration = next(i for i, args in enumerate(calls) if 'migrate' in args)
-            restart = calls.index(['sudo', 'systemctl', 'restart', 'gunicorn'])
+            restart = calls.index(['sudo', '-n', 'systemctl', 'restart', 'gunicorn'])
             self.assertLess(migration, restart)
             self.assertEqual(2, len(installed))
             self.assertIn('--automatic', installed['/etc/systemd/system/samsung-dsdx-collection-statistics.service'])
             self.assertIn('OnCalendar=*:0/15', installed['/etc/systemd/system/samsung-dsdx-collection-statistics.timer'])
-            self.assertIn(['sudo', 'systemctl', 'start', '--no-block', 'samsung-dsdx-collection-statistics.service'], calls)
+            self.assertIn(['sudo', '-n', 'systemctl', 'start', '--no-block', 'samsung-dsdx-collection-statistics.service'], calls)
+            self.assertEqual(['sudo', '-n', 'true'], calls[0])
+            self.assertTrue(all(args[1] == '-n' and '-v' not in args
+                                for args in calls if args[0] == 'sudo'))
+
+    def test_unavailable_passwordless_sudo_stops_before_any_deployment_changes(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.fixture(root)
+            calls = []
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                raise subprocess.CalledProcessError(1, args)
+            with self.assertRaises(subprocess.CalledProcessError):
+                deploy(root, 'ubuntu', 'ubuntu', run=fake_run)
+            self.assertEqual([['sudo', '-n', 'true']], calls)
 
     def test_failed_migration_never_restarts_web_or_installs_jobs(self):
         with TemporaryDirectory() as temp:
