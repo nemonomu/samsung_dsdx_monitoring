@@ -240,6 +240,11 @@ function formatLocalDate(date) {
     return yyyy + '-' + mm + '-' + dd;
 }
 
+function getLayer1SeoulDate(dayOffset) {
+    return new Date(Date.now() + (9 + 24 * dayOffset) * 60 * 60 * 1000)
+        .toISOString().slice(0, 10);
+}
+
 // ============================================================
 // FilterBar
 // ============================================================
@@ -251,8 +256,16 @@ function getSelectedDate() {
 
 function initFilterBar(options) {
     var saved = sessionStorage.getItem('monitoringSelectedDate');
-    var today = formatLocalDate(new Date());
-    var defaultDate = saved || today;
+    var today = getLayer1SeoulDate(0);
+    var maxDate = getLayer1SeoulDate(1);
+    var defaultDate = saved && saved <= maxDate ? saved : today;
+
+    function refreshMaxDate() {
+        maxDate = getLayer1SeoulDate(1);
+        var input = filterBar && filterBar.barEl.querySelector('input[type="date"]');
+        if (input) input.max = maxDate;
+        return maxDate;
+    }
 
     function onDateChange() {
         sessionStorage.setItem('monitoringSelectedDate', filterBar.getDate());
@@ -261,16 +274,17 @@ function initFilterBar(options) {
     var config = {
         sticky: true,
         controls: [
-            { type: 'date', key: 'targetDate', label: '조회 날짜', value: defaultDate, max: today, showWeekday: true },
+            { type: 'date', key: 'targetDate', label: '조회 날짜', value: defaultDate, max: maxDate, maxToday: false, showWeekday: true },
             { type: 'button', label: '조회', style: 'primary', onClick: function() {
-                if (filterBar.getDate() > today) { showToast('오늘 이후 날짜로는 조회할 수 없습니다.', 'warning'); filterBar.setDate(today); return; }
+                if (filterBar.getDate() > refreshMaxDate()) { showToast('내일 이후 날짜로는 조회할 수 없습니다.', 'warning'); filterBar.setDate(maxDate); return; }
                 onDateChange(); loadAllData();
             } },
             { type: 'button', label: '전날', style: 'outline', onClick: function() { filterBar.prevDay(); onDateChange(); loadAllData(); } },
             { type: 'button', label: '다음날', style: 'outline', onClick: function() {
+                refreshMaxDate();
                 var before = filterBar.getDate();
                 filterBar.nextDay();
-                if (filterBar.getDate() === before) { showToast('오늘 이후 날짜로는 조회할 수 없습니다.', 'warning'); return; }
+                if (filterBar.getDate() === before) { showToast('내일 이후 날짜로는 조회할 수 없습니다.', 'warning'); return; }
                 onDateChange(); loadAllData();
             } }
         ]
