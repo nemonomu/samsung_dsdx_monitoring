@@ -104,7 +104,7 @@ assert.ok(!html.includes('batch_id:'));
 assert.ok(html.includes("this.dataset.fields, 'sea_ldy_retail'"));
 
 assert.ok(nullSource.includes("/^sea_(ref|ldy)_retail$/.test(tableParam)"));
-assert.ok(nullSource.includes("IN ('MAIN', 'BSR')"));
+assert.ok(!nullSource.includes('WITH latest_batches'));
 assert.ok(nullSource.includes('data.source_date || date'));
 assert.ok(nullSource.includes('data.actual_table'));
 assert.ok(!nullSource.includes('· batch_id: ${data.batch_id'));
@@ -245,8 +245,8 @@ youtubeSandbox.renderNullFieldDetailView('ldy_capacity', {
     actual_table: 'public.ldy_retail_com', inspection_date: '2026-09-18', source_date: '2026-09-17',
     date: '2026-09-18', date_column: 'crawl_strdatetime', supports_day_history: true, history_days: 3
 }, true);
-assert(youtubeDetailHtml.includes('America/New_York'));
-assert(youtubeDetailHtml.includes('latest_batches'));
+assert(youtubeDetailHtml.includes("crawl_strdatetime >= '2026-09-15'"));
+assert(youtubeDetailHtml.includes("crawl_strdatetime < '2026-09-18'"));
 assert(!youtubeDetailHtml.includes("IN ('MAIN', 'BSR')"));
 assert.strictEqual(youtubeTableOptions.editableDate, '2026-09-17');
 const productUrlColumns = commonSandbox.ensureProductUrlColumn(

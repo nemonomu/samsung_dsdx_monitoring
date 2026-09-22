@@ -828,14 +828,14 @@ def build_siel_display_query(
                 )
             item_scope = ' OR '.join(item_clauses)
             retailer_scope = (
-                f"TRIM(account_name) ILIKE "
+                f"account_name = "
                 f"{_display_sql_literal(pair_retailer)}"
             )
             pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
         if len(pair_clauses) == 1:
             pair_retailer, pair_items = next(iter(pair_groups.items()))
             filters.append(
-                f'TRIM(account_name) ILIKE '
+                f'account_name = '
                 f'{_display_sql_literal(pair_retailer)}'
             )
             item_values = sorted({
@@ -851,7 +851,7 @@ def build_siel_display_query(
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
         retailer_clauses = [
-            f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
+            f'account_name = {_display_sql_literal(value)}'
             for value in retailer_values
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
@@ -860,13 +860,15 @@ def build_siel_display_query(
     if filters:
         scope_sql = '\n  AND ' + '\n  AND '.join(filters)
 
-    start_offset = day_count - 1
+    end_date = date.fromisoformat(str(inspection_date))
+    start_date = end_date - timedelta(days=day_count - 1)
+    next_date = end_date + timedelta(days=1)
     return f"""SELECT
 {select_sql}
 FROM {source['table_name']}
-WHERE {date_column} >= CURRENT_DATE - INTERVAL '{start_offset} days'
-  AND {date_column} < CURRENT_DATE + INTERVAL '1 day'{scope_sql}
-ORDER BY item, {date_column}, id;"""
+WHERE {date_column} >= '{start_date}'
+  AND {date_column} < '{next_date}'{scope_sql}
+ORDER BY item, {date_column};"""
 
 
 def get_siel_cross_field_summary(cursor, inspection_date, product_line):

@@ -174,15 +174,19 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
     fields = ('batch_id', 'started_at', 'ended_at', 'main_count', 'bsr_count', 'applied', 'raw_count')
     rows = [dict(row) if isinstance(row, Mapping) else dict(zip(fields, row)) for row in cursor.fetchall()]
     for row in rows:
-        # Keep SQL date/retailer/batch scope identical to the detail query. IDs
-        # containing commas or quotes remain a single safely quoted ID.
+        # Copy-only raw lookup: keep values and date columns directly readable.
+        query_params = [str(source_date),
+                        'CasasBahia' if check_type == 'seda_retail' and retailer == 'Casas Bahia' else retailer]
+        batch_filter = 'batch_id IS NULL' if row['batch_id'] is None else 'batch_id = %s'
+        if row['batch_id'] is not None:
+            query_params.append(row['batch_id'])
         query = f"""SELECT *
 FROM {source['table_name']}
-WHERE {condition}
-  AND {account} = %s
-  AND {normalized_batch} IS NOT DISTINCT FROM %s
-ORDER BY id;"""
-        row['sql'] = cursor.mogrify(query, (*params, key, row['batch_id'])).decode('utf-8')
+WHERE {column} >= %s
+  AND account_name = %s
+  AND {batch_filter}
+ORDER BY item, {column};"""
+        row['sql'] = cursor.mogrify(query, tuple(query_params)).decode('utf-8')
     return {
         'retailer': retailer, 'source_date': str(source_date),
         'time_basis': time_basis, 'batches': rows,

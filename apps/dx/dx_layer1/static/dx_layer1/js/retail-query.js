@@ -17,8 +17,7 @@
                 : 'dx_' + country.toLowerCase() + '.dx_' + country.toLowerCase() + '_' + key + '_retail_com',
             dateColumn: country === 'SEG' || country === 'SEDA' ||
                 (country === 'SEA' && product !== 'TV')
-                ? 'crawl_strdatetime' : 'crawl_datetime',
-            timestamp: country === 'SIEL'
+                ? 'crawl_strdatetime' : 'crawl_datetime'
         };
     }
 
@@ -30,22 +29,14 @@
         if (!batches.length) return '';
         var batchFilter = batches.length === 1 ? '= ' + literal(batches[0])
             : 'IN (' + batches.map(literal).join(', ') + ')';
-        var dateFilter = config.timestamp
-            ? config.dateColumn + ' >= (' + literal(day) + "::date::timestamp AT TIME ZONE 'Asia/Seoul')"
-            : config.dateColumn + ' >= ' + literal(day);
-        var accountName = retailer.trim().toLowerCase();
-        if (country === 'SEA' && product !== 'TV' && accountName === 'homedepot') {
-            dateFilter = "(CASE WHEN LOWER(BTRIM(account_name)) = 'homedepot' THEN " +
-                "TO_CHAR(NULLIF(BTRIM(CAST(" + config.dateColumn +
-                " AS TEXT)), '')::timestamptz AT TIME ZONE 'America/New_York', 'YYYY-MM-DD') END) = " + literal(day);
-        }
+        var accountName = retailer;
         // SEDA cards display "Casas Bahia"; the collected account is CasasBahia.
-        if (country === 'SEDA' && accountName.replace(/\s+/g, '') === 'casasbahia') {
-            accountName = 'casasbahia';
+        if (country === 'SEDA' && accountName === 'Casas Bahia') {
+            accountName = 'CasasBahia';
         }
-        return 'SELECT *\nFROM ' + config.table + '\nWHERE LOWER(BTRIM(account_name)) = ' +
-            literal(accountName) + '\n  AND ' + dateFilter +
-            '\n  AND batch_id ' + batchFilter + '\nORDER BY ' + config.dateColumn + ';';
+        return 'SELECT *\nFROM ' + config.table + '\nWHERE ' + config.dateColumn + ' >= ' + literal(day) +
+            '\n  AND account_name = ' + literal(accountName) +
+            '\n  AND batch_id ' + batchFilter + '\nORDER BY item, ' + config.dateColumn + ';';
     }
 
     function options(entry) {

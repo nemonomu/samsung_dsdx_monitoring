@@ -22,14 +22,14 @@ assert(dashboard.indexOf("key: 'seg'") < dashboard.indexOf("key: 'sem'"));
 
 assert(nullValidation.includes("'seg_tv_retail'"));
 assert(nullValidation.includes('const isSegRetail'));
-assert(nullValidation.includes('source.redirect IS NOT TRUE'));
-assert(nullValidation.includes("UPPER(BTRIM(source.country)) = 'SEG'"));
+assert(!nullValidation.includes('WITH latest_batches'));
+assert(!nullValidation.includes('UPPER(BTRIM(source.country))'));
 assert(nullValidation.includes('(isSeaRetail || isSielRetail || isSegRetail)'));
 
 assert(common.includes('var pageSize = detailViewState.pageSize || 100'));
 assert(common.includes('e.shiftKey && detailViewState.reviewAnchorCell'));
 assert(template.includes(
-    "dx_layer2/js/null_validation.js' %}?v=20260918-homedepot2"
+    "dx_layer2/js/null_validation.js' %}?v=20260922-simple-sql"
 ));
 assert(template.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260921-seda-duplicate1"

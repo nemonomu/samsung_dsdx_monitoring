@@ -324,12 +324,11 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
             self.assertNotIn('WITH main_batches AS', rule['query'])
             self.assertNotIn('    batch_id', rule['query'])
             self.assertIn(
-                "crawl_datetime >= CURRENT_DATE "
-                "- INTERVAL '2 days'",
+                "crawl_datetime >= '2026-09-01'",
                 rule['query'],
             )
             self.assertIn(
-                "crawl_datetime < CURRENT_DATE + INTERVAL '1 day'",
+                "crawl_datetime < '2026-09-04'",
                 rule['query'],
             )
             self.assertNotIn('AT TIME ZONE', rule['query'])
@@ -372,7 +371,7 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
         self.assertNotIn('main_rank', result['editable_columns'])
         self.assertIn(
-            "crawl_datetime >= CURRENT_DATE - INTERVAL '2 days'",
+            "crawl_datetime >= '2026-09-01'",
             result['query'],
         )
         self.assertIn('    count_of_reviews', result['query'])

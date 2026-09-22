@@ -646,16 +646,21 @@
 
                 if (items.length > 0) {
                     // item이 있는 경우: item 기반 쿼리
-                    const inClause = items.map(item => `'${item}'`).join(', ');
+                    const inClause = items.map(item => "'" + String(item).replace(/'/g, "''") + "'").join(', ');
                     const itemListDisplay = items.join(', ');
 
-                    const query3Days = `SELECT ${queryCols}
+                    const sourceDate = data.source_date || date;
+                    const start = new Date(sourceDate + 'T00:00:00Z');
+                    start.setUTCDate(start.getUTCDate() - 2);
+                    const next = new Date(sourceDate + 'T00:00:00Z');
+                    next.setUTCDate(next.getUTCDate() + 1);
+                    const query3Days = `SELECT *
 FROM ${tableName}
-WHERE account_name = '${retailerName}'
+WHERE ${dateColumn} >= '${start.toISOString().slice(0, 10)}'
+  AND ${dateColumn} < '${next.toISOString().slice(0, 10)}'
+  AND account_name = '${String(retailerName).replace(/'/g, "''")}'
   AND item IN (${inClause})
-  AND DATE(${dateColumn}::timestamp) >= DATE('${date}') - INTERVAL '2 days'
-  AND DATE(${dateColumn}::timestamp) <= DATE('${date}')
-ORDER BY item, ${dateColumn} ASC;`;
+ORDER BY item, ${dateColumn};`;
 
                     html += `
                         <div class="item-query-section">

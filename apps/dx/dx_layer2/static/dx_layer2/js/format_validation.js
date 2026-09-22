@@ -256,24 +256,18 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             const tblName = querySource.tableName;
             const retailerName = modalState.retailer || '';
             const dateCol = querySource.dateColumn;
-            const inClause = items.map(item => `'${item}'`).join(', ');
-            const homeDepot = ['sea_ref_retail', 'sea_ldy_retail'].includes(tableParam)
-                && retailerName.trim().toLowerCase() === 'homedepot';
-            const sourceDate = homeDepot ? (data.source_date || date) : date;
-            const queryDate = homeDepot
-                ? `(${dateCol}::timestamptz AT TIME ZONE 'America/New_York')::date`
-                : `DATE(${dateCol}::timestamp)`;
-            const query3Days = homeDepot
-                ? `WITH latest_batches AS (\n  SELECT DISTINCT ON (${queryDate}) ${queryDate} AS source_date, batch_id\n  FROM ${tblName}\n  WHERE account_name = '${retailerName}'\n    AND ${queryDate} BETWEEN DATE('${sourceDate}') - INTERVAL '2 days' AND DATE('${sourceDate}')\n  ORDER BY ${queryDate}, id DESC\n)\nSELECT source.id, source.${dateCol}, source.account_name, source.item, source.${fieldName}\nFROM ${tblName} source\nJOIN latest_batches latest\n  ON (source.${dateCol}::timestamptz AT TIME ZONE 'America/New_York')::date = latest.source_date\n AND source.batch_id IS NOT DISTINCT FROM latest.batch_id\nWHERE source.account_name = '${retailerName}' AND source.item IN (${inClause})\nORDER BY source.item, source.${dateCol} ASC;`
-                : `SELECT id, ${dateCol}, account_name, item, ${fieldName}\nFROM ${tblName}\nWHERE account_name = '${retailerName}'\n  AND item IN (${inClause})\n  AND ${queryDate} >= DATE('${sourceDate}') - INTERVAL '2 days'\n  AND ${queryDate} <= DATE('${sourceDate}')\nORDER BY item, ${dateCol} ASC;`;
+            const inClause = items.map(_tseSqlLiteral).join(', ');
+            const sourceDate = data.source_date || date;
+            const startDate = _tseHistoryStartDate(sourceDate, currentDays);
+            const query3Days = `SELECT *\nFROM ${tblName}\nWHERE ${dateCol} >= '${startDate}'\n  AND ${dateCol} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(retailerName)}\n  AND item IN (${inClause})\nORDER BY item, ${dateCol};`;
             itemQueryHtml += `<div class="item-query-section">
                 <div class="item-list-box">
                     <div class="item-copy-header"><span class="item-copy-title">Item 목록 (${items.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
                     <div class="item-copy-content">${items.join(', ')}</div>
                 </div>
                 <div class="query-box">
-                    <div class="item-copy-header"><span class="item-copy-title">3일치 조회 쿼리 (${date} 기준)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                    <pre class="query-content">${query3Days}</pre>
+                    <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 조회 쿼리 (${sourceDate} 기준)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+                    <pre class="query-content">${_escapeTseSqlHtml(query3Days)}</pre>
                 </div>
             </div>`;
         }

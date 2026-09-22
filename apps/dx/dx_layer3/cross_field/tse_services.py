@@ -8,7 +8,7 @@ from reaching the source schema.
 """
 
 from collections import OrderedDict
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 import re
 
@@ -514,13 +514,13 @@ def build_tse_display_query(
                 item_clauses.append("(item IS NULL OR TRIM(item) = '')")
             item_scope = ' OR '.join(item_clauses)
             pair_clauses.append(
-                f'(TRIM(account_name) ILIKE '
+                f'(account_name = '
                 f'{_display_sql_literal(pair_retailer)} AND ({item_scope}))'
             )
         if len(pair_clauses) == 1:
             pair_retailer, pair_items = next(iter(pair_groups.items()))
             scope_filters.append(
-                f'TRIM(account_name) ILIKE '
+                f'account_name = '
                 f'{_display_sql_literal(pair_retailer)}'
             )
             item_values = sorted({
@@ -540,11 +540,11 @@ def build_tse_display_query(
         if len(retailer_values) == 1:
             retailer_literal = _display_sql_literal(retailer_values[0])
             scope_filters.append(
-                f'TRIM(account_name) ILIKE {retailer_literal}'
+                f'account_name = {retailer_literal}'
             )
         elif retailer_values:
             retailer_clauses = [
-                f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
+                f'account_name = {_display_sql_literal(value)}'
                 for value in retailer_values
             ]
             scope_filters.append(
@@ -561,16 +561,15 @@ def build_tse_display_query(
             )
             scope_filters.append(f'item IN (\n{item_literals}\n  )')
 
-    country_literal = _display_sql_literal(TSE_COUNTRY)
-    where_filters = [f'country = {country_literal}', *scope_filters]
-    start_offset = day_count - 1
-    where_filters.extend((
-        'LEFT(TRIM(crawl_datetime), 10) >= TO_CHAR(\n'
-        f"      CURRENT_DATE - INTERVAL '{start_offset} days', "
-        "'YYYY-MM-DD'\n  )",
-        "LEFT(TRIM(crawl_datetime), 10) < TO_CHAR(\n"
-        "      CURRENT_DATE + INTERVAL '1 day', 'YYYY-MM-DD'\n  )",
-    ))
+    end_date = date.fromisoformat(str(target_date))
+    start_date = end_date - timedelta(days=day_count - 1)
+    next_date = end_date + timedelta(days=1)
+    where_filters = [
+        f"crawl_datetime >= '{start_date}'",
+        f"crawl_datetime < '{next_date}'",
+        f'country = {_display_sql_literal(TSE_COUNTRY)}',
+        *scope_filters,
+    ]
     where_sql = '\n  AND '.join(where_filters)
 
     return f"""SELECT

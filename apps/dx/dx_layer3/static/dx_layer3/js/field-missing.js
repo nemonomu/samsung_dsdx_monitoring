@@ -449,21 +449,24 @@ function renderFieldMissingDetail(data, retailer, field) {
     // 누락 item 목록 및 조회 쿼리 표시
     if (uniqueItems.length > 0) {
         const itemListDisplay = uniqueItems.join(', ');
-        const inClause = uniqueItems.map(item => `'${item}'`).join(', ');
+        const inClause = uniqueItems.map(item => "'" + String(item).replace(/'/g, "''") + "'").join(', ');
         const productLine = currentFieldMissingPL || 'tv';
         const tableName = data.table_name || (productLine === 'hhp' ? 'hhp_retail_com' : 'tv_retail_com');
         const dateColumn = data.date_column || (productLine === 'tv' ? 'crawl_datetime' : 'crawl_strdatetime');
-        const queryDate = data.date || '';
+        const queryDate = data.source_date || data.date || '';
 
-        // API에서 반환한 컬럼 목록 사용 (필수 + 현재필드 + 관련필드)
-        const queryColumns = columns.join(', ');
-        const query = `SELECT ${queryColumns}
+        // 원본 날짜를 그대로 비교하는 3일치 조회 SQL.
+        const start = new Date(queryDate + 'T00:00:00Z');
+        start.setUTCDate(start.getUTCDate() - 2);
+        const next = new Date(queryDate + 'T00:00:00Z');
+        next.setUTCDate(next.getUTCDate() + 1);
+        const query = `SELECT *
 FROM ${tableName}
-WHERE account_name = '${retailer}'
+WHERE ${dateColumn} >= '${start.toISOString().slice(0, 10)}'
+  AND ${dateColumn} < '${next.toISOString().slice(0, 10)}'
+  AND account_name = '${String(retailer).replace(/'/g, "''")}'
   AND item IN (${inClause})
-  AND DATE(${dateColumn}::timestamp) >= DATE('${queryDate}') - INTERVAL '2 days'
-  AND DATE(${dateColumn}::timestamp) <= DATE('${queryDate}')
-ORDER BY item, ${dateColumn} ASC;`;
+ORDER BY item, ${dateColumn};`;
 
         html += `
         <div class="query-section">

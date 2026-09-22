@@ -169,7 +169,7 @@ class SedaCrossfieldIntegrationTests(unittest.TestCase):
         self.add(id=2, summarized_review_content=' ')
         detail = self.detail('summary_review_disappeared', days=1)
         self.assertEqual(['comparison_history', 'target'], [entry['row_role'] for entry in detail['anomalies']])
-        self.assertIn('source.id = ANY', detail['queries']['Magalu'])
+        self.assertIn('OR id IN (%s)', detail['queries']['Magalu'])
         edits._select_seda_record(self.cursor, SOURCE['table_name'], ('summarized_review_content',), 1, DAY)
         self.assertIsNone(self.cursor.fetchone())
         edits._select_seda_record(self.cursor, SOURCE['table_name'], ('summarized_review_content',), 2, DAY)
@@ -254,8 +254,7 @@ class SedaCrossfieldIntegrationTests(unittest.TestCase):
             self.assertTrue(set(group) <= set(detail['select_fields'].split('|')))
             target = next(entry for entry in detail['anomalies'] if entry['row_role'] == 'target')
             self.assertTrue(set(group) <= target.keys())
-            for field in group:
-                self.assertIn('source.' + field, detail['queries']['Casas Bahia'])
+            self.assertTrue(detail['queries']['Casas Bahia'].startswith('SELECT *\n'))
         self.assertEqual('Baixou 10%', target['savings'])
 
     def test_registration_is_repeatable_and_preserves_recommendation_id(self):

@@ -882,14 +882,14 @@ def build_sea_display_query(
                 )
             item_scope = ' OR '.join(item_clauses)
             retailer_scope = (
-                f"TRIM(account_name) ILIKE "
+                f"account_name = "
                 f"{_display_sql_literal(pair_retailer)}"
             )
             pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
         if len(pair_clauses) == 1:
             pair_retailer, pair_items = next(iter(pair_groups.items()))
             filters.append(
-                f'TRIM(account_name) ILIKE '
+                f'account_name = '
                 f'{_display_sql_literal(pair_retailer)}'
             )
             item_values = sorted({
@@ -905,7 +905,7 @@ def build_sea_display_query(
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
         retailer_clauses = [
-            f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
+            f'account_name = {_display_sql_literal(value)}'
             for value in retailer_values
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
@@ -914,42 +914,15 @@ def build_sea_display_query(
     if filters:
         scope_sql = '\n  AND ' + '\n  AND '.join(filters)
 
-    if any(_retailer_name(value) == 'HomeDepot' for value in retailer_values):
-        contract = _date_contract(inspection_date, source)
-        end_date = contract['source_date_value']
-        start_date = end_date - timedelta(days=day_count - 1)
-        date_expr = f'({appliance_source_date_sql(date_column)})'
-        row_date_expr = f"({appliance_source_date_sql('source.' + date_column, 'source.account_name')})"
-        return f"""WITH latest_batches AS (
-    SELECT DISTINCT ON ({date_expr}, LOWER(TRIM(account_name)))
-           {date_expr} AS source_date,
-           LOWER(TRIM(account_name)) AS retailer_key, batch_id
-    FROM {source['table_name']}
-    WHERE {date_expr} BETWEEN '{start_date}' AND '{end_date}'
-      AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes', 'homedepot')
-      AND {appliance_page_scope_sql(anchor=True)}
-      AND NULLIF(TRIM(batch_id), '') IS NOT NULL
-    ORDER BY {date_expr}, LOWER(TRIM(account_name)), id DESC
-)
-SELECT
-{select_sql}
-FROM {source['table_name']} source
-JOIN latest_batches latest
-  ON {row_date_expr} = latest.source_date
- AND LOWER(TRIM(source.account_name)) = latest.retailer_key
- AND source.batch_id = latest.batch_id
-WHERE {appliance_page_scope_sql('source')}{scope_sql}
-ORDER BY item, {date_column}, id;"""
-
-    date_expression = f'LEFT(TRIM({date_column}), 10)'
+    end_date = date.fromisoformat(str(inspection_date)) - timedelta(days=1)
+    start_date = end_date - timedelta(days=day_count - 1)
+    next_date = end_date + timedelta(days=1)
     return f"""SELECT
 {select_sql}
 FROM {source['table_name']}
-WHERE {date_expression} >= TO_CHAR(
-          CURRENT_DATE - INTERVAL '{day_count} days', 'YYYY-MM-DD'
-      )
-  AND {date_expression} < TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD'){scope_sql}
-ORDER BY item, {date_column}, id;"""
+WHERE {date_column} >= '{start_date}'
+  AND {date_column} < '{next_date}'{scope_sql}
+ORDER BY item, {date_column};"""
 
 
 def get_sea_cross_field_summary(cursor, inspection_date, product_line):

@@ -369,19 +369,18 @@ class SeaCrossfieldScopeTests(unittest.TestCase):
         self.assertNotIn('WITH main_batches AS', query)
         self.assertNotIn('    batch_id', query)
         self.assertIn(
-            "LEFT(TRIM(crawl_strdatetime), 10) >= TO_CHAR(",
+            "crawl_strdatetime >= '2026-08-28'",
             query,
         )
         self.assertIn(
-            "CURRENT_DATE - INTERVAL '3 days', 'YYYY-MM-DD'",
+            "crawl_strdatetime >= '2026-08-28'",
             query,
         )
         self.assertIn(
-            "LEFT(TRIM(crawl_strdatetime), 10) "
-            "< TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')",
+            "crawl_strdatetime < '2026-08-31'",
             query,
         )
-        self.assertIn("TRIM(account_name) ILIKE 'Bestbuy'", query)
+        self.assertIn("account_name = 'Bestbuy'", query)
         self.assertIn("item IN ('A-1')", query)
 
     def test_lowes_review_candidates_are_separate_from_anomalies(self):

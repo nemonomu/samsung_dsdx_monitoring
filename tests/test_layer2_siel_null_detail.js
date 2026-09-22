@@ -151,12 +151,12 @@ nullSandbox.renderNullFieldDetailView('ref_capacity', {
     date_column: 'crawl_datetime'
 }, true);
 assert.ok(itemQueryHtml.includes('3일치 조회 쿼리 (기준 데이터일 2026-08-31)'));
-assert.ok(itemQueryHtml.includes('WITH latest_batches AS'));
-assert.ok(itemQueryHtml.includes("AT TIME ZONE 'Asia/Seoul'"));
-assert.ok(itemQueryHtml.includes("IN ('main', 'bsr')"));
-assert.ok(itemQueryHtml.includes('source.batch_id IS NOT DISTINCT FROM latest.batch_id'));
+assert.ok(itemQueryHtml.includes('SELECT *'));
+assert.ok(itemQueryHtml.includes("crawl_datetime >= '2026-08-29'"));
+assert.ok(itemQueryHtml.includes("crawl_datetime < '2026-09-01'"));
+assert.ok(!itemQueryHtml.includes('latest_batches'));
 assert.ok(itemQueryHtml.includes(
-    "NOT (source.account_name = 'Amazon' AND source.redirect IS TRUE)"
+    "account_name = 'Flipkart'"
 ));
 assert.ok(!itemQueryHtml.includes("INTERVAL '2 days'"));
 assert.strictEqual(tableOptions.actualTable, 'dx_siel.dx_siel_ref_retail_com');

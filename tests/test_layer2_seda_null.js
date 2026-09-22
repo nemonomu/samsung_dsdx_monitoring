@@ -64,9 +64,9 @@ assert.deepStrictEqual(tableOptions.editableCols, ['ldy_color']);
 
 context.isInlineMode = () => false;
 context.renderNullFieldDetailView('ldy_color', data, false);
-assert(body.innerHTML.includes("BETWEEN '2026-09-11' AND '2026-09-13'"));
-assert(body.innerHTML.includes("LOWER(REPLACE(BTRIM(account_name), ' ', '')) = 'casasbahia'"));
-assert(body.innerHTML.includes("LOWER(BTRIM(page_type)) = 'main'"));
-assert(body.innerHTML.includes('source.batch_id IS NOT DISTINCT FROM latest.batch_id'));
+assert(body.innerHTML.includes("crawl_strdatetime >= '2026-09-11'"));
+assert(body.innerHTML.includes("account_name = 'CasasBahia'"));
+assert(body.innerHTML.includes("crawl_strdatetime < '2026-09-14'"));
+assert(!body.innerHTML.includes('latest_batches'));
 assert(body.innerHTML.includes('id="detail-days"'));
 console.log('SEDA NULL grouping, D-1 detail, alias SQL, and edit date tests passed.');

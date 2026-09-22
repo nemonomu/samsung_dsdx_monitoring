@@ -114,22 +114,24 @@ def format_detail(cursor, target_date, table, retailer, days=3):
     queries = {}
     for field in counts:
         items = sorted({str(row['item']) for row in targets if field in row['error_fields'] and row.get('item')})
-        cte, where, params = scope(source, source_day - timedelta(days=days-1), source_day, retailer)
+        literal = lambda value: "'" + str(value).replace("'", "''") + "'"
+        account = 'CasasBahia' if retailer == 'Casas Bahia' else retailer
+        start = source_day - timedelta(days=days - 1)
+        next_day = source_day + timedelta(days=1)
         filters = []
         if items:
-            filters.append('source.item IN (' + ', '.join('%s' for _ in items) + ')')
-            params.extend(items)
+            filters.append('item IN (' + ', '.join(map(literal, items)) + ')')
         ids = [row['id'] for row in targets if field in row['error_fields'] and not row.get('item')]
         if ids:
-            filters.append('source.id IN (' + ', '.join('%s' for _ in ids) + ')')
-            params.extend(ids)
-        projection = ', '.join('source.' + col for col in dict.fromkeys(
-            ['id', 'item', 'sku', 'retailer_sku_name', 'batch_id', 'crawl_strdatetime', *display[field], 'product_url']))
-        query = f'{cte} SELECT {projection} {where} AND ({" OR ".join(filters)}) ORDER BY source.item, source.crawl_strdatetime, source.id;'
-        # Render parameter values only into the copyable read-only SQL, never execute it.
-        parts = query.split('%s')
-        queries[field] = ''.join(part + ("'" + str(params[index]).replace("'", "''") + "'" if index < len(params) else '')
-                                 for index, part in enumerate(parts))
+            filters.append('id IN (' + ', '.join(str(int(value)) for value in ids) + ')')
+        queries[field] = (
+            f"SELECT *\nFROM {source['table_name']}\n"
+            f"WHERE crawl_strdatetime >= '{start}'\n"
+            f"  AND crawl_strdatetime < '{next_day}'\n"
+            f"  AND account_name = {literal(account)}\n"
+            + '  AND (' + ' OR '.join(filters or ['FALSE']) + ')\n'
+            + 'ORDER BY item, crawl_strdatetime;'
+        )
     return {'date': mapping['inspection_date'], 'table': source['section_code'], 'retailer': retailer,
             'column_names': list(select_columns(product)), 'select_cols': list(select_columns(product)),
             'editable_cols': list(rules.columns(product, retailer)), 'actual_table': source['table_name'],

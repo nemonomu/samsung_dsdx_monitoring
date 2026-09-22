@@ -430,19 +430,19 @@ function testSeaTvUsesSourceDateWithoutMasterSku() {
     assert(inlineHtml.includes('savings'));
     assert(inlineHtml.includes("item IN (&#039;TV&#039;&#039;ITEM&#039;)"));
     assert(inlineHtml.includes(
-        "LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) &gt;= &#039;2026-08-31&#039;"
+        "crawl_datetime &gt;= &#039;2026-08-31&#039;"
     ));
-    assert(inlineHtml.includes("LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) &lt;= &#039;2026-09-02&#039;"));
+    assert(inlineHtml.includes("crawl_datetime &lt; &#039;2026-09-03&#039;"));
     const query = sandbox._cfBuildSeaTvItemQuery('tv_retail_com', 'crawl_datetime',
         'Walmart', ['WALMART-ITEM'], 'sku|final_sku_price', 3, '2026-09-09');
     assert(!/\bsku\b/i.test(query));
     assert(!query.includes('CURRENT_DATE'));
     assert(query.includes(">= '2026-09-07'"));
-    assert(query.includes("<= '2026-09-09'"));
+    assert(query.includes("< '2026-09-10'"));
     const oneDay = sandbox._cfBuildSeaTvItemQuery('tv_retail_com', 'crawl_datetime',
         'Walmart', ['1'], 'SKU|savings', 1, '2026-09-09');
     assert(oneDay.includes(">= '2026-09-09'"));
-    assert(oneDay.includes("<= '2026-09-09'"));
+    assert(oneDay.includes("< '2026-09-10'"));
     assert(!/\bsku\b/i.test(oneDay));
     assert(!inlineHtml.includes('WITH main_batches'));
 }

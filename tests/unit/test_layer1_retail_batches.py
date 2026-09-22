@@ -6,6 +6,40 @@ from apps.dx.dx_layer1.common import retail_batches as batches
 
 
 class RetailBatchTests(unittest.TestCase):
+    def test_copy_sql_uses_direct_values_for_all_eighteen_sources(self):
+        for country in ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE'):
+            for product in ('tv', 'ref', 'ldy'):
+                with self.subTest(country=country, product=product):
+                    check = 'retail' if country == 'SEA' else country.lower() + '_retail'
+                    key = product if country == 'SEA' else country.lower() + '_' + product
+                    cursor = Mock()
+                    cursor.fetchall.return_value = [{'batch_id': "batch'1"}]
+                    cursor.mogrify.return_value = b'SELECT *;'
+                    batches.fetch_batch_details(cursor, check, key, '2026-09-21', 'Lowes')
+                    sql, params = cursor.mogrify.call_args.args
+                    self.assertEqual(('2026-09-21', 'Lowes', "batch'1"), params)
+                    self.assertNotRegex(sql, r'LOWER|UPPER|TRIM|CAST|CASE|AT TIME ZONE|IS NOT DISTINCT')
+                    self.assertIn('AND account_name = %s\n  AND batch_id = %s', sql)
+                    column = 'crawl_strdatetime' if country in ('SEDA', 'SEG') or (country == 'SEA' and product != 'tv') else 'crawl_datetime'
+                    self.assertIn(f'WHERE {column} >= %s', sql)
+                    self.assertTrue(sql.endswith(f'ORDER BY item, {column};'))
+                    if country == 'SEA' and product == 'ref':
+                        self.assertEqual(
+                            'SELECT *\nFROM public.ref_retail_com\n'
+                            'WHERE crawl_strdatetime >= %s\n'
+                            '  AND account_name = %s\n  AND batch_id = %s\n'
+                            'ORDER BY item, crawl_strdatetime;', sql,
+                        )
+
+    def test_missing_batch_uses_is_null_without_changing_case(self):
+        cursor = Mock()
+        cursor.fetchall.return_value = [{'batch_id': None}]
+        cursor.mogrify.return_value = b'SELECT *;'
+        batches.fetch_batch_details(cursor, 'retail', 'ref', '2026-09-21', 'Lowes')
+        sql, params = cursor.mogrify.call_args.args
+        self.assertEqual(('2026-09-21', 'Lowes'), params)
+        self.assertIn('AND batch_id IS NULL', sql)
+
     def test_counts_are_daily_distinct_nonblank_ids_not_latest_batch_rows(self):
         cursor = Mock()
         cursor.fetchall.return_value = [('amazon', 2), ('bestbuy', 1), ('walmart', 0)]
@@ -104,8 +138,8 @@ class RetailBatchTests(unittest.TestCase):
         self.assertIn("WHERE LOWER(BTRIM(CAST(page_type AS TEXT))) = 'main' ORDER BY id DESC", sql)
         self.assertIn("FILTER (WHERE LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr'))", sql)
         self.assertEqual(('2026-09-21', 'amazon'), params)
-        self.assertEqual(('2026-09-21', 'amazon', "b'1,2"), cursor.mogrify.call_args.args[1])
-        self.assertIn('IS NOT DISTINCT FROM %s', cursor.mogrify.call_args.args[0])
+        self.assertEqual(('2026-09-21', 'Amazon', "b'1,2"), cursor.mogrify.call_args.args[1])
+        self.assertIn('batch_id = %s', cursor.mogrify.call_args.args[0])
         self.assertEqual(False, result['batches'][0]['applied'])
         self.assertEqual("b'1,2", result['batches'][0]['batch_id'])
         self.assertEqual('SELECT * FROM exact_batch;', result['batches'][0]['sql'])

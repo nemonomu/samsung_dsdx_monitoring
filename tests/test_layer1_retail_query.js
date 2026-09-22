@@ -37,6 +37,9 @@ context.window = context;
 vm.runInNewContext(fs.readFileSync(base + 'retail-query.js', 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(base + 'retail-status.js', 'utf8'), context);
 const query = context.L1.retailQuery;
+assert.strictEqual(query.buildQuery('SEA', 'REF', 'Lowes', 'l_260921_184541', '2026-09-21'),
+    "SELECT *\nFROM public.ref_retail_com\nWHERE crawl_strdatetime >= '2026-09-21'\n" +
+    "  AND account_name = 'Lowes'\n  AND batch_id = 'l_260921_184541'\nORDER BY item, crawl_strdatetime;");
 
 // Every country/product routes to its real table and date type.
 for (const country of ['SEA', 'SEDA', 'SIEL', 'SEG', 'TSE', 'SEM']) {
@@ -49,25 +52,25 @@ for (const country of ['SEA', 'SEDA', 'SIEL', 'SEG', 'TSE', 'SEM']) {
             (country === 'SEA' && product !== 'TV') ? 'crawl_strdatetime' : 'crawl_datetime';
         assert(sql.startsWith('SELECT *\nFROM ' + table + '\n'));
         assert(sql.includes("AND batch_id = 'a_batch'"));
-        assert(sql.endsWith('ORDER BY ' + date + ';'));
-        assert(sql.includes(country === 'SIEL'
-            ? `AND ${date} >= ('2026-09-09'::date::timestamp AT TIME ZONE 'Asia/Seoul')\n`
-            : `AND ${date} >= '2026-09-09'\n`));
+        assert(sql.endsWith('ORDER BY item, ' + date + ';'));
+        assert(sql.includes(`WHERE ${date} >= '2026-09-09'\n`));
+        assert(sql.includes("AND account_name = 'Amazon'"));
+        assert(!/LOWER|UPPER|TRIM|CAST|AT TIME ZONE|CASE/.test(sql));
         assert(!sql.includes('redirect') && !sql.includes('sku,'));
     }
 }
 assert(query.buildQuery('SEA', 'TV', "A'B", "b'1, b2, b2", '2026-09-09').includes("IN ('b''1', 'b2')"));
-assert(query.buildQuery('SEA', 'TV', "A'B", 'b1', '2026-09-09').includes("= 'a''b'"));
+assert(query.buildQuery('SEA', 'TV', "A'B", 'b1', '2026-09-09').includes("= 'A''B'"));
 for (const product of ['TV', 'REF', 'LDY']) {
     for (const name of ['Casas Bahia', 'CasasBahia', ' CASAS BAHIA ']) {
         const sql = query.buildQuery('SEDA', product, name, 'c_batch', '2026-09-13');
-        assert(sql.includes("WHERE LOWER(BTRIM(account_name)) = 'casasbahia'\n"));
+        assert(sql.includes("AND account_name = '" + (name === 'Casas Bahia' ? 'CasasBahia' : name) + "'\n"));
     }
     assert(query.buildQuery('SEDA', product, 'Magalu', 'm_batch', '2026-09-13')
-        .includes("WHERE LOWER(BTRIM(account_name)) = 'magalu'\n"));
+        .includes("AND account_name = 'Magalu'\n"));
 }
 assert(query.buildQuery('SEA', 'TV', 'A B', 'batch', '2026-09-13')
-    .includes("WHERE LOWER(BTRIM(account_name)) = 'a b'\n"));
+    .includes("AND account_name = 'A B'\n"));
 for (const args of [
     ['SEA', 'TV', 'Amazon', '', '2026-09-09'],
     ['SEA', 'TV', 'Amazon', ' , ', '2026-09-09'],
@@ -118,9 +121,9 @@ assert.strictEqual(nodes['l1-query-date'].value, '2026-03-01');
     query.open('SEDA-9-0');
     assert(body.includes('Casas Bahia / c_20260913_200300'));
     const expectedSedaSql = "SELECT *\nFROM dx_seda.dx_seda_tv_retail_com\n" +
-        "WHERE LOWER(BTRIM(account_name)) = 'casasbahia'\n" +
-        "  AND crawl_strdatetime >= '2026-09-13'\n" +
-        "  AND batch_id = 'c_20260913_200300'\nORDER BY crawl_strdatetime;";
+        "WHERE crawl_strdatetime >= '2026-09-13'\n" +
+        "  AND account_name = 'CasasBahia'\n" +
+        "  AND batch_id = 'c_20260913_200300'\nORDER BY item, crawl_strdatetime;";
     assert.strictEqual(nodes['l1-query-sql'].textContent, expectedSedaSql);
     // HTTP production pages need the legacy copy fallback inside the modal.
     await query.copy();

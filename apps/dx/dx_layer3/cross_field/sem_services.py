@@ -188,10 +188,41 @@ def _result(cursor, target_date, product_line):
     return source, rows, failures, failed_ids, summaries, mapping
 
 
+def build_sem_display_query(source, source_date, retailers, days=3, rows=None):
+    """Copy-only source lookup using exact account names and literal dates."""
+    end = date.fromisoformat(str(source_date))
+    start = end - timedelta(days=min(30, max(1, int(days))) - 1)
+    literal = lambda value: "'" + str(value).replace("'", "''") + "'"
+    scopes = []
+    for retailer in retailers:
+        scope = 'account_name = ' + literal(retailer)
+        if rows is not None:
+            targets = [row for row in rows if row.get('account_name') == retailer]
+            items = sorted({str(row['item']) for row in targets if not _blank(row.get('item'))})
+            ids = [row['id'] for row in targets if _blank(row.get('item'))]
+            conditions = []
+            if items:
+                conditions.append('item IN (' + ', '.join(map(literal, items)) + ')')
+            if ids:
+                conditions.append('id IN (' + ', '.join(str(int(value)) for value in ids) + ')')
+            scope += ' AND (' + ' OR '.join(conditions or ['FALSE']) + ')'
+        scopes.append('(' + scope + ')')
+    column = source['date_column']
+    return (f"SELECT *\nFROM {source['table_name']}\n"
+            f"WHERE {column} >= '{start}'\n"
+            f"  AND {column} < '{end + timedelta(days=1)}'\n"
+            + '  AND (' + ' OR '.join(scopes or ['FALSE']) + ')\n'
+            + f'ORDER BY item, {column};')
+
+
 def get_sem_cross_field_summary(cursor, target_date, product_line):
     source, rows, _failures, failed_ids, rules, mapping = _result(
         cursor, target_date, product_line
     )
+    for rule in rules:
+        rule['query'] = build_sem_display_query(
+            source, mapping['source_date'], rule['retailers'],
+        )
     return {
         'configured': True,
         'date': mapping['inspection_date'],
@@ -252,6 +283,10 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'error_message': rule['error_message'],
         'total_anomalies': len(target_anomalies),
         'retailer_summary': retailer_summary,
+        'queries': {
+            retailer: build_sem_display_query(source, source_date, [retailer], days, target_anomalies)
+            for retailer in retailer_summary
+        },
         'anomalies': anomalies,
         'select_fields': rule['select_fields'],
         'table_name': source['table_name'],

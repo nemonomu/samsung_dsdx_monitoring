@@ -91,10 +91,9 @@ class SedaFormatScopeTests(unittest.TestCase):
         self.assertEqual({2, 3, 4, 7}, {row['id'] for row in detail['results']})
         self.assertEqual('2026-09-20', detail['editable_date'])
         self.assertEqual(list(rules.DISPLAY_GROUPS[0]), detail['field_display_columns']['star_rating'])
-        for key in rules.DISPLAY_GROUPS[0]:
-            self.assertIn('source.' + key, detail['field_queries']['star_rating'])
-        self.assertIn("'2026-09-20'", detail['field_queries']['star_rating'])
-        self.assertIn('source.id IN', detail['field_queries']['star_rating'])
+        self.assertTrue(detail['field_queries']['star_rating'].startswith('SELECT *\n'))
+        self.assertIn("crawl_strdatetime < '2026-09-21'", detail['field_queries']['star_rating'])
+        self.assertIn('OR id IN (7)', detail['field_queries']['star_rating'])
         self.db.execute("INSERT INTO monitoring_corrections (record_id,column_name,table_name,crawl_date,correction_type,status) VALUES (3,'star_rating',?,'2026-09-21','format_check','normal')", (SEDA_SOURCE_CONFIG['seda_tv']['table_name'],))
         detail = seda.format_detail(self.cursor, DAY, 'seda_tv', 'Magalu', 1)
         self.assertEqual(2, detail['total_format_count'])

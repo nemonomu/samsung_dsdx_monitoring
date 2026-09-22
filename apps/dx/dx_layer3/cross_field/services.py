@@ -2,7 +2,7 @@
 Layer 3 크로스 필드 검증 서비스 레이어
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 from apps.common.crossfield_history import build_detail_history
 from apps.common.retail_columns import get_editable_columns, get_retailer_columns
 from apps.common.retail_validation import get_tv_validation_condition
@@ -229,6 +229,29 @@ def get_cross_field_rule_detail(
     return {'found': False}
 
 
+def build_display_query(table_name, date_column, source_date, rule):
+    """Raw three-day lookup for the SEA TV/HHP rule SQL button."""
+    end = date.fromisoformat(str(source_date))
+    literal = lambda value: "'" + str(value).replace("'", "''") + "'"
+    groups = {}
+    for row in rule.get('error_details') or []:
+        if row.get('account_name') and row.get('item'):
+            groups.setdefault(row['account_name'], set()).add(str(row['item']))
+    scopes = [
+        '(account_name = ' + literal(retailer) + ' AND item IN ('
+        + ', '.join(map(literal, sorted(items))) + '))'
+        for retailer, items in sorted(groups.items())
+    ]
+    retailer = rule.get('retailer')
+    if not scopes and retailer and retailer != 'ALL':
+        scopes.append('account_name = ' + literal(retailer))
+    scope = '\n  AND (' + ' OR '.join(scopes) + ')' if scopes else ''
+    return (f'SELECT *\nFROM {table_name}\n'
+            f"WHERE {date_column} >= '{end - timedelta(days=2)}'\n"
+            f"  AND {date_column} < '{end + timedelta(days=1)}'{scope}\n"
+            f'ORDER BY item, {date_column};')
+
+
 def get_cross_field_summary(
         target_date, product_line, section, inspection_date=None):
     """규칙별 요약 반환 (검증 유형별 건수)."""
@@ -257,7 +280,9 @@ def get_cross_field_summary(
             'validation_type': r.get('validation_type', ''),
             'error_message': r['error_message'],
             'error_count': adjusted_count,
-            'query': r.get('query', ''),
+            'query': build_display_query(
+                crossfield_result['table_name'], crossfield_result['date_col'], target_date, r,
+            ),
             'select_fields': r.get('select_fields', '')
         })
         total_anomalies += adjusted_count

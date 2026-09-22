@@ -90,10 +90,29 @@ def _load_rows(cursor, source, start, end, items=None, retailer=None):
 def display_query(cursor, source, source_date, days=3, items=None, retailer=None, comparison_rows=(), target_ids=()):
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
-    earliest = min([start] + [date.fromisoformat(str(row[source['date_column']]).strip()[:10])
-                              for row in comparison_rows])
-    sql, params = _select_sql(source, earliest, end, items, retailer, start,
-                              [row['id'] for row in comparison_rows], target_ids)
+    column = source['date_column']
+    date_filter = f'{column} >= %s AND {column} < %s'
+    params = [str(start), str(end + timedelta(days=1))]
+    comparison_ids = [row['id'] for row in comparison_rows]
+    if comparison_ids:
+        placeholders = ', '.join('%s' for _ in comparison_ids)
+        date_filter = f'(({date_filter}) OR id IN ({placeholders}))'
+        params.extend(comparison_ids)
+    filters = [date_filter]
+    if retailer is not None:
+        filters.append('account_name = %s')
+        params.append('CasasBahia' if retailer == 'Casas Bahia' else retailer)
+    if items is not None:
+        item_filters = []
+        if items:
+            item_filters.append('item IN (' + ', '.join('%s' for _ in items) + ')')
+            params.extend(items)
+        if target_ids:
+            item_filters.append('id IN (' + ', '.join('%s' for _ in target_ids) + ')')
+            params.extend(target_ids)
+        filters.append('(' + ' OR '.join(item_filters) + ')' if item_filters else 'FALSE')
+    sql = (f"SELECT *\nFROM {source['table_name']}\nWHERE "
+           + '\n  AND '.join(filters) + f'\nORDER BY item, {column}')
     return cursor.mogrify(sql, params).decode('utf-8').strip() + ';'
 
 

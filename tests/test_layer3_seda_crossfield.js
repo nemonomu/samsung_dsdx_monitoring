@@ -66,6 +66,7 @@ finally:
         assert(context.savedHtml.includes('3일치 Item 조회 SQL'));
         assert(context._cfUsesEqualReviewCounts('SEDA_TV', 'Casas Bahia'));
         assert(!context._cfUsesEqualReviewCounts('SEDA_TV', 'Magalu'));
+        assert(context.savedHtml.includes('SELECT *'));
         const state = context._cfDetailState;
         assert.strictEqual(state.allData.filter(row => row._rowRole === 'target').length, 1);
         if (fixture.key === 'summary_review_disappeared') {
@@ -76,7 +77,6 @@ finally:
         } else if (fixture.key === 'final_original_price') {
             for (const field of ['original_sku_price', 'final_sku_price', 'savings']) {
                 assert(state.visibleKeys.includes(field));
-                assert(context.savedHtml.includes('source.' + field));
             }
             assert(state.editableCols.has('original_sku_price'));
             assert(state.editableCols.has('final_sku_price'));
@@ -84,7 +84,6 @@ finally:
         } else if (fixture.key === 'review_count_match') {
             for (const field of ['star_rating', 'count_of_star_ratings', 'count_of_reviews']) {
                 assert(state.visibleKeys.includes(field));
-                assert(context.savedHtml.includes('source.' + field));
             }
             assert(state.editableCols.has('count_of_star_ratings'));
             assert(state.editableCols.has('count_of_reviews'));

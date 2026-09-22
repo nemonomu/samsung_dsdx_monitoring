@@ -201,17 +201,17 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertNotIn('WITH batches AS', query)
         self.assertIn('retailer_sku_name', query)
         self.assertIn(
-            "LEFT(TRIM(crawl_datetime), 10) >= TO_CHAR(", query,
+            "crawl_datetime >= '2026-08-08'", query,
         )
         self.assertIn(
-            "CURRENT_DATE - INTERVAL '2 days', 'YYYY-MM-DD'", query,
+            "crawl_datetime >= '2026-08-08'", query,
         )
         self.assertIn(
-            "CURRENT_DATE + INTERVAL '1 day', 'YYYY-MM-DD'",
+            "crawl_datetime < '2026-08-11'",
             query,
         )
         self.assertIn("country = 'TSE'", query)
-        self.assertIn("TRIM(account_name) ILIKE 'Homepro''s'", query)
+        self.assertIn("account_name = 'Homepro''s'", query)
         self.assertIn("'TV''1'", query)
         self.assertIn("'TV-2'", query)
         self.assertNotIn('    final_sku_price,', query)
@@ -288,11 +288,11 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertEqual(1, len(result['rule_summary']))
         self.assertEqual(1, result['rule_summary'][0]['error_count'])
         self.assertIn(
-            "TRIM(account_name) ILIKE 'Homepro'",
+            "account_name = 'Homepro'",
             result['rule_summary'][0]['query'],
         )
         self.assertNotIn(
-            "TRIM(account_name) ILIKE 'Lazada'",
+            "account_name = 'Lazada'",
             result['rule_summary'][0]['query'],
         )
 
@@ -409,8 +409,8 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
 
         query = result['rule_summary'][0]['query']
-        self.assertIn("TRIM(account_name) ILIKE 'Homepro'", query)
-        self.assertNotIn("TRIM(account_name) ILIKE 'Lotuss'", query)
+        self.assertIn("account_name = 'Homepro'", query)
+        self.assertNotIn("account_name = 'Lotuss'", query)
         self.assertEqual(['Homepro'], result['rule_summary'][0]['retailers'])
 
     def test_summary_omits_explicit_unsupported_lotuss_rule(self):
@@ -509,16 +509,16 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertNotIn('WITH batches AS', query)
         self.assertIn('FROM dx_tse.dx_tse_tv_retail_com', query)
         self.assertIn(
-            "LEFT(TRIM(crawl_datetime), 10) >= TO_CHAR(", query,
+            "crawl_datetime >= '2026-08-08'", query,
         )
         self.assertIn(
-            "CURRENT_DATE - INTERVAL '2 days', 'YYYY-MM-DD'", query,
+            "crawl_datetime >= '2026-08-08'", query,
         )
         self.assertIn(
-            "CURRENT_DATE + INTERVAL '1 day', 'YYYY-MM-DD'",
+            "crawl_datetime < '2026-08-11'",
             query,
         )
-        self.assertIn("TRIM(account_name) ILIKE 'Homepro'", query)
+        self.assertIn("account_name = 'Homepro'", query)
         self.assertIn("item IN ('A-1')", query)
 
     def test_display_query_supports_multiple_scoped_retailers(self):
@@ -530,16 +530,16 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
             ],
         )
 
-        self.assertIn("TRIM(account_name) ILIKE 'Future''s Shop'", query)
-        self.assertIn("TRIM(account_name) ILIKE 'Homepro'", query)
+        self.assertIn("account_name = 'Future''s Shop'", query)
+        self.assertIn("account_name = 'Homepro'", query)
         self.assertIn("item IN ('TV-1')", query)
         self.assertIn("item IN ('TV-2')", query)
         self.assertIn(
-            "TRIM(account_name) ILIKE 'Homepro' AND (item IN ('TV-1'))",
+            "account_name = 'Homepro' AND (item IN ('TV-1'))",
             query,
         )
         self.assertIn(
-            "TRIM(account_name) ILIKE 'Future''s Shop' "
+            "account_name = 'Future''s Shop' "
             "AND (item IN ('TV-2'))",
             query,
         )
@@ -561,7 +561,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         self.assertEqual('Homepro', result['anomalies'][0]['account_name'])
         self.assertNotIn('WITH batches AS', result['query'])
         self.assertIn(
-            "CURRENT_DATE - INTERVAL '2 days', 'YYYY-MM-DD'",
+            "crawl_datetime >= '2026-08-08'",
             result['queries']['Homepro'],
         )
         self.assertIn(
@@ -583,7 +583,7 @@ class TseCrossfieldQueryAndSummaryTests(unittest.TestCase):
         query = result['queries']['Homepro']
 
         self.assertIn('item IS NULL', query)
-        self.assertIn("TRIM(account_name) ILIKE 'Homepro'", query)
+        self.assertIn("account_name = 'Homepro'", query)
         self.assertNotIn('item IN (', query)
 
     def test_normal_history_excludes_same_record_and_rule(self):

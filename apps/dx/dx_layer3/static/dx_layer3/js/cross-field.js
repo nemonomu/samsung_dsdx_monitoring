@@ -60,16 +60,18 @@ function _cfBuildSeaTvItemQuery(
     if (!Number.isFinite(start.getTime())) return '';
     start.setUTCDate(start.getUTCDate() - dayCount + 1);
     const startDate = start.toISOString().slice(0, 10);
-    const sourceDaySql = `LEFT(BTRIM(CAST(${dateCol} AS TEXT)), 10)`;
+    const next = new Date(sourceDate + 'T00:00:00Z');
+    next.setUTCDate(next.getUTCDate() + 1);
+    const nextDate = next.toISOString().slice(0, 10);
 
     return `SELECT
 ${selectSql}
 FROM ${tableName}
-WHERE TRIM(account_name) ILIKE ${_cfSqlLiteral(retailer)}
+WHERE ${dateCol} >= ${_cfSqlLiteral(startDate)}
+  AND ${dateCol} < ${_cfSqlLiteral(nextDate)}
+  AND account_name = ${_cfSqlLiteral(retailer)}
   AND item IN (${itemSql})
-  AND ${sourceDaySql} >= ${_cfSqlLiteral(startDate)}
-  AND ${sourceDaySql} <= ${_cfSqlLiteral(sourceDate)}
-ORDER BY item, ${dateCol}, id;`;
+ORDER BY item, ${dateCol};`;
 }
 
 function _cfDetailKeys(rows, excludeKeys) {
@@ -246,26 +248,12 @@ function showRetailerDetail(retailer) {
                 itemQueryHtml = `<div class="query-section">${itemListBox}${displayQueryBox}</div>`;
             }
         } else {
-        const inClause = items.map(item => "'" + item + "'").join(', ');
-        var dynamicCols = [];
-        const selectFieldsRaw = window.crossfieldSelectFields || '';
-        if (selectFieldsRaw) {
-            dynamicCols = selectFieldsRaw.split('|').map(function(f) { return f.trim(); }).filter(function(f) { return f; });
-        } else {
-            const excludeCols = ['id', 'item', dateCol, 'account_name', 'product_url', 'page_type'];
-            if (rows.length > 0) {
-                Object.keys(rows[0]).forEach(function(key) {
-                    if (!excludeCols.includes(key)) dynamicCols.push(key);
-                });
-            }
-        }
-        const validationType = window.crossfieldValidationType || '';
-        var validationTagCol = '';
-        if (validationType === 'cross_detail_mismatch') {
-            validationTagCol = "\n'review' || LEAST(CAST(REPLACE(count_of_reviews, ',', '') AS INTEGER), 20)::text || ' -' AS expected_pattern,\nCASE WHEN LOWER(detailed_review_content) LIKE '%review' || LEAST(CAST(REPLACE(count_of_reviews, ',', '') AS INTEGER), 20)::text || ' -%' THEN 'OK' ELSE 'MISSING' END AS validation_tag,";
-        }
-        var selectCols = ['id', 'account_name', 'item', dateCol].join(', ');
-        const query = `SELECT ${selectCols},${validationTagCol}\n${dynamicCols.join(', ')}, product_url\nFROM ${tableName}\nWHERE account_name = '${retailer}'\nAND item IN (${inClause})\nAND DATE(${dateCol}::timestamp) >= DATE('${sourceDate}') - INTERVAL '2 days'\nAND DATE(${dateCol}::timestamp) <= DATE('${sourceDate}')\nORDER BY item, ${dateCol};`;
+        const start = new Date(sourceDate + 'T00:00:00Z');
+        start.setUTCDate(start.getUTCDate() - displayDays + 1);
+        const next = new Date(sourceDate + 'T00:00:00Z');
+        next.setUTCDate(next.getUTCDate() + 1);
+        const inClause = items.map(_cfSqlLiteral).join(', ');
+        const query = `SELECT *\nFROM ${tableName}\nWHERE ${dateCol} >= '${start.toISOString().slice(0, 10)}'\n  AND ${dateCol} < '${next.toISOString().slice(0, 10)}'\n  AND account_name = ${_cfSqlLiteral(retailer)}\n  AND item IN (${inClause})\nORDER BY item, ${dateCol};`;
 
         if (items.length > 0) {
             itemQueryHtml = `

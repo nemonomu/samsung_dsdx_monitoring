@@ -102,7 +102,7 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         self.assertEqual(['comparison_history', 'target'], [row['row_role'] for row in anomalies])
         self.assertEqual(['2026-09-20', '2026-09-21'], [row['row_source_date'] for row in anomalies])
         self.assertIn('HomeDepot', result['retailer_columns'])
-        self.assertIn('America/New_York', result['query'])
+        self.assertIn("crawl_strdatetime >= '2026-09-19'", result['query'])
 
     def test_new_york_boundary_and_non_homedepot_text_dates(self):
         self.assertEqual('2026-09-21', appliance_source_date_value(homedepot_row()))
@@ -110,13 +110,14 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         self.assertEqual('2026-09-22', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-09-22T04:00:00Z')))
         self.assertEqual('2026-08-30', appliance_source_date_value(_bestbuy_row()))
 
-    def test_copy_query_uses_selected_inspection_date_latest_batches_and_escapes_items(self):
+    def test_copy_query_uses_literal_source_dates_and_escapes_items(self):
         query = sea_services.build_sea_display_query(date(2026, 9, 22), 'sea_ldy',
                     dict(rule_key='savings_amount_match'), days=3, retailer='HomeDepot',
                     retailer_item_pairs=[('HomeDepot', "item'1")])
-        self.assertIn('America/New_York', query)
-        self.assertIn("BETWEEN '2026-09-19' AND '2026-09-21'", query)
-        self.assertIn('latest_batches', query)
+        self.assertNotIn('AT TIME ZONE', query)
+        self.assertIn("crawl_strdatetime >= '2026-09-19'", query)
+        self.assertIn("crawl_strdatetime < '2026-09-22'", query)
+        self.assertNotIn('latest_batches', query)
         self.assertIn("item IN ('item''1')", query)
         self.assertNotIn('CURRENT_DATE', query)
 

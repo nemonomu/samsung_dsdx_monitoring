@@ -1008,14 +1008,14 @@ def build_seg_display_query(
                 )
             item_scope = ' OR '.join(item_clauses)
             retailer_scope = (
-                f"TRIM(account_name) ILIKE "
+                f"account_name = "
                 f"{_display_sql_literal(pair_retailer)}"
             )
             pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
         if len(pair_clauses) == 1:
             pair_retailer, pair_items = next(iter(pair_groups.items()))
             filters.append(
-                f'TRIM(account_name) ILIKE '
+                f'account_name = '
                 f'{_display_sql_literal(pair_retailer)}'
             )
             item_values = sorted({
@@ -1031,7 +1031,7 @@ def build_seg_display_query(
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
         retailer_clauses = [
-            f'TRIM(account_name) ILIKE {_display_sql_literal(value)}'
+            f'account_name = {_display_sql_literal(value)}'
             for value in retailer_values
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
@@ -1042,16 +1042,16 @@ def build_seg_display_query(
 
     target_day = date.fromisoformat(str(inspection_date))
     start_day = target_day - timedelta(days=day_count - 1)
-    date_expr = f"LEFT(BTRIM(CAST({date_column} AS TEXT)), 10)"
-    filters.insert(0, "UPPER(BTRIM(CAST(country AS TEXT))) = 'SEG'")
+    date_expr = date_column
+    filters.insert(0, "country = 'SEG'")
     if source.get('has_redirect'):
         filters.append(
-            "(LOWER(BTRIM(CAST(account_name AS TEXT))) <> 'amazon' "
+            "(account_name <> 'Amazon' "
             "OR redirect IS NOT TRUE)"
         )
     scope_sql = '\n  AND ' + '\n  AND '.join(filters)
     date_filter = (f"{date_expr} >= '{start_day.isoformat()}'\n"
-                   f"  AND {date_expr} <= '{target_day.isoformat()}'")
+                   f"  AND {date_expr} < '{(target_day + timedelta(days=1)).isoformat()}'")
     comparison_ids = sorted({int(value) for value in (comparison_record_ids or [])
                              if re.fullmatch(r'[0-9]+', str(value))})
     if comparison_ids:
@@ -1061,7 +1061,7 @@ def build_seg_display_query(
 {select_sql}
 FROM {source['table_name']}
 WHERE {date_filter}{scope_sql}
-ORDER BY item, {date_column}, id;"""
+ORDER BY item, {date_column};"""
 
 
 def get_seg_cross_field_summary(cursor, inspection_date, product_line):

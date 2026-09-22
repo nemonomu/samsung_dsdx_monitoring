@@ -13,6 +13,27 @@ from tests.unit import test_layer3_seg_crossfield as seg
 
 
 class CrossfieldHistoryTests(unittest.TestCase):
+    def test_raw_summary_query_preserves_retailer_item_pairs_and_month_boundary(self):
+        path = Path('apps/dx/dx_layer3/cross_field/services.py')
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                        and node.name == 'build_display_query')
+        from datetime import timedelta
+        namespace = {'date': date, 'timedelta': timedelta}
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
+        query = namespace['build_display_query'](
+            'public.tv_retail_com', 'crawl_datetime', '2026-03-01',
+            {'error_details': [
+                {'account_name': 'Lowes', 'item': "TV'1"},
+                {'account_name': 'Bestbuy', 'item': 'TV2'},
+            ]},
+        )
+        self.assertIn("crawl_datetime >= '2026-02-27'", query)
+        self.assertIn("crawl_datetime < '2026-03-02'", query)
+        self.assertIn("account_name = 'Lowes' AND item IN ('TV''1')", query)
+        self.assertIn("account_name = 'Bestbuy' AND item IN ('TV2')", query)
+        self.assertNotRegex(query, r'CURRENT_DATE|LOWER|UPPER|TRIM|CAST|WITH|AT TIME ZONE')
+
     def test_generic_sea_d1_keeps_findings_when_history_lookup_misses_them(self):
         for source_timestamp in ('2026-09-12 08:00:00', ' 2026-09-12 08:00:00 ', None):
             for include_current in (False, True):
