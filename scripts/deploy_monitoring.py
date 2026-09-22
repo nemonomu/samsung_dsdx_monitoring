@@ -15,6 +15,14 @@ def unit_quote(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%') + '"'
 
 
+def unit_directory(value):
+    value = str(value)
+    if (not (value.startswith('/') or Path(value).is_absolute())
+            or '\n' in value or '\r' in value):
+        raise ValueError('WorkingDirectory must be an absolute path')
+    return value.replace('%', '%%')
+
+
 def unit_files(root, username, groupname):
     service = f'''[Unit]
 Description=Samsung DSDX collection statistics
@@ -25,7 +33,7 @@ After=network-online.target
 Type=oneshot
 User={username}
 Group={groupname}
-WorkingDirectory={unit_quote(root)}
+WorkingDirectory={unit_directory(root)}
 ExecStart={unit_quote(root / 'venv/bin/python')} {unit_quote(root / 'manage.py')} refresh_collection_statistics --automatic
 Nice=10
 TimeoutStartSec=30min
@@ -66,7 +74,7 @@ def deploy(root, username, groupname, run=subprocess.run):
                     cwd=root, check=False, capture_output=True, text=True)
         if state.stdout.strip() == 'loaded':
             command('sudo', 'systemctl', 'stop', name)
-        elif state.stdout.strip() != 'not-found':
+        elif state.stdout.strip() not in ('not-found', 'bad-setting'):
             raise RuntimeError('Cannot inspect the statistics job state')
 
     print('Checking application and preparing collection statistics storage...', flush=True)

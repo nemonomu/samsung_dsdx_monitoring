@@ -50,6 +50,24 @@ class DeploymentTests(unittest.TestCase):
                 deploy(root, 'ubuntu', 'ubuntu', run=fake_run)
             self.assertEqual([['sudo', '-n', 'true']], calls)
 
+    def test_redeploy_replaces_a_previously_invalid_service_unit(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.fixture(root)
+            calls = []
+            def fake_run(args, **kwargs):
+                calls.append(args)
+                state = 'bad-setting\n' if args[:3] == [
+                    'systemctl', 'show', 'samsung-dsdx-collection-statistics.service'
+                ] else 'loaded\n'
+                return subprocess.CompletedProcess(args, 0, stdout=state)
+            deploy(root, 'ubuntu', 'ubuntu', run=fake_run)
+            self.assertIn(['sudo', '-n', 'systemctl', 'stop',
+                           'samsung-dsdx-collection-statistics.timer'], calls)
+            self.assertNotIn(['sudo', '-n', 'systemctl', 'stop',
+                              'samsung-dsdx-collection-statistics.service'], calls)
+            self.assertIn(['sudo', '-n', 'systemctl', 'daemon-reload'], calls)
+
     def test_failed_migration_never_restarts_web_or_installs_jobs(self):
         with TemporaryDirectory() as temp:
             root = Path(temp)
@@ -67,7 +85,8 @@ class DeploymentTests(unittest.TestCase):
 
     def test_unit_paths_are_quoted_and_runtime_user_is_not_root(self):
         service = unit_files(PurePosixPath('/home/ubuntu/project space%'), 'ubuntu', 'ubuntu')['samsung-dsdx-collection-statistics.service']
-        self.assertIn('WorkingDirectory="/home/ubuntu/project space%%"', service)
+        self.assertIn('WorkingDirectory=/home/ubuntu/project space%%', service)
+        self.assertNotIn('WorkingDirectory="', service)
         self.assertIn('User=ubuntu', service)
         self.assertNotIn('User=root', service)
         with self.assertRaises(ValueError):
