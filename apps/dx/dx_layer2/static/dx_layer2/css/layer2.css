@@ -606,6 +606,14 @@
  * Item/Query 복사 영역
  * ============================================================ */
 .item-query-section { margin-bottom: 16px; display: flex; flex-direction: row; gap: 16px; }
+.null-detail-query-row { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.null-detail-query-row .item-toggle-section { flex: 0 0 280px; min-width: 0; }
+.null-detail-query-row .query-box { min-width: 0; }
+@media (max-width: 760px) {
+    .null-detail-query-row { flex-direction: column; }
+    .null-detail-query-row .item-toggle-section { flex: auto; width: 100%; }
+    .null-detail-query-row .query-box { width: 100%; }
+}
 
 /* 섹션 페이지 토글형 Item 목록 */
 .item-toggle-section { margin-bottom: 12px; }

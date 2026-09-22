@@ -281,7 +281,9 @@ function testTseSqlAndDaysRenderInInlineAndDashboardViews() {
     assert.ok(inline.html.includes('id="detail-days"'));
     assert.ok(inline.html.includes('/static/img/flags/th.svg'));
     assert.ok(inline.html.includes('dx_tse.dx_tse_tv_retail_com'));
-    assert.ok(inline.html.includes('3일 수정용 조회 SQL'));
+    assert.ok(inline.html.includes('3일치 Item 조회 SQL'));
+    assert.ok(inline.html.includes('class="null-detail-query-row"'));
+    assert.strictEqual((inline.html.match(/class="query-box"/g) || []).length, 1);
     assert.ok(dashboard.html.includes('id="detail-days"'));
     assert.ok(dashboard.html.includes('dx_tse.dx_tse_tv_retail_com'));
     assert.ok(dashboard.html.includes('3일 수정용 조회 SQL'));

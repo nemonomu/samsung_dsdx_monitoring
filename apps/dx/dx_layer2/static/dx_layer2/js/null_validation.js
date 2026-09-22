@@ -189,6 +189,40 @@ function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, da
     return html;
 }
 
+function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, retailer, isTseRetail) {
+    if (isTseRetail) {
+        return _buildTseNullQuery(fieldName, data, records,
+            (data.query_config || {})[fieldName] || [], date, days);
+    }
+    const tableName = data.actual_table || '';
+    const dateColumn = data.date_column || 'crawl_datetime';
+    const sourceDate = data.source_date || date;
+    if (!_isTseSqlIdentifier(tableName, true)
+        || !_isTseSqlIdentifier(dateColumn, false)
+        || !/^\d{4}-\d{2}-\d{2}$/.test(sourceDate)) return '';
+
+    const items = _tseRecordItems(records);
+    const ids = [...new Set(records.filter(row => row.item == null || String(row.item).trim() === '')
+        .map(row => Number(row.id))
+        .filter(id => Number.isSafeInteger(id) && id > 0))];
+    if (!items.length && !ids.length) return '';
+
+    const accountName = data.query_retailer || retailer;
+    const where = [
+        `${dateColumn} >= ${_tseSqlLiteral(_tseHistoryStartDate(sourceDate, days))}`,
+        `${dateColumn} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
+        `account_name = ${_tseSqlLiteral(accountName)}`
+    ];
+    if (days === 1 && data.batch_id != null && data.batch_id !== '') {
+        where.push(`batch_id = ${_tseSqlLiteral(data.batch_id)}`);
+    }
+    const recordScope = [];
+    if (items.length) recordScope.push(`item IN (${items.map(_tseSqlLiteral).join(', ')})`);
+    if (ids.length) recordScope.push(`id IN (${ids.join(', ')})`);
+    where.push(recordScope.length > 1 ? `(${recordScope.join(' OR ')})` : recordScope[0]);
+    return `SELECT *\nFROM ${tableName}\nWHERE ${where.join('\n  AND ')}\nORDER BY item, ${dateColumn};`;
+}
+
 function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetailJson = null, tableCode = null) {
     if (count === 0) { showToast('조회된 데이터가 없습니다.', 'info'); return; }
 
@@ -498,7 +532,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         columns = getColumnConfig('null', tableParam);
     }
 
-    // Item/쿼리 HTML (대시보드 모달에서만 표시)
+    // Item/쿼리 HTML
     var itemQueryHtml = '';
     if (!isInlineMode()) {
         itemQueryHtml += `<div class="modal-toolbar">
@@ -533,23 +567,34 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     }
 
     // Item/쿼리 섹션 생성 (retail만)
-    if (isRetail) {
+    if (isRetail || isTseRetail) {
         const items = [...new Set(records.map(r => r.item).filter(Boolean))].sort();
         const ids = records.map(r => r.id).filter(Boolean);
 
         if (isInlineMode()) {
             var listLabel = items.length > 0 ? 'Item 목록 (' + items.length + '개)' : ids.length > 0 ? 'ID 목록 (' + ids.length + '개)' : '';
             var listContent = items.length > 0 ? items.join(', ') : ids.join(', ');
+            var inlineQuery = _buildNullRetailDisplayQuery(
+                fieldName, data, records, date, currentDays, modalState.retailer || '', isTseRetail
+            );
+            var inlineListHtml = '';
             if (listLabel) {
-                itemQueryHtml += `<div class="item-toggle-section">
+                inlineListHtml = `<div class="item-toggle-section">
                     <div class="item-toggle-header" onclick="var c=this.nextElementSibling;var h=c.style.display==='none';c.style.display=h?'':'none';this.querySelector('.toggle-arrow').textContent=h?'▾':'▸';">
                         <span class="toggle-arrow">▸</span> ${listLabel}
                     </div>
                     <div class="item-toggle-content" style="display:none;">
                         <div class="item-copy-header"><span class="item-copy-title">${listLabel}</span><button class="btn-copy" onclick="event.stopPropagation();copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                        <div class="item-copy-content">${listContent}</div>
+                        <div class="item-copy-content">${_escapeTseSqlHtml(listContent)}</div>
                     </div>
                 </div>`;
+            }
+            var inlineQueryHtml = inlineQuery ? `<div class="query-box">
+                <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 ${items.length ? 'Item' : 'ID'} 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+                <pre class="query-content">${_escapeTseSqlHtml(inlineQuery)}</pre>
+            </div>` : '';
+            if (inlineListHtml || inlineQueryHtml) {
+                itemQueryHtml += `<div class="null-detail-query-row">${inlineListHtml}${inlineQueryHtml}</div>`;
             }
         } else {
             const tblName = data.actual_table || (
@@ -598,7 +643,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         }
     }
 
-    if (isTseRetail) {
+    if (isTseRetail && !isInlineMode()) {
         itemQueryHtml += _buildTseNullQueryHtml(
             fieldName, data, records, queryColumns, date, currentDays
         );
