@@ -4,8 +4,10 @@ Uses an isolated in-memory database and explicit test settings, never production
 """
 import json
 import sys
+from contextlib import contextmanager
 from datetime import date, timedelta, timezone as tz
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -41,6 +43,31 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_collector_passes_legacy_naive_kst_clock_only_to_sea(self):
+        seen = []
+        cursor = SimpleNamespace(execute=lambda statement: None)
+
+        @contextmanager
+        def fake_connection():
+            yield None, cursor
+
+        db_stub = ModuleType('apps.common.db')
+        db_stub.dx_connection = fake_connection
+
+        def fake_stats(_cursor, _day, now):
+            seen.append(now)
+            return {'check': {'categories': [{'name': 'REF'}]}}
+
+        service = SimpleNamespace(get_layer1_stats=fake_stats)
+        with patch.dict(sys.modules, {'apps.common.db': db_stub}), patch.object(
+                collector.importlib, 'import_module', return_value=service):
+            collector.load_check('SEA', date(2026, 9, 22))
+            collector.load_check('SEG', date(2026, 9, 22))
+
+        self.assertIsNone(seen[0].tzinfo)
+        self.assertIsNotNone(seen[1].tzinfo)
+        self.assertEqual(timedelta(hours=9), seen[1].utcoffset())
+
     def test_exact_threshold_both_directions_and_rounding(self):
         history = [sample(2000)] * 7
         for current, expected in [(1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH'), (1401, None), (2599, None)]:

@@ -27,6 +27,10 @@ def load_check(country, inspection_date):
     from apps.common.db import dx_connection
     service = importlib.import_module(SERVICE_MODULES[country])
     now = datetime.now(tz(timedelta(hours=9)))
+    # SEA's legacy schedule compares naive KST datetimes. Other country
+    # services already accept the timezone-aware KST value.
+    if country == 'SEA':
+        now = now.replace(tzinfo=None)
     with dx_connection() as (_connection, cursor):
         cursor.execute("SET LOCAL statement_timeout = '30000ms'")
         result = service.get_layer1_stats(cursor, inspection_date, now)
