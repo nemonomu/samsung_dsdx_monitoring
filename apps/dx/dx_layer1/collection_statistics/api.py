@@ -1,4 +1,5 @@
 """Bounded reads of persisted statistics; these endpoints never contact source tables."""
+from collections import defaultdict
 from datetime import date, timedelta, timezone as tz
 
 from django.db import DatabaseError
@@ -30,7 +31,7 @@ def weekly(request):
         country = request.GET.get('country', 'SEA')
         product = request.GET.get('product', 'ALL')
         retailer = request.GET.get('retailer', '')
-        if country not in COUNTRIES or product not in ('ALL', 'TV', 'REF', 'LDY') or len(retailer) > 200:
+        if country not in (*COUNTRIES, 'ALL') or product not in ('ALL', 'TV', 'REF', 'LDY') or len(retailer) > 200:
             raise ValueError('Invalid filter')
         weeks = int(request.GET.get('weeks', '8'))
         if not 1 <= weeks <= 12:
@@ -40,21 +41,27 @@ def weekly(request):
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·날짜·기간을 확인해주세요.'}, status=400)
     try:
-        snapshots = list(Weekly.objects.filter(country=country, week_start__range=(start_week, end_week)).order_by('-week_start'))
+        country_filter = {'country__in': COUNTRIES} if country == 'ALL' else {'country': country}
+        snapshots = list(Weekly.objects.filter(week_start__range=(start_week, end_week),
+                                                **country_filter).order_by('-week_start', 'country'))
     except DatabaseError:
         return JsonResponse({'error': '통계를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.'}, status=503)
-    by_week = {snapshot.week_start: snapshot for snapshot in snapshots}
+    by_week = defaultdict(list)
+    for snapshot in snapshots:
+        by_week[snapshot.week_start].append(snapshot)
     retailers = sorted({row['retailer'] for snapshot in snapshots for row in snapshot.rows
                         if product == 'ALL' or row['product'] == product})
     result = []
     for offset in range(weeks):
         monday = end_week - timedelta(weeks=offset)
-        snapshot = by_week.get(monday)
-        rows = [row for row in snapshot.rows if (product == 'ALL' or row['product'] == product)
-                and (not retailer or row['retailer'] == retailer)] if snapshot else []
+        week_snapshots = by_week.get(monday, [])
+        rows = [{**row, 'country': snapshot.country} for snapshot in week_snapshots for row in snapshot.rows
+                if (product == 'ALL' or row['product'] == product)
+                and (not retailer or row['retailer'] == retailer)]
         result.append({'start': str(monday), 'end': str(monday + timedelta(days=6)),
-                       'rows': rows, 'available': bool(snapshot),
-                       'updated_at': snapshot.updated_at.isoformat() if snapshot else None})
+                       'rows': rows, 'available': bool(week_snapshots),
+                       'updated_at': max((snapshot.updated_at for snapshot in week_snapshots),
+                                         default=None)})
     return JsonResponse({'country': country, 'product': product, 'retailers': retailers, 'weeks': result,
                          'updated_at': min((s.updated_at for s in snapshots), default=None),
                          'basis': 'source_date', 'baseline_days': 28, 'minimum_history_days': 7})

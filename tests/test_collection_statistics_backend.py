@@ -181,6 +181,18 @@ class StoreTests(TestCase):
         self.assertEqual(12, len(payload['weeks']))
         self.assertEqual(['Lowes'], payload['retailers'])
 
+    def test_weekly_api_all_countries_uses_one_saved_snapshot_query(self):
+        self.refresh(country='SEA')
+        self.refresh(country='SEG')
+        with self.assertNumQueries(1):
+            response = api.weekly(self.factory.get('/', {
+                'date': '2026-09-20', 'country': 'ALL', 'product': 'REF', 'weeks': '1',
+            }))
+        self.assertEqual(200, response.status_code)
+        payload = json.loads(response.content)
+        self.assertEqual({'SEA', 'SEG'}, {row['country'] for row in payload['weeks'][0]['rows']})
+        self.assertEqual(['Lowes'], payload['retailers'])
+
     def test_alert_api_one_query_saved_decision_only(self):
         self.refresh(self.end - timedelta(days=7))
         self.refresh(loader=lambda *_: check_for(400))
