@@ -24,6 +24,7 @@ from django.test import TestCase, SimpleTestCase, RequestFactory
 from django.test.runner import DiscoverRunner
 from django.utils import timezone
 from apps.dx.dx_layer1.collection_statistics import calculations as calc, collector, api
+from apps.dx.dx_layer1.collection_statistics import automatic
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 
 
@@ -185,6 +186,34 @@ class StoreTests(TestCase):
 
     def test_model_and_migration_agree(self):
         call_command('makemigrations', 'dx_layer1', check=True, dry_run=True, verbosity=0)
+
+    def test_automatic_refresh_current_countries_first_then_bounded_history(self):
+        calls = []
+        def refresh(country, start, end, **kwargs):
+            calls.append((country, start, end))
+            return {'updated': 0, 'errors': 0, 'busy': False}
+        errors = automatic.refresh_automatic(date(2026, 9, 22), countries=['SEA', 'SEG'], refresh=refresh)
+        self.assertEqual(0, errors)
+        self.assertEqual(['SEA', 'SEG', 'SEA', 'SEG'], [c[0] for c in calls])
+        self.assertEqual(date(2026, 9, 21), calls[0][2])
+        self.assertEqual(date(2026, 9, 22), calls[1][2])
+        self.assertEqual(13, (calls[2][2] - calls[2][1]).days)
+        self.assertEqual(date(2026, 9, 18), calls[2][2])
+
+    def test_automatic_skips_history_after_source_failure_or_busy_lease(self):
+        for result in [{'updated': 0, 'errors': 1, 'busy': False}, {'updated': 0, 'errors': 0, 'busy': True}]:
+            with patch.object(automatic, 'refresh_country', return_value=result) as refresh:
+                automatic.refresh_automatic(date(2026, 9, 22), countries=['SEA'])
+                self.assertEqual(1, refresh.call_count)
+
+    def test_automatic_does_not_repeat_completed_history(self):
+        last_due = date(2026, 9, 21)
+        Daily.objects.bulk_create([Daily(country='SEA', source_date=last_due - timedelta(days=i),
+            inspection_date=last_due - timedelta(days=i - 1), rows=[], digest='fixture', updated_at=timezone.now())
+            for i in range(3, 112)])
+        self.assertIsNone(automatic.history_range('SEA', last_due))
+        Daily.objects.filter(source_date=date(2026, 9, 10)).update(refresh_error=True)
+        self.assertEqual((date(2026, 9, 10), date(2026, 9, 10)), automatic.history_range('SEA', last_due))
 
 
 if __name__ == '__main__':

@@ -13,8 +13,20 @@ class Command(BaseCommand):
         parser.add_argument('--start', type=date.fromisoformat)
         parser.add_argument('--end', type=date.fromisoformat)
         parser.add_argument('--days', type=int, default=3)
+        parser.add_argument('--automatic', action='store_true', help='Refresh recent counts and gradually fill missing history.')
 
     def handle(self, *args, **options):
+        if options['automatic']:
+            if options['start'] or options['end'] or options['days'] != 3:
+                raise CommandError('--automatic cannot be combined with date ranges or --days')
+            from apps.dx.dx_layer1.collection_statistics.automatic import refresh_automatic
+            def report(country, phase, result):
+                self.stdout.write(f"{country} {phase}: updated={result['updated']}, errors={result['errors']}, busy={result['busy']}")
+            errors = refresh_automatic(timezone.localdate(timezone=tz(timedelta(hours=9))),
+                countries=[options['country']] if options['country'] else COUNTRIES, report=report)
+            if errors:
+                raise CommandError(f'{errors} source-day refreshes failed; the next scheduled run will retry.')
+            return
         if not 1 <= options['days'] <= 120:
             raise CommandError('--days must be between 1 and 120')
         today = timezone.localdate(timezone=tz(timedelta(hours=9)))

@@ -23,7 +23,35 @@ MAIN, BSR, 총 건수를 각각 비교한다. 감소와 증가가 함께 있으�
 
 ## 운영 서버 적용
 
-애플리케이션 코드 및 정적 파일을 배포한 뒤, 기존 운영 실행 환경에서 아래 명령을 실행한다. 개발 PC에서 운영 DB 설정을 읽거나 운영 마이그레이션을 실행하지 않았다.
+Ubuntu 서버의 기존 프로젝트 폴더에서 일반 배포 사용자(예: `ubuntu`)로 실행한다. `venv/bin/python`과 기존 `gunicorn` 서비스가 있는 환경을 대상으로 한다. 개발 PC에서 운영 설정을 읽거나 운영 서버 명령을 실행하지 않았다.
+
+배포 스크립트를 처음 받는 이번 한 번은:
+
+```bash
+git pull --ff-only
+bash scripts/deploy.sh
+```
+
+이후 배포는 아래 한 줄이다. 현재 체크아웃된 브랜치를 갱신하며 브랜치를 자동 전환하거나 로컬 변경을 지우지 않는다.
+
+```bash
+bash scripts/deploy.sh
+```
+
+스크립트가 `git pull --ff-only` → Django 검사 → 통계 테이블 마이그레이션 → 정적 파일 반영 → gunicorn 재시작 → 통계 자동 갱신 등록/시작을 수행한다. 기존 추적 파일에 수정이 있거나 중간 단계가 실패하면 중단한다. 서버 관리에 필요한 `sudo`는 해당 명령에만 사용하며 스크립트 전체를 `sudo`로 실행하지 않는다.
+
+통계는 별도 systemd 작업 `samsung-dsdx-collection-statistics.service`에서 처리하고, 같은 이름의 `.timer`가 15분마다 실행한다. 최초 배포 시에도 즉시 작업을 시작하되 배포 명령은 과거 집계 완료를 기다리지 않는다. 최근 3일을 모든 국가에 먼저 반영하고, 이후 실행마다 국가별 최대 14일의 미집계 이력을 채워 최대 112일을 준비한다. 최초에는 과거 주간 결과가 일부만 보일 수 있으며 차례로 채워진다. 이미 준비된 과거 이력은 반복 조회하지 않고, 오류가 난 이력은 재시도한다. 재부팅 후에도 타이머가 자동 실행된다.
+
+서버에서 자동 갱신 등록 여부를 확인할 때:
+
+```bash
+systemctl is-enabled samsung-dsdx-collection-statistics.timer
+systemctl list-timers samsung-dsdx-collection-statistics.timer
+```
+
+### 필요한 경우에만 수동 집계
+
+자동 배포를 사용하면 아래 명령을 매번 입력할 필요가 없다. 최초 이력을 한 번에 전부 채우거나 특정 과거 날짜를 다시 집계할 때만 사용한다.
 
 ```console
 python manage.py migrate dx_layer1
@@ -36,10 +64,10 @@ python manage.py refresh_collection_statistics --days 112
 python manage.py refresh_collection_statistics --country SEA --days 112
 ```
 
-기존 운영 스케줄러/Windows 작업 스케줄러에 다음 명령을 **15분 간격**으로 등록하거나 수집 적재·재수집 완료 뒤 호출한다. 작업 디렉터리는 저장소 루트, 실행 파일은 운영 가상환경의 Python으로 지정한다. 새 작업이 중첩되면 국가별 DB 잠금으로 같은 국가 집계를 건너뛴다.
+Ubuntu 자동 배포 외의 환경에서는 기존 운영 스케줄러에 다음 명령을 15분 간격으로 등록할 수 있다. 작업 디렉터리는 저장소 루트, 실행 파일은 운영 가상환경의 Python으로 지정한다. 작업이 중첩되면 국가별 DB 잠금으로 같은 국가 집계를 건너뛴다.
 
 ```console
-python manage.py refresh_collection_statistics --days 3
+python manage.py refresh_collection_statistics --automatic
 ```
 
 3일보다 오래된 데이터의 재적재/삭제 후에는 해당 **데이터일**을 지정해 다시 집계한다. 이력이 변경되면 이후 28일 비교 결과와 관련 주간 합계도 갱신된다. 같은 명령을 반복해도 수집 건수를 더하지 않고 교체한다.
@@ -48,7 +76,7 @@ python manage.py refresh_collection_statistics --days 3
 python manage.py refresh_collection_statistics --country SEA --start 2026-09-15 --end 2026-09-21
 ```
 
-최대 120일씩 처리한다. SEA/SEDA는 데이터일에 1일을 더한 검수일을 이용하며 다른 국가는 당일이다. SEA HomeDepot는 2026-09-20부터 대상으로 취급한다. 운영 소스 조회 실패는 0건을 만들지 않으며 기존 건수를 보존하고 갱신 실패로 표시한다. 명령은 실패 건수가 있으면 실패 종료한다. 첫 집계와 스케줄러 등록은 별도 운영 적용 단계다.
+수동 범위는 최대 120일씩 처리한다. SEA/SEDA는 데이터일에 1일을 더한 검수일을 이용하며 다른 국가는 당일이다. SEA HomeDepot는 2026-09-20부터 대상으로 취급한다. 운영 소스 조회 실패는 0건을 만들지 않으며 기존 건수를 보존하고 갱신 실패로 표시한다. 명령은 실패 건수가 있으면 실패 종료한다.
 
 ## 속도 및 갱신 구조
 
@@ -64,6 +92,7 @@ python manage.py refresh_collection_statistics --country SEA --start 2026-09-15 
 
 ```console
 python tests/test_collection_statistics_backend.py
+python tests/test_collection_statistics_deploy.py
 node tests/test_collection_volume.js
 node tests/test_layer1_progressive_loading.js
 python -m unittest tests.unit.test_layer1_sidebar_context
