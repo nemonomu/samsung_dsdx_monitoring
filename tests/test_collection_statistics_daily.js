@@ -97,7 +97,8 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('Bestbuy'));
     assert(elements['cs-table-body'].innerHTML.includes('Lowes'));
     assert(elements['cs-table-body'].innerHTML.includes('OTTO'));
-    assert(elements['cs-table-body'].innerHTML.includes('233.3'), '0건은 평균에 포함하고 미집계는 제외');
+    assert(elements['cs-table-body'].innerHTML.includes('<td class="cs-average"><strong>233</strong><small>3/5일 집계'),
+        '0건은 평균에 포함하고 미집계는 제외하며 평균은 정수로 표시');
     assert(elements['cs-table-body'].innerHTML.includes('3/5일 집계'));
     assert.match(elements['cs-table-body'].innerHTML,
         /<td class="cs-day-cell">230<\/td><td class="cs-day-cell">50<\/td><td class="cs-day-cell cs-total"[^>]*><strong>240<\/strong>/);

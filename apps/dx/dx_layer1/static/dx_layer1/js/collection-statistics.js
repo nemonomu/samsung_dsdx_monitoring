@@ -121,7 +121,7 @@
             const average = completed.length
                 ? completed.reduce((sum, day) => sum + day.total, 0) / completed.length : null;
             return heading + `<tr class="cs-retailer-row"><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong></th>`
-                + `<td class="cs-average"><strong>${number(average)}</strong><small>${completed.length}/${dates.length}일 집계</small></td>`
+                + `<td class="cs-average"><strong>${number(average == null ? null : Math.round(average))}</strong><small>${completed.length}/${dates.length}일 집계</small></td>`
                 + results.map(day => {
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
