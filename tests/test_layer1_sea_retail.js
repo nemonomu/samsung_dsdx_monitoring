@@ -248,8 +248,8 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260922-volume1"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260922-volume1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260922-volume2"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260922-volume2"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260922-volume1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260921-batches1"));
@@ -264,6 +264,7 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1-common.js' %}?v=20260922-volume1"));
+    assert(baseSource.includes("collection-volume.js' %}?v=2"));
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));
@@ -287,6 +288,11 @@ function categoryFromSummary(key) {
         assert(html.includes('수집 시간'));
         assert(html.includes('>' + total + '</td>'));
         assert(html.includes('>100</td>'));
+        cat.time_slots[0].retailers.at(-1).status = 'OK';
+        const readyHtml = context.renderRetailCategory(cat, 0, 0);
+        assert(readyHtml.slice(readyHtml.indexOf('retailer=HomeDepot'),
+            readyHtml.indexOf('retailer=HomeDepot') + 500).includes('status-badge ok'));
+        assert(!readyHtml.includes('최소 건수 미판정 포함'));
         const query = context.L1.retailQuery.buildQuery('SEA', product.toUpperCase(), 'HomeDepot', 'h-batch', '2026-08-19');
         assert(query.includes('public.' + product + '_retail_com'));
         assert(query.includes("crawl_strdatetime >= '2026-08-19'"));

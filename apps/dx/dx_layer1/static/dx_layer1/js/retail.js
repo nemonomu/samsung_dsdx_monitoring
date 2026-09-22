@@ -86,6 +86,9 @@ function hasRetailExtraRank(summaryData, categoryData, categoryName) {
 function renderRetailCategory(cat, checkIdx, catIdx) {
     const catStatusClass = getStatusClass(cat.status);
     const hasTimeSlots = cat.time_slots && cat.time_slots.length > 0;
+    const hasUnassessed = hasTimeSlots
+        ? cat.time_slots.some(slot => (slot.retailers || []).some(row => row.status === 'UNASSESSED'))
+        : (cat.unassessed_retailers || []).length > 0;
 
     // Retail은 기준일 전체를 단일 일일 슬롯으로 표시
     let timeSlotsHtml = '';
@@ -107,7 +110,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
                 L1.retailQuery.button('SEA', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + retailCount(cat.total).toLocaleString() + '</span>' +
                 getStatusBadge(cat.status) +
-                ((cat.unassessed_retailers || []).length ? ' <span class="status-badge pending">최소 건수 미판정 포함</span>' : '') +
+                (hasUnassessed ? ' <span class="status-badge pending">최소 건수 미판정 포함</span>' : '') +
             '</div>' +
         '</div>' +
         timeSlotsHtml +

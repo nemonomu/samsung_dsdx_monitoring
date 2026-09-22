@@ -55,7 +55,10 @@
                         row.volume_comparison_state = matches ? saved.comparison_state : 'unavailable';
                         if (!matches) return;
                         row.volume_alerts = saved.alerts || [];
-                        row.status = merge(row.status, row.volume_alerts);
+                        const homeDepotReady = country === 'SEA' && row.retailer === 'HomeDepot'
+                            && ['REF', 'LDY'].includes(product) && row.status === 'UNASSESSED'
+                            && saved.comparison_state === 'ready' && counts.total > 0;
+                        row.status = merge(homeDepotReady ? 'OK' : row.status, row.volume_alerts);
                         slotAlerts.push(...row.volume_alerts);
                     });
                     slot.status = merge(slot.status, slotAlerts);
