@@ -16,12 +16,21 @@ async function loadStats() {
     const selectedDate = getSelectedDate();
     loadDdayCollection(selectedDate);
     let data = null;
+    let volume = null;
     currentCheckStatus = null;
     currentRetailSummary = null;
     currentNullData = null;
     const render = function() {
-        if (requestId === layer1StatsRequestId && data) renderLayer1Stats(data);
+        if (requestId === layer1StatsRequestId && data) {
+            if (L1.collectionVolume) L1.collectionVolume.decorate(data, volume, selectedDate, currentRetailSummary);
+            renderLayer1Stats(data);
+        }
     };
+    if (L1.collectionVolume) L1.collectionVolume.load(selectedDate).then(function(result) {
+        if (requestId !== layer1StatsRequestId) return;
+        volume = result;
+        render();
+    });
     const statusRequest = loadCheckStatus(selectedDate).then(function(status) {
         if (requestId !== layer1StatsRequestId) return;
         currentCheckStatus = status;

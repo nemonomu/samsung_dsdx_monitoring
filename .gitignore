@@ -111,4 +111,5 @@ _backup/
 
 # 문서 파일
 *.md
+!docs/collection_statistics.md
 !CLAUDE.md

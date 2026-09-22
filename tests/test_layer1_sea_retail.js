@@ -248,9 +248,9 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260921-batches2"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260921-batches2"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260918-dday1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260922-volume1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260922-volume1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260922-volume1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260921-batches1"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
@@ -263,7 +263,10 @@ function categoryFromSummary(key) {
         commonSource.indexOf('function formatLocalDate(')), context);
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
-    assert(baseSource.includes("layer1-common.js' %}?v=15"));
+    assert(baseSource.includes("layer1-common.js' %}?v=20260922-volume1"));
+    assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
+    assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
+    assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));
     assert(baseSource.includes("retail-query.js' %}?v=20260922-simple-sql"));
     assert.strictEqual(context.getStatusClass('UNASSESSED'), 'pending');
     assert.strictEqual(context.getRetailerStatusClass('UNASSESSED'), 'pending');

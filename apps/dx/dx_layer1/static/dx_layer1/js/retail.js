@@ -624,10 +624,19 @@ async function loadSectionData() {
     if (rawView.checkUrlAndShow()) return;
     const selectedDate = getSelectedDate();
     let data = null;
+    let volume = null;
     currentCheckStatus = null;
     const render = function() {
-        if (requestId === seaRetailSectionRequestId && data) renderSeaRetailSection(data);
+        if (requestId === seaRetailSectionRequestId && data) {
+            if (L1.collectionVolume) L1.collectionVolume.decorate(data, volume, selectedDate, currentRetailSummary);
+            renderSeaRetailSection(data);
+        }
     };
+    if (L1.collectionVolume) L1.collectionVolume.load(selectedDate).then(function(result) {
+        if (requestId !== seaRetailSectionRequestId) return;
+        volume = result;
+        render();
+    });
     const statusRequest = loadCheckStatus(selectedDate).then(function(status) {
         if (requestId !== seaRetailSectionRequestId) return;
         currentCheckStatus = status;

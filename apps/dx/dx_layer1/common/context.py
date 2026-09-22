@@ -15,6 +15,7 @@ LAYER_CONTEXT = {
 # check_type → 섹션 페이지 표시명 (기본값, DB에 check_name이 없을 때 사용)
 SECTION_TITLES = {
     'dashboard': '대시보드',
+    'collection_statistics': '수집데이터 통계',
     'retail': 'SEA Retail',
     'seda_retail': 'SEDA Retail',
     'siel_retail': 'SIEL Retail',
@@ -101,6 +102,11 @@ def _build_sidebar_groups(section):
             'active': section in period_keys,
             'items': period_sections,
         })
+    groups.append({
+        'key': 'collection_statistics', 'icon': '📈', 'label': '수집데이터 통계',
+        'href': '/dx/layer1/collection-statistics/', 'ignore_target_date': True,
+        'active': section == 'collection_statistics',
+    })
     return groups
 
 

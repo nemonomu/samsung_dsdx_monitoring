@@ -203,6 +203,8 @@ var currentRetailSummary = null;
 function getStatusBadge(status) {
     var statusMap = {
         'OK': { class: 'ok', text: '정상' },
+        'VOLUME_LOW': { class: 'critical', text: '이상' },
+        'VOLUME_HIGH': { class: 'volume-review', text: '확인 필요' },
         'WARNING': { class: 'warning', text: '주의' },
         'REVIEW': { class: 'warning', text: '확인필요' },
         'CRITICAL': { class: 'critical', text: '심각' },
@@ -216,12 +218,16 @@ function getStatusBadge(status) {
 }
 
 function getStatusClass(status) {
+    if (status === 'VOLUME_LOW') return 'critical';
+    if (status === 'VOLUME_HIGH') return 'volume-review';
     if (status === 'UNASSESSED') return 'pending';
     if (status === 'REVIEW') return 'warning';
     return status ? status.toLowerCase() : 'pending';
 }
 
 function getRetailerStatusClass(status) {
+    if (status === 'VOLUME_LOW') return 'critical';
+    if (status === 'VOLUME_HIGH') return 'volume-review';
     if (status === 'UNASSESSED') return 'pending';
     var classMap = { 'OK': 'ok', 'WARNING': 'warning', 'REVIEW': 'warning', 'CRITICAL': 'critical', 'PENDING': 'pending', 'COLLECTING': 'collecting' };
     return classMap[status] || 'ok';
