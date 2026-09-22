@@ -37,7 +37,8 @@ for (let week = 0; week < 8; week++) {
     const start = monday.toISOString().slice(0, 10);
     const rows = [];
     for (const [country, product, retailer, base] of [
-        ['SEA', 'TV', 'Bestbuy', 100], ['SEA', 'REF', 'Lowes', 300], ['SEG', 'TV', 'OTTO', 200],
+        ['SEA', 'TV', 'Amazon', 240], ['SEA', 'TV', 'Bestbuy', 100],
+        ['SEA', 'REF', 'Lowes', 300], ['SEG', 'TV', 'OTTO', 200],
     ]) {
         const daily = [];
         for (let offset = 0; offset < 7; offset++) {
@@ -49,7 +50,7 @@ for (let week = 0; week < 8; week++) {
                     : retailer === 'Bestbuy' && date === '2026-09-20' ? 400 : base;
             const alerts = retailer === 'Bestbuy' && date === '2026-09-19' ? [{status: 'VOLUME_LOW'}]
                 : retailer === 'OTTO' && date === '2026-09-20' ? [{status: 'VOLUME_HIGH'}] : [];
-            daily.push({date, state, main: total, bsr: 50, total, comparison_state: 'ready', alerts});
+            daily.push({date, state, main: Math.max(0, total - 10), bsr: 50, total, comparison_state: 'ready', alerts});
         }
         rows.push({country, product, retailer, slot: 'daily', daily});
     }
@@ -84,41 +85,53 @@ async function flush() {
     assert.strictEqual(elements['cs-days'].value, '5');
     assert.strictEqual(Number(requests[0].searchParams.get('weeks')), 1);
     assert.strictEqual(requests[0].searchParams.get('country'), 'ALL');
-    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/<tr>/g) || []).length, 3);
-    assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 7);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-retailer-row"/g) || []).length, 4);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-country-row"/g) || []).length, 2);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-product-row"/g) || []).length, 3);
+    assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 22);
+    assert(elements['cs-table-head'].innerHTML.includes('rowspan="2">총수량 하루 평균'));
+    assert(elements['cs-table-head'].innerHTML.includes('>MAIN</th><th scope="col">BSR</th><th scope="col" class="cs-total-heading">총수량</th>'));
+    assert.match(elements['cs-table-body'].innerHTML,
+        /cs-country-row[^>]*><th[^>]*>SEA<\/th>.*cs-product-row[^>]*><th[^>]*>TV<\/th>.*Amazon.*Bestbuy.*cs-product-row[^>]*><th[^>]*>REF<\/th>.*Lowes.*cs-country-row[^>]*><th[^>]*>SEG<\/th>.*OTTO/s);
+    assert(!elements['cs-table-body'].innerHTML.includes('<small>SEA · TV</small>'));
     assert(elements['cs-table-body'].innerHTML.includes('Bestbuy'));
     assert(elements['cs-table-body'].innerHTML.includes('Lowes'));
     assert(elements['cs-table-body'].innerHTML.includes('OTTO'));
     assert(elements['cs-table-body'].innerHTML.includes('233.3'), '0건은 평균에 포함하고 미집계는 제외');
     assert(elements['cs-table-body'].innerHTML.includes('3/5일 집계'));
-    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell low"'));
-    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell high"'));
+    assert.match(elements['cs-table-body'].innerHTML,
+        /<td class="cs-day-cell">230<\/td><td class="cs-day-cell">50<\/td><td class="cs-day-cell cs-total"[^>]*><strong>240<\/strong>/);
+    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total low"'));
+    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total high"'));
+    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-unavailable" colspan="3"'));
 
     elements['cs-country'].value = 'SEG';
     elements['cs-country'].fire('change');
     assert.strictEqual(requests.length, 1, '국가 필터는 저장된 결과를 즉시 사용');
-    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/<tr>/g) || []).length, 1);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-retailer-row"/g) || []).length, 1);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-country-row"/g) || []).length, 1);
     assert(elements['cs-table-body'].innerHTML.includes('OTTO'));
 
     elements['cs-country'].value = 'SEA';
     elements['cs-country'].fire('change');
     elements['cs-product'].value = 'TV';
     elements['cs-product'].fire('change');
-    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/<tr>/g) || []).length, 1);
-    assert.deepStrictEqual(elements['cs-retailer'].options.map(item => item.value), ['', 'Bestbuy']);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-retailer-row"/g) || []).length, 2);
+    assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-product-row"/g) || []).length, 1);
+    assert.deepStrictEqual(elements['cs-retailer'].options.map(item => item.value), ['', 'Amazon', 'Bestbuy']);
 
     elements['cs-days'].value = '14';
     elements['cs-days'].fire('change');
     await flush();
     assert.strictEqual(Number(requests.at(-1).searchParams.get('weeks')), 2);
-    assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 16);
+    assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 58);
     assert(elements['cs-table-head'].innerHTML.includes('09-07'));
 
     elements['cs-days'].value = '49';
     elements['cs-days'].fire('change');
     await flush();
     assert.strictEqual(Number(requests.at(-1).searchParams.get('weeks')), 7);
-    assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 51);
+    assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 198);
     elements['cs-date'].value = '2026-09-22';
     elements['cs-date'].fire('change');
     await flush();

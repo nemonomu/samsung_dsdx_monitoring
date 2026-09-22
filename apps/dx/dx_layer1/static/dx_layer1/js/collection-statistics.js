@@ -101,19 +101,34 @@
             byId('cs-retailer').value || '전체 리테일러',
             `${dates[0]} ~ ${endDate} · ${groups.length}개 조합`,
         ].join(' · ');
-        byId('cs-table-head').innerHTML = '<tr><th scope="col">국가 · 제품군 · 리테일러</th><th scope="col">하루 평균</th>'
-            + dates.map(day => `<th scope="col">${safe(day.slice(5))}</th>`).join('') + '</tr>';
+        byId('cs-table-head').innerHTML = '<tr><th scope="col" rowspan="2">리테일러</th><th scope="col" rowspan="2">총수량 하루 평균</th>'
+            + dates.map(day => `<th scope="colgroup" colspan="3">${safe(day.slice(5))}</th>`).join('') + '</tr>'
+            + '<tr>' + dates.map(() => '<th scope="col">MAIN</th><th scope="col">BSR</th><th scope="col" class="cs-total-heading">총수량</th>').join('') + '</tr>';
+        let previousCountry = '', previousProduct = '';
         byId('cs-table-body').innerHTML = groups.map(group => {
+            let heading = '';
+            if (group.country !== previousCountry) {
+                heading += `<tr class="cs-country-row"><th colspan="${dates.length * 3 + 2}">${safe(group.country)}</th></tr>`;
+                previousCountry = group.country;
+                previousProduct = '';
+            }
+            if (group.product !== previousProduct) {
+                heading += `<tr class="cs-product-row"><th colspan="${dates.length * 3 + 2}">${safe(group.product)}</th></tr>`;
+                previousProduct = group.product;
+            }
             const results = dates.map(day => dayResult(group.daily.get(day) || []));
             const completed = results.filter(day => day.total != null);
             const average = completed.length
                 ? completed.reduce((sum, day) => sum + day.total, 0) / completed.length : null;
-            return `<tr><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong><small>${safe(group.country)} · ${safe(group.product)}</small></th>`
+            return heading + `<tr class="cs-retailer-row"><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong></th>`
                 + `<td class="cs-average"><strong>${number(average)}</strong><small>${completed.length}/${dates.length}일 집계</small></td>`
                 + results.map(day => {
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
-                    return `<td class="cs-day-cell ${day.kind || ''}" title="${safe(title)}"><strong>${number(day.total)}</strong>${day.label ? `<small>${safe(day.label)}</small>` : ''}</td>`;
+                    if (day.total == null) return `<td class="cs-day-cell cs-unavailable${day.kind ? ' ' + day.kind : ''}" colspan="3" title="${safe(title)}"><strong>—</strong><small>${safe(day.label)}</small></td>`;
+                    return `<td class="cs-day-cell">${number(day.main)}</td>`
+                        + `<td class="cs-day-cell">${number(day.bsr)}</td>`
+                        + `<td class="cs-day-cell cs-total${day.kind ? ' ' + day.kind : ''}" title="${safe(title)}"><strong>${number(day.total)}</strong>${day.label ? `<small>${safe(day.label)}</small>` : ''}</td>`;
                 }).join('') + '</tr>';
         }).join('');
         byId('cs-results').hidden = !groups.length;
