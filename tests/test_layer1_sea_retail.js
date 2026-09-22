@@ -263,8 +263,10 @@ function categoryFromSummary(key) {
         commonSource.indexOf('function formatLocalDate(')), context);
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
+    assert(baseSource.includes("layer1.css' %}?v=4"));
     assert(baseSource.includes("layer1-common.js' %}?v=20260922-volume1"));
     assert(baseSource.includes("collection-volume.js' %}?v=2"));
+    assert(baseSource.includes("retail-status.js' %}?v=20260922-volume2"));
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));

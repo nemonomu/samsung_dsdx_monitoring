@@ -128,6 +128,7 @@
     .retail-check-main .check-criteria { margin-right: 0; }
     .retail-missing-summary { display: flex; flex: 0 1 390px; flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; font-size: 12px; }
     .retail-missing-item { padding: 4px 8px; border-radius: 4px; color: var(--color-critical); background: rgba(239, 68, 68, 0.08); white-space: nowrap; }
+    .retail-missing-item.volume-review { color: #1d4ed8; background: #eff6ff; }
     .retail-missing-item a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
     .retail-missing-item a:hover { text-decoration-thickness: 2px; }
 

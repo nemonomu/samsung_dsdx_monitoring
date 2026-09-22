@@ -4,6 +4,9 @@ const vm = require('vm');
 const context = {L1: {}, AbortController, setTimeout, clearTimeout};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/collection-volume.js', 'utf8'), context);
+context.esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+context.getSelectedDate = () => '2026-09-21';
+vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-status.js', 'utf8'), context);
 const volume = context.L1.collectionVolume;
 const day = '2026-09-21';
 function fixture(base = 'OK') {
@@ -22,6 +25,9 @@ for (const status of ['VOLUME_LOW', 'VOLUME_HIGH']) {
     assert.strictEqual(data.checks[0].categories[0].status, status);
     assert.strictEqual(data.checks[0].categories[0].retailers[0].status, status);
 }
+const semBannerData = volume.decorate(fixture(), saved(), day);
+assert(context.L1.retailStatus.render(semBannerData.checks[0], 1, 'sem_retail')
+    .includes('Lowes</a> REF 건수 부족'));
 for (const status of ['CRITICAL', 'WARNING', 'PENDING', 'COLLECTING']) {
     assert.strictEqual(volume.decorate(fixture(status), saved('VOLUME_HIGH'), day).checks[0].status, status);
 }
@@ -60,6 +66,21 @@ assert.strictEqual(sea.checks[0].status, 'OK', 'newer displayed SEA batch must d
 summary.ref.summary[0].batch_id = 'b1';
 volume.decorate(sea, seaSaved, day, summary);
 assert.strictEqual(sea.checks[0].status, 'VOLUME_LOW');
+let banner = context.L1.retailStatus.render(sea.checks[0], 0, 'retail');
+assert(banner.includes('Lowes</a> REF 건수 부족'));
+assert(banner.includes('category=REF&amp;retailer=Lowes'));
+assert(!banner.includes('REF 미수집'));
+sea.checks[0].categories[0].retailers[0].batch_count = 2;
+banner = context.L1.retailStatus.render(sea.checks[0], 0, 'retail');
+assert(banner.includes('REF 배치 2개 이상'));
+assert(banner.includes('REF 건수 부족'));
+seaSaved.snapshots[0].rows[0].alerts = [{status: 'VOLUME_HIGH'}];
+volume.decorate(sea, seaSaved, day, summary);
+banner = context.L1.retailStatus.render(sea.checks[0], 0, 'retail');
+assert(banner.includes('retail-missing-item volume-review'));
+assert(banner.includes('Lowes</a> REF 건수 증가'));
+volume.decorate(sea, null, day);
+assert(!context.L1.retailStatus.render(sea.checks[0], 0, 'retail').includes('건수 증가'));
 const homeDepot = fixture('UNASSESSED'), homeDepotSaved = saved('VOLUME_LOW');
 homeDepot.checks[0].check_type = 'retail';
 homeDepot.checks[0].categories[0].retailers[0].retailer = 'HomeDepot';

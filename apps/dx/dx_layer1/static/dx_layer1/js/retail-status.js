@@ -52,7 +52,11 @@
                 var key = product + ':' + name.toLowerCase();
                 var missing = isMissing(retailer);
                 var multiple = batchCount(retailer) >= 2;
-                if (!name || (!missing && !multiple) || seen.has(key)) return;
+                var volumeLow = retailer.status === 'VOLUME_LOW' &&
+                    (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
+                var volumeHigh = retailer.status === 'VOLUME_HIGH' &&
+                    (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
+                if (!name || (!missing && !multiple && !volumeLow && !volumeHigh) || seen.has(key)) return;
                 seen.add(key);
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
@@ -69,13 +73,18 @@
                 if (multiple) {
                     items.push('<span class="retail-missing-item">' + link + esc(product) + ' 배치 2개 이상</span>');
                 }
+                if (volumeLow) {
+                    items.push('<span class="retail-missing-item">' + link + esc(product) + ' 건수 부족</span>');
+                } else if (volumeHigh) {
+                    items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' 건수 증가</span>');
+                }
             });
         });
         if (check.batch_count_error) {
             items.push('<span class="retail-missing-item">배치 조회 실패</span>');
         }
         return items.length
-            ? '<div class="retail-missing-summary" aria-label="미수집 및 복수 배치 알림">' + items.join('') + '</div>'
+            ? '<div class="retail-missing-summary" aria-label="수집 상태 알림">' + items.join('') + '</div>'
             : '';
     }
 
