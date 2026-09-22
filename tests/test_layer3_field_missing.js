@@ -49,3 +49,26 @@ assert(dashboardTemplate.includes("field-missing.js' %}?v=20260922-simple-sql"))
 assert(indexTemplate.includes("field-missing.js' %}?v=20260922-simple-sql"));
 
 console.log('Layer3 SEA field-missing date tests passed.');
+
+// Editable columns from the API activate only the selected source date's cells.
+const vm = require('vm');
+const renderPage = source.slice(source.indexOf('function _fmRenderPage(page)'), source.indexOf('function _fmApplyFilter()'));
+for (const field of ['ref_capacity', 'ref_refrigerator_type', 'sku', 'recommendation_intent', 'ldy_capacity', 'ldy_loading_type']) {
+    const rows = [
+        {_rowId: 31, _rowDate: '2026-09-21', [field]: null},
+        {_rowId: 30, _rowDate: '2026-09-20', [field]: 'previous'},
+    ];
+    const html = [];
+    const sandbox = {
+        window: {_fmDetailState: {
+            allData: rows, sourceDate: '2026-09-21', fieldName: field,
+            allColumns: [{key: field}], editableCols: new Set([field]), normalReviews: {},
+            table: {getPageSize: () => 100, renderBody(data, render) {data.forEach((row, index) => html.push(render(row, index)));}},
+        }},
+        document: {querySelector: () => null}, setTimeout() {}, esc: String,
+    };
+    vm.runInNewContext(renderPage + '\n_fmRenderPage(1);', sandbox);
+    assert(html[0].includes('data-editable="true" data-row-id="31"'), field + ' must be editable');
+    assert(!html[1].includes('data-editable'), field + ' history must remain read-only');
+}
+console.log('SEA REF/LDY missing fields are editable only on the selected source date.');

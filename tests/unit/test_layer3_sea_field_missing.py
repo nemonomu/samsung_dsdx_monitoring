@@ -2,7 +2,9 @@ import unittest
 from datetime import date, timedelta
 from unittest.mock import patch
 
-from apps.common import inspection_dates
+from apps.common import inspection_dates, sea_retail
+from contextlib import contextmanager
+from types import SimpleNamespace
 from tests.unit.support import ScriptedCursor, load_module, module_stub, package_stub
 
 
@@ -89,6 +91,7 @@ api = load_module(
         'apps.common.db': module_stub(
             'apps.common.db', dx_connection=lambda: None
         ),
+        'apps.common.sea_retail': sea_retail,
         'apps.common.retail_columns': module_stub(
             'apps.common.retail_columns', get_editable_columns=lambda *_: []
         ),
@@ -109,6 +112,24 @@ api = load_module(
 
 
 class SeaFieldMissingDateTests(unittest.TestCase):
+    def test_ref_ldy_detail_enables_missing_fields_without_database_edit_flags(self):
+        @contextmanager
+        def connection():
+            yield (None, ScriptedCursor([]))
+
+        for product in ('sea_ref', 'sea_ldy'):
+            fields = services.get_field_missing_validation_columns(product)
+            request = SimpleNamespace(GET={'product_line': product, 'retailer': 'Lowes',
+                'date': '2026-09-22', 'field': fields[0]})
+            with self.subTest(product=product), patch.object(api, 'dx_connection', connection), \
+                    patch.object(api, '_columns_with_related', return_value=[
+                        {'column_name': field, 'related_columns': ''} for field in fields]), \
+                    patch.object(api, 'get_editable_columns', return_value=[]), \
+                    patch.object(services, 'field_missing_detail_by_field', return_value={'data': []}) as detail:
+                result = api.field_missing_detail_by_field(request)
+            self.assertEqual(fields, detail.call_args.args[9])
+            self.assertEqual('2026-09-21', result['source_date'])
+
     def test_api_keeps_inspection_date_and_passes_source_date_to_queries(self):
         inspection_date, source_date, contract = api._resolve_request_dates(
             '2026-09-01', 'tv'

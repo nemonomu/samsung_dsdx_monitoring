@@ -8,7 +8,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
-from apps.common.sea_retail import SEA_RETAIL_SOURCES
+from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_field_missing_editable_columns
 from apps.common.seda_retail import (
     SEDA_SOURCE_CONFIG, get_seda_product_line, get_seda_crossfield_editable_columns,
 )
@@ -446,6 +446,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         )
     else:
         editable_cols = get_editable_columns(product_line, retailer)
+    if sea_context and correction_type == 'field_missing':
+        editable_cols = list(dict.fromkeys(
+            editable_cols + get_sea_field_missing_editable_columns(product_line, retailer)
+        ))
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 

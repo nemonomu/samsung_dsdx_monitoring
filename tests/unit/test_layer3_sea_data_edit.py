@@ -51,6 +51,47 @@ class FakeConnection:
 class SeaLayer3DataEditTests(unittest.TestCase):
     table_name = 'public.ref_retail_com'
 
+    def test_field_missing_defaults_allow_ref_and_ldy_source_fields_and_audit(self):
+        for product in ('sea_ref', 'sea_ldy'):
+            table = sea_retail.get_sea_retail_source(product)['table_name']
+            for retailer in ('Bestbuy', 'Lowes'):
+                for field in sea_retail.get_sea_field_missing_editable_columns(product, retailer):
+                    with self.subTest(product=product, retailer=retailer, field=field):
+                        cursor = ScriptedCursor([{'fetchone': (None, None, retailer, 'fixture-item')}, {}, {}])
+                        conn = FakeConnection()
+                        result = services.update_cell_value(cursor, conn, table, 31, field,
+                            'corrected', '2026-09-22', 'field_missing', 'tester', 'site checked')
+                        self.assertTrue(result['success'])
+                        self.assertEqual((31, '2026-09-21', '2026-09-21'), cursor.calls[0][1])
+                        self.assertIn('UPDATE ' + table, cursor.calls[1][0])
+                        self.assertEqual('field_missing', cursor.calls[2][1][1])
+                        self.assertEqual('2026-09-22', cursor.calls[2][1][7])
+                        self.assertEqual(1, conn.commits)
+
+    def test_field_missing_defaults_do_not_enable_other_fields_retailers_or_crossfield(self):
+        for field, retailer, correction_type in [
+            ('batch_id', 'Lowes', 'field_missing'),
+            ('ref_capacity', 'Unknown', 'field_missing'),
+            ('ref_capacity', 'Lowes', 'cross_field'),
+            ('ldy_capacity', 'Lowes', 'field_missing'),
+        ]:
+            with self.subTest(field=field, retailer=retailer, correction_type=correction_type):
+                cursor = ScriptedCursor([{'fetchone': (None, None, retailer, 'fixture-item')}])
+                conn = FakeConnection()
+                result = services.update_cell_value(cursor, conn, self.table_name, 31, field,
+                    'changed', '2026-09-22', correction_type, 'tester', None)
+                self.assertEqual(403, result['status'])
+                self.assertEqual(0, conn.commits)
+                self.assertFalse(any('UPDATE ' in sql for sql, _ in cursor.calls))
+
+    def test_field_missing_cannot_update_a_record_outside_current_source_scope(self):
+        cursor = ScriptedCursor([{'fetchone': None}])
+        conn = FakeConnection()
+        result = services.update_cell_value(cursor, conn, self.table_name, 31, 'sku',
+            'changed', '2026-09-22', 'field_missing', 'tester', None)
+        self.assertEqual(404, result['status'])
+        self.assertEqual(0, conn.commits)
+
     def test_sea_ref_and_ldy_are_exactly_allowlisted(self):
         self.assertIn('public.ref_retail_com', services.VALID_TABLES_UPDATE)
         self.assertIn('public.ldy_retail_com', services.VALID_TABLES_UPDATE)

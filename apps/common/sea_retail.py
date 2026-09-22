@@ -81,3 +81,18 @@ def get_sea_retail_source(value):
     if product_key is None:
         raise ValueError(f'허용되지 않은 SEA 제품군: {value}')
     return SEA_RETAIL_SOURCES[product_key]
+
+
+def get_sea_field_missing_editable_columns(product_line, retailer):
+    """Explicit edit defaults for the SEA REF/LDY field-missing workflow only."""
+    key = _SEA_SOURCE_ALIASES.get(str(product_line or '').strip().lower())
+    fields = {
+        'ref': ('ref_capacity', 'ref_refrigerator_type', 'sku', 'recommendation_intent'),
+        'ldy': ('ldy_capacity', 'ldy_loading_type', 'sku'),
+    }
+    if key not in fields:
+        return []
+    retailer_key = str(retailer or '').strip().lower()
+    if retailer_key not in {name.lower() for name in SEA_RETAIL_SOURCES[key]['retailers']}:
+        return []
+    return list(fields[key])

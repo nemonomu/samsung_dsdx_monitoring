@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from datetime import datetime
 from apps.common.db import dx_connection
 from apps.common.retail_columns import get_editable_columns
+from apps.common.sea_retail import get_sea_field_missing_editable_columns
 from apps.common.response import safe_error, log_error
 from . import services
 from .services import get_field_missing_excluded_columns
@@ -250,6 +251,9 @@ def field_missing_detail_by_field(request):
         return JsonResponse({'status': 'error', 'message': '허용되지 않은 필드'})
 
     editable_cols = get_editable_columns(product_line, retailer)
+    editable_cols = list(dict.fromkeys(
+        editable_cols + get_sea_field_missing_editable_columns(product_line, retailer)
+    ))
 
     try:
         with dx_connection() as (conn, cursor):
