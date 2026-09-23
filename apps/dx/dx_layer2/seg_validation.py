@@ -3,6 +3,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 import re
+from apps.common import seg_tv_format
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import uses_new_policy
@@ -207,7 +208,7 @@ def evaluate_format_row(row, product_line, retailer):
     """Return SEG format errors for populated fields only."""
     fields = set(get_seg_format_columns(product_line, retailer))
     retailer_key = str(retailer or '').strip().casefold()
-    errors = {}
+    errors = seg_tv_format.evaluate(row, get_seg_product_line(product_line), retailer)
 
     def check_pattern(field, pattern, reason, allowed=()):
         value = row.get(field)
@@ -220,6 +221,7 @@ def evaluate_format_row(row, product_line, retailer):
     discount_type = row.get('discount_type')
     if (
         'discount_type' in fields
+        and retailer_key == 'amazon'
         and not _missing(discount_type)
         and str(discount_type).strip() not in _AMAZON_DISCOUNT_TYPE_VALUES
         and not _AMAZON_DISCOUNT_COUNTDOWN_PATTERN.fullmatch(str(discount_type).strip())
@@ -415,11 +417,14 @@ _FORMAT_RULE_DETAILS = {
 
 
 def get_format_rule_details(product_line, retailer):
+    text_rules = seg_tv_format.rule_details(get_seg_product_line(product_line), retailer)
+    text_fields = {rule['field'] for rule in text_rules}
     rules = [
         dict(_FORMAT_RULE_DETAILS[field])
         for field in get_seg_format_columns(product_line, retailer)
-        if field in _FORMAT_RULE_DETAILS
+        if field in _FORMAT_RULE_DETAILS and field not in text_fields
     ]
+    rules.extend(text_rules)
     retailer_key = str(retailer or '').strip().casefold()
     if retailer_key == 'amazon':
         for rule in rules:

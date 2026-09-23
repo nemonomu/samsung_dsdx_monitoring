@@ -223,7 +223,7 @@ class SegDuplicateValidationTests(unittest.TestCase):
 
 
 class SegFormatValidationTests(unittest.TestCase):
-    def test_discount_type_allowlist_is_amazon_only_and_skips_missing_values(self):
+    def test_discount_type_allowlist_is_retailer_scoped_and_skips_missing_values(self):
         for product_line in ('seg_tv', 'seg_ref', 'seg_ldy'):
             for value, valid in (
                 ('Limited Time Offer', True), ('Hot deal', True),
@@ -240,12 +240,12 @@ class SegFormatValidationTests(unittest.TestCase):
                     self.assertEqual(not valid, 'discount_type' in errors)
             for retailer in ('Mediamarkt', 'OTTO'):
                 with self.subTest(product_line=product_line, retailer=retailer):
-                    self.assertNotIn(
-                        'discount_type', get_seg_format_columns(product_line, retailer)
-                    )
-                    self.assertEqual({}, seg_validation.evaluate_format_row(
+                    self.assertEqual(product_line == 'seg_tv',
+                        'discount_type' in get_seg_format_columns(product_line, retailer))
+                    errors = seg_validation.evaluate_format_row(
                         {'discount_type': 'Special Price'}, product_line, retailer
-                    ))
+                    )
+                    self.assertEqual(product_line == 'seg_tv', 'discount_type' in errors)
             self.assertNotIn('discount_type', get_seg_null_columns(product_line, 'Amazon'))
             rule = next(
                 rule for rule in seg_validation.get_format_rule_details(product_line, 'Amazon')
@@ -262,6 +262,9 @@ class SegFormatValidationTests(unittest.TestCase):
             {'id': 3, 'discount_type': 'Lightning Deal'},
             {'id': 4, 'discount_type': None},
         ], {'inspection_date': '2026-09-15', 'source_date': '2026-09-15'})
+        amazon_result = latest_rows.return_value
+        latest_rows.side_effect = lambda _cursor, _day, _source, retailer: (
+            amazon_result if retailer == 'Amazon' else ([], amazon_result[1]))
         validation = {'tables': []}
         total = seg_validation.append_format_stats(None, date(2026, 9, 15), validation)
         self.assertEqual(2, total)
@@ -494,14 +497,14 @@ class SegFormatValidationTests(unittest.TestCase):
 
 
 class SegLayer2DataEditTests(unittest.TestCase):
-    def test_discount_type_can_only_be_edited_as_amazon_format_field(self):
+    def test_discount_type_edits_follow_retailer_and_product_format_scope(self):
         for product_line in ('seg_tv', 'seg_ref'):
             table = seg_validation.SEG_SOURCE_CONFIG[product_line]['table_name']
             for retailer, validation_type, allowed in (
                 ('Amazon', 'format', True),
                 ('Amazon', 'null', False),
-                ('Mediamarkt', 'format', False),
-                ('OTTO', 'format', False),
+                ('Mediamarkt', 'format', product_line == 'seg_tv'),
+                ('OTTO', 'format', product_line == 'seg_tv'),
             ):
                 with self.subTest(product_line=product_line, retailer=retailer,
                                   validation_type=validation_type):
@@ -509,14 +512,15 @@ class SegLayer2DataEditTests(unittest.TestCase):
                         {'fetchone': ('Lightning Deal', retailer, 'item-1', 'batch-1')},
                         {}, {},
                     ])
+                    new_value = {'Mediamarkt': 'Our own brand', 'OTTO': 'Deal & Win'}.get(retailer, 'Hot deal')
                     result = data_edit_services.update_cell_value(
-                        cursor, Mock(), table, 11, 'discount_type', 'Hot deal',
+                        cursor, Mock(), table, 11, 'discount_type', new_value,
                         date(2026, 9, 15), validation_type, 'tester', 'fixed',
                     )
                     if allowed:
                         self.assertTrue(result['success'])
                         self.assertIn('SET discount_type = %s', cursor.calls[1][0])
-                        self.assertEqual(('Hot deal', 11), cursor.calls[1][1])
+                        self.assertEqual((new_value, 11), cursor.calls[1][1])
                         self.assertEqual('format_check', cursor.calls[2][1][1])
                     else:
                         self.assertEqual(403, result['status'])

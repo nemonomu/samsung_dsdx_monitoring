@@ -1,6 +1,7 @@
 """SEG retail monitoring source definitions and Layer 2 allowlists."""
 
 from datetime import time
+from apps.common.seg_tv_format import get_rules as get_tv_text_rules
 
 SEG_COUNTRY = 'SEG'
 SEG_CHECK_TYPE = 'seg_retail'
@@ -224,6 +225,7 @@ def get_seg_format_columns(product_line, retailer=None):
     if not product_key:
         return ()
     columns = SEG_FORMAT_COMMON_COLUMNS + SEG_FORMAT_PRODUCT_COLUMNS[product_key]
+    columns += tuple(get_tv_text_rules(product_key, retailer))
     if retailer is None or str(retailer).strip().casefold() == 'amazon':
         columns += ('discount_type',)
     return tuple(dict.fromkeys(columns))
