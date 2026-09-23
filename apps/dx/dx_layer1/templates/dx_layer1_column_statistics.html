@@ -22,7 +22,7 @@
         </section>
         {% include 'includes/_column_comparison_policy.html' %}
         <p class="cs-footnote">메일의 수집 대상·배치 기준을 사용합니다. NULL·빈 문자열·공백을 제외하고 숫자 0과 false는 수집값에 포함합니다. 최신 배치를 구분하는 대상은 날짜별 최신 배치로 집계하며 조회 결과는 최대 5분간 재사용합니다.</p>
-        <p id="ccs-sku-note" class="cs-footnote" hidden>SEA TV의 SKU는 수집 테이블에 없어 메일과 동일하게 현재 상품 마스터와 연결하여 집계합니다. 과거 시점의 SKU 보유 여부를 복원한 값은 아닙니다.</p>
+        <p id="ccs-sku-note" class="cs-footnote" hidden>SEA TV의 sku는 <a href="/dx/data/item-master/">데이터 관리 · 아이템 마스터</a>를 기준으로 집계합니다. 수집일별 item과 리테일러를 연결해 sku가 있는 건수를 표시하며, 마스터는 현재 저장된 값을 사용합니다.</p>
     </div>
 </section>
 {{ column_catalog|json_script:'ccs-catalog' }}
