@@ -16,9 +16,9 @@ BEGIN
              'Lowes REF discount phrases including Buy More and Buy N And Get N',
              'discount_type은 허용된 Lowes 할인 문구여야 하며 금액과 수량은 양의 정수, 할인율은 1~100 정수여야 합니다.'),
             ('pick_up_availability', 'SEA_APPLIANCE_LOWES_REF_PICKUP',
-             $pattern$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$pattern$,
-             'Lowes REF pickup date, Pickup Ready Today or Pickup Ready Tomorrow',
-             'pick_up_availability는 Pickup Ready by 요일, 월 일, Pickup Ready Today 또는 Pickup Ready Tomorrow 형식이어야 합니다.')
+             $pattern$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])( \(Est\.\))?)$$pattern$,
+             'Lowes REF pickup date with optional (Est.), Pickup Ready Today or Pickup Ready Tomorrow',
+             'pick_up_availability는 Pickup Ready Today, Pickup Ready Tomorrow 또는 Pickup Ready by 요일, 월 일 형식이며 날짜 뒤 (Est.)는 선택적으로 허용합니다.')
         ) AS seed(column_name, template_name, pattern, description, error_message)
     LOOP
         SELECT id INTO STRICT target_rule_id

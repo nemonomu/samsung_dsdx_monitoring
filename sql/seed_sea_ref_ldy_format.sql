@@ -48,8 +48,8 @@ WITH seed (name, description, check_type, pattern) AS (
          'Lowes available quantity: non-negative integer, digits only', 'regex',
          $quantity$^[0-9]+$$quantity$),
         ('SEA_APPLIANCE_LOWES_PICKUP',
-         'Lowes pickup date or Pickup Ready Today', 'regex',
-         $lowespickup$^Pickup Ready (Today|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$lowespickup$),
+         'Lowes pickup date with optional (Est.) or Pickup Ready Today', 'regex',
+         $lowespickup$^Pickup Ready (Today|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])( \(Est\.\))?)$$lowespickup$),
         ('SEA_APPLIANCE_LOWES_DELIVERY',
          'Lowes delivery or shipping date, or free installation', 'regex',
          $lowesdelivery$^((Delivery|Shipping) (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])|Delivery Tomorrow|Delivery w/FREE Installation)$$lowesdelivery$),
@@ -60,14 +60,14 @@ WITH seed (name, description, check_type, pattern) AS (
          'Lowes discount phrases with positive integer amounts and quantities', 'regex',
          $lowesdiscount$^(Exclusive Appliance Bundle|Unlock Member Deal|Get [$][1-9][0-9]* Off In Cart On Purchase Of [1-9][0-9]* Items|[$][1-9][0-9]* Instant Savings|Buy [1-9][0-9]*[+] Get ([1-9][0-9]?|100)% Off)$$lowesdiscount$),
         ('SEA_APPLIANCE_LOWES_REF_PICKUP',
-         'Lowes REF pickup date, Pickup Ready Today or Pickup Ready Tomorrow', 'regex',
-         $refpickup$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$refpickup$),
+         'Lowes REF pickup date with optional (Est.), Pickup Ready Today or Pickup Ready Tomorrow', 'regex',
+         $refpickup$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])( \(Est\.\))?)$$refpickup$),
         ('SEA_APPLIANCE_LOWES_REF_DISCOUNT',
          'Lowes REF discount phrases including Buy More and Buy N And Get N', 'regex',
          $refdiscount$^(Exclusive Appliance Bundle|Unlock Member Deal|Get [$][1-9][0-9]* Off In Cart On Purchase Of [1-9][0-9]* Items|[$][1-9][0-9]* Instant Savings|Buy [1-9][0-9]*[+] Get ([1-9][0-9]?|100)% Off|Buy More, Save More|Buy [1-9][0-9]* And Get [1-9][0-9]*)$$refdiscount$),
         ('SEA_APPLIANCE_LOWES_LDY_PICKUP',
-         'Lowes LDY pickup date, Pickup Ready Today or Pickup Ready Tomorrow', 'regex',
-         $ldypickup$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01]))$$ldypickup$),
+         'Lowes LDY pickup date with optional (Est.), Pickup Ready Today or Pickup Ready Tomorrow', 'regex',
+         $ldypickup$^Pickup Ready (Today|Tomorrow|by (Mon|Tue|Wed|Thu|Fri|Sat|Sun), (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([1-9]|[12][0-9]|3[01])( \(Est\.\))?)$$ldypickup$),
         ('SEA_APPLIANCE_LOWES_LDY_DISCOUNT',
          'Lowes LDY discount phrases including Buy More and Buy N And Get N', 'regex',
          $ldydiscount$^(Exclusive Appliance Bundle|Unlock Member Deal|Get [$][1-9][0-9]* Off In Cart On Purchase Of [1-9][0-9]* Items|[$][1-9][0-9]* Instant Savings|Buy [1-9][0-9]*[+] Get ([1-9][0-9]?|100)% Off|Buy More, Save More|Buy [1-9][0-9]* And Get [1-9][0-9]*)$$ldydiscount$),
@@ -298,14 +298,14 @@ WITH products (
         NULL::text AS extra_allowed,
         CASE
             WHEN rule.column_name = 'pick_up_availability'
-                THEN 'pick_up_availability는 Pickup Ready by 요일, 월 일, Pickup Ready Today 또는 Pickup Ready Tomorrow 형식이어야 합니다.'
+                THEN 'pick_up_availability는 Pickup Ready Today, Pickup Ready Tomorrow 또는 Pickup Ready by 요일, 월 일 형식이며 날짜 뒤 (Est.)는 선택적으로 허용합니다.'
             ELSE rule.error_message
         END AS error_message
     FROM products product
     CROSS JOIN LATERAL (
         VALUES
             ('pick_up_availability', 'SEA_APPLIANCE_LOWES_PICKUP', NULL,
-             'pick_up_availability는 Pickup Ready by 요일, 월 일 또는 Pickup Ready Today 형식이어야 합니다.'),
+             'pick_up_availability는 Pickup Ready by 요일, 월 일 또는 Pickup Ready Today 형식이며 날짜 뒤 (Est.)는 선택적으로 허용합니다.'),
             ('delivery_availability', 'SEA_APPLIANCE_LOWES_DELIVERY', NULL,
              'delivery_availability는 Delivery/Shipping 요일, 월 일, Delivery Tomorrow 또는 Delivery w/FREE Installation 형식이어야 합니다.'),
             ('recommendation_intent', 'SEA_APPLIANCE_LOWES_RECOMMENDATION', NULL,

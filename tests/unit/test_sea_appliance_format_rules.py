@@ -209,13 +209,31 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
                 self.assertIn(f"product.table_name = '{table}' AND rule.column_name = '{field}'", seed)
             self.assertIn(f"WHERE table_name = '{table}' AND account_name = 'Lowes'", migration)
 
+    def test_pickup_est_migration_matches_seed_and_targets_only_lowes_pickup(self):
+        root = Path(__file__).resolve().parents[2]
+        migration = (root / 'sql/update_lowes_pickup_est.sql').read_text(encoding='utf-8')
+        pattern, = re.findall(r'\$pattern\$(.*?)\$pattern\$', migration, re.S)
+        for table in ('ref_retail_com', 'ldy_retail_com'):
+            rule, = [r for r in self.rules if r['table_name'] == table
+                     and r['account_name'] == 'Lowes' and r['column_name'] == 'pick_up_availability']
+            self.assertEqual(rule['pattern'], pattern)
+        self.assertIn("r.account_name = 'Lowes'", migration)
+        self.assertIn("r.column_name = 'pick_up_availability'", migration)
+        self.assertIn('INTO STRICT', migration)
+        self.assertNotIn('discount_type', migration)
+
     def test_lowes_text_and_quantity_values(self):
         cases = {
             'pick_up_availability': (
-                ('Pickup Ready Today', 'Pickup Ready by Tue, Sep 22', 'Pickup Ready by Wed, Oct 1'),
+                ('Pickup Ready Today', 'Pickup Ready by Tue, Sep 22', 'Pickup Ready by Wed, Oct 1',
+                 'Pickup Ready by Wed, Oct 7 (Est.)', 'Pickup Ready by Tue, Sep 29 (Est.)'),
                 ('Pick up today', 'Pick up tomorrow', 'Pickup Ready today', 'Pickup Ready by Tue, Sep 0',
                  'Pickup Ready by Tue, Sep 32', 'Pickup Ready by Tue, 9 22',
-                 'Pickup Ready by XXX, Sep 22', 'Pickup Ready Today extra'),
+                 'Pickup Ready by XXX, Sep 22', 'Pickup Ready Today extra',
+                 'Pickup Ready Today (Est.)', 'Pickup Ready Tomorrow (Est.)',
+                 'Pickup Ready by Wed, Oct 7 (Est)', 'Pickup Ready by Wed, Oct 7 (EstX)',
+                 'Pickup Ready by Wed, Oct 7 (Est.) extra', 'Pickup Ready by Wed, Oct 32 (Est.)',
+                 'Pickup Ready by Wed, Oct 7 (Est.) (Est.)', 'Pickup Wed, Oct 7 (Est.)'),
             ),
             'delivery_availability': (
                 ('Delivery Sat, Sep 19', 'Shipping Mon, Sep 21', 'Delivery w/FREE Installation',
