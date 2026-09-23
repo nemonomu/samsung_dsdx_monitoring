@@ -58,10 +58,16 @@ class ColumnStatisticsTests(unittest.TestCase):
         self.assertIn('source.star_rating IS NULL', sql)
         self.assertNotIn('latest AS', sql)
 
-    def test_sea_tv_sku_uses_exists_so_master_duplicates_do_not_inflate_counts(self):
+    def test_sea_tv_sku_uses_uncorrelated_membership_without_joining_master_rows(self):
         source = services.select_source('SEA', 'TV', 'Amazon')
         sql, _ = services.query_spec(source, source['retailers'][0], ['sku'], date(2026, 9, 20), date(2026, 9, 23))
-        self.assertIn('EXISTS (SELECT 1 FROM public.tv_item_mst', sql)
+        self.assertIn('sku_keys AS MATERIALIZED', sql)
+        self.assertIn('FROM public.tv_item_mst WHERE sku IS NOT NULL', sql)
+        self.assertIn('CASE WHEN source.item IS NULL', sql)
+        self.assertIn('(SELECT account_name FROM sku_keys WHERE item IS NULL)', sql)
+        self.assertIn('(SELECT item, account_name FROM sku_keys WHERE item IS NOT NULL)', sql)
+        self.assertNotIn('JOIN sku_keys', sql)
+        self.assertNotIn('EXISTS (SELECT 1 FROM public.tv_item_mst', sql)
         self.assertIn('source.redirect, FALSE) IS NOT TRUE', sql)
 
     def test_missing_days_are_zero_totals_and_collected_zero_is_retained(self):

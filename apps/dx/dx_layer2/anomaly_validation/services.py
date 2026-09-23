@@ -187,8 +187,10 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
         'sku', 'retailer_sku_name', 'final_sku_price', date_column,
         'product_url',
     ]
+    # Keep the one-row anchor out of the per-product nested loop. Inlining it
+    # made PostgreSQL repeat the same latest-batch scan hundreds of times.
     cursor.execute(f"""
-        WITH latest_batch AS (
+        WITH latest_batch AS MATERIALIZED (
             SELECT source.batch_id
             FROM {canonical_table} source
             WHERE {date_sql} = %s

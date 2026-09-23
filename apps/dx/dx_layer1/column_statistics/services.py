@@ -6,7 +6,6 @@ from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
-    _sea_tv_master_sku_present,
 )
 
 FIRST_COLUMNS = (
@@ -59,6 +58,14 @@ def query_spec(source, retailer, columns, start, end):
         clauses.append(f"({day}) >= '2026-09-20'")
     main_scope = source['has_page_type'] and source['collection_scope'] == 'main' and not home_depot
     ctes = [f"scoped AS (SELECT source.*, ({day}) AS stats_day FROM {source['table_name']} source WHERE {' AND '.join(clauses)})"]
+    master_sku = source['key'] == 'sea_tv' and 'sku' in columns
+    if master_sku:
+        # Uncorrelated membership subqueries can be hashed once. A correlated
+        # EXISTS in the aggregate rescans the master for every collected row.
+        ctes.append("sku_keys AS MATERIALIZED (SELECT item, "
+                    "LOWER(BTRIM(CAST(account_name AS TEXT))) AS account_name "
+                    "FROM public.tv_item_mst WHERE sku IS NOT NULL "
+                    "AND BTRIM(CAST(sku AS TEXT)) <> '')")
     join = ''
     if source['latest_batch']:
         anchor = _retailer_condition(source, retailer, include_unassigned=False)
@@ -69,8 +76,15 @@ def query_spec(source, retailer, columns, start, end):
         join = f" JOIN latest ON latest.stats_day = source.stats_day AND source.{source['batch_column']} IS NOT DISTINCT FROM latest.chosen_batch"
     expressions = []
     for column in columns:
-        present = (_sea_tv_master_sku_present() if source['key'] == 'sea_tv' and column == 'sku'
-                   else _present(column))
+        present = _present(column)
+        if master_sku and column == 'sku':
+            account = 'LOWER(BTRIM(CAST(source.account_name AS TEXT)))'
+            # Preserve IS NOT DISTINCT FROM item semantics, including NULL item,
+            # and ordinary equality for accounts. IN never multiplies rows.
+            present = (f"CASE WHEN source.item IS NULL THEN {account} IN "
+                       "(SELECT account_name FROM sku_keys WHERE item IS NULL) "
+                       f"ELSE (source.item, {account}) IN "
+                       "(SELECT item, account_name FROM sku_keys WHERE item IS NOT NULL) END")
         expressions.append(f'COUNT(*) FILTER (WHERE {present}) AS "{column}"')
     where = " WHERE LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')" if main_scope else ''
     sql = (f"WITH {', '.join(ctes)} SELECT source.stats_day, COUNT(*) AS total, "

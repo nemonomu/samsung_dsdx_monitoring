@@ -227,6 +227,19 @@ class SEADuplicateValidationTests(unittest.TestCase):
             common_stubs(),
         )
 
+    def test_latest_batch_is_computed_once_for_each_retailer(self):
+        for product in ('ref', 'ldy'):
+            for retailer in ('Bestbuy', 'Lowes', 'HomeDepot'):
+                with self.subTest(product=product, retailer=retailer):
+                    cursor = ScriptedCursor([{'fetchall': []}])
+                    self.service._fetch_sea_duplicate_rows(
+                        cursor, date(2026, 9, 22),
+                        self.service.SEA_RETAIL_SOURCES[product], retailer)
+                    sql, params = cursor.calls[0]
+                    self.assertIn('WITH latest_batch AS MATERIALIZED (', sql)
+                    self.assertEqual(('2026-09-22', retailer) * 2, params)
+                    self.assertIn('IS NOT DISTINCT FROM latest_batch.batch_id', sql)
+
     def test_dashboard_duplicate_counts_skip_unused_price_scan(self):
         cursor = ScriptedCursor([{'fetchone': (100,)}, {'fetchall': []}])
         with patch.object(self.service, 'get_duplicate_count', return_value={'Amazon': 2}), \
