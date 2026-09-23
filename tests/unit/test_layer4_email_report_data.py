@@ -253,7 +253,51 @@ class EmailRegistryTests(unittest.TestCase):
 
 
 class EmailReportDataTests(unittest.TestCase):
-    def test_required_amazon_columns_are_counted_without_active_config_rows(self):
+    def test_sea_homedepot_counts_collected_optional_fields_like_homepro(self):
+        for product, capacity, product_type in (
+                ('REF', 'ref_capacity', 'ref_refrigerator_type'),
+                ('LDY', 'ldy_capacity', 'ldy_loading_type')):
+            original = next(s for s in load_registry().EMAIL_REPORT_SOURCES
+                            if s['key'] == 'sea_' + product.lower())
+            retailer = next(r for r in original['retailers'] if r['name'] == 'HomeDepot')
+            base = (
+                'item', 'country', 'account_name', 'sku', 'retailer_sku_name',
+                'product_url', 'final_sku_price', 'star_rating',
+                'count_of_star_ratings', 'count_of_reviews', capacity,
+            )
+            extras = ('original_sku_price', 'savings', product_type)
+            for configured in (False, True):
+                with self.subTest(product=product, configured=configured):
+                    rows = [(c, 'HomeDepot', False) for c in base]
+                    if configured:
+                        rows.extend((c, 'HomeDepot', True) for c in extras)
+                    rows.extend((c, 'HomeDepot', True) for c in (
+                        'crawl_strdatetime', 'calendar_week', 'product',
+                    ))
+                    counts = [300]
+                    for index, _ in enumerate(base + extras):
+                        counts.extend((300, index))
+                    counts.extend((300, 100))
+                    cursor = ScriptedCursor([
+                        {'fetchall': rows},
+                        {'fetchone': ('hd-batch',)},
+                        {'fetchone': tuple(counts)},
+                    ])
+                    result = load_service(cursor).get_email_report_data(
+                        date(2026, 9, 22),
+                        sources=({**original, 'retailers': (retailer,)},),
+                    )
+                    self.assertTrue(result['complete'])
+                    metrics = result['sources'][0]['retailers'][0]['columns']
+                    self.assertEqual(list(base + extras), [m['column'] for m in metrics])
+                    self.assertEqual(14, len(metrics))
+                    for index, metric in enumerate(metrics):
+                        self.assertEqual((300, index),
+                                         (metric['total_count'], metric['null_count']))
+                    for field in extras:
+                        self.assertIn('source.' + field, cursor.calls[2][0])
+
+    def test_required_email_columns_are_counted_without_active_config_rows(self):
         for original in load_registry().EMAIL_REPORT_SOURCES:
             for retailer in original['retailers']:
                 required = retailer.get('email_required_columns', ())
@@ -274,8 +318,9 @@ class EmailReportDataTests(unittest.TestCase):
                         counts.extend((294, 100))
                         steps.extend(({'fetchone': tuple(counts)}, {'fetchone': (0,)}))
                         cursor = ScriptedCursor(steps)
+                        # Include SEA HomeDepot after its collection start date.
                         result = load_service(cursor).get_email_report_data(
-                            date(2026, 9, 10), sources=(configured_source,))
+                            date(2026, 9, 22), sources=(configured_source,))
                         self.assertTrue(result['complete'])
                         columns = result['sources'][0]['retailers'][0]['columns']
                         self.assertEqual(['item', *required], [c['column'] for c in columns])

@@ -16,6 +16,7 @@ LAYER_CONTEXT = {
 SECTION_TITLES = {
     'dashboard': '대시보드',
     'collection_statistics': '수집데이터 통계',
+    'column_statistics': '컬럼별 수집데이터 통계',
     'retail': 'SEA Retail',
     'seda_retail': 'SEDA Retail',
     'siel_retail': 'SIEL Retail',
@@ -106,6 +107,11 @@ def _build_sidebar_groups(section):
         'key': 'collection_statistics', 'icon': '📈', 'label': '수집데이터 통계',
         'href': '/dx/layer1/collection-statistics/', 'ignore_target_date': True,
         'active': section == 'collection_statistics',
+    })
+    groups.append({
+        'key': 'column_statistics', 'icon': '▦', 'label': '컬럼별 수집데이터 통계',
+        'href': '/dx/layer1/column-statistics/', 'ignore_target_date': True,
+        'active': section == 'column_statistics',
     })
     return groups
 

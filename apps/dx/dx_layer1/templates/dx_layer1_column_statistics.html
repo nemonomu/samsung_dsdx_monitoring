@@ -1,0 +1,29 @@
+{% extends 'base_layer1.html' %}
+{% load static %}
+{% block page_title %}컬럼별 수집데이터 통계{% endblock %}
+{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=1">{% endblock %}
+{% block layer1_content %}
+<section class="cs-page ccs-page" aria-label="컬럼별 수집데이터 통계">
+    <div class="cs-intro"><div><p class="cs-eyebrow">COLLECTED FIELDS</p><p>수집 항목별 실제 값이 있는 건수와 비율을 날짜별로 확인하세요.</p></div><span id="ccs-updated" class="cs-muted"></span></div>
+    <form id="ccs-filters" class="cs-filters">
+        <label>국가<select id="ccs-country" name="country" required></select></label>
+        <label>제품군<select id="ccs-product" name="product" required></select></label>
+        <label>리테일러<select id="ccs-retailer" name="retailer" required></select></label>
+        <label>기간<select id="ccs-days" name="days"><option value="5">최근 5일</option><option value="7" selected>최근 1주 (7일)</option><option value="14">최근 2주 (14일)</option><option value="28">최근 4주 (28일)</option><option value="49">최근 7주 (49일)</option></select></label>
+        <label>기준 데이터일<input id="ccs-date" name="date" type="date" required></label>
+        <button class="cs-primary" type="submit">조회</button>
+    </form>
+    <div id="ccs-message" role="status" aria-live="polite" class="cs-message">컬럼별 수집 건수를 불러오는 중입니다.</div>
+    <div id="ccs-results" hidden>
+        <section class="cs-card">
+            <div class="cs-card-heading"><div><h3>컬럼별 일별 수집 내역</h3><p id="ccs-selection" class="cs-muted"></p></div><span class="cs-tag">건수 · 수집 비율</span></div>
+            <div class="ccs-scroll" tabindex="0" role="region" aria-label="날짜별 수집 통계 표"><table class="ccs-table"><thead id="ccs-head"></thead><tbody id="ccs-body"></tbody></table></div>
+        </section>
+        <p class="cs-footnote">수집 비율 = 값이 있는 건수 ÷ 실제 수집 데이터 건수. NULL·빈 문자열·공백은 제외하며 숫자 0과 false는 수집값으로 포함합니다. 형식 오류 여부는 별도 검수에서 확인합니다.</p>
+        <p class="cs-footnote">메일의 리테일러별 수집 대상과 배치 기준을 사용합니다. 재수집 배치를 구분하는 대상은 날짜별 최신 배치 기준이며, 필수 여부와 관계없이 실제 값이 있으면 집계합니다. 오늘 수치는 수집 진행에 따라 바뀔 수 있고 조회 결과는 최대 5분간 재사용합니다.</p>
+        <p id="ccs-sku-note" class="cs-footnote" hidden>SEA TV의 SKU는 수집 테이블에 없어 메일과 동일하게 현재 상품 마스터와 연결하여 집계합니다. 과거 시점의 SKU 보유 여부를 복원한 값은 아닙니다.</p>
+    </div>
+</section>
+{{ column_catalog|json_script:'ccs-catalog' }}
+{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=1"></script>{% endblock %}

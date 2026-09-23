@@ -99,11 +99,24 @@ _SEA_TV_RETAILERS = (
         email_required_columns=('sku', 'offer', 'retailer_sku_name_similar'),
     ),
 )
-_SEA_APPLIANCE_RETAILERS = (
-    _retailer('Bestbuy', 'BestBuy'),
-    _retailer('Lowes', "Lowe's", 'Lowe’s'),
-    _retailer('HomeDepot', optional_if_unconfigured=True),
-)
+
+
+def _sea_appliance_retailers(product):
+    # These collected fields remain optional in shared Layer 1-3 checks,
+    # but the email must report their actual counts, as it does for Homepro.
+    home_depot_email_fields = (
+        'original_sku_price', 'savings',
+        'ref_refrigerator_type' if product == 'REF' else 'ldy_loading_type',
+    )
+    return (
+        _retailer('Bestbuy', 'BestBuy'),
+        _retailer('Lowes', "Lowe's", 'Lowe’s'),
+        _retailer('HomeDepot', optional_if_unconfigured=True,
+                  email_include_skipped_columns=home_depot_email_fields,
+                  email_required_columns=home_depot_email_fields),
+    )
+
+
 _SEDA_RETAILERS = (
     _retailer('Magalu'),
     _retailer('Casas Bahia', 'CasasBahia', 'casasbahia'),
@@ -178,11 +191,11 @@ EMAIL_REPORT_SOURCES = (
     ),
     _source(
         'sea_ref', 'SEA', 'REF', 'public.ref_retail_com', 'crawl_strdatetime',
-        'text', _SEA_APPLIANCE_RETAILERS,
+        'text', _sea_appliance_retailers('REF'),
     ),
     _source(
         'sea_ldy', 'SEA', 'LDY', 'public.ldy_retail_com', 'crawl_strdatetime',
-        'text', _SEA_APPLIANCE_RETAILERS,
+        'text', _sea_appliance_retailers('LDY'),
     ),
     *(
         _source(

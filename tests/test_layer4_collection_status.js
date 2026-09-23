@@ -677,6 +677,40 @@ async function run() {
         assert(redirectRow[1].includes('Amazon redirect=TRUE 건수'));
     });
 
+    for (const [product, productType] of [
+        ['REF', 'ref_refrigerator_type'], ['LDY', 'ldy_loading_type']
+    ]) {
+        const fields = ['original_sku_price', 'savings', productType];
+        const report = {
+            ...emailReportData,
+            sources: [{
+                ...emailReportData.sources[0],
+                key: 'sea_' + product.toLowerCase(), product,
+                column_order: fields,
+                retailers: [{
+                    retailer: 'HomeDepot', total_count: 300, main_count: 300, bsr_count: 100,
+                    columns: fields.map((column, index) => ({
+                        column, total_count: 300, null_count: index * 3
+                    }))
+                }]
+            }]
+        };
+        const page = loadPage('?focus=' + encodeURIComponent('이메일 보고'),
+            layer1Data, { success: true, retailers: [] }, report);
+        page.L4._sectionHandler.collection_status();
+        await flushPromises();
+        const html = page.elements['cs-email-container'].innerHTML;
+        fields.forEach((field, index) => {
+            const row = html.match(new RegExp(
+                '<tr><td[^>]*>' + field + '</td>([\\s\\S]*?)</tr>'
+            ));
+            assert(row);
+            assert(row[1].includes('<td align="center">300</td><td align="center">'
+                + index * 3 + '</td>'));
+            assert(!row[1].includes('>-</td>'));
+        });
+    }
+
     const lotussEmailData = JSON.parse(JSON.stringify(emailReportData));
     const lotussLdy = lotussEmailData.sources.find(source => source.key === 'tse_ldy');
     lotussLdy.total_count = 326;
