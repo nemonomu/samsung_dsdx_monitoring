@@ -1841,19 +1841,6 @@ def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None)
             })
             tv_dup_total += dup_count
 
-        # TV Retail 가격 이상
-        cursor.execute(f"""
-            SELECT COUNT(*) FROM tv_retail_com
-            WHERE DATE(crawl_datetime::timestamp) = %s
-            AND {get_tv_validation_condition()}
-            AND final_sku_price ~ '^\\$[\\d,]+\\.?\\d*$'
-            AND (
-                CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) < 0
-                OR CAST(REPLACE(REPLACE(final_sku_price, '$', ''), ',', '') AS DECIMAL) > 50000
-            )
-        """, (target_date,))
-        tv_price_anomaly = cursor.fetchone()[0] or 0
-
         anomaly_validation['tables'].append({
             'table': 'tv_retail',
             'table_name': 'TV Retail',

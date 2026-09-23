@@ -148,6 +148,20 @@ var L1 = (function() {
 // Sidebar subitem click
 // ============================================================
 function onSubitemClick(groupKey, itemName) {
+    const countryChecks = {
+        'SEDA Retail': 'seda_retail', 'SIEL Retail': 'siel_retail',
+        'SEM Retail': 'sem_retail', 'SEG Retail': 'seg_retail', 'TSE Retail': 'tse_retail',
+    };
+    const checkType = countryChecks[itemName];
+    if (checkType && window.LAYER1.section === 'dashboard' && currentStatsData) {
+        const index = currentStatsData.checks.findIndex(check => check.check_type === checkType);
+        const element = document.querySelector(`.check-item[data-check-type="${checkType}"]`);
+        if (index >= 0 && element) {
+            L1.retailStatus.open(element, index);
+            element.scrollIntoView({behavior: 'smooth', block: 'start'});
+            return;
+        }
+    }
     var urls = {
         'SEA Retail': '/dx/layer1/retail/',
         'Retail': '/dx/layer1/retail/',
@@ -176,8 +190,7 @@ function onSubitemClick(groupKey, itemName) {
         '가계부문 금융부채': 'macro_household_debt',
         '소매 가격 지수': 'macro_rpi',
     };
-    var date = document.getElementById('target-date') ?
-               document.getElementById('target-date').value : '';
+    var date = filterBar ? getSelectedDate() : '';
     var url = urls[itemName];
     if (url) {
         window.location.href = url + (date ? '?date=' + date : '');

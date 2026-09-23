@@ -264,7 +264,7 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
-    assert(baseSource.includes("layer1-common.js' %}?v=20260923-column-alerts"));
+    assert(baseSource.includes("layer1-common.js' %}?v=20260923-page-loading"));
     assert(baseSource.includes("collection-volume.js' %}?v=4-current-bsr"));
     assert(baseSource.includes("retail-status.js' %}?v=20260923-missing"));
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));

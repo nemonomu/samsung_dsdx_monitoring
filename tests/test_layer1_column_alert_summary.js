@@ -25,13 +25,14 @@ function setup(section = 'dashboard') {
     nodes.get('l1-column-alert-catalog').textContent = JSON.stringify([{country:'SEA',product:'TV',retailers:['Amazon','Bestbuy','Walmart']}]);
     const menu = new Element(), pending = [], events = {};
     const sandbox = {
-        console, URLSearchParams, AbortController, Intl, Date, LAYER1:{section},
+        console, URLSearchParams, AbortController, Intl, Date, structuredClone, LAYER1:{section},
         document:{getElementById:id => nodes.get(id) || null, querySelector:() => menu, createElement:() => new Element(), addEventListener:(k,fn) => {events[k] = fn;}},
         fetch:(url,options) => new Promise(resolve => pending.push({url,options,resolve})),
     };
     sandbox.window = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(read('static/js/sidebar.js'), sandbox);
+    vm.runInContext(read(path + 'column-alert-cache.js'), sandbox);
     vm.runInContext(read(path + 'column-alert-summary.js'), sandbox);
     const respond = (req, statuses, ok = true) => req.resolve({ok,json:async () => ({comparisons:statuses.map(status => ({status}))})});
     return {sandbox,nodes,menu,pending,respond,events,badge:() => menu.querySelector('.sidebar-issue-badge')};

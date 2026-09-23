@@ -70,7 +70,7 @@
         const button = event.target.closest('[data-page]');
         if (button && !button.disabled) {page = Number(button.dataset.page); render();}
     });
-    async function load() {
+    async function load(force = false) {
         if (!form.reportValidity()) return;
         if (controller) controller.abort();
         const current = new AbortController();
@@ -108,10 +108,7 @@
             while (next < jobs.length && !current.signal.aborted) {
                 const job = jobs[next++];
                 try {
-                    const query = new URLSearchParams({...job, date: selection.date, days: '5'});
-                    const response = await fetch('/dx/layer1/api/column-statistics/?' + query, {signal: current.signal});
-                    if (!response.ok) throw new Error('Query failed');
-                    const data = await response.json();
+                    const data = await window.ColumnAlertCache.load(job, selection.date, {signal: current.signal, force});
                     if (current.signal.aborted) return;
                     rows.push(...data.comparisons.map(row => ({...row, ...job, comparison_date: data.comparison_date})));
                 } catch (error) {
@@ -126,6 +123,6 @@
         await Promise.all([worker(), worker()]);
         if (controller === current) form.querySelector('button').disabled = false;
     }
-    form.addEventListener('submit', event => {event.preventDefault(); load();});
+    form.addEventListener('submit', event => {event.preventDefault(); load(true);});
     load();
 })();

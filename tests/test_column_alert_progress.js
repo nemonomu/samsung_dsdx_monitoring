@@ -32,7 +32,7 @@ function setup() {
     get('cca-loading').hidden = true;
     const link = new Element(), pending = [];
     const sandbox = {
-        console, URLSearchParams, AbortController, Intl, Date,
+        console, URLSearchParams, AbortController, Intl, Date, structuredClone, LAYER1: {},
         Option: function(label, value) { return {label, value}; },
         location: {search:'?date=2026-09-23'}, history:{replaceState(){}},
         document: {getElementById:get, querySelector:() => link, createElement:() => new Element(), addEventListener(){}},
@@ -41,6 +41,7 @@ function setup() {
     sandbox.window = sandbox;
     vm.createContext(sandbox);
     vm.runInContext(read('static/js/sidebar.js'), sandbox);
+    vm.runInContext(read(base + 'column-alert-cache.js'), sandbox);
     vm.runInContext(read(base + 'column-comparison.js'), sandbox);
     vm.runInContext(read(base + 'column-alerts.js'), sandbox);
     const respond = (request, statuses, ok = true) => request.resolve({ok, json:async () => ({comparison_date:'2026-09-23', comparisons:statuses.map((status, i) => ({column:'field_'+i,status,history_days:7,baseline:10,current:1,ratio:10,delta:-9}))})});

@@ -89,7 +89,10 @@
             const response = await fetch('/dx/layer1/api/column-statistics/?' + query, {signal: current.signal});
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || '조회에 실패했습니다.');
-            if (!current.signal.aborted) render(data);
+            if (!current.signal.aborted) {
+                window.ColumnAlertCache.remember(data, data.comparison_date, data);
+                render(data);
+            }
         } catch (error) {
             if (current.signal.aborted) return;
             message.className = 'cs-message error';

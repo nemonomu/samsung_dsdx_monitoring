@@ -227,6 +227,20 @@ class SEADuplicateValidationTests(unittest.TestCase):
             common_stubs(),
         )
 
+    def test_dashboard_duplicate_counts_skip_unused_price_scan(self):
+        cursor = ScriptedCursor([{'fetchone': (100,)}, {'fetchall': []}])
+        with patch.object(self.service, 'get_duplicate_count', return_value={'Amazon': 2}), \
+                patch.object(self.service, '_append_sea_anomaly_stats', return_value=0), \
+                patch.object(self.service, '_append_siel_anomaly_stats', return_value=0), \
+                patch.object(self.service, '_append_tse_anomaly_stats', return_value=0):
+            result, count = self.service.get_anomaly_stats(
+                cursor, date(2026, 9, 23), category='tv_retail')
+        self.assertEqual(2, count)
+        self.assertEqual(100, result['tables'][0]['total_records'])
+        self.assertEqual(2, result['tables'][0]['duplicate_groups'])
+        self.assertEqual(2, len(cursor.calls))
+        self.assertTrue(all('final_sku_price' not in sql for sql, _ in cursor.calls))
+
     def test_same_item_in_different_page_types_is_not_a_duplicate(self):
         groups = self.service.build_sea_duplicate_groups([
             {'id': 1, 'page_type': 'main', 'item': 'A1', 'sku': 'S1'},

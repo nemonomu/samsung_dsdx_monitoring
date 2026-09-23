@@ -82,6 +82,29 @@ function copyQueryToClipboard(element, preserveRaw) {
 
 let currentData = null;
 let layer3StatsRequestId = 0;
+let dashboardTimeSeriesState = 'idle';
+
+// Time-series queries are expensive and must only run after explicit selection.
+async function loadDashboardTimeSeries() {
+    if ((window.LAYER3?.section || 'dashboard') !== 'dashboard'
+        || dashboardTimeSeriesState !== 'idle' || !currentData) return;
+    const requestId = layer3StatsRequestId;
+    const state = currentData;
+    const date = getSelectedDate();
+    dashboardTimeSeriesState = 'loading';
+    renderData(state);
+    try {
+        const data = await fetchAPI(`/layer3/api/stats/?date=${encodeURIComponent(date)}&type=all&section=time_series`);
+        if (requestId !== layer3StatsRequestId) return;
+        mergeLayer3Stats(state, data, 'time_series');
+    } catch (error) {
+        if (requestId !== layer3StatsRequestId) return;
+        markLayer3SectionError(state, 'time_series');
+    }
+    if (requestId !== layer3StatsRequestId) return;
+    dashboardTimeSeriesState = 'complete';
+    renderData(state);
+}
 
 // 기존 API/규칙 식별자는 유지하고 화면 표시명만 통일한다.
 function getLayer3DisplayName(checkName, detailCode) {
@@ -175,7 +198,6 @@ function _inlineTitle(title) {
 // 초기화
 document.addEventListener('DOMContentLoaded', function() {
     initFilterBar();
-    checkBackupStatus();
     loadData();
 });
 
@@ -368,6 +390,7 @@ async function loadData() {
     const date = getSelectedDate();
     const section = (window.LAYER3 && window.LAYER3.section) || 'dashboard';
     const requestId = ++layer3StatsRequestId;
+    dashboardTimeSeriesState = 'idle';
 
     resetLayer3SidebarIssueBadges();
 
@@ -446,13 +469,13 @@ async function loadData() {
     // 필드 누락 캐시 초기화 (조회 시 항상 새로운 데이터 로드)
     if (typeof retailerMissingCache !== 'undefined') retailerMissingCache = {};
 
-    // 대시보드는 검사 세 개를 독립 요청한다. 시계열 쿼리 하나가
-    // 느려도 크로스 필드/카테고리 결과와 필드 누락은 먼저 표시된다.
+    // 시계열 검증은 직접 선택할 때만 조회하여 다른 검사의 DB 작업과 겹치지 않는다.
     if (section === 'dashboard') {
         loadAllRetailersMissing();
         const state = createLayer3StatsState(date);
         currentData = state;
-        const sections = ['time_series', 'cross_field', 'category_spec'];
+        const sections = ['cross_field', 'category_spec'];
+        renderData(state);
 
         await Promise.allSettled(sections.map(async function(statsSection) {
             try {
@@ -546,6 +569,15 @@ function renderData(data) {
     };
 
     let html = '';
+
+    if (section === 'dashboard' && dashboardTimeSeriesState !== 'complete') {
+        const pending = dashboardTimeSeriesState === 'loading';
+        html += `<div class="category-section"><div class="category-header">
+            <div class="category-title"><div class="category-icon time-series">📈</div><span>시계열 이상치</span></div>
+            <div class="category-summary"><span>${pending ? '조회 중' : '선택 시 조회 · 현재 합계에서 제외'}</span>
+                <button type="button" class="btn btn-outline" onclick="loadDashboardTimeSeries()" ${pending ? 'disabled' : ''}>${pending ? '조회 중…' : '시계열 검증 조회'}</button>
+            </div></div></div>`;
+    }
 
     Object.entries(categories).forEach(([categoryName, checks], catIdx) => {
         const config = categoryConfig[categoryName] || { icon: '📋', class: 'time-series' };
@@ -759,7 +791,7 @@ function renderData(data) {
         `;
     });
 
-    if (Object.keys(categories).length === 0) {
+    if (!html) {
         html = '<div class="loading">해당 조건의 데이터가 없습니다.</div>';
     }
 

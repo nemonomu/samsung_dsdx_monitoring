@@ -46,9 +46,7 @@
             while (next < jobs.length && !current.signal.aborted) {
                 const job = jobs[next++];
                 try {
-                    const response = await fetch('/dx/layer1/api/column-statistics/?' + new URLSearchParams({...job,date,days:'5'}), {signal:current.signal});
-                    if (!response.ok) throw new Error('Query failed');
-                    const data = await response.json();
+                    const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force});
                     if (current.signal.aborted) return;
                     abnormal += data.comparisons.filter(row => row.status === 'abnormal').length;
                     review += data.comparisons.filter(row => row.status === 'review').length;
