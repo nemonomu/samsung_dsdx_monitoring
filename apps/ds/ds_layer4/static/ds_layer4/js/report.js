@@ -254,7 +254,6 @@ function renderCauseHistory(anomaly) {
     return `<div class="cause-history">
         <div class="cause-history-header">
             <span class="cause-history-badge">${label}</span>
-            ${history.status === 'legacy_match' ? '<span class="cause-history-note">자동 적용 여부 미기록</span>' : ''}
             <span class="cause-history-meta">${esc(source.crawl_date || '-')} · 기록자 ${esc(source.updated_id || source.created_id || '-')}</span>
         </div>
         <dl class="cause-history-fields">

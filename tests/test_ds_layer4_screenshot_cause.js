@@ -32,7 +32,7 @@ assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20260923-1"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260923-5"
+    "{% static 'ds_layer4/js/report.js' %}?v=20260923-6"
 ));
 
 function fakeClassList() {
@@ -200,7 +200,7 @@ assert.ok(historyHtml.includes('과거 판매자'));
 assert.ok(historyHtml.includes('showCauseHistoryScreenshot(7)'));
 assert.ok(!historyHtml.includes('현재 원인'));
 assert.ok(sandbox.renderCauseHistory({ cause_history: { status: 'legacy_match', source: {} } })
-    .includes('자동 적용 여부 미기록'));
+    .includes('과거 동일 조건 기록'));
 
 // 일괄 선택 중에는 화면 재정렬이나 저장 데이터 변경이 없어야 한다.
 elements.cause_2 = fakeElement();
