@@ -650,6 +650,13 @@ function renderDetailWithTable(options) {
         && options.supportsNullAutoReview === true;
     detailViewState.nullReviewField = options.nullReviewField || '';
     var reviewColumnsHelper = window.RetailReviewColumns;
+    if (type === 'null' && reviewColumnsHelper
+        && reviewColumnsHelper.isPrice(detailViewState.nullReviewField)) {
+        editableCols = Array.from(new Set(
+            editableCols.concat(reviewColumnsHelper.getPriceColumns())
+        ));
+        detailViewState.editableCols = new Set(editableCols);
+    }
     if (type === 'null' && !isRowspan && reviewColumnsHelper) {
         var availableKeys = (selectCols || []).concat(data.flatMap(function(row) { return Object.keys(row); }));
         var columnByKey = new Map(defaultCols.map(function(col) { return [col.key, col]; }));
@@ -680,9 +687,14 @@ function renderDetailWithTable(options) {
         var fieldIndex = defaultCols.findIndex(function(col) {
             return col.key === detailViewState.nullReviewField;
         });
-        if (reviewColumnsHelper && reviewColumnsHelper.isRelated(detailViewState.nullReviewField)) {
+        if (reviewColumnsHelper && (
+            reviewColumnsHelper.isRelated(detailViewState.nullReviewField)
+            || reviewColumnsHelper.isPrice(detailViewState.nullReviewField)
+        )) {
+            var relatedMatcher = reviewColumnsHelper.isPrice(detailViewState.nullReviewField)
+                ? reviewColumnsHelper.isPrice : reviewColumnsHelper.isRelated;
             defaultCols.forEach(function(col, index) {
-                if (reviewColumnsHelper.isRelated(col.key)) fieldIndex = index;
+                if (relatedMatcher(col.key)) fieldIndex = index;
             });
         }
         defaultCols.splice.apply(defaultCols, [fieldIndex >= 0 ? fieldIndex + 1 : defaultCols.length, 0]

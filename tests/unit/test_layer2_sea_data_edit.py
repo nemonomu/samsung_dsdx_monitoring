@@ -50,6 +50,12 @@ class SEALayer2DataEditTests(unittest.TestCase):
                     else []
                 ),
             ),
+            'apps.common.retail_price': module_stub(
+                'apps.common.retail_price',
+                PRICE_EDITABLE_COLUMNS=frozenset({
+                    'original_sku_price', 'final_sku_price', 'savings',
+                }),
+            ),
             'apps.common.inspection_dates': module_stub(
                 'apps.common.inspection_dates',
                 resolve_monitoring_date=lambda inspection, country, source_key: {

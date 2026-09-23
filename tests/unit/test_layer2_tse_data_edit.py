@@ -32,6 +32,12 @@ class TSELayer2DataEditTests(unittest.TestCase):
                     else []
                 ),
             ),
+            'apps.common.retail_price': module_stub(
+                'apps.common.retail_price',
+                PRICE_EDITABLE_COLUMNS=frozenset({
+                    'original_sku_price', 'final_sku_price', 'savings',
+                }),
+            ),
             'apps.common.tse_retail': module_stub(
                 'apps.common.tse_retail',
                 TSE_TABLE_TO_PRODUCT_LINE={TSE_TABLE: 'tse_tv'},

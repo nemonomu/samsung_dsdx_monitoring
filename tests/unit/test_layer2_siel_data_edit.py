@@ -28,6 +28,12 @@ class SIELLayer2DataEditTests(unittest.TestCase):
                 'apps.common.retail_columns',
                 get_editable_columns=lambda *_args, **_kwargs: [],
             ),
+            'apps.common.retail_price': module_stub(
+                'apps.common.retail_price',
+                PRICE_EDITABLE_COLUMNS=frozenset({
+                    'original_sku_price', 'final_sku_price', 'savings',
+                }),
+            ),
             'apps.common.retail_validation': retail_validation,
             'apps.common.inspection_dates': inspection_dates,
             'apps.common.sea_retail': module_stub(
@@ -125,7 +131,9 @@ class SIELLayer2DataEditTests(unittest.TestCase):
         for product, source in siel_retail.SIEL_SOURCE_CONFIG.items():
             for retailer in ('Amazon', 'Flipkart'):
                 fields = [('sku', 'SKU-1'), ('retailer_sku_name', 'Product A'),
-                          ('final_sku_price', '100'), ('star_rating', '4.5'),
+                          ('original_sku_price', '120'),
+                          ('final_sku_price', '100'), ('savings', '20'),
+                          ('star_rating', '4.5'),
                           ('count_of_star_ratings', '10')]
                 if retailer == 'Flipkart':
                     fields.append(('count_of_reviews', '10'))

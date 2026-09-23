@@ -8,6 +8,7 @@ from datetime import datetime
 from apps.common.sea_layer2 import source_date_sql, page_scope_sql
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
+from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.dx.dx_layer2 import seda_null_validation
 from apps.dx.dx_layer2 import seda_format_validation
 
@@ -349,23 +350,34 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     siel_context = _get_siel_edit_context(table_name)
     sea_context = _get_sea_edit_context(table_name)
     seda_product_line = seda_null_validation.product_line_for(table_name)
+    table_basename = str(table_name or '').strip().lower().split('.')[-1]
+    retail_context = bool(
+        seda_product_line or tse_context or sem_context or seg_context
+        or siel_context or sea_context
+        or table_basename in {'tv_retail_com', 'ref_retail_com', 'ldy_retail_com'}
+    )
+    price_edit_context = bool(
+        retail_context
+        and correction_type in {'null', 'null_check'}
+        and column_name in PRICE_EDITABLE_COLUMNS
+    )
     if seda_product_line:
         product_line = seda_product_line
         if correction_type not in {'null', 'null_check', 'format'}:
             return {'error': 'SEDA는 NULL/형식 검증 값만 수정할 수 있습니다', 'status': 403}
         seda_handler = seda_format_validation if correction_type == 'format' else seda_null_validation
         seda_columns = seda_format_validation.get_format_columns if correction_type == 'format' else seda_null_validation.get_seda_null_columns
-        if column_name not in seda_columns(product_line):
+        if column_name not in seda_columns(product_line) and not price_edit_context:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif tse_context:
         table_name = tse_context['table_name']
         product_line = tse_context['product_line']
-        if column_name not in tse_context['max_editable']:
+        if column_name not in tse_context['max_editable'] and not price_edit_context:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif sem_context:
         table_name = sem_context['table_name']
         product_line = sem_context['product_line']
-        if column_name not in sem_context['max_editable']:
+        if column_name not in sem_context['max_editable'] and not price_edit_context:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif seg_context:
         table_name = seg_context['table_name']
@@ -375,7 +387,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                 'error': 'SEG는 NULL/형식 검증 값만 수정할 수 있습니다',
                 'status': 403,
             }
-        if column_name not in seg_context['max_editable']:
+        if column_name not in seg_context['max_editable'] and not price_edit_context:
             return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     elif sea_context:
         table_name = sea_context['table_name']
@@ -485,6 +497,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         )
     else:
         editable_cols = get_editable_columns(product_line, editable_retailer)
+    if retail_context and correction_type in {'null', 'null_check'}:
+        editable_cols = set(editable_cols) | PRICE_EDITABLE_COLUMNS
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import uses_new_policy
+from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.seda_retail import (
     SEDA_COUNTRY, SEDA_SOURCE_CONFIG, display_seda_retailer,
     get_seda_null_columns,
@@ -93,7 +94,8 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items):
 
 
 def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False):
-    if column not in get_seda_null_columns(product_line):
+    if (column not in get_seda_null_columns(product_line)
+            and not (for_edit and column in PRICE_EDITABLE_COLUMNS)):
         raise ValueError('Unsupported SEDA NULL column')
     source = SEDA_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
@@ -104,7 +106,8 @@ def select_record(cursor, target_date, product_line, record_id, column, *, for_e
         {scope} AND source.id = %s FOR UPDATE OF source
     """, [*params, record_id])
     row = cursor.fetchone()
-    if row and column not in get_seda_null_columns(product_line, row[1]):
+    if (row and column not in get_seda_null_columns(product_line, row[1])
+            and not (for_edit and column in PRICE_EDITABLE_COLUMNS)):
         return None
     return row if for_edit else row[:3] if row else None
 

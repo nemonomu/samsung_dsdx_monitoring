@@ -48,9 +48,9 @@ function _cfBuildSeaTvItemQuery(
     if (window.RetailReviewColumns) {
         requestedColumns = window.RetailReviewColumns.expand(
             requestedColumns,
-            requestedColumns.concat([
-                'final_sku_price', 'original_sku_price', 'savings'
-            ]),
+            requestedColumns.concat(
+                window.RetailReviewColumns.getPriceColumns()
+            ),
             requestedColumns
         );
     }
@@ -104,7 +104,16 @@ function _cfUsesEqualReviewCounts(productLine, retailer) {
 
 function _cfEditableColumns(retailer) {
     const columns = (window.crossfieldRetailerEditableColumns || {})[retailer];
-    return columns ? new Set(columns) : (window.crossfieldEditableCols || new Set());
+    const editable = columns
+        ? new Set(columns) : new Set(window.crossfieldEditableCols || []);
+    const helper = window.RetailReviewColumns;
+    const triggers = String(window.crossfieldSelectFields || '').split('|')
+        .concat(window.crossfieldRuleFields || [])
+        .map(field => String(field || '').trim()).filter(field => field);
+    if (helper && triggers.some(field => helper.isPrice(field))) {
+        helper.getPriceColumns().forEach(field => editable.add(field));
+    }
+    return editable;
 }
 
 function _cfOrderReviewDetailKeys(keys) {
@@ -340,9 +349,9 @@ function showRetailerDetail(retailer) {
             existingKeys[key] = true;
         }
     });
-    const priceDisplayOrder = [
-        'final_sku_price', 'original_sku_price', 'savings'
-    ];
+    const priceDisplayOrder = window.RetailReviewColumns
+        ? window.RetailReviewColumns.getPriceColumns()
+        : ['original_sku_price', 'final_sku_price', 'savings'];
     if (defaultDisplayKeys.some(key => priceDisplayOrder.includes(key))) {
         const priceIndexes = allColumns
             .map((column, index) => priceDisplayOrder.includes(column.key) ? index : -1)

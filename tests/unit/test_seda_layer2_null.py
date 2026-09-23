@@ -193,6 +193,28 @@ class SedaNullTests(unittest.TestCase):
         cursor = ScriptedCursor([{'fetchone': ('SKU', 'Magalu', '001', 'current')}])
         self.assertEqual(409, nulls.save_null_review(cursor, Mock(), SOURCE['table_name'], 3, 'sku', 'normal', '', 'reason', str(DAY), 'null', 'tester')['status_code'])
 
+    def test_related_price_cells_are_editable_from_price_null_detail(self):
+        for column, new_value in (
+            ('original_sku_price', '120'),
+            ('final_sku_price', '100'),
+            ('savings', '20'),
+        ):
+            with self.subTest(column=column):
+                cursor = ScriptedCursor([
+                    {'fetchone': (None, 'Magalu', '001', 'current')},
+                    {'rowcount': 1},
+                    {'rowcount': 1},
+                ])
+                result = edits.update_cell_value(
+                    cursor, Mock(), SOURCE['table_name'], 3, column,
+                    new_value, str(DAY), 'null', 'tester', 'price correction',
+                )
+                self.assertTrue(result['success'])
+                self.assertIn(
+                    f'UPDATE {SOURCE["table_name"]} SET {column} = %s',
+                    cursor.calls[1][0],
+                )
+
     def test_other_validation_writes_are_not_enabled(self):
         for kind in ('format', 'duplicate', 'cross_field'):
             cursor = ScriptedCursor([])

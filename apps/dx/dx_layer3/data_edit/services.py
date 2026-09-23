@@ -6,6 +6,7 @@ from datetime import datetime
 import re
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
+from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_field_missing_editable_columns
@@ -305,25 +306,31 @@ def _select_seg_record(
     """, (row_id, source_date, SEG_COUNTRY, source_date))
 
 
-def _validate_edit_target(table_name, column_name):
+def _validate_edit_target(table_name, column_name, *, allow_related_price=False):
     """Validate dynamic SQL identifiers at the service boundary as well."""
     if table_name not in VALID_TABLES_UPDATE:
         return {'error': '허용되지 않는 테이블', 'status': 400}
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(column_name or '')):
         return {'error': '잘못된 컬럼명', 'status': 400}
-    if table_name in SEDA_TABLES and column_name not in get_seda_crossfield_editable_columns(table_name):
+    if (table_name in SEDA_TABLES
+            and column_name not in get_seda_crossfield_editable_columns(table_name)
+            and not (allow_related_price and column_name in PRICE_EDITABLE_COLUMNS)):
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     return None
 
 
-def _validate_tse_column(table_name, column_name):
+def _validate_tse_column(table_name, column_name, *, allow_related_price=False):
     if _is_tse_table(table_name):
+        if allow_related_price and column_name in PRICE_EDITABLE_COLUMNS:
+            return
         product_line = get_tse_product_line_for_table(table_name)
         validate_tse_editable_column(product_line, column_name)
 
 
-def _validate_sem_column(table_name, column_name):
+def _validate_sem_column(table_name, column_name, *, allow_related_price=False):
     if _is_sem_table(table_name):
+        if allow_related_price and column_name in PRICE_EDITABLE_COLUMNS:
+            return
         if not validate_sem_editable_column:
             raise ValueError(f'{column_name} 컬럼은 수정할 수 없습니다')
         product_line = get_sem_product_line_for_table(table_name)
@@ -362,7 +369,10 @@ def _check_retail_unique_key(
 def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                       crawl_date, correction_type, username, memo, rule_id=None):
     """셀 값 수정"""
-    invalid_target = _validate_edit_target(table_name, column_name)
+    allow_related_price = correction_type == 'cross_field'
+    invalid_target = _validate_edit_target(
+        table_name, column_name, allow_related_price=allow_related_price
+    )
     if invalid_target:
         return invalid_target
     product_line = _get_product_line(table_name)
@@ -370,6 +380,12 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     siel_context = _get_siel_edit_context(table_name)
     seg_context = _get_seg_edit_context(table_name)
     sem_context = _get_sem_edit_context(table_name)
+    table_basename = str(table_name or '').strip().lower().split('.')[-1]
+    retail_context = bool(
+        table_name in SEDA_TABLES or _is_tse_table(table_name)
+        or sea_context or siel_context or seg_context or sem_context
+        or table_basename in {'tv_retail_com', 'ref_retail_com', 'ldy_retail_com'}
+    )
     if sea_context:
         table_name = sea_context['table_name']
     elif siel_context:
@@ -380,8 +396,12 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         table_name = sem_context['table_name']
 
     try:
-        _validate_tse_column(table_name, column_name)
-        _validate_sem_column(table_name, column_name)
+        _validate_tse_column(
+            table_name, column_name, allow_related_price=allow_related_price
+        )
+        _validate_sem_column(
+            table_name, column_name, allow_related_price=allow_related_price
+        )
     except ValueError as exc:
         return {'error': str(exc), 'status': 403}
 
@@ -450,6 +470,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_cols = list(dict.fromkeys(
             editable_cols + get_sea_field_missing_editable_columns(product_line, retailer)
         ))
+    if retail_context and correction_type == 'cross_field':
+        editable_cols = set(editable_cols) | PRICE_EDITABLE_COLUMNS
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 

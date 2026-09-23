@@ -1,7 +1,7 @@
 (function() {
     const metrics = ['star_rating', 'count_of_star_ratings', 'count_of_reviews', 'review_body_count'];
     const related = new Set(metrics.concat(['detailed_review_content', 'previous_review_body_count']));
-    const priceColumns = ['final_sku_price', 'original_sku_price', 'savings'];
+    const priceColumns = ['original_sku_price', 'final_sku_price', 'savings'];
     const priceRelated = new Set(priceColumns);
 
     function expandGroup(fields, triggers, relatedFields, group) {
@@ -22,6 +22,7 @@
     window.RetailReviewColumns = {
         isRelated(field) { return related.has(field); },
         isPrice(field) { return priceRelated.has(field); },
+        getPriceColumns() { return priceColumns.slice(); },
         expand(fields, available, triggers) {
             const original = [...new Set(fields)];
             const present = new Set(available.concat(original));

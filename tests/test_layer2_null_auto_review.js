@@ -597,7 +597,7 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
 }
 
 function testPriceFieldsAreAlwaysVisibleTogetherInNullDetails() {
-    const priceFields = ['final_sku_price', 'original_sku_price', 'savings'];
+    const priceFields = ['original_sku_price', 'final_sku_price', 'savings'];
     for (const field of priceFields) {
         for (const tableParam of [
             'tv_retail', 'sea_ref_retail', 'seda_ref_retail',
@@ -621,8 +621,36 @@ function testPriceFieldsAreAlwaysVisibleTogetherInNullDetails() {
                 tableParam + ':' + field
             );
             assert.strictEqual(new Set(keys).size, keys.length);
+            assert.deepStrictEqual(
+                priceFields.filter(key => sandbox.detailViewState.editableCols.has(key)),
+                priceFields,
+                'all related price cells must be editable: ' + tableParam + ':' + field
+            );
         }
     }
+
+    const sandbox = commonSandbox();
+    renderRows(sandbox, {
+        tableParam: 'siel_ref_retail',
+        nullReviewField: 'final_sku_price',
+        supportsNullAutoReview: true,
+        editableCols: ['final_sku_price'],
+        normalReviews: {},
+        config: [
+            { key: 'item' }, { key: 'final_sku_price' }, { key: 'product_url' }
+        ],
+        data: [{
+            id: 1, item: 'A', final_sku_price: null,
+            original_sku_price: '100', savings: '10', null_fields: ['final_sku_price']
+        }]
+    });
+    const keys = Array.from(sandbox.detailViewState.columns, column => column.key);
+    assert.deepStrictEqual(
+        keys.filter(key => priceFields.includes(key)), priceFields
+    );
+    assert.strictEqual(
+        keys.indexOf('_null_review_status'), keys.indexOf('savings') + 1
+    );
 }
 
 (async () => {

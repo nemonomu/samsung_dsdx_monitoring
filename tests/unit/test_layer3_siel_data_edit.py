@@ -30,6 +30,12 @@ services = load_module(
             'apps.common.retail_columns',
             get_editable_columns=lambda *_: [],
         ),
+        'apps.common.retail_price': module_stub(
+            'apps.common.retail_price',
+            PRICE_EDITABLE_COLUMNS=frozenset({
+                'original_sku_price', 'final_sku_price', 'savings',
+            }),
+        ),
         'apps.common.inspection_dates': inspection_dates,
         'apps.common.retail_validation': retail_validation,
         'apps.common.sea_retail': sea_retail,
@@ -103,6 +109,29 @@ class SielLayer3DataEditTests(unittest.TestCase):
         self.assertEqual('2026-09-03', history_params[7])
         self.assertEqual(71, history_params[-1])
         self.assertEqual(1, conn.commits)
+
+    def test_all_related_price_cells_can_be_updated(self):
+        for column, new_value in (
+            ('original_sku_price', '120'),
+            ('final_sku_price', '100'),
+            ('savings', '20'),
+        ):
+            with self.subTest(column=column):
+                cursor = ScriptedCursor([
+                    {'fetchone': (None, 'batch-1', 'Flipkart', 'F-1')},
+                    {},
+                    {},
+                ])
+                result = services.update_cell_value(
+                    cursor, FakeConnection(), self.table_name, 20,
+                    column, new_value, '2026-09-03', 'cross_field',
+                    'tester', 'price correction', 71,
+                )
+                self.assertTrue(result['success'])
+                self.assertIn(
+                    f'UPDATE {self.table_name} SET {column} = %s',
+                    cursor.calls[1][0],
+                )
 
     def test_siel_normal_review_allows_empty_memo(self):
         cursor = ScriptedCursor([

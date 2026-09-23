@@ -57,6 +57,21 @@ class SemLayer2DataEditTests(unittest.TestCase):
         self.assertEqual(403, result['status'])
         self.assertEqual([], cursor.calls)
 
+    def test_price_null_detail_allows_savings_correction(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'Liverpool', 'TV-1', 'batch-1')},
+            {},
+            {},
+        ])
+        result = layer2_services.update_cell_value(
+            cursor, Mock(), SEM_TABLE, 11, 'savings', '$10.00',
+            date(2026, 9, 7), 'null', 'tester', 'price correction',
+        )
+        self.assertTrue(result['success'])
+        self.assertIn(
+            f'UPDATE {SEM_TABLE} SET savings = %s', cursor.calls[1][0]
+        )
+
 
 class SemLayer2NormalReviewTests(unittest.TestCase):
     def test_sem_null_review_uses_latest_batch_and_writes_reason(self):
@@ -148,6 +163,22 @@ class SemLayer3DataEditTests(unittest.TestCase):
 
         self.assertEqual(403, result['status'])
         self.assertEqual([], cursor.calls)
+
+    def test_crossfield_allows_savings_correction(self):
+        cursor = ScriptedCursor([
+            {'fetchone': (None, 'batch-1', 'Liverpool', 'TV-1')},
+            {},
+            {},
+        ])
+        result = layer3_services.update_cell_value(
+            cursor, Mock(), SEM_TABLE, 11, 'savings', '$10.00',
+            date(2026, 9, 7), 'cross_field', 'tester',
+            'price correction', None,
+        )
+        self.assertTrue(result['success'])
+        self.assertIn(
+            f'UPDATE {SEM_TABLE} SET savings = %s', cursor.calls[1][0]
+        )
 
 
 if __name__ == '__main__':

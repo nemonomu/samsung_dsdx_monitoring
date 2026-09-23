@@ -26,6 +26,12 @@ services = load_module(
             'apps.common.retail_columns',
             get_editable_columns=lambda *_: [],
         ),
+        'apps.common.retail_price': module_stub(
+            'apps.common.retail_price',
+            PRICE_EDITABLE_COLUMNS=frozenset({
+                'original_sku_price', 'final_sku_price', 'savings',
+            }),
+        ),
         'apps.common.inspection_dates': inspection_dates,
         'apps.common.retail_validation': retail_validation,
         'apps.common.sea_retail': sea_retail,

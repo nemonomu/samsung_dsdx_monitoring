@@ -386,7 +386,7 @@ function testReviewMetricsVisibleForEveryReviewRuleInInlineAndModal() {
 testReviewMetricsVisibleForEveryReviewRuleInInlineAndModal();
 
 function testPriceFieldsAreAlwaysVisibleTogetherInCrossfieldDetails() {
-    const priceFields = ['final_sku_price', 'original_sku_price', 'savings'];
+    const priceFields = ['original_sku_price', 'final_sku_price', 'savings'];
     for (const product of ['TV', 'SEA_REF', 'SEDA_TV', 'SIEL_TV', 'SEG_REF', 'SEM_LDY', 'TSE_TV']) {
         for (const field of priceFields) {
             sandbox.window.crossfieldProductLine = product;
@@ -410,6 +410,7 @@ function testPriceFieldsAreAlwaysVisibleTogetherInCrossfieldDetails() {
             );
             for (const priceField of priceFields) {
                 assert(state.allColumns.some(column => column.key === priceField));
+                assert(state.editableCols.has(priceField));
                 assert.strictEqual(
                     state.allData[0][priceField],
                     priceField === field ? '100' : '-'

@@ -28,9 +28,9 @@ assert(common.includes("const loadedRules = isRetailCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
 assert(/common\.js' %}\?v=[\w-]+/.test(dashboard));
-assert(dashboard.includes("cross-field.js' %}?v=20260922-simple-sql"));
+assert(dashboard.includes("cross-field.js' %}?v=20260923-price2"));
 assert(/common\.js' %}\?v=[\w-]+/.test(detail));
-assert(detail.includes("cross-field.js' %}?v=20260922-simple-sql"));
+assert(detail.includes("cross-field.js' %}?v=20260923-price2"));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
 
@@ -127,7 +127,7 @@ print(json.dumps(fixtures))
         assert(!container.innerHTML.includes('데이터 로드 실패'));
         if (fixture.retailer === 'HomeDepot') {
             assert(context._cfEditableColumns('HomeDepot').has('savings'));
-            assert(!context._cfEditableColumns('Liverpool').has('savings'));
+            assert(context._cfEditableColumns('Liverpool').has('savings'));
             assert(context._cfUsesEqualReviewCounts('SEM_REF', 'HomeDepot'));
             assert.strictEqual(context.crossfieldSelectFields, 'final_sku_price|original_sku_price|savings');
         }
