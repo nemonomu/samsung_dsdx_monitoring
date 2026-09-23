@@ -110,7 +110,9 @@ def _sea_appliance_retailers(product):
     )
     return (
         _retailer('Bestbuy', 'BestBuy'),
-        _retailer('Lowes', "Lowe's", 'Lowe’s'),
+        _retailer('Lowes', "Lowe's", 'Lowe’s', unsupported_columns=(
+            'available_quantity_for_purchase_fastdelivery',
+        )),
         _retailer('HomeDepot', optional_if_unconfigured=True,
                   email_include_skipped_columns=home_depot_email_fields,
                   email_required_columns=home_depot_email_fields),
@@ -123,7 +125,7 @@ _SEDA_RETAILERS = (
 )
 _SEG_THREE_RETAILERS = (
     _retailer('MediaMarkt', 'Mediamarkt'),
-    _retailer('OTTO'),
+    _retailer('OTTO', unsupported_columns=('summarized_review_content',)),
     _retailer('Amazon', 'Amazon.de', email_redirect_metric=True,
               email_required_columns=('savings', 'available_quantity_for_purchase'),
               email_include_skipped_columns=(
@@ -133,6 +135,7 @@ _SEG_THREE_RETAILERS = (
 _SEG_LDY_RETAILERS = _SEG_THREE_RETAILERS[:2]
 _SIEL_RETAILERS = (
     _retailer('Amazon', email_redirect_metric=True,
+              unsupported_columns=('fastest_delivery',),
               email_required_columns=('savings', 'available_quantity_for_purchase'),
               email_include_skipped_columns=(
                   'savings', 'available_quantity_for_purchase',

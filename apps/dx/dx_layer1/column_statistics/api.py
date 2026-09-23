@@ -45,7 +45,8 @@ def daily(request):
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·리테일러·기간·날짜를 확인해주세요.'}, status=400)
     query_days = max(days, 29)
-    key = f'column-statistics:v2:{country}:{product}:{retailer}:{end}:{query_days}'
+    # v3 excludes discontinued retailer fields from previously cached counts.
+    key = f'column-statistics:v3:{country}:{product}:{retailer}:{end}:{query_days}'
     try:
         result = cache.get(key)
         if result is None:

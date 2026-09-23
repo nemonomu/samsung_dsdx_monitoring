@@ -677,6 +677,39 @@ async function run() {
         assert(redirectRow[1].includes('Amazon redirect=TRUE 건수'));
     });
 
+    // Unsupported fields retain a dash row even with no metric for any retailer.
+    for (const [country, products, retailer, field] of [
+        ['SEG', ['TV', 'REF', 'LDY'], 'OTTO', 'summarized_review_content'],
+        ['SIEL', ['TV', 'REF', 'LDY'], 'Amazon', 'fastest_delivery'],
+        ['SEA', ['REF', 'LDY'], 'Lowes', 'available_quantity_for_purchase_fastdelivery']
+    ]) {
+        for (const product of products) {
+            const report = {
+                ...emailReportData,
+                sources: [{
+                    ...emailReportData.sources[0],
+                    key: country.toLowerCase() + '_' + product.toLowerCase(),
+                    country, product,
+                    column_order: ['item', field],
+                    retailers: [{
+                        retailer, total_count: 300, main_count: 300, bsr_count: 100,
+                        columns: [{ column: 'item', total_count: 300, null_count: 0 }]
+                    }]
+                }]
+            };
+            const page = loadPage('?focus=' + encodeURIComponent('이메일 보고'),
+                layer1Data, { success: true, retailers: [] }, report);
+            page.L4._sectionHandler.collection_status();
+            await flushPromises();
+            const html = page.elements['cs-email-container'].innerHTML;
+            const row = html.match(new RegExp(
+                '<tr><td[^>]*>' + field + '</td>([\\s\\S]*?)</tr>'
+            ));
+            assert(row, country + ' ' + product + ' ' + field);
+            assert(row[1].includes('<td align="center">-</td><td align="center">-</td>'));
+        }
+    }
+
     for (const [product, productType] of [
         ['REF', 'ref_refrigerator_type'], ['LDY', 'ldy_loading_type']
     ]) {

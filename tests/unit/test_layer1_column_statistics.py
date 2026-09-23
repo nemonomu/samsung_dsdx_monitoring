@@ -79,6 +79,32 @@ class ColumnStatisticsTests(unittest.TestCase):
         self.assertEqual(result['daily'][1]['counts']['savings'], 0)
         self.assertEqual(result['daily'][1]['total'], 10)
 
+    def test_discontinued_fields_are_absent_from_statistics_and_alert_comparisons(self):
+        policies = (
+            ('SEG', ('TV', 'REF', 'LDY'), 'OTTO', 'summarized_review_content'),
+            ('SEA', ('REF', 'LDY'), 'Lowes', 'available_quantity_for_purchase_fastdelivery'),
+            ('SIEL', ('TV', 'REF', 'LDY'), 'Amazon', 'fastest_delivery'),
+        )
+        for country, products, retailer, field in policies:
+            for product in products:
+                with self.subTest(country=country, product=product, retailer=retailer):
+                    cursor = MagicMock()
+                    # A stale active DB setting must not restore a discontinued field.
+                    cursor.fetchall.side_effect = [
+                        [('item', retailer, False), (field, retailer, False)], [],
+                    ]
+                    @contextmanager
+                    def connection():
+                        yield None, cursor
+                    with patch.object(services, 'dx_connection', connection):
+                        data = services.daily_counts(country, product, retailer, date(2026, 9, 23), 29)
+                    self.assertIn('item', data['columns'])
+                    self.assertNotIn(field, data['columns'])
+                    self.assertTrue(all(field not in day['counts'] for day in data['daily']))
+                    self.assertNotIn('source.' + field, cursor.execute.call_args.args[0])
+                    comparisons = compare_columns(data, date(2026, 9, 23), {day['date']: True for day in data['daily']})
+                    self.assertNotIn(field, [row['column'] for row in comparisons])
+
 
 class ColumnStatisticsApiTests(unittest.TestCase):
     def setUp(self):

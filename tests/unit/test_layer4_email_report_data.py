@@ -253,6 +253,54 @@ class EmailRegistryTests(unittest.TestCase):
 
 
 class EmailReportDataTests(unittest.TestCase):
+    def test_uncollected_email_fields_stay_visible_without_missing_metrics(self):
+        policies = (
+            ('SEG', ('TV', 'REF', 'LDY'), 'OTTO', 'summarized_review_content'),
+            ('SIEL', ('TV', 'REF', 'LDY'), 'Amazon', 'fastest_delivery'),
+            ('SEA', ('REF', 'LDY'), 'Lowes',
+             'available_quantity_for_purchase_fastdelivery'),
+        )
+        sources = load_registry().EMAIL_REPORT_SOURCES
+        for country, products, name, field in policies:
+            for product in products:
+                original = next(s for s in sources
+                                if (s['country'], s['product']) == (country, product))
+                retailer = next(r for r in original['retailers'] if r['name'] == name)
+                for configured in (False, True):
+                    with self.subTest(country=country, product=product, configured=configured):
+                        rows = [('item', name, False)]
+                        if configured:
+                            rows.append((field, name, False))
+                        required = retailer['email_required_columns']
+                        counts = [100, 100, 0]
+                        for _ in required:
+                            counts.extend((100, 3))
+                        counts.extend((90, 20))
+                        cursor = ScriptedCursor([
+                            {'fetchall': rows},
+                            {'fetchone': ('test-batch',)},
+                            {'fetchone': tuple(counts)},
+                            {'fetchone': (0,)},
+                        ])
+                        result = load_service(cursor).get_email_report_data(
+                            date(2026, 9, 22),
+                            sources=({**original, 'retailers': (retailer,)},),
+                        )
+                        self.assertTrue(result['complete'])
+                        report = result['sources'][0]
+                        self.assertIn(field, report['column_order'])
+                        metrics = report['retailers'][0]['columns']
+                        self.assertNotIn(field, [m['column'] for m in metrics])
+                        self.assertNotIn('source.' + field, cursor.calls[2][0])
+
+                # The same field must still be counted for other retailers.
+                peer = next(r for r in original['retailers'] if r['name'] != name)
+                cursor = ScriptedCursor([{'fetchall': [(field, peer['name'], False)]}])
+                configured_peer = load_service(cursor)._configured_retailers(
+                    cursor, {**original, 'retailers': (peer,)},
+                )[0]
+                self.assertIn(field, configured_peer['columns'])
+
     def test_sea_homedepot_counts_collected_optional_fields_like_homepro(self):
         for product, capacity, product_type in (
                 ('REF', 'ref_capacity', 'ref_refrigerator_type'),

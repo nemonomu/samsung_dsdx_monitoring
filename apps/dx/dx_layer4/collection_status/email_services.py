@@ -451,6 +451,12 @@ def _query_source(source, target_date):
         for item in retailer['columns']:
             if item['column'] not in column_order:
                 column_order.append(item['column'])
+    # Keep explicitly uncollected fields visible as "-", even when no other
+    # retailer counts that field. Do not manufacture zero/Missing metrics.
+    for retailer in configured_retailers:
+        for column in retailer.get('unsupported_columns', ()):
+            if column not in column_order:
+                column_order.append(column)
 
     return {
         'key': source['key'],
