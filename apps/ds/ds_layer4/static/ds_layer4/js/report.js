@@ -63,7 +63,8 @@ function renderReportTable(data) {
     retailersWithAnomalies.forEach((report, idx) => {
         const retailerAnomalies = anomaliesByRetailer[report.retailer] || [];
         const screenshotCount = retailerAnomalies.filter(a => a.screenshot_id).length;
-        const causeCount = retailerAnomalies.filter(a => a.cause).length;
+        const causeCount = retailerAnomalies.filter(a => normalizeReportCause(a.cause)).length;
+        const missingCauseCount = retailerAnomalies.length - causeCount;
         const escRetailer = report.retailer.replace(/'/g, "\\'");
 
         html += `
@@ -73,7 +74,7 @@ function renderReportTable(data) {
                         <polyline points="9 18 15 12 9 6"/>
                     </svg>
                 </td>
-                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')"><strong>${report.retailer}</strong></td>
+                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')"><strong>${report.retailer}</strong>${missingCauseCount > 0 ? ` <span class="missing-cause-badge">원인 미선택 ${missingCauseCount}건</span>` : ''}</td>
                 <td onclick="toggleAnomalies(${idx}, '${escRetailer}')" class="text-center" style="color: #dc2626; font-weight: 600;">
                     ${report.anomaly_total}
                 </td>
@@ -239,7 +240,11 @@ function renderAnomalyItems(anomalies, retailer) {
 
     const escRetailer = retailer.replace(/'/g, "\\'");
     const safeRetailerId = retailer.replace(/[^a-zA-Z0-9]/g, '_');
-    const anomalyIds = anomalies.map(a => a.id);
+    // 조회/저장 후 렌더링할 때만 정렬한다. 입력 중에는 행을 이동하지 않는다.
+    const sortedAnomalies = [...anomalies].sort((a, b) =>
+        Number(Boolean(normalizeReportCause(a.cause))) - Number(Boolean(normalizeReportCause(b.cause)))
+    );
+    const anomalyIds = sortedAnomalies.map(a => a.id);
 
     let html = `
         <table class="anomaly-table" data-retailer="${retailer}" data-anomaly-ids="${anomalyIds.join(',')}">
@@ -267,12 +272,13 @@ function renderAnomalyItems(anomalies, retailer) {
             <tbody>
     `;
 
-    anomalies.forEach(a => {
+    sortedAnomalies.forEach(a => {
+        const missingCause = !normalizeReportCause(a.cause);
         const escTitle = (a.title || '(제목 없음)').replace(/"/g, '&quot;');
         const escShipsFrom = (a.ships_from || 'NULL').replace(/"/g, '&quot;');
         const escSoldBy = (a.sold_by || 'NULL').replace(/"/g, '&quot;');
         html += `
-            <tr>
+            <tr class="${missingCause ? 'missing-cause-row' : ''}">
                 ${isClosed ? '' : `
                 <td class="text-center">
                     <input type="checkbox" id="anomalyCheck_${a.id}" class="memo-checkbox anomaly-checkbox anomaly-checkbox-${safeRetailerId}" onchange="toggleAnomalyInput(${a.id}, '${safeRetailerId}')">
@@ -296,6 +302,7 @@ function renderAnomalyItems(anomalies, retailer) {
                     <select id="cause_${a.id}" class="inline-select" ${isClosed ? 'disabled' : 'disabled'}>
                         ${getCauseOptionsHtml(a.retailer, a.cause)}
                     </select>
+                    ${missingCause ? '<span class="missing-cause-hint">원인 미선택 · 확인 필요</span>' : ''}
                 </td>
                 <td>
                     <input type="text" id="memo_${a.id}" class="inline-input" value="${a.memo || ''}" placeholder="메모 입력" ${isClosed ? 'disabled' : 'disabled'}>

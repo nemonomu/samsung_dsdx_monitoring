@@ -25,16 +25,16 @@ assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260903-4"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260923-1"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-4"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/index.js' %}?v=20260904-1"
+    "{% static 'ds_layer4/js/index.js' %}?v=20260923-1"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260904-1"
+    "{% static 'ds_layer4/js/report.js' %}?v=20260923-1"
 ));
 
 function fakeClassList() {
@@ -65,6 +65,7 @@ function fakeElement() {
         focus() { this.focused = true; },
         addEventListener() {},
         appendChild(child) { this.children.push(child); },
+        querySelector() { return null; },
         querySelectorAll() { return []; }
     };
 }
@@ -72,6 +73,8 @@ function fakeElement() {
 const elements = {
     'app-data': Object.assign(fakeElement(), { dataset: { userId: 'tester' } }),
     reportViewToggle: fakeElement(),
+    reportContent: fakeElement(),
+    reportActions: fakeElement(),
     screenshotCauseEditor: fakeElement(),
     screenshotCauseSelect: fakeElement(),
     screenshotCustomCause: fakeElement(),
@@ -94,6 +97,7 @@ class FilterBar {
 const sandbox = {
     console,
     FilterBar,
+    AppButton: { iconHtml() { return ''; }, html() { return ''; } },
     document: {
         getElementById(id) { return elements[id] || null; },
         createElement() { return fakeElement(); },
@@ -147,6 +151,55 @@ function setReportData(cause) {
 }
 
 assert.strictEqual(sandbox.normalizeReportCause('crawler_null_capture'), '');
+
+// 미선택 행을 먼저 표시하되 같은 그룹의 순서와 원본 데이터는 보존한다.
+const mixedAnomalies = Object.freeze([
+    { id: 1, cause: '상품페이지 없음' },
+    { id: 2, cause: null },
+    { id: 3, cause: '직접 확인한 신규 원인' },
+    { id: 4, cause: '' },
+    { id: 5, cause: '   ' },
+    { id: 6, cause: ' CRAWLER_NULL_CAPTURE ' },
+    { id: 7 }
+].map(a => ({ ...a, retailer: 'Currys' })));
+const mixedData = {
+    daily_reports: [{ retailer: 'Currys', anomaly_total: 7 }],
+    anomalies: mixedAnomalies
+};
+vm.runInContext("currentReportView = 'detail'; isClosed = false;", sandbox);
+sandbox.renderReportTable(mixedData);
+const initialHtml = elements.reportContent.innerHTML;
+assert.ok(initialHtml.includes('원인 미선택 5건'));
+assert.ok(initialHtml.includes('data-anomaly-ids="2,4,5,6,7,1,3"'));
+assert.deepStrictEqual(
+    [...initialHtml.matchAll(/id="cause_(\d+)"/g)].map(match => Number(match[1])),
+    [2, 4, 5, 6, 7, 1, 3]
+);
+assert.strictEqual((initialHtml.match(/class="missing-cause-row"/g) || []).length, 5);
+assert.deepStrictEqual(mixedAnomalies.map(a => a.id), [1, 2, 3, 4, 5, 6, 7]);
+assert.ok(initialHtml.includes('>직접 확인한 신규 원인</option>'));
+
+// 일괄 선택 중에는 화면 재정렬이나 저장 데이터 변경이 없어야 한다.
+elements.cause_2 = fakeElement();
+sandbox.document.querySelectorAll = () => [{ id: 'anomalyCheck_2' }];
+sandbox.applyBulkCause({ value: '상품페이지 없음' }, 'Currys');
+assert.strictEqual(elements.cause_2.value, '상품페이지 없음');
+assert.strictEqual(elements.reportContent.innerHTML, initialHtml);
+assert.strictEqual(mixedAnomalies[1].cause, null);
+sandbox.document.querySelectorAll = () => [];
+
+// 저장한 원인으로 다시 렌더링할 때 순서와 미선택 건수를 갱신한다.
+mixedAnomalies[1].cause = '상품페이지 없음';
+sandbox.renderReportTable(mixedData);
+assert.ok(elements.reportContent.innerHTML.includes('원인 미선택 4건'));
+assert.ok(elements.reportContent.innerHTML.includes('data-anomaly-ids="4,5,6,7,1,2,3"'));
+vm.runInContext('isClosed = true', sandbox);
+const closedHtml = sandbox.renderAnomalyItems(mixedAnomalies, 'Currys');
+assert.ok(closedHtml.includes('data-anomaly-ids="4,5,6,7,1,2,3"'));
+assert.ok(!closedHtml.includes('id="anomalyCheck_'));
+assert.ok(!sandbox.renderAnomalyItems([mixedAnomalies[0]], 'Currys').includes('missing-cause-row'));
+sandbox.renderReportTable({ daily_reports: mixedData.daily_reports, anomalies: [mixedAnomalies[0]] });
+assert.ok(!elements.reportContent.innerHTML.includes('missing-cause-badge'));
 
 setReportData('상품페이지 내 항목 부재');
 sandbox.renderScreenshotCauseEditor(101);

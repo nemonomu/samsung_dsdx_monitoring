@@ -20,7 +20,7 @@ function normalizeReportCause(value) {
 function getCauseOptionsHtml(retailer, selectedValue) {
     const options = causeOptions[retailer] || [];
     const selected = normalizeReportCause(selectedValue);
-    let html = '<option value="">선택</option>';
+    let html = '<option value="">원인 선택</option>';
     options.forEach(opt => {
         const safeOption = esc(opt);
         html += `<option value="${safeOption}" ${selected === opt ? 'selected' : ''}>${safeOption}</option>`;
