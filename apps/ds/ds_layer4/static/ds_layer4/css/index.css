@@ -805,8 +805,8 @@
         overflow: hidden;
     }
     .screenshot-modal-header {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 12px 20px;
         flex-shrink: 0;
@@ -815,12 +815,11 @@
         background: #f8fafc;
     }
     .screenshot-modal-heading {
-        grid-column: 1 / -1;
+        flex: 0 1 auto;
         display: flex;
         flex-wrap: wrap;
         gap: 8px 16px;
         align-items: center;
-        justify-self: start;
         max-width: 100%;
         min-width: 0;
     }
@@ -843,15 +842,14 @@
         color: #dc2626;
     }
     .screenshot-cause-editor {
-        grid-column: 1;
-        grid-row: 2;
+        flex: 0 1 auto;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         justify-content: flex-start;
-        justify-self: start;
         gap: 8px;
         min-width: 0;
+        max-width: 100%;
     }
     .screenshot-cause-editor label {
         flex: 0 0 auto;
@@ -913,11 +911,10 @@
     }
     .screenshot-cause-readonly.empty { color: #94a3b8; }
     .screenshot-modal-actions {
-        grid-column: 2;
-        grid-row: 2;
+        flex-shrink: 0;
         display: flex;
         align-items: center;
-        justify-self: end;
+        margin-left: auto;
     }
     .screenshot-modal-close {
         background: none;

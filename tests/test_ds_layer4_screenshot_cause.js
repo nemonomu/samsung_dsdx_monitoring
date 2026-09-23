@@ -18,14 +18,12 @@ const layer4Template = fs.readFileSync(
     'apps/ds/ds_layer4/templates/ds_layer4/index.html', 'utf8'
 );
 
-assert.ok(screenshotCss.includes(
-    'grid-template-columns: minmax(0, 1fr) auto;'
-));
+assert.match(screenshotCss, /\.screenshot-modal-header\s*\{\s*display: flex;\s*flex-wrap: wrap;/);
 assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260923-2"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260923-3"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-2"
