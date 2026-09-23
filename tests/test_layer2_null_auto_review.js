@@ -596,6 +596,35 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
     assert.deepStrictEqual(Array.from(sandbox.detailViewState.columns, column => column.key), ['star_rating']);
 }
 
+function testPriceFieldsAreAlwaysVisibleTogetherInNullDetails() {
+    const priceFields = ['final_sku_price', 'original_sku_price', 'savings'];
+    for (const field of priceFields) {
+        for (const tableParam of [
+            'tv_retail', 'sea_ref_retail', 'seda_ref_retail',
+            'siel_ref_retail', 'sem_ref_retail', 'seg_ref_retail',
+            'tse_ref_retail'
+        ]) {
+            const sandbox = commonSandbox();
+            renderRows(sandbox, {
+                tableParam,
+                nullReviewField: field,
+                supportsNullAutoReview: false,
+                config: [{ key: 'item' }, { key: field }],
+                data: [{ id: 1, item: 'A', [field]: null, null_fields: [field] }]
+            });
+            const keys = Array.from(
+                sandbox.detailViewState.columns, column => column.key
+            );
+            assert.deepStrictEqual(
+                keys.filter(key => priceFields.includes(key)),
+                priceFields,
+                tableParam + ':' + field
+            );
+            assert.strictEqual(new Set(keys).size, keys.length);
+        }
+    }
+}
+
 (async () => {
     for (const field of ['account_name', 'calendar_week', 'country', 'product']) {
         const sandbox = commonSandbox();
@@ -623,6 +652,7 @@ function testRelatedReviewMetricsAreVisibleBeforeReviewActions() {
         }
     }
     testRelatedReviewMetricsAreVisibleBeforeReviewActions();
+    testPriceFieldsAreAlwaysVisibleTogetherInNullDetails();
     testPendingProductsComeFirstWithAscendingHistoryAcrossCountries();
     testRefreshedConfirmationAndCancellationReorderWholeProduct();
     testMissingItemsAndDifferentRetailersDoNotSharePriority();

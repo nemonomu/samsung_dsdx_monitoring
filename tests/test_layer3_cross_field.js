@@ -385,6 +385,48 @@ function testReviewMetricsVisibleForEveryReviewRuleInInlineAndModal() {
 
 testReviewMetricsVisibleForEveryReviewRuleInInlineAndModal();
 
+function testPriceFieldsAreAlwaysVisibleTogetherInCrossfieldDetails() {
+    const priceFields = ['final_sku_price', 'original_sku_price', 'savings'];
+    for (const product of ['TV', 'SEA_REF', 'SEDA_TV', 'SIEL_TV', 'SEG_REF', 'SEM_LDY', 'TSE_TV']) {
+        for (const field of priceFields) {
+            sandbox.window.crossfieldProductLine = product;
+            sandbox.window.crossfieldSelectFields = field;
+            sandbox.window.crossfieldRuleFields = [field];
+            sandbox.window.crossfieldRetailerColumns = {};
+            sandbox.window.crossfieldRetailerData = { Amazon: { rows: [{
+                id: 1, item: 'A', account_name: 'Amazon', [field]: '100',
+                crawl_datetime: '2026-09-14',
+            }] } };
+            sandbox.window.crossfieldRetailerSummary = {
+                Amazon: { count: 1, items: ['A'] }
+            };
+            sandbox.isCrossFieldInline = () => true;
+            sandbox.showRetailerDetail('Amazon');
+            const state = sandbox.window._cfDetailState;
+            assert.deepStrictEqual(
+                Array.from(state.visibleKeys).filter(key => priceFields.includes(key)),
+                priceFields,
+                product + ':' + field
+            );
+            for (const priceField of priceFields) {
+                assert(state.allColumns.some(column => column.key === priceField));
+                assert.strictEqual(
+                    state.allData[0][priceField],
+                    priceField === field ? '100' : '-'
+                );
+            }
+        }
+    }
+
+    const query = sandbox._cfBuildSeaTvItemQuery(
+        'tv_retail_com', 'crawl_datetime', 'Amazon', ['A'],
+        'final_sku_price', 3, '2026-09-14'
+    );
+    for (const field of priceFields) assert(query.includes(field));
+}
+
+testPriceFieldsAreAlwaysVisibleTogetherInCrossfieldDetails();
+
 function testSeaTvUsesSourceDateWithoutMasterSku() {
     sandbox.window.crossfieldRetailerData = {
         Amazon: {

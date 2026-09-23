@@ -43,8 +43,19 @@ function _cfBuildSeaTvItemQuery(
 
     // SEA TV keeps SKU in its master table, not in the collection table.
     const selectColumns = ['id', 'item', 'retailer_sku_name'];
-    String(selectFieldsRaw || '').split('|').forEach(field => {
-        const column = field.trim();
+    let requestedColumns = String(selectFieldsRaw || '').split('|')
+        .map(field => field.trim()).filter(field => field);
+    if (window.RetailReviewColumns) {
+        requestedColumns = window.RetailReviewColumns.expand(
+            requestedColumns,
+            requestedColumns.concat([
+                'final_sku_price', 'original_sku_price', 'savings'
+            ]),
+            requestedColumns
+        );
+    }
+    requestedColumns.forEach(field => {
+        const column = field;
         if (column && column.toLowerCase() !== 'sku' && !selectColumns.includes(column)) {
             selectColumns.push(column);
         }
@@ -311,13 +322,6 @@ function showRetailerDetail(retailer) {
         allColumns.push({ key: 'product_url', label: 'product_url', width: 100 });
     }
 
-    // defaultVisibleKeys: 고정 + 규칙 표시 컬럼 + dateCol + product_url
-    const defaultVisibleSet = new Set(fixedKeys.concat(defaultDisplayKeys));
-    if (urlKey) defaultVisibleSet.add('product_url');
-    const dateColKey = otherKeys.find(k => k === 'crawl_datetime' || k === 'crawl_strdatetime');
-    if (dateColKey) defaultVisibleSet.add(dateColKey);
-    const defaultVisibleKeys = allColumns.filter(c => defaultVisibleSet.has(c.key)).map(c => c.key);
-
     // 리테일러 전체 수집 컬럼 추가 (컬럼 선택용, 기본 비표시)
     const retailerCols = (window.crossfieldRetailerColumns || {})[retailer] || [];
     const existingKeys = {};
@@ -325,8 +329,43 @@ function showRetailerDetail(retailer) {
     retailerCols.forEach(col => {
         if (!existingKeys[col]) {
             allColumns.push({ key: col, label: col, width: 120 });
+            existingKeys[col] = true;
         }
     });
+    // A price validation must show the complete price relationship even when
+    // one of the values was absent from a sparse finding payload.
+    defaultDisplayKeys.forEach(key => {
+        if (!existingKeys[key]) {
+            allColumns.push(_cfColumnDefinition(key));
+            existingKeys[key] = true;
+        }
+    });
+    const priceDisplayOrder = [
+        'final_sku_price', 'original_sku_price', 'savings'
+    ];
+    if (defaultDisplayKeys.some(key => priceDisplayOrder.includes(key))) {
+        const priceIndexes = allColumns
+            .map((column, index) => priceDisplayOrder.includes(column.key) ? index : -1)
+            .filter(index => index >= 0);
+        const insertAt = Math.min(...priceIndexes);
+        const priceDefinitions = new Map(
+            allColumns.filter(column => priceDisplayOrder.includes(column.key))
+                .map(column => [column.key, column])
+        );
+        allColumns.splice(0, allColumns.length,
+            ...allColumns.filter(column => !priceDisplayOrder.includes(column.key))
+        );
+        allColumns.splice(insertAt, 0, ...priceDisplayOrder.map(
+            key => priceDefinitions.get(key) || _cfColumnDefinition(key)
+        ));
+    }
+
+    // defaultVisibleKeys: 고정 + 규칙 표시 컬럼 + dateCol + product_url
+    const defaultVisibleSet = new Set(fixedKeys.concat(defaultDisplayKeys));
+    if (urlKey) defaultVisibleSet.add('product_url');
+    const dateColKey = otherKeys.find(k => k === 'crawl_datetime' || k === 'crawl_strdatetime');
+    if (dateColKey) defaultVisibleSet.add(dateColKey);
+    const defaultVisibleKeys = allColumns.filter(c => defaultVisibleSet.has(c.key)).map(c => c.key);
 
     // 컨테이너 HTML
     const containerHtml = `<div class="detail-view-wrapper">
@@ -377,6 +416,11 @@ function showRetailerDetail(retailer) {
             r[key] = row[key] !== null && row[key] !== undefined ? String(row[key]) : '-';
         });
         retailerCols.forEach(col => {
+            if (!(col in r)) {
+                r[col] = row[col] !== null && row[col] !== undefined ? String(row[col]) : '-';
+            }
+        });
+        defaultDisplayKeys.forEach(col => {
             if (!(col in r)) {
                 r[col] = row[col] !== null && row[col] !== undefined ? String(row[col]) : '-';
             }
