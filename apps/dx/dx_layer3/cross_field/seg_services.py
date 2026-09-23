@@ -25,7 +25,6 @@ from apps.common.seg_retail import (
 
 SEG_NO_REVIEW_TEXT = 'No customer reviews'
 SEG_EQUAL_REVIEW_RETAILERS = ('Mediamarkt', 'OTTO')
-SEG_REVIEW_BODY_LIMIT = 20
 SEG_REVIEW_LOOKBACK_DAYS = 5
 _KST = timezone(timedelta(hours=9))
 
@@ -174,15 +173,15 @@ SEG_RULE_SPECS = OrderedDict((
         'guide_description': (
             '수집 완료 후 당일을 제외한 이전 5일 중 같은 상품의 가장 최근 기록과 비교합니다. 본문이 감소했고 현재 본문·리뷰 수가 '
             '모두 0이거나 이전 리뷰 수가 0이면 확인 필요입니다. 그 외 유효한 카운트에서 리뷰 수·별점 수가 다르거나 어느 한쪽이라도 '
-            '감소하지 않았으면 이상입니다. 두 카운트가 모두 감소했다면 현재 본문이 min(현재 카운트, 20)개보다 부족할 때 '
-            '이상입니다. 비교 기록이 없거나 본문 개수·카운트를 해석할 수 없는 경우에는 판정하지 않습니다. 현재 두 카운트가 0인데 '
+            '감소하지 않았으면 이상입니다. 리뷰 수와 별점 수가 같고 두 카운트가 모두 감소했다면 본문 감소는 정상입니다. '
+            '별점 점수만 낮아진 경우는 정상 처리 근거가 아닙니다. 비교 기록이 없거나 본문 개수·카운트를 해석할 수 없는 경우에는 판정하지 않습니다. 현재 두 카운트가 0인데 '
             '본문이 남은 경우는 리뷰 수와 본문 확인에서 처리합니다.'
         ),
         'detail_name': '최근 5일 내 직전 수집 대비 리뷰본문 감소',
         'field1': 'detailed_review_content', 'field2': None,
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
         'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'detailed_review_content', 'review_body_count', 'previous_review_body_count', 'previous_source_date'),
-        'error_message': '수집 완료 후 당일을 제외한 이전 5일 중 같은 상품의 가장 최근 수집 기록과 비교합니다. 카운트 변화와 최대 20개 수집 기준으로 설명되지 않는 리뷰본문 감소입니다.',
+        'error_message': '수집 완료 후 당일을 제외한 이전 5일 중 같은 상품의 가장 최근 수집 기록과 비교합니다. 리뷰 수와 별점 수가 같고 둘 다 감소하면 본문 감소는 정상입니다. 카운트가 함께 감소하지 않거나 서로 다른 상태에서 본문이 감소하면 이상입니다. 별점 점수 하락만으로 정상 처리하지 않습니다.',
     }),
 ))
 
@@ -396,10 +395,8 @@ def _review_body_decrease_level(row, previous):
         return 'anomaly'
     if any(current >= prior for current, prior in zip(current_counts, previous_counts)):
         return 'anomaly'
-    # Both counts fell: allow a smaller body only if today's collection target
-    # is still met (all reviews below 20, otherwise 20).
-    return ('anomaly' if current_body < min(SEG_REVIEW_BODY_LIMIT, max(current_counts))
-            else None)
+    # Equal review/rating counts both fell, so a smaller body is expected.
+    return None
 
 
 def _review_collection_complete(source_day, now):

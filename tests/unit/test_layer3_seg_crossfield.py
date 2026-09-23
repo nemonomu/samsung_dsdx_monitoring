@@ -292,17 +292,20 @@ class SegReviewHistoryTests(unittest.TestCase):
         values.update(overrides)
         return _amazon_row(**values)
 
-    def test_decrease_accounts_for_counts_and_twenty_review_limit(self):
+    def test_body_decrease_is_normal_when_equal_counts_both_decrease(self):
         cases = [
             # Previous counts/body, current counts/body, anomaly.
             ('50', '50', 20, '50', '50', 15, True),
             ('50', '50', 20, '60', '60', 15, True),
             ('50', '50', 20, '0', '0', 0, False),
-            ('50', '50', 20, '30', '30', 15, True),
+            ('50', '50', 20, '30', '30', 15, False),
             ('50', '50', 20, '10', '10', 10, False),
-            ('50', '50', 20, '10', '10', 5, True),
+            ('50', '50', 20, '10', '10', 5, False),
             ('50', '50', 20, '1', '1', 1, False),
-            ('50', '50', 20, '1', '1', 0, True),
+            ('50', '50', 20, '1', '1', 0, False),
+            ('50', '50', 20, '30', '40', 15, True),
+            ('50', '30', 20, '30', '30', 15, True),
+            ('30', '50', 20, '30', '30', 15, True),
             ('50', '50', 20, '0', '10', 10, True),
             ('50', '50', 20, '10', '0', 10, True),
             ('50', '50', 20, '60', '60', 20, False),
@@ -317,6 +320,40 @@ class SegReviewHistoryTests(unittest.TestCase):
                                        count_of_reviews=cr, count_of_star_ratings=cs)
                     result, _ = self.result('review_body_decrease', [previous, current])
                     self.assertEqual(int(expected), result['failed_records'])
+
+    def test_screenshot_count_and_body_decreases_are_normal_for_all_seg_products(self):
+        cases = (
+            ('Mediamarkt', '3', '2', 2, 1, '3.7', '3'),
+            ('OTTO', '11', '10', 6, 5, '4.6', '4.6'),
+        )
+        for product in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            for retailer, prior_count, count, prior_body, body, prior_rating, rating in cases:
+                with self.subTest(product=product, retailer=retailer):
+                    rows = [
+                        self.row(1, '2026-09-08', prior_body, account_name=retailer,
+                                 count_of_reviews=prior_count, count_of_star_ratings=prior_count,
+                                 star_rating=prior_rating),
+                        self.row(2, '2026-09-09', body, account_name=retailer,
+                                 count_of_reviews=count, count_of_star_ratings=count,
+                                 star_rating=rating),
+                    ]
+                    result, _ = self.result('review_body_decrease', rows, product_line=product)
+                    self.assertEqual((0, 0), (result['failed_records'], result['review_needed_records']))
+
+    def test_rating_score_drop_does_not_excuse_body_drop_with_unchanged_counts(self):
+        for product in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            for retailer in ('Mediamarkt', 'OTTO'):
+                with self.subTest(product=product, retailer=retailer):
+                    rows = [
+                        self.row(1, '2026-09-08', 6, account_name=retailer,
+                                 count_of_reviews='10', count_of_star_ratings='10', star_rating='4.6'),
+                        self.row(2, '2026-09-09', 5, account_name=retailer,
+                                 count_of_reviews='10', count_of_star_ratings='10', star_rating='4.5'),
+                    ]
+                    result, _ = self.result('review_body_decrease', rows, product_line=product)
+                    self.assertEqual((1, 0), (result['failed_records'], result['review_needed_records']))
+                    detail, _ = self.result('review_body_decrease', rows, product_line=product, detail=True)
+                    self.assertEqual((1, 0), (detail['total_anomalies'], detail['total_review_needed']))
 
     def test_invalid_counts_are_not_treated_as_zero_on_either_day(self):
         for column in ('count_of_reviews', 'count_of_star_ratings'):
