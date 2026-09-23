@@ -20,6 +20,7 @@
 .ccs-table .abnormal,.ccs-text-abnormal {color:#cf2445}
 .ccs-table .review,.ccs-text-review {color:#c65320}
 .ccs-table .normal {color:#33796b}
+.ccs-table .ccs-zero {color:#cf2445}
 .ccs-badge {display:inline-block;padding:5px 9px;border-radius:4px;white-space:nowrap;font-size:11px;font-weight:600;color:#64748b;background:#f1f5f9}
 .ccs-badge.abnormal {background:#fce8ed;color:#cf2445}
 .ccs-badge.review {background:#fff0e6;color:#c65320}
