@@ -269,6 +269,7 @@ function initFilterBar(options) {
 
     function onDateChange() {
         sessionStorage.setItem('monitoringSelectedDate', filterBar.getDate());
+        if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.load(filterBar.getDate(), true);
     }
 
     var config = {
@@ -295,6 +296,7 @@ function initFilterBar(options) {
     }
 
     filterBar = new FilterBar('#filter-bar-container', config).render();
+    if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.load(filterBar.getDate());
 }
 
 // ============================================================

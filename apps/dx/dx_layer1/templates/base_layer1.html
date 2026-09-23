@@ -6,7 +6,8 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'dx_layer1/css/retail-query.css' %}?v=1">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/retail-batches.css' %}?v=1">
-<link rel="stylesheet" href="{% static 'dx_layer1/css/layer1.css' %}?v=4">
+<link rel="stylesheet" href="{% static 'dx_layer1/css/layer1.css' %}?v=5-column-alerts">
+<link rel="stylesheet" href="{% static 'dx_layer1/css/column-alert-summary.css' %}?v=1">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/collection-statistics.css' %}?v=6-bsr">
 <style>
     :root {
@@ -54,7 +55,9 @@
     };
 
 </script>
-<script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=20260922-next-day"></script>
+{{ column_alert_catalog|json_script:'l1-column-alert-catalog' }}
+<script src="{% static 'dx_layer1/js/column-alert-summary.js' %}?v=1"></script>
+<script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=20260923-column-alerts"></script>
 <script src="{% static 'dx_layer1/js/collection-volume.js' %}?v=3-bsr"></script>
 <script src="{% static 'dx_layer1/js/retail-query.js' %}?v=20260922-simple-sql"></script>
 <script src="{% static 'dx_layer1/js/retail-status.js' %}?v=20260923-missing"></script>

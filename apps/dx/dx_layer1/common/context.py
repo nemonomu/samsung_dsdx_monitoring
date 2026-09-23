@@ -123,7 +123,10 @@ def _build_sidebar_groups(section):
 
 
 def build_context(section, request):
+    from apps.dx.dx_layer1.column_statistics.services import catalog
+
     return {
+        'column_alert_catalog': catalog(),
         'layer': LAYER_CONTEXT,
         'section': section,
         'section_title': SECTION_TITLES.get(section, ''),

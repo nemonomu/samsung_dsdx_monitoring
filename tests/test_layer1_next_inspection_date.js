@@ -9,6 +9,7 @@ class ClockDate extends Date {
 }
 const saved = new Map();
 const toasts = [];
+const columnAlertDates = [];
 let loads = 0;
 let bar;
 class FilterBar {
@@ -38,6 +39,7 @@ const sandbox = {
     sessionStorage: {getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value)},
     showToast: message => toasts.push(message),
     loadAllData: () => { loads++; },
+    ColumnAlertSummary: {load: (date, force = false) => columnAlertDates.push({date, force})},
 };
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox);
@@ -45,11 +47,13 @@ sandbox.initFilterBar();
 assert.strictEqual(bar.config.controls[0].max, '2026-09-23');
 assert.strictEqual(bar.config.controls[0].maxToday, false);
 assert.strictEqual(bar.getDate(), '2026-09-22');
+assert.deepStrictEqual(columnAlertDates.at(-1), {date:'2026-09-22',force:false});
 
 const next = bar.config.controls.find(control => control.label === '다음날');
 next.onClick();
 assert.strictEqual(bar.getDate(), '2026-09-23');
 assert.strictEqual(loads, 1);
+assert.deepStrictEqual(columnAlertDates.at(-1), {date:'2026-09-23',force:true});
 next.onClick();
 assert.strictEqual(bar.getDate(), '2026-09-23');
 assert.strictEqual(loads, 1);
