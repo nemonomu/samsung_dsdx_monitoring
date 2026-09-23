@@ -139,6 +139,63 @@ insufficient.snapshots[0].rows[0].comparison_state = 'insufficient';
 const insufficientData = volume.decorate(fixture(), insufficient, day);
 assert.strictEqual(insufficientData.checks[0].status, 'OK');
 assert.strictEqual(context.L1.retailStatus.render(insufficientData.checks[0], 0, 'seg_retail'), '');
+
+function fixedFixture(country = 'SEA', product = 'TV', retailer = 'Walmart', bsr = 99) {
+    const data = fixture();
+    const check = data.checks[0], cat = check.categories[0], row = cat.retailers[0];
+    check.check_type = {SEA:'retail', SEG:'seg_retail', SIEL:'siel_retail', SEDA:'seda_retail', SEM:'sem_retail', TSE:'tse_retail'}[country];
+    check.inspection_date = day;
+    check.is_target_date = true;
+    cat.name = product;
+    Object.assign(row, {retailer, main_count:299, bsr_count:bsr, count:337});
+    data.summary = {passed:1,failed:0};
+    return data;
+}
+const rowOf = data => data.checks[0].categories[0].retailers[0];
+// Fixed targets do not depend on a snapshot being present, fresh or matching.
+for (const payload of [null, {inspection_date:day,snapshots:[]},
+    {inspection_date:day,snapshots:[{country:'SEA',available:false,rows:[]}]},
+    {inspection_date:'2026-09-20',snapshots:[]}, saved()]) {
+    const current = volume.decorate(fixedFixture(), payload, day);
+    assert.strictEqual(rowOf(current).status, 'VOLUME_LOW');
+    assert.strictEqual(current.checks[0].status, 'VOLUME_LOW');
+    assert.strictEqual(current.summary.failed, 1);
+    assert(context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('class="cs-bsr-low"'));
+    assert(context.L1.retailStatus.render(current.checks[0], 0, 'retail').includes('BSR 기준 100개 / 수집 99개 / 1개 부족'));
+}
+for (const [country, product, retailer] of [
+    ['SEA','REF','Amazon'], ['SEA','LDY','HomeDepot'], ['SEM','REF','Liverpool'],
+    ['SEDA','TV','Magalu'], ['SEG','TV','OTTO'], ['SIEL','TV','Amazon'], ['TSE','TV','Homepro'],
+]) {
+    assert.strictEqual(rowOf(volume.decorate(fixedFixture(country, product, retailer), null, day)).status, 'VOLUME_LOW');
+}
+for (const [country, product, retailer] of [['SEA','TV','Amazon'], ['SEM','REF','HomeDepot']]) {
+    assert.strictEqual(rowOf(volume.decorate(fixedFixture(country, product, retailer), null, day)).status, 'OK', 'variable targets still need the median decision');
+}
+for (const adjust of [
+    d => {rowOf(d).bsr_count = 100;},
+    d => {rowOf(d).bsr_count = null;},
+    d => {Object.assign(rowOf(d), {main_count:0,bsr_count:0,count:0,status:'CRITICAL'});},
+    d => {d.checks[0].phase = 'collecting';},
+    d => {rowOf(d).status = 'COLLECTING';},
+    d => {rowOf(d).status = 'ERROR';},
+    d => {rowOf(d).collection_status = 'COLLECTING';},
+    d => {d.checks[0].inspection_date = '2026-09-20';},
+]) {
+    const current = fixedFixture(); adjust(current); volume.decorate(current, null, day);
+    assert(!context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('cs-bsr-low'));
+}
+const displayedSummary = {tv:{inspection_date:day,source_date:day,summary:[{retailer:'Walmart',rows:[{time_slot:'daily',main:299,bsr:99,total:337}]}]}};
+const updated = fixedFixture('SEA','TV','Walmart',100);
+volume.decorate(updated, null, day, displayedSummary);
+assert.strictEqual(rowOf(updated).volume_alerts[0].actual, 99, 'use the counts actually displayed by the current SEA summary');
+displayedSummary.tv.summary[0].rows[0].bsr = 100;
+volume.decorate(updated, null, day, displayedSummary);
+assert.strictEqual(rowOf(updated).status, 'OK', 'recovered counts remove the previous alert');
+displayedSummary.tv.summary[0].rows[0].bsr = 99;
+displayedSummary.tv.inspection_date = '2026-09-20';
+volume.decorate(updated, null, day, displayedSummary);
+assert.strictEqual(rowOf(updated).status, 'OK', 'a different date must not supply current BSR values');
 console.log('Collection volume: threshold states, precedence, snapshot matching and stale-response tests passed.');
 
 // A stalled volume API must never delay the existing page; old dates cannot repaint it.

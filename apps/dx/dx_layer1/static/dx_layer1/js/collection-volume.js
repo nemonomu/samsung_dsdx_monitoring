@@ -1,4 +1,5 @@
-// Reads precomputed decisions only. Never requests history or blocks the counts request.
+// History comparisons use saved decisions; fixed BSR targets use current counts.
+// Never requests history or blocks the counts request.
 (function () {
     const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE'};
     const pending = ['PENDING', 'COLLECTING', 'ANALYZING'];
@@ -20,6 +21,30 @@
         if (alerts.some(alert => alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
         if (alerts.some(alert => alert.status === 'VOLUME_HIGH')) return 'VOLUME_HIGH';
         return base;
+    }
+    function variableBsr(country, product, retailer) {
+        const name = String(retailer || '').trim().toLowerCase();
+        return (country === 'SEA' && product === 'TV' && name === 'amazon')
+            || (country === 'SEM' && name === 'homedepot');
+    }
+    function fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate) {
+        if ((check.phase && check.phase !== 'complete') || pending.includes(row.status)
+            || pending.includes(slot.status) || row.status === 'ERROR'
+            || pending.includes(row.collection_status)
+            || (check.inspection_date && check.inspection_date !== selectedDate)
+            || (cat.inspection_date && cat.inspection_date !== selectedDate)) return null;
+        if (displayed && ((summary.inspection_date || summary.date) && (summary.inspection_date || summary.date) !== selectedDate
+            || (cat.source_date && summary.source_date && cat.source_date !== summary.source_date))) return null;
+        const item = (row.items || []).find(item => item.name === 'BSR Rank');
+        const raw = displayed ? displayed.bsr : row.bsr_count != null ? row.bsr_count : item && item.count;
+        if (raw == null || String(raw).trim() === '') return null;
+        const bsr = Number(raw);
+        const current = displayed || counts;
+        if (!Number.isInteger(bsr) || bsr < 0 || bsr >= 100
+            || ['main', 'bsr', 'total'].every(key => Number(current[key] || 0) === 0)) return null;
+        return {metric: 'bsr', baseline: 100, actual: bsr, percent: bsr - 100,
+            status: 'VOLUME_LOW', rule: 'fixed_100',
+            reason: `BSR 기준 100개 / 수집 ${bsr}개 / ${100 - bsr}개 부족`};
     }
     function decorate(data, payload, selectedDate, seaSummaries) {
         const snapshots = payload && payload.inspection_date === selectedDate ? payload.snapshots || [] : [];
@@ -54,9 +79,14 @@
                             && String(saved.batch_id || '') === String(row.batch_id || '')
                             && ['main', 'bsr', 'total'].every(key => counts[key] === saved[key]);
                         row.volume_comparison_state = matches ? saved.comparison_state : 'unavailable';
-                        if (!matches) return;
-                        row.volume_alerts = saved.alerts || [];
-                        const homeDepotReady = country === 'SEA' && row.retailer === 'HomeDepot'
+                        row.volume_alerts = matches ? (saved.alerts || []).slice() : [];
+                        if (!variableBsr(country, product, row.retailer)) {
+                            row.volume_alerts = row.volume_alerts.filter(alert => alert.metric !== 'bsr');
+                            const fixedAlert = fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate);
+                            if (fixedAlert) row.volume_alerts.push(fixedAlert);
+                        }
+                        if (!matches && !row.volume_alerts.length) return;
+                        const homeDepotReady = matches && country === 'SEA' && row.retailer === 'HomeDepot'
                             && ['REF', 'LDY'].includes(product) && row.status === 'UNASSESSED'
                             && saved.comparison_state === 'ready' && counts.total > 0;
                         row.status = merge(homeDepotReady ? 'OK' : row.status, row.volume_alerts);

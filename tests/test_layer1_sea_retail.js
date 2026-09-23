@@ -263,9 +263,9 @@ function categoryFromSummary(key) {
         commonSource.indexOf('function formatLocalDate(')), context);
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
-    assert(baseSource.includes("layer1.css' %}?v=4"));
-    assert(baseSource.includes("layer1-common.js' %}?v=20260922-next-day"));
-    assert(baseSource.includes("collection-volume.js' %}?v=3-bsr"));
+    assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
+    assert(baseSource.includes("layer1-common.js' %}?v=20260923-column-alerts"));
+    assert(baseSource.includes("collection-volume.js' %}?v=4-current-bsr"));
     assert(baseSource.includes("retail-status.js' %}?v=20260923-missing"));
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
