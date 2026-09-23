@@ -132,8 +132,8 @@ class SielCrossfieldEvaluationTests(unittest.TestCase):
         ))
         self.assertTrue({
             'rating_count_presence', 'rating_range', 'rank_page_type',
-            'discount_rate_90',
         }.issubset(errors))
+        self.assertNotIn('discount_rate_90', errors)
 
         sentence = siel_services.evaluate_siel_row(_amazon_row(
             star_rating='Excellent television',
@@ -417,13 +417,13 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
 
 
 class SielCrossfieldSeedTests(unittest.TestCase):
-    def test_seed_contains_three_sources_and_twenty_rules_each(self):
+    def test_seed_contains_three_sources_and_nineteen_rules_each(self):
         from pathlib import Path
 
         sql = Path('sql/seed_siel_layer3_crossfield.sql').read_text(
             encoding='utf-8'
         )
-        self.assertIn('Expected 60 active SIEL cross-field rules', sql)
+        self.assertIn('Expected 57 active SIEL cross-field rules', sql)
         for section in (
             'siel_tv_retail', 'siel_ref_retail', 'siel_ldy_retail'
         ):

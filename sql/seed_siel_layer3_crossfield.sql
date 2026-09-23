@@ -2,7 +2,7 @@
 -- PostgreSQL only. Review and run manually in DBeaver.
 -- Application code evaluates these allow-listed rule keys; stored query text
 -- is informational and is never executed.
--- Exact expected active seed rows: 60 (20 per product line).
+-- Exact expected active seed rows: 57 (19 per product line).
 
 BEGIN;
 
@@ -60,10 +60,6 @@ VALUES
      'final_sku_price', 'original_sku_price',
      'final_sku_price가 original_sku_price보다 크거나 같습니다.',
      'final_sku_price|original_sku_price|savings', 50),
-    ('Amazon', 'discount_rate_90', '90% 이상 할인 검증',
-     'final_sku_price', 'original_sku_price',
-     '최종가와 원가로 계산한 할인율이 90% 이상입니다.',
-     'final_sku_price|original_sku_price|savings', 60),
     ('Amazon', 'savings_missing', '할인 가격 존재 시 savings 확인',
      'savings', 'final_sku_price|original_sku_price',
      '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.',
@@ -140,6 +136,22 @@ SELECT
     rule.sort_order
 FROM _siel_crossfield_source_seed source
 CROSS JOIN _siel_crossfield_rule_seed rule;
+
+-- Retire the removed Amazon discount threshold rule from existing installations.
+UPDATE public.monitoring_validation_rules target
+SET is_active = FALSE
+FROM _siel_crossfield_source_seed source
+WHERE target.rule_type = 'crossfield'
+  AND target.section_code = source.section_code
+  AND target.table_name = source.table_name
+  AND LOWER(BTRIM(target.retailer)) IN ('amazon', 'all')
+  AND (
+      target.validation_type IN ('discount_rate_90', 'discount_rate')
+      OR target.detail_code IN (
+          source.product_line || '_discount_rate_90',
+          source.product_line || '_discount_rate'
+      )
+  );
 
 UPDATE public.monitoring_validation_rules target
 SET section_name = seed.section_name,
@@ -228,16 +240,16 @@ BEGIN
      AND LOWER(BTRIM(target.retailer)) = LOWER(BTRIM(seed.retailer))
     WHERE target.is_active IS TRUE;
 
-    IF active_seed_count <> 60 THEN
+    IF active_seed_count <> 57 THEN
         RAISE EXCEPTION
-            'Expected 60 active SIEL cross-field rules, found %',
+            'Expected 57 active SIEL cross-field rules, found %',
             active_seed_count;
     END IF;
 END $$;
 
 COMMIT;
 
--- Verification: three rows, each with 20 active configured rules.
+-- Verification: three rows, each with 19 active configured rules.
 SELECT
     section_code,
     table_name,

@@ -94,17 +94,6 @@ SEG_RULE_SPECS = OrderedDict((
         ),
         'error_message': 'final_sku_price가 original_sku_price보다 크거나 같습니다.',
     }),
-    ('discount_rate_90', {
-        'guide_description': '최종가와 원가가 모두 숫자이며 0보다 클 때 (원가-최종가)/원가 × 100이 90 이상이면 이상입니다.',
-        'detail_name': '90% 이상 할인 검증',
-        'field1': 'final_sku_price',
-        'field2': 'original_sku_price',
-        'retailers': ('Amazon',),
-        'display_fields': (
-            'final_sku_price', 'original_sku_price', 'savings',
-        ),
-        'error_message': '최종가와 원가로 계산한 할인율이 90% 이상입니다.',
-    }),
     ('savings_missing', {
         'guide_description': (
             '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다. Mediamarkt는 원가가 0보다 크고 할인율이 '
@@ -204,7 +193,6 @@ _RULE_ALIASES = {
     'star_rating_range': 'rating_range',
     'page_type_rank': 'rank_page_type',
     'price_order': 'final_original_price',
-    'discount_rate': 'discount_rate_90',
     'savings_required': 'savings_missing',
     'original_required': 'original_missing',
     'final_required': 'final_missing',
@@ -312,13 +300,6 @@ def evaluate_seg_row(row):
     if final_price is not None and original_price is not None:
         if final_price >= original_price:
             errors.add('final_original_price')
-        if (
-            retailer == 'Amazon'
-            and final_price > 0
-            and original_price > 0
-            and ((original_price - final_price) / original_price) * 100 >= 90
-        ):
-            errors.add('discount_rate_90')
         if original_price > final_price and not savings_present:
             small_mediamarkt_discount = (
                 retailer == 'Mediamarkt' and original_price > 0

@@ -257,11 +257,11 @@ class SegCrossfieldScopeTests(unittest.TestCase):
         self.assertIn('5일', rule['detail_name'])
         self.assertIn('이전 5일', rule['error_message'])
 
-    def test_seed_registers_all_three_products_and_thirteen_rules(self):
+    def test_seed_registers_all_three_products_and_twelve_rules(self):
         sql = Path('sql/seed_seg_layer3_crossfield.sql').read_text(
             encoding='utf-8'
         )
-        self.assertIn('Expected 39 active SEG cross-field rules', sql)
+        self.assertIn('Expected 36 active SEG cross-field rules', sql)
         for section in ('seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail'):
             self.assertIn(section, sql)
         for rule_key in seg_services.SEG_RULE_SPECS:

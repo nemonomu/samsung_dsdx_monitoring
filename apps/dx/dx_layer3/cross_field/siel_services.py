@@ -91,19 +91,6 @@ SIEL_RULE_SPECS = OrderedDict((
             'final_sku_price가 original_sku_price보다 크거나 같습니다.'
         ),
     }),
-    ('discount_rate_90', {
-        'guide_description': '최종가와 원가가 모두 숫자이며 0보다 클 때 (원가-최종가)/원가 × 100이 90 이상이면 이상입니다.',
-        'detail_name': '90% 이상 할인 검증',
-        'field1': 'final_sku_price',
-        'field2': 'original_sku_price',
-        'retailers': ('Amazon',),
-        'display_fields': (
-            'final_sku_price', 'original_sku_price', 'savings',
-        ),
-        'error_message': (
-            '최종가와 원가로 계산한 할인율이 90% 이상입니다.'
-        ),
-    }),
     ('review_body_missing', {
         'detail_name': '리뷰 수 존재 시 리뷰본문 확인',
         'field1': 'count_of_reviews',
@@ -223,7 +210,6 @@ _RULE_ALIASES = {
     'star_rating_range': 'rating_range',
     'page_type_rank': 'rank_page_type',
     'price_order': 'final_original_price',
-    'discount_rate': 'discount_rate_90',
     'review_without_body': 'review_body_missing',
     'body_without_review_count': 'review_count_missing',
     'review_without_star_count': 'review_star_count_missing',
@@ -340,13 +326,6 @@ def evaluate_siel_row(row):
     if final_price is not None and original_price is not None:
         if final_price >= original_price:
             errors.add('final_original_price')
-        if (
-            retailer == 'Amazon'
-            and final_price > 0
-            and original_price > 0
-            and ((original_price - final_price) / original_price) * 100 >= 90
-        ):
-            errors.add('discount_rate_90')
 
     if retailer == 'Flipkart':
         body_present = _has_value(row.get('detailed_review_content'))
