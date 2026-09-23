@@ -481,20 +481,80 @@
     }
 
     .cause-history {
-        line-height: 1.65;
+        padding: 10px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #f8fafc;
+        max-width: 760px;
+        line-height: 1.5;
         overflow-wrap: anywhere;
         color: #334155;
     }
-    .cause-history > strong { color: #0f766e; }
-    .cause-history-empty { color: #64748b; font-size: 11px; }
-    .cause-history-screenshot {
-        padding: 3px 8px;
-        margin-top: 4px;
-        border: 1px solid #99c9c4;
+    .cause-history-header,
+    .cause-history-footer {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+    }
+    .cause-history-badge {
+        padding: 2px 7px;
         border-radius: 4px;
-        background: #f0fdfa;
-        color: #0f766e;
+        background: #ede9f3;
+        color: var(--page-color, #7e6b9b);
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .cause-history-meta { margin-left: auto; }
+    .cause-history-meta,
+    .cause-history-note,
+    .cause-history-empty { color: #64748b; font-size: 11px; }
+    .cause-history-fields {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px 16px;
+        margin: 8px 0;
+    }
+    .cause-history-fields > div { min-width: 0; }
+    .cause-history-title { grid-column: span 2; }
+    .cause-history-fields dt {
+        font-size: 10px;
+        color: #64748b;
+        margin: 0 0 1px;
+    }
+    .cause-history-fields dd {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .cause-history .null-value { font-style: normal; }
+    .cause-history-footer {
+        border-top: 1px solid #e2e8f0;
+        padding-top: 7px;
+    }
+    .cause-history-reason {
+        display: flex;
+        flex: 1;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 8px;
+    }
+    .cause-history-reason > span { color: #64748b; font-size: 11px; }
+    .cause-history-screenshot {
+        padding: 4px 9px;
+        border: 1px solid #d8d2e4;
+        border-radius: 4px;
+        background: #fff;
+        color: var(--page-color, #7e6b9b);
+        font: inherit;
+        font-size: 11px;
+        white-space: nowrap;
         cursor: pointer;
+    }
+    .cause-history-screenshot:hover { background: #ede9f3; }
+    .cause-history-screenshot:focus-visible {
+        outline: 2px solid var(--page-color, #7e6b9b);
+        outline-offset: 2px;
     }
 
     .anomaly-table .text-center {

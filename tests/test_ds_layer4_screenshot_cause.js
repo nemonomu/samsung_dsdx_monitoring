@@ -23,7 +23,7 @@ assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260923-4"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260923-5"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-4"
@@ -32,7 +32,7 @@ assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20260923-1"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260923-4"
+    "{% static 'ds_layer4/js/report.js' %}?v=20260923-5"
 ));
 
 function fakeClassList() {
@@ -195,7 +195,7 @@ const historyHtml = sandbox.renderCauseHistory({
 });
 assert.ok(historyHtml.includes('과거 원인 자동 적용'));
 assert.ok(historyHtml.includes('&lt;과거 제목&gt;'));
-assert.ok(historyHtml.includes('가격: <b>0</b>'));
+assert.ok(historyHtml.includes('<dt>가격</dt><dd>0</dd>'));
 assert.ok(historyHtml.includes('과거 판매자'));
 assert.ok(historyHtml.includes('showCauseHistoryScreenshot(7)'));
 assert.ok(!historyHtml.includes('현재 원인'));

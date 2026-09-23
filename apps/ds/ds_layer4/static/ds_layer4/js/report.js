@@ -236,27 +236,38 @@ function updateStatusSelectAllState() {
 function renderCauseHistory(anomaly) {
     const history = anomaly.cause_history;
     if (!history || history.status === 'none' || history.status === 'unrecorded') {
-        return `<span class="cause-history-empty">${normalizeReportCause(anomaly.cause)
+        return `<div class="cause-history cause-history-empty">${normalizeReportCause(anomaly.cause)
             ? '원인 적용 출처 미기록 · 확인 가능한 과거 기록 없음'
-            : '적용 가능한 과거 기록 없음 · 확인 필요'}</span>`;
+            : '적용 가능한 과거 기록 없음 · 확인 필요'}</div>`;
     }
     if (history.status === 'manual') {
-        return `<div class="cause-history"><strong>이번 검수에서 직접 입력</strong>
-            <div>${esc(history.applied_at || '')} · ${esc(history.applied_by || '-')}</div></div>`;
+        return `<div class="cause-history"><div class="cause-history-header">
+            <span class="cause-history-badge">이번 검수에서 직접 입력</span>
+            <span class="cause-history-meta">${esc(history.applied_at || '')} · ${esc(history.applied_by || '-')}</span>
+        </div></div>`;
     }
     const source = history.source;
-    if (!source) return '<span class="cause-history-empty">원인 적용 출처 미기록</span>';
+    if (!source) return '<div class="cause-history cause-history-empty">원인 적용 출처 미기록</div>';
     const value = raw => raw == null || String(raw).trim() === ''
         ? '<span class="null-value">NULL</span>' : esc(String(raw));
     const label = history.status === 'automatic' ? '과거 원인 자동 적용' : '과거 동일 조건 기록';
     return `<div class="cause-history">
-        <strong>${label}</strong>
-        ${history.status === 'legacy_match' ? '<div class="cause-history-empty">자동 적용 여부 미기록</div>' : ''}
-        <div>${esc(source.crawl_date || '-')} · 기록자: ${esc(source.updated_id || source.created_id || '-')}</div>
-        <div>SKU: <b>${value(source.retailersku)}</b> · 제목: <b>${value(source.title)}</b></div>
-        <div>가격: <b>${value(source.retailprice)}</b> · Ships From: <b>${value(source.ships_from)}</b> · Sold By: <b>${value(source.sold_by)}</b></div>
-        <div>당시 원인: <b>${value(source.cause)}</b></div>
-        ${source.screenshot_id ? `<button type="button" class="cause-history-screenshot" onclick="showCauseHistoryScreenshot(${Number(anomaly.id)})">📷 과거 캡처 보기</button>` : '<span class="cause-history-empty">과거 캡처 없음</span>'}
+        <div class="cause-history-header">
+            <span class="cause-history-badge">${label}</span>
+            ${history.status === 'legacy_match' ? '<span class="cause-history-note">자동 적용 여부 미기록</span>' : ''}
+            <span class="cause-history-meta">${esc(source.crawl_date || '-')} · 기록자 ${esc(source.updated_id || source.created_id || '-')}</span>
+        </div>
+        <dl class="cause-history-fields">
+            <div><dt>SKU</dt><dd>${value(source.retailersku)}</dd></div>
+            <div class="cause-history-title"><dt>제목</dt><dd>${value(source.title)}</dd></div>
+            <div><dt>가격</dt><dd>${value(source.retailprice)}</dd></div>
+            <div><dt>Ships From</dt><dd>${value(source.ships_from)}</dd></div>
+            <div><dt>Sold By</dt><dd>${value(source.sold_by)}</dd></div>
+        </dl>
+        <div class="cause-history-footer">
+            <div class="cause-history-reason"><span>당시 원인</span><strong>${value(source.cause)}</strong></div>
+            ${source.screenshot_id ? `<button type="button" class="cause-history-screenshot" onclick="showCauseHistoryScreenshot(${Number(anomaly.id)})">📷 과거 캡처 보기</button>` : '<span class="cause-history-note">과거 캡처 없음</span>'}
+        </div>
     </div>`;
 }
 
