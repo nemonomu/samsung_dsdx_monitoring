@@ -1,13 +1,16 @@
 import json
 import unittest
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import RequestFactory
 
 from apps.dx.dx_layer1.column_statistics import api, services
+from apps.dx.dx_layer1.column_statistics.comparison import (
+    KST, compare_columns, collection_complete,
+)
 
 
 class ColumnStatisticsTests(unittest.TestCase):
@@ -97,10 +100,98 @@ class ColumnStatisticsApiTests(unittest.TestCase):
             self.assertEqual(query.call_count, 2)
 
     def test_success_is_cached_per_selection(self):
-        with patch.object(api, 'daily_counts', return_value={'columns': ['item']}) as query:
+        fixture = {'columns': ['item'], 'dates': ['2026-09-20'], 'daily': []}
+        with patch.object(api, 'daily_counts', return_value=fixture) as query, \
+                patch.object(api, 'attach_comparisons', side_effect=lambda data, _: dict(data)):
             response = api.daily(self.factory.get('/', {'date': '2026-09-20'}))
             self.assertEqual(json.loads(response.content)['columns'], ['item'])
             api.daily(self.factory.get('/', {'date': '2026-09-20'}))
             self.assertEqual(query.call_count, 1)
             api.daily(self.factory.get('/', {'date': '2026-09-20', 'retailer': 'Walmart'}))
             self.assertEqual(query.call_count, 2)
+
+    def test_baseline_window_is_independent_of_display_days_and_cache_is_not_trimmed(self):
+        dates = [str(date(2026, 9, 20) - timedelta(days=28-i)) for i in range(29)]
+        fixture = {'columns': ['item'], 'dates': dates, 'daily': [{'date': d} for d in dates]}
+        with patch.object(api, 'daily_counts', return_value=fixture) as query, \
+                patch.object(api, 'attach_comparisons', side_effect=lambda data, _: dict(data)):
+            first = json.loads(api.daily(self.factory.get('/', {'date': '2026-09-20', 'days': 5})).content)
+            second = json.loads(api.daily(self.factory.get('/', {'date': '2026-09-20', 'days': 14})).content)
+            self.assertEqual(len(first['daily']), 5)
+            self.assertEqual(len(second['daily']), 14)
+            self.assertEqual(query.call_count, 1)
+            self.assertEqual(query.call_args.args[-1], 29)
+
+
+class ColumnComparisonTests(unittest.TestCase):
+    target = date(2026, 9, 23)
+
+    def compare(self, current, history=None, *, target_complete=True, total=300):
+        history = [100] * 7 if history is None else history
+        daily = [{'date': str(self.target - timedelta(days=i+1)), 'total': 300, 'counts': {'item': count}}
+                 for i, count in enumerate(history)]
+        daily.append({'date': str(self.target), 'total': total, 'counts': {'item': current}})
+        complete = {day['date']: True for day in daily}
+        complete[str(self.target)] = target_complete
+        return compare_columns({'columns': ['item'], 'daily': daily}, self.target, complete)[0]
+
+    def test_exact_thresholds_and_increase(self):
+        for count, status in [(0, 'abnormal'), (30, 'abnormal'), (31, 'review'), (60, 'review'), (61, 'normal'), (150, 'normal')]:
+            with self.subTest(count=count):
+                row = self.compare(count)
+                self.assertEqual(row['status'], status)
+                self.assertEqual(row['ratio'], count)
+                self.assertEqual(row['delta'], count - 100)
+
+    def test_current_date_and_outliers_do_not_distort_median(self):
+        row = self.compare(30, [100, 100, 100, 100, 100, 100, 10000])
+        self.assertEqual(row['baseline'], 100)
+        self.assertEqual(row['history_days'], 7)
+        self.assertEqual(row['status'], 'abnormal')
+
+    def test_28_day_window_excludes_older_values(self):
+        row = self.compare(30, [100] * 28 + [9000] * 20)
+        self.assertEqual(row['baseline'], 100)
+        self.assertEqual(row['history_days'], 28)
+
+    def test_unavailable_states_never_generate_alert(self):
+        self.assertEqual(self.compare(0, [100] * 6)['status'], 'insufficient')
+        self.assertEqual(self.compare(0, [0] * 7)['status'], 'no_baseline')
+        self.assertEqual(self.compare(0, target_complete=False)['status'], 'pending')
+        self.assertEqual(self.compare(0, total=0)['status'], 'uncollected')
+
+    def test_pending_and_wholly_missing_history_are_excluded(self):
+        daily = [{'date': str(self.target-timedelta(days=i)), 'total': 300, 'counts': {'item': 100}}
+                 for i in range(9)]
+        complete = {d['date']: True for d in daily}
+        complete[daily[1]['date']] = False
+        daily[2]['total'] = 0
+        row = compare_columns({'columns': ['item'], 'daily': daily}, self.target, complete)[0]
+        self.assertEqual(row['history_days'], 6)
+        self.assertEqual(row['status'], 'insufficient')
+
+    def test_zero_field_history_is_retained_when_products_were_collected(self):
+        row = self.compare(20, [0, 0, 0, 100, 100, 100, 100])
+        self.assertEqual(row['history_days'], 7)
+        self.assertEqual(row['baseline'], 100)
+
+    def test_seda_completion_respects_source_date_offset(self):
+        now = datetime(2026, 9, 23, 20, tzinfo=KST)
+        self.assertFalse(collection_complete('SEDA', 'TV', 'Magalu', self.target, now))
+        self.assertTrue(collection_complete('SEDA', 'TV', 'Magalu', self.target-timedelta(days=1), now))
+
+    def test_sea_uses_retailer_specific_schedule_and_missing_schedule_is_not_complete(self):
+        now = datetime(2026, 9, 23, 13, tzinfo=KST)
+        slots = [{'retailers': [{'name': 'Amazon'}], 'time_status': None},
+                 {'retailers': [{'name': 'Walmart'}], 'time_status': 'COLLECTING'}]
+        with patch('apps.common.dx_schedules.get_retail_time_slots', return_value=slots):
+            self.assertTrue(collection_complete('SEA', 'TV', 'Amazon', self.target, now))
+            self.assertFalse(collection_complete('SEA', 'TV', 'Walmart', self.target, now))
+            self.assertFalse(collection_complete('SEA', 'TV', 'Bestbuy', self.target, now))
+            self.assertTrue(collection_complete('SEA', 'REF', 'Bestbuy', self.target-timedelta(days=1), now))
+
+    def test_homedepot_launch_and_collection_end(self):
+        now = datetime(2026, 9, 23, 13, 59, tzinfo=KST)
+        self.assertFalse(collection_complete('SEA', 'REF', 'HomeDepot', self.target, now))
+        self.assertTrue(collection_complete('SEA', 'REF', 'HomeDepot', self.target, now+timedelta(minutes=1)))
+        self.assertFalse(collection_complete('SEA', 'REF', 'HomeDepot', date(2026, 9, 19), now))

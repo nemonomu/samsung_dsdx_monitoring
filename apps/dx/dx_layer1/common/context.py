@@ -17,6 +17,7 @@ SECTION_TITLES = {
     'dashboard': '대시보드',
     'collection_statistics': '수집데이터 통계',
     'column_statistics': '컬럼별 수집데이터 통계',
+    'column_alerts': '컬럼 수집 이상',
     'retail': 'SEA Retail',
     'seda_retail': 'SEDA Retail',
     'siel_retail': 'SIEL Retail',
@@ -112,6 +113,11 @@ def _build_sidebar_groups(section):
         'key': 'column_statistics', 'icon': '▦', 'label': '컬럼별 수집데이터 통계',
         'href': '/dx/layer1/column-statistics/', 'ignore_target_date': True,
         'active': section == 'column_statistics',
+    })
+    groups.append({
+        'key': 'column_alerts', 'icon': '🔔', 'label': '컬럼 수집 이상',
+        'href': '/dx/layer1/column-alerts/', 'ignore_target_date': True,
+        'active': section == 'column_alerts',
     })
     return groups
 

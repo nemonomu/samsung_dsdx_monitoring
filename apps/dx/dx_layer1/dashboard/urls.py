@@ -6,6 +6,7 @@ from apps.dx.dx_layer1.collection_statistics import api as statistics_api
 from apps.dx.dx_layer1.column_statistics import api as column_statistics_api
 
 urlpatterns = [
+    path('column-alerts/', column_statistics_api.alerts_page, name='column_alerts'),
     path('column-statistics/', column_statistics_api.page, name='column_statistics'),
     path('api/column-statistics/', column_statistics_api.daily, name='api_column_statistics'),
     path('collection-statistics/', statistics_api.page, name='collection_statistics'),

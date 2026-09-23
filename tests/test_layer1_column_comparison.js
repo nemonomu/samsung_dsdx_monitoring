@@ -1,0 +1,25 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const context = {window: {}, URLSearchParams};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../apps/dx/dx_layer1/static/dx_layer1/js/column-comparison.js'), 'utf8'), context);
+const c = context.window.ColumnComparison;
+
+assert.equal(c.ratio({status: 'abnormal', ratio: 30}), '30%');
+assert.equal(c.ratio({status: 'review', ratio: 60}), '60%');
+assert.equal(c.ratio({status: 'normal', ratio: 60.001}), '60% 초과');
+assert.equal(c.ratio({status: 'review', ratio: 30.001}), '30% 초과');
+assert.equal(c.ratio({status: 'pending', ratio: 0}), '—');
+assert.equal(c.delta({status: 'abnormal', delta: -210}), '−210건');
+assert.equal(c.delta({status: 'normal', delta: 10}), '+10건');
+assert.equal(c.delta({status: 'no_baseline', delta: 0}), '—');
+assert.equal(c.matches({status: 'abnormal'}, 'alerts'), true);
+assert.equal(c.matches({status: 'review'}, 'alerts'), true);
+assert.equal(c.matches({status: 'normal'}, 'alerts'), false);
+assert.equal(c.matches({status: 'uncollected'}, 'unavailable'), true);
+assert(!c.badge({status: '<script>'}).includes('<script>'));
+const link = new URL(c.detail({country: 'SEA', product: 'TV', retailer: 'Amazon', comparison_date: '2026-09-23'}, 'count_of_reviews'), 'http://test');
+assert.equal(link.searchParams.get('column'), 'count_of_reviews');
+assert.equal(link.searchParams.get('date'), '2026-09-23');
+console.log('Column comparison display checks passed.');
