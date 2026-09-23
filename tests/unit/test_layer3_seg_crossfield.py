@@ -21,7 +21,7 @@ def _amazon_row(**overrides):
         'count_of_reviews': None,
         'final_sku_price': '899,99€',
         'original_sku_price': '1.000,00€',
-        'savings': '100,01€',
+        'savings': '10%',
     }
     row.update(overrides)
     return row
@@ -114,12 +114,13 @@ class SegCrossfieldEvaluationTests(unittest.TestCase):
             seg_services.parse_seg_money('9,08€'),
         )
 
-    def test_amazon_savings_amount_must_match_through_cents(self):
+    def test_amazon_savings_is_not_compared_to_calculated_discount(self):
         self.assertEqual(set(), seg_services.evaluate_seg_row(_amazon_row()))
         errors = seg_services.evaluate_seg_row(_amazon_row(
-            savings='100,00€',
+            savings='1%',
         ))
-        self.assertIn('savings_amount_match', errors)
+        self.assertEqual(set(), errors)
+        self.assertIsNone(seg_services._resolve_rule_key({'validation_type': 'savings_amount_match'}))
 
     def test_price_presence_rules_only_require_savings_for_discount(self):
         self.assertIn(
@@ -257,11 +258,11 @@ class SegCrossfieldScopeTests(unittest.TestCase):
         self.assertIn('5일', rule['detail_name'])
         self.assertIn('이전 5일', rule['error_message'])
 
-    def test_seed_registers_all_three_products_and_twelve_rules(self):
+    def test_seed_registers_all_three_products_and_eleven_rules(self):
         sql = Path('sql/seed_seg_layer3_crossfield.sql').read_text(
             encoding='utf-8'
         )
-        self.assertIn('Expected 36 active SEG cross-field rules', sql)
+        self.assertIn('Expected 33 active SEG cross-field rules', sql)
         for section in ('seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail'):
             self.assertIn(section, sql)
         for rule_key in seg_services.SEG_RULE_SPECS:

@@ -2,7 +2,7 @@
 -- PostgreSQL only. Review and run manually in DBeaver.
 -- Application code evaluates these allow-listed rule keys; stored query text
 -- is informational and is never executed.
--- Exact expected active seed rows: 36 (12 per product line).
+-- Exact expected active seed rows: 33 (11 per product line).
 
 BEGIN;
 
@@ -66,7 +66,7 @@ VALUES
      'final_sku_price|original_sku_price|savings', 50),
     ('savings_missing', '할인 가격 존재 시 savings 확인',
      'savings', 'final_sku_price|original_sku_price',
-     '할인 가격인데 savings가 없습니다. Mediamarkt는 할인율 10% 이하를 제외합니다.',
+     '할인 가격인데 savings가 없습니다. Amazon은 계산 할인율 0.5% 이상, Mediamarkt는 10% 초과일 때 검사합니다.',
      'final_sku_price|original_sku_price|savings', 70),
     ('original_missing', '판매가·savings 존재 시 원가 확인',
      'original_sku_price', 'final_sku_price|savings',
@@ -76,10 +76,6 @@ VALUES
      'final_sku_price', 'original_sku_price|savings',
      '원가 또는 savings가 있는데 final_sku_price가 NULL 또는 빈값입니다.',
      'final_sku_price|original_sku_price|savings', 90),
-    ('savings_amount_match', 'Amazon 할인 금액 일치',
-     'savings', 'original_sku_price|final_sku_price',
-     'savings가 original_sku_price-final_sku_price와 센트 단위까지 일치하지 않습니다.',
-     'final_sku_price|original_sku_price|savings', 100),
     ('review_count_match', '리뷰 수와 별점 수 일치',
      'count_of_reviews', 'count_of_star_ratings',
      'count_of_reviews와 count_of_star_ratings가 다릅니다.',
@@ -112,7 +108,7 @@ SELECT
 FROM _seg_crossfield_source_seed source
 CROSS JOIN _seg_crossfield_rule_seed rule;
 
--- Retire the removed Amazon discount threshold rule from existing installations.
+-- Retire removed Amazon discount threshold and savings amount rules.
 UPDATE public.monitoring_validation_rules target
 SET is_active = FALSE
 FROM _seg_crossfield_source_seed source
@@ -121,10 +117,12 @@ WHERE target.rule_type = 'crossfield'
   AND target.table_name = source.table_name
   AND LOWER(BTRIM(target.retailer)) IN ('amazon', 'all')
   AND (
-      target.validation_type IN ('discount_rate_90', 'discount_rate')
+      target.validation_type IN ('discount_rate_90', 'discount_rate', 'savings_amount_match', 'savings_amount')
       OR target.detail_code IN (
           source.product_line || '_discount_rate_90',
-          source.product_line || '_discount_rate'
+          source.product_line || '_discount_rate',
+          source.product_line || '_savings_amount_match',
+          source.product_line || '_savings_amount'
       )
   );
 
@@ -187,9 +185,9 @@ BEGIN
      AND UPPER(BTRIM(target.retailer)) = 'ALL'
     WHERE target.is_active IS TRUE;
 
-    IF active_seed_count <> 36 THEN
+    IF active_seed_count <> 33 THEN
         RAISE EXCEPTION
-            'Expected 36 active SEG cross-field rules, found %',
+            'Expected 33 active SEG cross-field rules, found %',
             active_seed_count;
     END IF;
 END $$;

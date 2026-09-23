@@ -62,7 +62,7 @@ VALUES
      'final_sku_price|original_sku_price|savings', 50),
     ('Amazon', 'savings_missing', '할인 가격 존재 시 savings 확인',
      'savings', 'final_sku_price|original_sku_price',
-     '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.',
+     '계산 할인율이 0.5% 이상인데 savings가 NULL 또는 빈값입니다.',
      'final_sku_price|original_sku_price|savings', 110),
     ('Amazon', 'original_missing', '판매가·savings 존재 시 원가 확인',
      'original_sku_price', 'final_sku_price|savings',

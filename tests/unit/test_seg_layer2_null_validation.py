@@ -366,64 +366,24 @@ class SegFormatValidationTests(unittest.TestCase):
                     ),
                 )
 
-    def test_savings_is_euro_amount_for_amazon_and_percent_elsewhere(self):
-        for savings in ('4,00€', '35,00€', '9,08€', '19,99€', '10,00€'):
-            with self.subTest(savings=savings):
-                self.assertNotIn(
-                    'savings',
-                    seg_validation.evaluate_format_row(
-                        {'savings': savings}, 'seg_tv', 'Amazon'
-                    ),
-                )
-
-        self.assertIn(
-            'savings',
-            seg_validation.evaluate_format_row(
-                {'savings': '-10%'}, 'seg_tv', 'Amazon'
-            ),
-        )
-        self.assertNotIn(
-            'savings',
-            seg_validation.evaluate_format_row(
-                {'savings': '-10%'}, 'seg_tv', 'Mediamarkt'
-            ),
-        )
-        amazon_rule = next(
-            rule for rule in seg_validation.get_format_rule_details(
-                'seg_tv', 'Amazon'
-            )
-            if rule['field'] == 'savings'
-        )
-        self.assertIn('4,00€', amazon_rule['pattern'])
-
-    def test_amazon_savings_reports_missing_thousands_separator(self):
-        expected_reason = (
-            '1,000€ 이상 금액에 천 단위 구분자(.)가 누락되었습니다.'
-        )
-        for savings in ('4700,00€', '4500,00€', '4498,02€'):
-            with self.subTest(savings=savings):
-                errors = seg_validation.evaluate_format_row(
-                    {'savings': savings}, 'seg_tv', 'Amazon'
-                )
-                self.assertEqual(expected_reason, errors['savings'])
-
-        for savings in ('999,99€', '1.000,00€', '4.700,00€'):
-            with self.subTest(savings=savings):
-                self.assertNotIn(
-                    'savings',
-                    seg_validation.evaluate_format_row(
-                        {'savings': savings}, 'seg_tv', 'Amazon'
-                    ),
-                )
-
-        amazon_rule = next(
-            rule for rule in seg_validation.get_format_rule_details(
-                'seg_tv', 'Amazon'
-            )
-            if rule['field'] == 'savings'
-        )
-        self.assertIn('천 단위 구분자(.) 필수', amazon_rule['description'])
-        self.assertIn('4700,00€는 오류', amazon_rule['pattern'])
+    def test_amazon_savings_uses_positive_integer_percent(self):
+        for product in ('seg_tv', 'seg_ref'):
+            for value in ('1%', '10%', '99%', '100%', ' 10% ', None, ''):
+                with self.subTest(product=product, value=value):
+                    self.assertNotIn('savings', seg_validation.evaluate_format_row(
+                        {'savings': value}, product, 'Amazon'))
+            for value in ('0%', '101%', '-10%', '10', '10.5%', '10%%', '4,00€',
+                          '1.000,00€', '4700,00€'):
+                with self.subTest(product=product, value=value):
+                    self.assertIn('savings', seg_validation.evaluate_format_row(
+                        {'savings': value}, product, 'Amazon'))
+        for retailer in ('Mediamarkt', 'OTTO'):
+            self.assertNotIn('savings', seg_validation.evaluate_format_row(
+                {'savings': '-10%'}, 'seg_tv', retailer))
+        rule = next(rule for rule in seg_validation.get_format_rule_details('seg_tv', 'Amazon')
+                    if rule['field'] == 'savings')
+        self.assertIn('1%', rule['pattern'])
+        self.assertNotIn('€', rule['pattern'])
 
     def test_csv_variants_are_allowed_and_invalid_values_are_reported(self):
         valid_ref = seg_validation.evaluate_format_row({

@@ -88,7 +88,7 @@ class SielRetailCommonTests(unittest.TestCase):
                     shared_retailer_format_fields.issubset(flipkart_fields)
                 )
                 self.assertIn('savings', flipkart_fields)
-                self.assertNotIn('savings', amazon_fields)
+                self.assertIn('savings', amazon_fields)
 
     def test_crossfield_edit_allowlist_matches_retailer_rules(self):
         amazon = get_siel_crossfield_editable_columns('siel_tv', 'Amazon')

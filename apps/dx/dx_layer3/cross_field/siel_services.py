@@ -147,6 +147,7 @@ SIEL_RULE_SPECS = OrderedDict((
         ),
     }),
     ('savings_missing', {
+        'guide_description': '숫자 원가가 최종가보다 큰데 savings가 없으면 이상입니다. Amazon은 원가가 0보다 크고 계산 할인율이 0.5% 이상일 때만 누락으로 판정합니다. Amazon의 표시 할인율과 계산값의 일치는 검사하지 않습니다.',
         'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
         'field2': 'final_sku_price|original_sku_price',
@@ -155,7 +156,7 @@ SIEL_RULE_SPECS = OrderedDict((
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다.'
+            '숫자 원가가 판매가보다 큰데 savings가 NULL 또는 빈값입니다. Amazon은 계산 할인율 0.5% 이상일 때 검사합니다.'
         ),
     }),
     ('original_missing', {
@@ -370,6 +371,11 @@ def evaluate_siel_row(row):
         and original_price is not None
         and original_price > final_price
         and not savings_present
+        and (
+            retailer != 'Amazon'
+            or (original_price > 0 and final_price >= 0
+                and (original_price - final_price) * 200 >= original_price)
+        )
     ):
         errors.add('savings_missing')
     if final_price is not None and savings_present and not original_present:

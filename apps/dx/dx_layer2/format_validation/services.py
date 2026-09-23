@@ -119,7 +119,7 @@ SIEL_FORMAT_COMMON_FIELDS = (
     'product', 'product_url', 'star_rating',
 )
 SIEL_AMAZON_COMMON_FORMAT_FIELDS = (
-    'number_of_units_purchased_past_month', 'discount_type',
+    'savings', 'number_of_units_purchased_past_month', 'discount_type',
     'sku_popularity', 'sku_status', 'delivery_availability',
     'fastest_delivery', 'inventory_status',
     'available_quantity_for_purchase',
@@ -1595,14 +1595,20 @@ def evaluate_siel_format_row(row, source_key, retailer):
             )
 
     savings = row.get('savings')
+    savings_pattern = (
+        r'(?:[1-9][0-9]?|100)%'
+        if retailer_value == 'Amazon' else _SIEL_FLIPKART_SAVINGS_PATTERN
+    )
     if (
         'savings' in fields
         and _has_siel_format_value(savings)
-        and not _SIEL_FLIPKART_SAVINGS_PATTERN.fullmatch(
-            str(savings).strip()
-        )
+        and not re.fullmatch(savings_pattern, str(savings).strip())
     ):
-        errors['savings'] = '0%~100% 정수 할인율 형식이 아닙니다.'
+        errors['savings'] = (
+            '1%~100% 정수 할인율 형식이 아닙니다. 0%는 허용하지 않습니다.'
+            if retailer_value == 'Amazon' else
+            '0%~100% 정수 할인율 형식이 아닙니다.'
+        )
 
     purchased = row.get('number_of_units_purchased_past_month')
     if (
@@ -2716,7 +2722,10 @@ def _get_siel_static_format_rules(source_key, retailer):
                 if retailer_key == 'amazon' else '4.3'
             )
         elif retailer_key == 'amazon':
-            if rule['field'] == 'final_sku_price':
+            if rule['field'] == 'savings':
+                rule['description'] = 'Amazon 1%~100% 정수 할인율 (0% 제외)'
+                rule['pattern'] = '1% / 10% / 100%'
+            elif rule['field'] == 'final_sku_price':
                 rule['description'] = '인도 루피 금액 또는 Amazon 가격 상태'
                 rule['pattern'] = (
                     '₹10,999 / Currently unavailable. / '

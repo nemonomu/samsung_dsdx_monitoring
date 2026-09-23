@@ -90,7 +90,7 @@ def shared_stubs():
                 'page_type', 'product', 'product_url', 'star_rating',
                 *(
                     [
-                        'number_of_units_purchased_past_month',
+                        'savings', 'number_of_units_purchased_past_month',
                         'discount_type', 'sku_popularity', 'sku_status',
                         'delivery_availability', 'fastest_delivery',
                         'inventory_status',
@@ -314,7 +314,7 @@ class SIELFormatValidationTests(unittest.TestCase):
                 self.assertTrue(shared_retailer_fields.issubset(amazon_fields))
                 self.assertTrue(shared_retailer_fields.issubset(flipkart_fields))
                 self.assertIn('savings', flipkart_fields)
-                self.assertNotIn('savings', amazon_fields)
+                self.assertIn('savings', amazon_fields)
 
     def test_requested_amazon_values_validate_for_all_product_lines(self):
         valid_row = {
@@ -600,7 +600,7 @@ class SIELFormatValidationTests(unittest.TestCase):
             'B001', 'SKU-1', 'TV 1', 'w36', 'review1 - Good',
             '₹12,999', 'https://www.amazon.in/dp/B0FNCLVRW5', '4.3',
             '₹10,999', '10', '43 Inches', '164.25 Kilowatt Hours', '2026',
-            '100+ bought in past month', 'Hot deal', 'Best seller',
+            '15%', '100+ bought in past month', 'Hot deal', 'Best seller',
             'Sponsored', 'FREE delivery Today.',
             'fastest delivery Today by 1 pm. Order within 7 hrs.',
             'In stock', 'Only 1 left in stock.',
@@ -628,6 +628,7 @@ class SIELFormatValidationTests(unittest.TestCase):
         self.assertEqual('B001', result[0]['item'])
         self.assertIn('source.discount_type', sql)
         self.assertEqual('Hot deal', result[0]['discount_type'])
+        self.assertEqual('15%', result[0]['savings'])
 
     def test_detail_displays_timestamptz_in_kst(self):
         row = {

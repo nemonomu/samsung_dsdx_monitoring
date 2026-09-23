@@ -32,9 +32,7 @@ _NON_NEGATIVE_INTEGER_PATTERN = re.compile(
 _POSITIVE_INTEGER_PATTERN = re.compile(r'[1-9]\d*')
 _STAR_RATING_PATTERN = re.compile(r'(?:[0-4](?:\.\d)?|5(?:\.0)?)')
 _SAVINGS_PATTERN = re.compile(r'-?\d+%')
-_MISSING_EURO_THOUSANDS_SEPARATOR_PATTERN = re.compile(
-    r'[1-9]\d{3,}(?:,(?:\d{2}|–))?\s?€', re.IGNORECASE
-)
+_AMAZON_SAVINGS_PATTERN = re.compile(r'(?:[1-9][0-9]?|100)%')
 _CALENDAR_WEEK_PATTERN = re.compile(r'w(?:[1-9]|[1-4]\d|5[0-3])')
 _SCREEN_SIZE_PATTERN = re.compile(
     r'\d+(?:[.,]\d+)?(?:\s*(?:inches?|Zoll|Zentimeter|cm))?',
@@ -250,18 +248,9 @@ def evaluate_format_row(row, product_line, retailer):
             savings_text = str(savings).strip()
             if (
                 retailer_key == 'amazon'
-                and _MISSING_EURO_THOUSANDS_SEPARATOR_PATTERN.fullmatch(
-                    savings_text
-                )
+                and not _AMAZON_SAVINGS_PATTERN.fullmatch(savings_text)
             ):
-                errors['savings'] = (
-                    '1,000€ 이상 금액에 천 단위 구분자(.)가 누락되었습니다.'
-                )
-            elif (
-                retailer_key == 'amazon'
-                and not _EURO_PRICE_PATTERN.fullmatch(savings_text)
-            ):
-                errors['savings'] = '독일 유로 할인금액 형식이 아닙니다.'
+                errors['savings'] = '1%~100% 정수 할인율 형식이 아닙니다. 0%는 허용하지 않습니다.'
             elif (
                 retailer_key != 'amazon'
                 and not _SAVINGS_PATTERN.fullmatch(savings_text)
@@ -435,14 +424,8 @@ def get_format_rule_details(product_line, retailer):
     if retailer_key == 'amazon':
         for rule in rules:
             if rule['field'] == 'savings':
-                rule['description'] = (
-                    '독일 유로 할인금액이며 1,000€ 이상은 천 단위 '
-                    '구분자(.) 필수'
-                )
-                rule['pattern'] = (
-                    '4,00€ / 999,99€ / 4.700,00€ '
-                    '(4700,00€는 오류)'
-                )
+                rule['description'] = 'Amazon 1%~100% 정수 할인율 (0% 제외)'
+                rule['pattern'] = '1% / 10% / 100%'
     else:
         for rule in rules:
             if rule['field'] == 'final_sku_price':

@@ -95,7 +95,8 @@ SEG_RULE_SPECS = OrderedDict((
     }),
     ('savings_missing', {
         'guide_description': (
-            '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다. Mediamarkt는 원가가 0보다 크고 할인율이 '
+            '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다. Amazon은 원가가 0보다 크고 계산 할인율이 '
+            '0.5% 이상일 때만 누락으로 판정합니다. 표시된 할인율과 계산값의 일치는 검사하지 않습니다. Mediamarkt는 원가가 0보다 크고 할인율이 '
             '10% 이하이면 제외합니다.'
         ),
         'detail_name': '할인 가격 존재 시 savings 확인',
@@ -106,7 +107,7 @@ SEG_RULE_SPECS = OrderedDict((
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            '할인 가격인데 savings가 없습니다. Mediamarkt는 할인율 10% 이하를 제외합니다.'
+            '할인 가격인데 savings가 없습니다. Amazon은 계산 할인율 0.5% 이상, Mediamarkt는 10% 초과일 때 검사합니다.'
         ),
     }),
     ('original_missing', {
@@ -134,20 +135,6 @@ SEG_RULE_SPECS = OrderedDict((
         'error_message': (
             '원가 또는 savings가 있는데 final_sku_price가 '
             'NULL 또는 빈값입니다.'
-        ),
-    }),
-    ('savings_amount_match', {
-        'guide_description': '두 가격과 savings가 숫자이고 원가 > 최종가일 때 원가-최종가와 savings가 다르면 이상입니다.',
-        'detail_name': 'Amazon 할인 금액 일치',
-        'field1': 'savings',
-        'field2': 'original_sku_price|final_sku_price',
-        'retailers': ('Amazon',),
-        'display_fields': (
-            'final_sku_price', 'original_sku_price', 'savings',
-        ),
-        'error_message': (
-            'savings가 original_sku_price-final_sku_price와 '
-            '센트 단위까지 일치하지 않습니다.'
         ),
     }),
     ('review_count_match', {
@@ -195,7 +182,6 @@ _RULE_ALIASES = {
     'savings_required': 'savings_missing',
     'original_required': 'original_missing',
     'final_required': 'final_missing',
-    'savings_amount': 'savings_amount_match',
 }
 
 _DISPLAY_QUERY_COLUMNS = {
@@ -294,7 +280,6 @@ def evaluate_seg_row(row):
 
     final_price = parse_seg_money(row.get('final_sku_price'))
     original_price = parse_seg_money(row.get('original_sku_price'))
-    savings_amount = parse_seg_money(row.get('savings'))
 
     if final_price is not None and original_price is not None:
         if final_price >= original_price:
@@ -304,24 +289,20 @@ def evaluate_seg_row(row):
                 retailer == 'Mediamarkt' and original_price > 0
                 and (original_price - final_price) * 100 <= original_price * 10
             )
-            if not small_mediamarkt_discount:
+            # Compare exactly against 0.5%, without rounding the rate.
+            amazon_savings_required = (
+                original_price > 0 and final_price >= 0
+                and (original_price - final_price) * 200 >= original_price
+            )
+            if not small_mediamarkt_discount and (
+                retailer != 'Amazon' or amazon_savings_required
+            ):
                 errors.add('savings_missing')
 
     if final_price is not None and savings_present and not original_present:
         errors.add('original_missing')
     if not final_present and (original_present or savings_present):
         errors.add('final_missing')
-
-    if (
-        retailer == 'Amazon'
-        and final_price is not None
-        and original_price is not None
-        and original_price > final_price
-        and savings_present
-        and savings_amount is not None
-        and original_price - final_price != savings_amount
-    ):
-        errors.add('savings_amount_match')
 
     return errors
 

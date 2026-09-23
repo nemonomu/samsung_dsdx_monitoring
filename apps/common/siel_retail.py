@@ -60,7 +60,7 @@ SIEL_FORMAT_COMMON_EDITABLE_COLUMNS = (
     'product', 'product_url', 'star_rating',
 )
 SIEL_AMAZON_COMMON_FORMAT_EDITABLE_COLUMNS = (
-    'number_of_units_purchased_past_month', 'discount_type',
+    'savings', 'number_of_units_purchased_past_month', 'discount_type',
     'sku_popularity', 'sku_status', 'delivery_availability',
     'fastest_delivery', 'inventory_status',
     'available_quantity_for_purchase',
