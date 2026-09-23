@@ -153,5 +153,27 @@ async function flush() {
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML, />56<small>비교 이력 부족<\/small>/);
     assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
+    Object.assign(fixtureDay, {main: 0, bsr: 0, total: 0, alerts: [
+        {metric: 'bsr', status: 'VOLUME_LOW', reason: 'BSR 수량 부족'},
+        {metric: 'total', status: 'VOLUME_LOW'},
+    ]});
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML,
+        /<td class="cs-day-cell">0<\/td><td class="cs-day-cell">0<\/td><td class="cs-day-cell cs-total low"[^>]*><strong>0<\/strong><small>미수집<\/small>/);
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
+    assert(!elements['cs-table-body'].innerHTML.includes('BSR 수량 부족'));
+    Object.assign(fixtureDay, {main: 80, total: 80});
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML,
+        /class="cs-day-cell low cs-bsr-low"[^>]*>0<small>이상<\/small>/);
+    const walmart = weeks[0].rows.find(row => row.retailer === 'Bestbuy');
+    walmart.retailer = 'Walmart';
+    Object.assign(walmart.daily[6], {main: 299, bsr: 99, total: 321,
+        bsr_comparison_state: 'ready', alerts: [{metric: 'bsr', status: 'VOLUME_LOW',
+            reason: 'BSR 기준 100개 / 수집 99개 / 1개 부족'}]});
+    elements['cs-retailer'].value = 'Walmart';
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML,
+        /class="cs-day-cell low cs-bsr-low" title="BSR 기준 100개 \/ 수집 99개 \/ 1개 부족">99<small>이상<\/small>/);
     console.log('Daily statistics: default all, per-retailer averages, local filters and 2/7-week dates passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

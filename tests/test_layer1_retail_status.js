@@ -20,6 +20,29 @@ for (const name of ['retail-status', 'retail-query', 'retail', 'seda_retail', 's
     vm.runInNewContext(fs.readFileSync(path.join(base, name + '.js'), 'utf8'), context);
 }
 const status = context.L1.retailStatus;
+const emptyRetailer = {
+    retailer: 'Casas Bahia', status: 'CRITICAL', main_count: 0, bsr_count: 0,
+    raw_count: 0, count: 0, volume_alerts: [
+        {metric: 'bsr', status: 'VOLUME_LOW', reason: 'BSR 수량 부족'},
+        {metric: 'main', status: 'VOLUME_LOW'},
+        {metric: 'total', status: 'VOLUME_LOW'},
+    ],
+};
+for (const baseStatus of ['CRITICAL', 'WARNING', 'VOLUME_LOW']) {
+    const row = {...emptyRetailer, status: baseStatus};
+    const emptySummary = status.render({categories: ['TV', 'REF', 'LDY'].map(name =>
+        ({name, retailers: [row]}))}, 0, 'seda_retail');
+    assert.strictEqual((emptySummary.match(/미수집<\/span>/g) || []).length, 3);
+    assert(!emptySummary.includes('부족'), 'empty collection must not also list BSR/volume shortages');
+    assert.strictEqual(status.bsrCell(row, '0'), '<td>0</td>');
+    assert(status.rowBadge(row).includes('미수집'));
+}
+const partialRetailer = {...emptyRetailer, raw_count: 80, count: 80, main_count: 80};
+assert(status.bsrCell(partialRetailer, '0').includes('cs-bsr-low'));
+assert(status.render({categories: [{name: 'TV', retailers: [partialRetailer]}]}, 0, 'seda_retail')
+    .includes('BSR 수량 부족'));
+assert(!status.rowBadge(partialRetailer).includes('미수집'));
+assert(!status.rowBadge({...emptyRetailer, status: 'COLLECTING', volume_alerts: []}).includes('미수집'));
 const missing = retailer => ({ retailer, count: 0, status: 'CRITICAL' });
 const sea = {
     name: 'SEA Retail', check_type: 'retail', inspection_date: '2026-09-08',

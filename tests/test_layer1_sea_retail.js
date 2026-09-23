@@ -266,7 +266,7 @@ function categoryFromSummary(key) {
     assert(baseSource.includes("layer1.css' %}?v=4"));
     assert(baseSource.includes("layer1-common.js' %}?v=20260922-next-day"));
     assert(baseSource.includes("collection-volume.js' %}?v=3-bsr"));
-    assert(baseSource.includes("retail-status.js' %}?v=20260923-bsr"));
+    assert(baseSource.includes("retail-status.js' %}?v=20260923-missing"));
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));

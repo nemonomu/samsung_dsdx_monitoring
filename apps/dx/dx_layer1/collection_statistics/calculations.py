@@ -48,14 +48,20 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
+def variable_bsr(row, country):
+    retailer = str(row['retailer']).strip().casefold()
+    return ((country == 'SEA' and row['product'] == 'TV' and retailer == 'amazon')
+            or (country == 'SEM' and retailer == 'homedepot'))
+
+
 def _compare_bsr(row, history, country):
     """Fixed targets need no history; variable targets require seven good days."""
-    retailer = str(row['retailer']).strip().casefold()
-    variable = ((country == 'SEA' and row['product'] == 'TV' and retailer == 'amazon')
-                or (country == 'SEM' and retailer == 'homedepot'))
+    variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
         return rule, 'pending', None, None
+    if all(row.get(metric) == 0 for metric in METRICS):
+        return rule, 'missing', None, None
     current = row.get('bsr')
     if current is None:
         # Older snapshots can contain NULL; never invent zero collected rows.
@@ -85,6 +91,28 @@ def _compare_bsr(row, history, country):
                             if not variable else
                             f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / 30% 이상 감소')}
     return rule, 'ready', basis, alert
+
+
+def current_bsr_decision(row, country):
+    """Apply fixed targets even to snapshots saved before the BSR policy existed.
+
+    Variable targets retain the collector's history-based decision. This is a
+    read-only projection: no source query or snapshot write is needed.
+    """
+    if variable_bsr(row, country):
+        return row
+    candidate = {**row, 'complete': row.get('complete', row.get('state') == 'complete')}
+    if row.get('state', 'complete') != 'complete':
+        candidate['complete'] = False
+    rule, state, basis, alert = _compare_bsr(candidate, [], country)
+    baselines = {k: v for k, v in row.get('baselines', {}).items() if k != 'bsr'}
+    if basis is not None:
+        baselines['bsr'] = basis
+    alerts = [a for a in row.get('alerts', []) if a.get('metric') != 'bsr']
+    if alert:
+        alerts.append(alert)
+    return {**row, 'baselines': baselines, 'alerts': alerts,
+            'bsr_rule': rule, 'bsr_comparison_state': state}
 
 
 def compare_rows(rows, history, country=None):

@@ -69,6 +69,9 @@
             return values.length ? values.reduce((total, value) => total + value, 0) : null;
         };
         const total = sum('total'), main = sum('main'), bsr = sum('bsr');
+        if (total === 0 && main === 0 && bsr === 0) {
+            return {total, main, bsr, label: '미수집', kind: 'low'};
+        }
         const alerts = active.flatMap(day => day.alerts || []);
         const bsrAlerts = alerts.filter(alert => alert.metric === 'bsr' && alert.status === 'VOLUME_LOW');
         const bsrInfo = {

@@ -5,7 +5,7 @@
     };
 
     function isMissing(retailer) {
-        if (retailer.status !== 'CRITICAL' && retailer.status !== 'WARNING') return false;
+        if (!['CRITICAL', 'WARNING', 'VOLUME_LOW'].includes(retailer.status)) return false;
         // Some countries use MAIN for validation; raw rows still mean collection occurred.
         var fields = ['raw_count', 'actual_count', 'actual', 'count', 'total'];
         for (var i = 0; i < fields.length; i++) {
@@ -23,6 +23,7 @@
     }
 
     function bsrAlerts(retailer) {
+        if (isMissing(retailer)) return [];
         return (retailer.volume_alerts || []).filter(function(alert) {
             return alert.metric === 'bsr' && alert.status === 'VOLUME_LOW';
         });
@@ -37,7 +38,11 @@
 
     function rowBadge(retailer) {
         var count = batchCount(retailer);
-        var volumeBadge = (retailer.volume_alerts || []).length ? getStatusBadge(retailer.status) + ' ' : '';
+        var missing = isMissing(retailer);
+        var statusBadge = missing
+            ? '<span class="status-badge critical"><span class="status-dot"></span>미수집</span>'
+            : getStatusBadge(retailer.status);
+        var volumeBadge = missing || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
         if (count >= 2 && retailer.batch_context) {
             return volumeBadge + '<button type="button" class="status-badge critical l1-batch-toggle" aria-expanded="false" ' +
                 'data-batch-count="' + count + '" data-batch-context="' + esc(JSON.stringify(retailer.batch_context)).replace(/"/g, '&quot;') + '" ' +
@@ -45,7 +50,7 @@
         }
         return count >= 2
             ? volumeBadge + '<span class="status-badge critical">배치 ' + count + '개</span>'
-            : getStatusBadge(retailer.status);
+            : statusBadge;
     }
 
     function render(check, checkIdx, checkType) {
@@ -66,9 +71,9 @@
                 var missing = isMissing(retailer);
                 var multiple = batchCount(retailer) >= 2;
                 var bsrLow = bsrAlerts(retailer);
-                var volumeLow = (retailer.status === 'VOLUME_LOW' || bsrLow.length > 0) &&
+                var volumeLow = !missing && (retailer.status === 'VOLUME_LOW' || bsrLow.length > 0) &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
-                var volumeHigh = retailer.status === 'VOLUME_HIGH' &&
+                var volumeHigh = !missing && retailer.status === 'VOLUME_HIGH' &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
                 if (!name || (!missing && !multiple && !volumeLow && !volumeHigh) || seen.has(key)) return;
                 seen.add(key);
