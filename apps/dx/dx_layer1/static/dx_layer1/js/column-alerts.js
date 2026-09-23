@@ -9,6 +9,7 @@
     const day = document.getElementById('cca-date');
     const search = document.getElementById('cca-search');
     const progress = document.getElementById('cca-progress');
+    const comparisonDate = document.getElementById('cca-comparison-date');
     const today = new Intl.DateTimeFormat('sv-SE', {timeZone: 'Asia/Seoul'}).format(new Date());
     const params = new URLSearchParams(location.search);
     [...new Set(catalog.map(s => s.country))].forEach(value => country.add(new Option(value, value)));
@@ -32,6 +33,7 @@
     function invalidate() {
         if (controller) controller.abort();
         rows = []; finished = false; page = 1;
+        comparisonDate.textContent = '';
         render();
         progress.textContent = '선택한 조건으로 조회해주세요.';
         form.querySelector('button').disabled = false;
@@ -53,6 +55,7 @@
         controller = current;
         rows = []; page = 1; finished = false;
         const selection = {country: country.value, product: product.value, date: day.value};
+        comparisonDate.textContent = selection.date;
         history.replaceState(null, '', '?' + new URLSearchParams(selection));
         const jobs = catalog.filter(s => (!selection.country || s.country === selection.country) && (!selection.product || s.product === selection.product))
             .flatMap(s => s.retailers.map(retailer => ({country: s.country, product: s.product, retailer})));

@@ -15,7 +15,7 @@
         <div class="cs-card-heading"><div><h3>컬럼 수집 알림</h3><p id="cca-progress" class="cs-muted" role="status" aria-live="polite">조회 준비 중입니다.</p></div><label class="ccs-search-label">검색<input id="cca-search" type="search" placeholder="리테일러 · 수집 항목" aria-label="조회된 리테일러와 수집 항목 검색"></label></div>
         <div id="cca-status-filters" class="ccs-status-filters" aria-label="검수 판정 필터"></div>
         <div class="ccs-scroll" tabindex="0" role="region" aria-label="컬럼 수집 알림 표"><table class="ccs-table cca-table">
-            <thead><tr><th scope="col">리테일러 / 제품군</th><th scope="col">수집 항목</th><th scope="col">검수 판정</th><th scope="col">평소 기준<small>이전 28일 중앙값</small></th><th scope="col" class="ccs-target">비교일 건수</th><th scope="col">기준 대비<small>현재 ÷ 기준</small></th><th scope="col">증감 건수</th><th scope="col">상세</th></tr></thead>
+            <thead><tr><th scope="col">리테일러 / 제품군</th><th scope="col">수집 항목</th><th scope="col">검수 판정</th><th scope="col">평소 기준<small>이전 28일 중앙값</small></th><th scope="col" class="ccs-target">비교일 건수<small id="cca-comparison-date"></small></th><th scope="col">기준 대비<small>현재 ÷ 기준</small></th><th scope="col">증감 건수</th><th scope="col">상세</th></tr></thead>
             <tbody id="cca-body"></tbody>
         </table></div>
         <div id="cca-pagination" class="ccs-pagination" aria-label="알림 페이지"></div>
@@ -24,4 +24,4 @@
 </section>
 {{ column_catalog|json_script:'cca-catalog' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/column-alerts.js' %}?v=1"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/column-alerts.js' %}?v=2"></script>{% endblock %}
