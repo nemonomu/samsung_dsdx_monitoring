@@ -23,16 +23,16 @@ assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260923-3"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260923-4"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-2"
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-4"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20260923-1"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260923-1"
+    "{% static 'ds_layer4/js/report.js' %}?v=20260923-4"
 ));
 
 function fakeClassList() {
@@ -185,6 +185,22 @@ assert.deepStrictEqual(
 assert.strictEqual((initialHtml.match(/class="missing-cause-row"/g) || []).length, 5);
 assert.deepStrictEqual(mixedAnomalies.map(a => a.id), [1, 2, 3, 4, 5, 6, 7]);
 assert.ok(initialHtml.includes('>직접 확인한 신규 원인</option>'));
+assert.ok(initialHtml.includes('원인 적용 이력'));
+assert.ok(!initialHtml.includes('id="memo_'));
+const historyHtml = sandbox.renderCauseHistory({
+    id: 7, cause: '현재 원인', cause_history: { status: 'automatic', source: {
+        crawl_date: '2026-09-22', retailersku: 'old-sku', title: '<과거 제목>',
+        retailprice: 0, ships_from: null, sold_by: '과거 판매자', cause: '이전 원인', screenshot_id: 900
+    } }
+});
+assert.ok(historyHtml.includes('과거 원인 자동 적용'));
+assert.ok(historyHtml.includes('&lt;과거 제목&gt;'));
+assert.ok(historyHtml.includes('가격: <b>0</b>'));
+assert.ok(historyHtml.includes('과거 판매자'));
+assert.ok(historyHtml.includes('showCauseHistoryScreenshot(7)'));
+assert.ok(!historyHtml.includes('현재 원인'));
+assert.ok(sandbox.renderCauseHistory({ cause_history: { status: 'legacy_match', source: {} } })
+    .includes('자동 적용 여부 미기록'));
 
 // 일괄 선택 중에는 화면 재정렬이나 저장 데이터 변경이 없어야 한다.
 elements.cause_2 = fakeElement();
@@ -326,6 +342,42 @@ assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
     assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
     sandbox.renderScreenshotProductInfo(999);
     assert.strictEqual(elements.screenshotSoldBy.textContent, 'NULL');
+
+    vm.runInContext(`reportData.anomalies[1].cause_history = { status: 'automatic', source: {
+        id: 88, crawl_date: '2026-09-22', screenshot_id: 900, retailprice: '299.00',
+        sold_by: '과거 판매자', cause: '과거 원인'
+    }};`, sandbox);
+    const historicalImage = sandbox.showCauseHistoryScreenshot(102);
+    completeImage(900);
+    await historicalImage;
+    assert.strictEqual(elements.screenshotPrice.textContent, '299.00');
+    assert.strictEqual(elements.screenshotSoldBy.textContent, '과거 판매자');
+    assert.strictEqual(elements.screenshotCauseReadonly.textContent, '과거 원인');
+    assert.strictEqual(elements.screenshotCauseSaveBtn.hidden, true);
+    assert.strictEqual(elements.screenshotDeleteBtn.style.display, 'none');
+    assert.strictEqual(elements.screenshotNext.style.display, 'none');
+    assert.ok(elements.screenshotTitle.textContent.includes('과거 캡처 · 2026-09-22'));
+    assert.strictEqual(vm.runInContext('currentScreenshotAnomalyId', sandbox), null);
+    await sandbox.saveScreenshotCause(); // 과거 기록에서는 수정 불가.
+    const currentImage = sandbox.showScreenshot(501, 101);
+    completeImage(501);
+    await currentImage;
+    assert.strictEqual(elements.screenshotPrice.textContent, '399.99');
+    assert.strictEqual(elements.screenshotCauseSaveBtn.hidden, false);
+
+    // 메모 입력란 없이 원인만 저장하며 기존 메모를 지우는 payload를 보내지 않는다.
+    const checkbox = { id: 'anomalyCheck_101', checked: true };
+    sandbox.document.querySelector = () => ({ querySelectorAll: () => [checkbox] });
+    sandbox.document.querySelectorAll = () => [];
+    elements.cause_101 = Object.assign(fakeElement(), { value: '새 원인' });
+    sandbox.loadReportList = () => {};
+    let causePayload;
+    sandbox.fetch = async (url, options) => {
+        causePayload = JSON.parse(options.body);
+        return { json: async () => ({ success: true }) };
+    };
+    await sandbox.saveCheckedAnomalies('Amazon_GB');
+    assert.deepStrictEqual(causePayload.updates, [{ anomaly_id: 101, cause: '새 원인' }]);
 })().catch(error => {
     console.error(error);
     process.exitCode = 1;

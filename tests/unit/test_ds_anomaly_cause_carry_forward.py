@@ -132,6 +132,7 @@ class PreviousAnomalyRepositoryTests(unittest.TestCase):
             'fetchall': [(
                 'SKU-1', 'Portable SSD', '1149.99', None,
                 'Seller A', 'https://example.com/a.jpg', '원인 A',
+                301, date(2026, 9, 2), 501, None, 'reviewer', None, None,
             )],
         }])
 
@@ -179,6 +180,8 @@ class PreviousAnomalyRepositoryTests(unittest.TestCase):
             {'fetchall': [(
                 34943, 'SKU-1', 40282, 'crawler_null_capture', '',
             )]},
+            {},
+            {'fetchone': None},
             {},
         ])
 

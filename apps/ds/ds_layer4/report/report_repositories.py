@@ -4,6 +4,7 @@ DS Layer 4 Report Repository: 보고서 및 데이터베이스 SQL 처리 전담
 from datetime import datetime, timedelta, date
 from apps.common.db import ds_connection
 from apps.common.targets import load_monitoring_targets
+from apps.ds.cause_history import attach_cause_history, record_cause_application, fetch_cause_applications
 
 
 _SYSTEM_CAUSE_MARKERS = {'crawler_null_capture'}
@@ -191,6 +192,8 @@ def update_anomaly_report(body, user_id):
                     """
                     cursor.execute(query, update_values)
                     updated_count += cursor.rowcount
+                    if cursor.rowcount and 'cause' in item:
+                        record_cause_application(cursor, anomaly_id, item['cause'], user_id, now)
 
             conn.commit()
             return {'success': True, 'message': f'{updated_count}건 저장 완료', 'updated_count': updated_count}
@@ -218,10 +221,13 @@ def update_anomaly_report(body, user_id):
         """
         cursor.execute(query, update_values)
         updated = cursor.rowcount
+        if updated and 'cause' in body:
+            record_cause_application(cursor, anomaly_id, body['cause'], user_id, now)
         conn.commit()
 
         if updated == 0: return {'success': False, 'error': '해당 데이터를 찾을 수 없습니다.'}
-        return {'success': True, 'message': '수정 완료', 'anomaly_id': anomaly_id}
+        history = fetch_cause_applications(cursor, [anomaly_id]).get(anomaly_id)
+        return {'success': True, 'message': '수정 완료', 'anomaly_id': anomaly_id, 'cause_history': history}
 
 def update_daily_memo_db(body, user_id):
     with ds_connection() as (conn, cursor):
@@ -331,7 +337,7 @@ def get_report_list_db(target_date, retailer_filter, view_mode):
             anomaly_query = """
                 SELECT a.id, t.retailer, a.country_code, a.title, a.retailprice, a.ships_from, a.sold_by,
                        a.imageurl, a.producturl, a.retailersku, a.screenshot_id, a.cause, a.memo, a.created_at, a.created_id,
-                       a.updated_at, a.updated_id
+                       a.updated_at, a.updated_id, a.retailer_id
                 FROM ssd_crawl_db.ds_monitoring_report_anomaly a
                 LEFT JOIN ssd_crawl_db.ds_monitoring_targets t ON a.retailer_id = t.retailer_id
                 WHERE a.crawl_date = %s AND a.is_del = 0
@@ -354,8 +360,10 @@ def get_report_list_db(target_date, retailer_filter, view_mode):
                     'screenshot_id': row[10], 'cause': cause, 'memo': row[12],
                     'created_at': row[13].strftime('%Y-%m-%d %H:%M:%S') if row[13] else None,
                     'created_id': row[14], 'updated_at': row[15].strftime('%Y-%m-%d %H:%M:%S') if row[15] else None,
-                    'updated_id': row[16]
+                    'updated_id': row[16], 'retailer_id': row[17]
                 })
+
+            attach_cause_history(cursor, anomalies, target_date)
 
             cursor.execute("""
                 SELECT t.retailer, o.option_name

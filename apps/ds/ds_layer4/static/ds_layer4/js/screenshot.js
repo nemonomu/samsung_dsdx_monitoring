@@ -10,9 +10,11 @@ let screenshotIndex = -1;
 let screenshotCauseEdited = false;
 let screenshotCauseSaving = false;
 let screenshotImageRequest = 0;
+let screenshotHistory = null;
 const SCREENSHOT_CUSTOM_CAUSE = '__custom__';
 
 function getScreenshotAnomaly(anomalyId) {
+    if (screenshotHistory && anomalyId == null) return screenshotHistory;
     if (!reportData || !reportData.anomalies) return null;
     return reportData.anomalies.find(a => a.id === anomalyId) || null;
 }
@@ -86,7 +88,7 @@ function renderScreenshotCauseEditor(anomalyId) {
     screenshotCauseEdited = false;
     screenshotCauseSaving = false;
 
-    if (isClosed) {
+    if (isClosed || screenshotHistory) {
         select.hidden = true;
         customInput.hidden = true;
         saveBtn.hidden = true;
@@ -182,6 +184,7 @@ async function saveScreenshotCause() {
         }
 
         anomaly.cause = cause;
+        anomaly.cause_history = result.cause_history || { status: 'manual', applied_by: currentUserId };
         screenshotCauseEdited = false;
         refreshCauseAfterScreenshotSave(anomaly, previousCause);
         renderScreenshotCauseEditor(anomaly.id);
@@ -253,6 +256,7 @@ async function navigateScreenshot(direction) {
 }
 
 async function showScreenshot(fileId, anomalyId) {
+    screenshotHistory = null;
     const modal = document.getElementById('screenshotModal');
 
     buildScreenshotList(anomalyId);
@@ -262,6 +266,19 @@ async function showScreenshot(fileId, anomalyId) {
     const loading = loadScreenshotImage(fileId, anomalyId);
     updateScreenshotNav();
     return loading;
+}
+
+async function showCauseHistoryScreenshot(anomalyId) {
+    if (screenshotCauseSaving) return;
+    const source = reportData?.anomalies?.find(a => a.id === anomalyId)?.cause_history?.source;
+    if (!source?.screenshot_id) return;
+    screenshotHistory = source;
+    currentScreenshotAnomalyId = null;
+    screenshotList = [];
+    screenshotIndex = -1;
+    document.getElementById('screenshotModal').classList.add('show');
+    updateScreenshotNav();
+    return loadScreenshotImage(source.screenshot_id, null);
 }
 
 async function loadScreenshotImage(fileId, anomalyId) {
@@ -285,8 +302,9 @@ async function loadScreenshotImage(fileId, anomalyId) {
         if (requestId !== screenshotImageRequest) return;
 
         if (data.success) {
-            title.textContent = data.file_name || '스크린샷';
-            title.title = data.file_name || '스크린샷';
+            const prefix = screenshotHistory ? `과거 캡처 · ${screenshotHistory.crawl_date || ''} · ` : '';
+            title.textContent = prefix + (data.file_name || '스크린샷');
+            title.title = title.textContent;
             body.innerHTML = `<img src="${safeUrl(data.url)}" alt="스크린샷" style="max-width:100%; max-height:80vh;">`;
         } else {
             title.textContent = '스크린샷';

@@ -233,6 +233,33 @@ function updateStatusSelectAllState() {
     selectAll.indeterminate = someChecked && !allChecked;
 }
 
+function renderCauseHistory(anomaly) {
+    const history = anomaly.cause_history;
+    if (!history || history.status === 'none' || history.status === 'unrecorded') {
+        return `<span class="cause-history-empty">${normalizeReportCause(anomaly.cause)
+            ? '원인 적용 출처 미기록 · 확인 가능한 과거 기록 없음'
+            : '적용 가능한 과거 기록 없음 · 확인 필요'}</span>`;
+    }
+    if (history.status === 'manual') {
+        return `<div class="cause-history"><strong>이번 검수에서 직접 입력</strong>
+            <div>${esc(history.applied_at || '')} · ${esc(history.applied_by || '-')}</div></div>`;
+    }
+    const source = history.source;
+    if (!source) return '<span class="cause-history-empty">원인 적용 출처 미기록</span>';
+    const value = raw => raw == null || String(raw).trim() === ''
+        ? '<span class="null-value">NULL</span>' : esc(String(raw));
+    const label = history.status === 'automatic' ? '과거 원인 자동 적용' : '과거 동일 조건 기록';
+    return `<div class="cause-history">
+        <strong>${label}</strong>
+        ${history.status === 'legacy_match' ? '<div class="cause-history-empty">자동 적용 여부 미기록</div>' : ''}
+        <div>${esc(source.crawl_date || '-')} · 기록자: ${esc(source.updated_id || source.created_id || '-')}</div>
+        <div>SKU: <b>${value(source.retailersku)}</b> · 제목: <b>${value(source.title)}</b></div>
+        <div>가격: <b>${value(source.retailprice)}</b> · Ships From: <b>${value(source.ships_from)}</b> · Sold By: <b>${value(source.sold_by)}</b></div>
+        <div>당시 원인: <b>${value(source.cause)}</b></div>
+        ${source.screenshot_id ? `<button type="button" class="cause-history-screenshot" onclick="showCauseHistoryScreenshot(${Number(anomaly.id)})">📷 과거 캡처 보기</button>` : '<span class="cause-history-empty">과거 캡처 없음</span>'}
+    </div>`;
+}
+
 function renderAnomalyItems(anomalies, retailer) {
     if (anomalies.length === 0) {
         return '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">저장된 이상치가 없습니다.</div>';
@@ -266,7 +293,7 @@ function renderAnomalyItems(anomalies, retailer) {
                             ${(causeOptions[retailer] || []).map(opt => '<option value="' + opt + '">' + opt + '</option>').join('')}
                         </select>` : ''}
                     </th>
-                    <th>메모</th>
+                    <th>원인 적용 이력</th>
                 </tr>
             </thead>
             <tbody>
@@ -305,7 +332,7 @@ function renderAnomalyItems(anomalies, retailer) {
                     ${missingCause ? '<span class="missing-cause-hint">원인 미선택 · 확인 필요</span>' : ''}
                 </td>
                 <td>
-                    <input type="text" id="memo_${a.id}" class="inline-input" value="${a.memo || ''}" placeholder="메모 입력" ${isClosed ? 'disabled' : 'disabled'}>
+                    ${renderCauseHistory(a)}
                 </td>
             </tr>
         `;
@@ -355,7 +382,7 @@ function renderAllAnomaliesTable(data) {
                     <th style="width: 100px;">Sold By</th>
                     <th style="width: 50px;">이미지</th>
                     <th style="width: 200px;">원인</th>
-                    <th>메모</th>
+                    <th>원인 적용 이력</th>
                     ${isClosed ? '' : '<th style="width: 60px;">관리</th>'}
                 </tr>
             </thead>
@@ -383,7 +410,7 @@ function renderAllAnomaliesTable(data) {
                     </select>
                 </td>
                 <td>
-                    <input type="text" id="memo_all_${a.id}" class="inline-input" value="${a.memo || ''}" placeholder="메모 입력" ${isClosed ? 'disabled' : ''}>
+                    ${renderCauseHistory(a)}
                 </td>
                 ${isClosed ? '' : `
                 <td class="text-center">
@@ -407,7 +434,6 @@ async function saveAnomalyAll(anomalyId) {
     if (isClosed) return;
 
     const cause = document.getElementById(`cause_all_${anomalyId}`).value;
-    const memo = document.getElementById(`memo_all_${anomalyId}`).value;
 
     // 원인 필수 입력 검증
     if (!cause) {
@@ -423,7 +449,6 @@ async function saveAnomalyAll(anomalyId) {
             body: JSON.stringify({
                 anomaly_id: anomalyId,
                 cause: cause,
-                memo: memo,
                 user_id: currentUserId
             })
         });
@@ -572,9 +597,7 @@ function toggleAnomalySelectAll(retailer, safeRetailerId) {
         cb.checked = selectAll.checked;
         const anomalyId = cb.id.replace('anomalyCheck_', '');
         const causeSelect = document.getElementById(`cause_${anomalyId}`);
-        const memoInput = document.getElementById(`memo_${anomalyId}`);
         if (causeSelect) causeSelect.disabled = !selectAll.checked;
-        if (memoInput) memoInput.disabled = !selectAll.checked;
     });
     toggleBulkCause(safeRetailerId);
 }
@@ -583,13 +606,9 @@ function toggleAnomalySelectAll(retailer, safeRetailerId) {
 function toggleAnomalyInput(anomalyId, safeRetailerId) {
     const checkbox = document.getElementById(`anomalyCheck_${anomalyId}`);
     const causeSelect = document.getElementById(`cause_${anomalyId}`);
-    const memoInput = document.getElementById(`memo_${anomalyId}`);
     if (checkbox) {
         if (causeSelect) causeSelect.disabled = !checkbox.checked;
-        if (memoInput) {
-            memoInput.disabled = !checkbox.checked;
-            if (checkbox.checked) memoInput.focus();
-        }
+        if (checkbox.checked && causeSelect) causeSelect.focus();
     }
     toggleBulkCause(safeRetailerId);
     // 전체 선택 체크박스 상태 업데이트
@@ -626,16 +645,14 @@ async function saveCheckedAnomalies(retailer) {
     table.querySelectorAll('.anomaly-checkbox:checked').forEach(checkbox => {
         const anomalyId = parseInt(checkbox.id.replace('anomalyCheck_', ''));
         const causeEl = document.getElementById(`cause_${anomalyId}`);
-        const memoEl = document.getElementById(`memo_${anomalyId}`);
-        if (causeEl && memoEl) {
+        if (causeEl) {
             // 원인 필수 입력 검증
             if (!causeEl.value && !missingCauseId) {
                 missingCauseId = anomalyId;
             }
             updates.push({
                 anomaly_id: anomalyId,
-                cause: causeEl.value,
-                memo: memoEl.value
+                cause: causeEl.value
             });
         }
     });
@@ -672,9 +689,7 @@ async function saveCheckedAnomalies(retailer) {
                 checkbox.checked = false;
                 const anomalyId = checkbox.id.replace('anomalyCheck_', '');
                 const causeEl = document.getElementById(`cause_${anomalyId}`);
-                const memoEl = document.getElementById(`memo_${anomalyId}`);
                 if (causeEl) causeEl.disabled = true;
-                if (memoEl) memoEl.disabled = true;
             });
             // 전체 선택 체크박스 상태 업데이트
             updateAnomalySelectAllState(safeRetailerId);

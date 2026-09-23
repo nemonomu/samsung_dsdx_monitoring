@@ -43,17 +43,20 @@ def carry_forward_causes(anomalies, previous_anomalies):
             continue
 
         key = (sku, signature)
-        candidates.setdefault(key, set()).add(str(cause).strip())
+        candidates.setdefault(key, []).append(previous)
 
     carried = []
     for anomaly in anomalies:
         current = dict(anomaly)
+        current.pop('_cause_source', None)  # Only server-selected history is trusted.
         sku = _normalized_sku(current.get('retailersku'))
         signature = anomaly_signature(current)
-        causes = candidates.get((sku, signature), set())
+        matches = candidates.get((sku, signature), [])
+        causes = {str(row['cause']).strip() for row in matches}
 
         if _is_blank(current.get('cause')) and len(causes) == 1:
             current['cause'] = next(iter(causes))
+            current['_cause_source'] = dict(max(matches, key=lambda row: row.get('id') or 0))
 
         carried.append(current)
 

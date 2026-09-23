@@ -412,7 +412,7 @@
     /* Anomaly Table (상세 테이블) */
     .anomaly-table {
         width: 100%;
-        min-width: 900px;
+        min-width: 1400px;
         border-collapse: collapse;
         font-size: 12px;
         background: white;
@@ -478,6 +478,23 @@
         color: #92400e;
         font-size: 11px;
         font-weight: 600;
+    }
+
+    .cause-history {
+        line-height: 1.65;
+        overflow-wrap: anywhere;
+        color: #334155;
+    }
+    .cause-history > strong { color: #0f766e; }
+    .cause-history-empty { color: #64748b; font-size: 11px; }
+    .cause-history-screenshot {
+        padding: 3px 8px;
+        margin-top: 4px;
+        border: 1px solid #99c9c4;
+        border-radius: 4px;
+        background: #f0fdfa;
+        color: #0f766e;
+        cursor: pointer;
     }
 
     .anomaly-table .text-center {

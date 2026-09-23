@@ -3,6 +3,7 @@ DS Layer 2 Report Repository: 현황 저장/삭제 쿼리 전담
 """
 from apps.common.db import ds_connection
 from apps.common.response import log_error
+from apps.ds.cause_history import record_cause_application
 
 
 _SYSTEM_CAUSE_MARKERS = {'crawler_null_capture'}
@@ -48,7 +49,8 @@ def fetch_previous_anomalies_with_causes(cursor, crawl_date, retailer_id):
     """Return prior-day anomalies whose saved cause is still selectable."""
     cursor.execute("""
         SELECT a.retailersku, a.title, a.retailprice, a.ships_from,
-               a.sold_by, a.imageurl, a.cause
+               a.sold_by, a.imageurl, a.cause, a.id, a.crawl_date,
+               a.screenshot_id, a.created_at, a.created_id, a.updated_at, a.updated_id
         FROM ssd_crawl_db.ds_monitoring_report_anomaly a
         LEFT JOIN ssd_crawl_db.ds_monitoring_anomaly_causes_options o
             ON o.retailer_id = a.retailer_id
@@ -72,6 +74,9 @@ def fetch_previous_anomalies_with_causes(cursor, crawl_date, retailer_id):
             'sold_by': row[4],
             'imageurl': row[5],
             'cause': row[6],
+            'id': row[7], 'crawl_date': row[8], 'screenshot_id': row[9],
+            'created_at': row[10], 'created_id': row[11],
+            'updated_at': row[12], 'updated_id': row[13],
         }
         for row in cursor.fetchall()
     ]
@@ -115,6 +120,9 @@ def db_save_retailer_transaction(crawl_date, retailer_id, stats, anomalies, memo
                 WHERE id = %s
             """, (anomaly.get('country_code', ''), anomaly.get('title', ''), anomaly.get('retailprice'), anomaly.get('ships_from', ''), anomaly.get('sold_by', ''), anomaly.get('imageurl', ''), anomaly.get('producturl', ''), cause, now, user_id, old['id']))
             anomaly_ids.append(old['id'])
+            if not _resolved_cause(old['cause'], '') and cause:
+                record_cause_application(cursor, old['id'], cause, user_id, now,
+                                         anomaly.get('_cause_source'))
         else:
             cursor.execute("""
                 INSERT INTO ssd_crawl_db.ds_monitoring_report_anomaly (
@@ -122,6 +130,9 @@ def db_save_retailer_transaction(crawl_date, retailer_id, stats, anomalies, memo
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s)
             """, (crawl_date, retailer_id, anomaly.get('country_code', ''), anomaly.get('title', ''), anomaly.get('retailprice'), anomaly.get('ships_from', ''), anomaly.get('sold_by', ''), anomaly.get('imageurl', ''), anomaly.get('producturl', ''), anomaly.get('retailersku', ''), anomaly.get('screenshot_id'), anomaly.get('cause', ''), anomaly.get('memo', ''), now, user_id))
             anomaly_ids.append(cursor.lastrowid)
+            if anomaly.get('cause'):
+                record_cause_application(cursor, anomaly_ids[-1], anomaly['cause'], user_id, now,
+                                         anomaly.get('_cause_source'))
 
     orphan_screenshot_ids = [v['screenshot_id'] for v in old_anomaly_map.values() if v['screenshot_id']]
     if orphan_screenshot_ids:
