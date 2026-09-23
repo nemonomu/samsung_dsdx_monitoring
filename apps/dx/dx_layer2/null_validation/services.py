@@ -1287,12 +1287,25 @@ def get_tse_auto_applied_null_reviews(cursor, target_date):
     return auto_logs
 
 
-def get_auto_applied_null_reviews(cursor, target_date):
+def get_auto_applied_null_reviews(cursor, target_date, category=None):
     """Use the same current-cell decisions as the NULL worklist and counts."""
     if not uses_new_policy(target_date, 'TSE'):
         return get_tse_auto_applied_null_reviews(cursor, target_date)
+    history_options = {}
+    if category == 'tv_retail':
+        # The history reads public retail rows. Some local runtimes map the
+        # master to an absent test table; use the matching public master only
+        # when that configured relation is absent and the real one exists.
+        cursor.execute('SELECT to_regclass(%s) IS NOT NULL, '
+                       'to_regclass(%s) IS NOT NULL',
+                       (dx_table('tv_item_mst'), 'public.tv_item_mst'))
+        configured_exists, public_exists = cursor.fetchone()
+        if not configured_exists and public_exists:
+            history_options['use_public_tv_master'] = True
     validation, _issue_count = get_null_stats(
         cursor, target_date, include_youtube=False,
+        **({'category': category} if category else {}),
+        **history_options,
     )
     return validation.get('auto_null_reviews', [])
 
@@ -2245,12 +2258,13 @@ def _apply_static_scope(date_where, params, query_parts):
     return date_where, params
 
 
-def get_non_product_exclusion_condition(table_name):
+def get_non_product_exclusion_condition(table_name, use_public_master=False):
     """Layer 2 TV NULL validation scope excluding item-master non-products."""
     if table_name != 'tv_retail_com':
         return ''
 
-    item_master_table = dx_table('tv_item_mst')
+    item_master_table = ('public.tv_item_mst' if use_public_master
+                         else dx_table('tv_item_mst'))
     return f"""
         NOT EXISTS (
             SELECT 1
@@ -2264,7 +2278,8 @@ def get_non_product_exclusion_condition(table_name):
 
 
 
-def get_null_stats(cursor, target_date, include_youtube=False, category=None):
+def get_null_stats(cursor, target_date, include_youtube=False, category=None,
+                   use_public_tv_master=False):
     """NULL 검증 통계 — 대시보드용"""
     total_null_issues = 0
 
@@ -2366,9 +2381,10 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None):
 
             if query_parts['table_name'] == 'tv_retail_com':
                 date_where += f" AND {get_tv_validation_condition()}"
-                date_where += (
-                    f" AND {get_non_product_exclusion_condition(query_parts['table_name'])}"
-                )
+                master_options = ({'use_public_master': True}
+                                  if use_public_tv_master else {})
+                date_where += ' AND ' + get_non_product_exclusion_condition(
+                    query_parts['table_name'], **master_options)
 
             query = f"""
                 SELECT COUNT(*) as total,

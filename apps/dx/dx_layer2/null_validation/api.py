@@ -104,15 +104,20 @@ def null_review(request):
 
 
 def null_review_logs(request):
-    """해당값 정상으로 처리한 TSE NULL 검수 로그 API (GET)."""
-    target_date = parse_date(request.GET.get('date'))
-    if target_date is None:
-        return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
+    """전체 국가의 NULL 확인 이력 조회 (날짜·메모·검색·페이지)."""
+    from .review_history import get_review_history, parse_filters
+
+    if request.method != 'GET':
+        return JsonResponse({'error': 'GET only'}, status=405)
+    try:
+        filters = parse_filters(request.GET)
+    except ValueError as error:
+        return JsonResponse({'error': str(error)}, status=400)
 
     try:
         with dx_connection() as (conn, cursor):
             return JsonResponse(
-                services.get_tse_null_review_logs(cursor, target_date)
+                get_review_history(cursor, filters, services.get_auto_applied_null_reviews)
             )
     except Exception as e:
         return safe_error(e)

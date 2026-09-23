@@ -5,55 +5,84 @@
 
 {% block layer2_css %}
 <style>
-    .review-log-card {
-        background: #fff;
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    .review-log-summary {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 18px 20px;
-        border-bottom: 1px solid var(--border-color);
-    }
+    .review-log-card, .review-log-filters { background: #fff; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; }
+    .review-log-filters { padding: 18px 20px; margin-bottom: 16px; }
+    .review-log-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .review-log-controls + .review-log-controls { margin-top: 12px; }
+    .review-log-controls label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+    .review-log-controls input, .review-log-controls select, .review-log-controls button,
+    .review-log-pagination button { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; background: white; color: var(--text-primary); font: inherit; }
+    .review-log-controls button, .review-log-pagination button { cursor: pointer; }
+    .review-log-controls button[aria-pressed="true"], .review-log-controls button[type="submit"],
+    .review-log-pagination button[aria-current="page"] { background: var(--layer-color); color: white; border-color: var(--layer-color); }
+    .review-log-search { flex: 1; min-width: 220px; max-width: 600px; }
+    .review-log-search input { width: 100%; min-width: 0; }
+    .review-log-memo-toggle { padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; }
+    .review-log-memo-toggle:has(input:checked) { color: #0f766e; background: #e6f6f2; border-color: #0f766e; font-weight: 700; }
+    .review-log-feedback { color: #b91c1c; margin: 8px 0 0; font-size: 13px; }
+    .review-log-feedback:empty { display: none; }
+    .review-log-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--border-color); }
     .review-log-summary h3 { margin: 0 0 5px; font-size: 16px; }
     .review-log-summary p { margin: 0; color: var(--text-secondary); font-size: 13px; }
-    .review-log-count { color: var(--layer-color); font-size: 22px; font-weight: 700; white-space: nowrap; }
-    .review-log-scroll { overflow-x: auto; }
-    .review-log-table { width: 100%; border-collapse: collapse; min-width: 1340px; }
-    .review-log-table th, .review-log-table td {
-        padding: 11px 12px;
-        border-bottom: 1px solid var(--border-color);
-        text-align: left;
-        font-size: 13px;
-        vertical-align: top;
-    }
-    .review-log-table th { background: var(--bg-primary); color: var(--text-secondary); white-space: nowrap; }
+    .review-log-count { color: var(--layer-color); font-size: 17px; font-weight: 700; white-space: nowrap; }
+    .review-log-scroll { overflow: auto; max-height: 65vh; }
+    .review-log-table { width: 100%; border-collapse: collapse; min-width: 2100px; }
+    .review-log-table th, .review-log-table td { padding: 11px 12px; border-bottom: 1px solid var(--border-color); text-align: left; font-size: 13px; vertical-align: top; }
+    .review-log-table th { background: var(--bg-primary); color: var(--text-secondary); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
     .review-log-table tbody tr:last-child td { border-bottom: 0; }
-    .review-log-reason { color: #047857; font-weight: 700; white-space: nowrap; }
-    .review-log-auto { color: #1d4ed8; font-weight: 700; white-space: nowrap; }
-    .review-log-muted { color: var(--text-secondary); }
+    .review-log-table td { overflow-wrap: anywhere; min-width: 65px; }
+    .review-log-product { min-width: 220px !important; max-width: 320px; }
+    .review-log-reason { color: #047857; font-weight: 700; min-width: 150px !important; }
+    .review-log-auto { color: #1d4ed8; font-weight: 700; }
+    .review-log-memo { min-width: 280px !important; max-width: 450px; color: #172033; font-weight: 750; background: #fffbeb; white-space: pre-wrap; line-height: 1.65; }
+    .review-log-evidence { min-width: 200px !important; line-height: 1.6; }
+    .review-log-muted { color: var(--text-secondary); font-weight: 400; }
     .review-log-empty { padding: 48px 20px; text-align: center; color: var(--text-secondary); }
+    .review-log-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--border-color); font-size: 13px; }
+    .review-log-pagination:empty { display: none; }
+    .review-log-pagination nav { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+    .review-log-pagination button:disabled { cursor: default; opacity: .4; }
+    #review-log-calendar:not([hidden]) { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 </style>
 {% endblock %}
 
 {% block layer2_content %}
+<form id="review-log-filters" class="review-log-filters">
+    <div class="review-log-controls">
+        <strong>조회 기간</strong>
+        <button type="button" data-period="today" aria-pressed="true">오늘</button>
+        <button type="button" data-period="all" aria-pressed="false">전체</button>
+        <button type="button" data-period="calendar" aria-pressed="false">달력</button>
+        <span id="review-log-calendar" hidden>
+            <label for="review-log-start">시작일 <input type="date" id="review-log-start" name="start_date" required disabled></label>
+            <span>~</span>
+            <label for="review-log-end">종료일 <input type="date" id="review-log-end" name="end_date" required disabled></label>
+        </span>
+        <label class="review-log-memo-toggle"><input type="checkbox" id="review-log-memo-only" name="memo_only" value="1"> 메모 있는 건만</label>
+    </div>
+    <div class="review-log-controls">
+        <select name="country" aria-label="나라"><option value="">나라 전체</option><option>SEA</option><option>SEG</option><option>SIEL</option><option>SEDA</option><option>SEM</option><option>TSE</option></select>
+        <select name="product_line" aria-label="제품군"><option value="">제품군 전체</option><option>TV</option><option>REF</option><option>LDY</option></select>
+        <select name="retailer" id="review-log-retailer" aria-label="리테일러"><option value="">리테일러 전체</option></select>
+        <select name="kind" aria-label="확인 구분"><option value="all">수동·자동 전체</option><option value="manual">수동확인</option><option value="auto">자동확인</option></select>
+        <label class="review-log-search"><input type="search" name="q" aria-label="전체 항목 검색" placeholder="ITEM, SKU, 상품명, 메모 등 전체 항목 검색"></label>
+        <button type="submit" title="최신 기록 다시 조회">조회</button>
+    </div>
+    <p id="review-log-feedback" class="review-log-feedback" role="alert"></p>
+</form>
 <div class="review-log-card">
     <div class="review-log-summary">
         <div>
             <h3 id="review-log-heading">NULL 확인 이력</h3>
-            <p id="review-log-policy">선택한 날짜의 확인 이력을 불러옵니다.</p>
+            <p id="review-log-policy">수동확인은 확인일, 자동확인은 적용일 기준입니다. 확인 근거에는 원 수동확인의 작성자와 시각을 표시합니다.</p>
         </div>
-        <div class="review-log-count" id="review-log-count">-</div>
+        <div class="review-log-count" id="review-log-count" aria-live="polite">-</div>
     </div>
-    <div id="review-log-body" class="review-log-empty">데이터 로딩 중...</div>
+    <div id="review-log-body" class="review-log-empty" aria-busy="true">데이터 로딩 중...</div>
+    <div id="review-log-pagination" class="review-log-pagination"></div>
 </div>
 {% endblock %}
 
 {% block layer2_js %}
-<script src="{% static 'dx_layer2/js/layer2-common.js' %}?v=20260923-price2"></script>
-<script src="{% static 'dx_layer2/js/null_review_log.js' %}?v=20260915-2"></script>
+<script src="{% static 'dx_layer2/js/null_review_log.js' %}?v=20260923-history"></script>
 {% endblock %}

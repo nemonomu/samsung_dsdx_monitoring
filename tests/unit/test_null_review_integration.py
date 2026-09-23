@@ -431,6 +431,22 @@ class CountryNullIntegrationTests(unittest.TestCase):
                 self.tse.get_null_stats(cursor, DAY, include_youtube=False)
         self.assertIn('ROLLBACK TO SAVEPOINT', cursor.calls[-2][0])
 
+    def test_history_tv_master_fallback_keeps_non_product_exclusion(self):
+        for present, fallback in (((False, True), True), ((True, True), False),
+                                  ((False, False), False)):
+            with self.subTest(present=present):
+                cursor = ScriptedCursor([{'fetchone': present}])
+                with patch.object(self.tse, 'get_null_stats',
+                                  return_value=({'auto_null_reviews': [{'id': 'auto:1'}]}, 0)) as stats:
+                    rows = self.tse.get_auto_applied_null_reviews(cursor, DAY, category='tv_retail')
+                self.assertEqual([{'id': 'auto:1'}], rows)
+                self.assertEqual(fallback, stats.call_args.kwargs.get('use_public_tv_master', False))
+                self.assertEqual('tv_retail', stats.call_args.kwargs['category'])
+        clause = self.tse.get_non_product_exclusion_condition('tv_retail_com', use_public_master=True)
+        self.assertIn('FROM public.tv_item_mst', clause)
+        self.assertIn('non_product.is_product IS FALSE', clause)
+        self.assertIn('IS NOT DISTINCT FROM tv_retail_com.item', clause)
+
     def test_tse_new_log_keeps_all_manual_reasons_without_legacy_expiry(self):
         table = 'dx_tse.dx_tse_tv_retail_com'
         cursor = ScriptedCursor([{'fetchall': [(
