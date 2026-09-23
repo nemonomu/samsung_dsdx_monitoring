@@ -39,7 +39,7 @@ def normalize_check(check, country, inspection_date):
                 rows.append({
                     'product': product, 'retailer': name, 'slot': slot.get('name') or 'daily',
                     'main': int(retailer.get('main_count', items.get('Main Rank', 0)) or 0),
-                    'bsr': None if retailer.get('bsr_applicable') is False else int(retailer.get('bsr_count', items.get('BSR Rank', 0)) or 0),
+                    'bsr': int(retailer.get('bsr_count', items.get('BSR Rank', 0)) or 0),
                     'total': int(total or 0), 'batch_id': str(retailer.get('batch_id') or ''),
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status not in ('CRITICAL', 'WARNING', 'ERROR'),
@@ -48,7 +48,46 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-def compare_rows(rows, history):
+def _compare_bsr(row, history, country):
+    """Fixed targets need no history; variable targets require seven good days."""
+    retailer = str(row['retailer']).strip().casefold()
+    variable = ((country == 'SEA' and row['product'] == 'TV' and retailer == 'amazon')
+                or (country == 'SEM' and retailer == 'homedepot'))
+    rule = 'median_28d' if variable else 'fixed_100'
+    if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
+        return rule, 'pending', None, None
+    current = row.get('bsr')
+    if current is None:
+        # Older snapshots can contain NULL; never invent zero collected rows.
+        return rule, 'insufficient', None, None
+    if variable:
+        days = {}
+        for index, old in enumerate(history):
+            if (old.get('complete') and old.get('bsr') is not None and old['bsr'] > 0
+                    and not any(a.get('metric') == 'bsr' and a.get('status') == 'VOLUME_LOW'
+                                for a in old.get('alerts', []))):
+                days[old.get('source_date', index)] = old['bsr']
+        if len(days) < 7:
+            return rule, 'insufficient', None, None
+        baseline = median(days.values())
+        basis = {'value': baseline, 'days': len(days), 'rule': rule}
+        low = (baseline - current) * 100 >= baseline * 30
+    else:
+        baseline = 100
+        basis = {'value': baseline, 'days': 0, 'rule': rule}
+        low = current < baseline
+    alert = None
+    if low:
+        alert = {'metric': 'bsr', 'baseline': baseline, 'actual': current,
+                 'percent': round((current - baseline) * 100 / baseline, 1),
+                 'status': 'VOLUME_LOW', 'rule': rule,
+                 'reason': (f'BSR 기준 100개 / 수집 {current}개 / {100-current}개 부족'
+                            if not variable else
+                            f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / 30% 이상 감소')}
+    return rule, 'ready', basis, alert
+
+
+def compare_rows(rows, history, country=None):
     """history contains only the previous 28 source dates, never the target day."""
     groups = defaultdict(list)
     for old in history:
@@ -58,6 +97,8 @@ def compare_rows(rows, history):
     for row in rows:
         baselines, alerts = {}, []
         for metric in METRICS:
+            if metric == 'bsr':
+                continue
             values = [old[metric] for old in groups[row_key(row)] if old.get(metric) is not None]
             if len(values) < 7:
                 continue
@@ -71,8 +112,15 @@ def compare_rows(rows, history):
             if abs(delta) >= 30:
                 alerts.append({'metric': metric, 'baseline': baseline, 'actual': current,
                                'percent': round(delta, 1), 'status': 'VOLUME_LOW' if delta < 0 else 'VOLUME_HIGH'})
+        bsr_rule, bsr_state, bsr_basis, bsr_alert = _compare_bsr(
+            row, groups[row_key(row)], country or row.get('country'))
+        if bsr_basis is not None:
+            baselines['bsr'] = bsr_basis
+        if bsr_alert:
+            alerts.append(bsr_alert)
         state = ('pending' if not row['complete'] else 'ready' if len(baselines) == len([m for m in METRICS if row.get(m) is not None]) else 'insufficient')
-        result.append({**row, 'baselines': baselines, 'alerts': alerts, 'comparison_state': state})
+        result.append({**row, 'baselines': baselines, 'alerts': alerts, 'comparison_state': state,
+                       'bsr_rule': bsr_rule, 'bsr_comparison_state': bsr_state})
     return result
 
 

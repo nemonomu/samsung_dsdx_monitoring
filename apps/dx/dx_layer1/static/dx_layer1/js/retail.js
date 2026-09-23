@@ -169,7 +169,7 @@ function renderRetailRankRow(categoryName, period, retailerName, row, status, sh
     return '<tr>' +
         '<td class="rt-name"><a href="' + detailUrl + '">' + esc(retailerName) + '</a>' + batchHtml + '</td>' +
         '<td>' + retailCount(row.main).toLocaleString() + '</td>' +
-        '<td>' + retailCount(row.bsr).toLocaleString() + '</td>' +
+        (L1.retailStatus.bsrCell ? L1.retailStatus.bsrCell(batchMetadata, retailCount(row.bsr).toLocaleString()) : '<td>' + retailCount(row.bsr).toLocaleString() + '</td>') +
         (showExtra ? '<td class="rt-extra">' + retailCount(row.extra).toLocaleString() + '</td>' : '') +
         '<td class="rt-total">' + retailCount(row.total).toLocaleString() + '</td>' +
         '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(Object.assign({}, batchMetadata, { status: status })) + collectionHtml + '</td>' +

@@ -1,5 +1,6 @@
 .status-badge.volume-review {color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
 .status-badge.volume-review .status-dot {background:#3b82f6}
+.cs-bsr-low {background:#fff1f2 !important;color:#b91c1c !important;font-weight:700}
 .cs-page {max-width:1500px;margin:auto;color:#1e293b;font-family:inherit}
 .cs-intro {display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 22px}
 .cs-intro p {margin:5px 0}.cs-eyebrow {font-size:10px;letter-spacing:.15em;font-weight:700;color:#64748b}
@@ -16,6 +17,8 @@
 .cs-table thead tr:nth-child(2) th {padding:8px 12px;font-size:12px}.cs-table .cs-total-heading {background:#f1f5f9;border-right:1px solid #cbd5e1;color:#334155}.cs-table .cs-day-cell {min-width:72px}.cs-table .cs-day-cell.cs-total {border-right:1px solid #e2e8f0}.cs-table .cs-day-cell.cs-unavailable {border-right:1px solid #e2e8f0}
 .cs-table .cs-country-row th {background:#eaf0f7;color:#1e293b;text-align:left;font-size:15px;font-weight:700;padding:10px 16px;border-top:2px solid #cbd5e1}
 .cs-table .cs-product-row th {background:#f3f7fb;color:#334155;text-align:left;font-size:13px;font-weight:600;padding:8px 28px;border-top:0}
+.cs-table .cs-group-label {display:inline-block;position:sticky;left:16px}
+.cs-table .cs-product-row .cs-group-label {left:28px}
 .cs-identity strong,.cs-average strong,.cs-day-cell strong {display:block;color:#1e293b;font-weight:600}.cs-identity small,.cs-average small,.cs-day-cell small {display:block;margin-top:4px;font-size:12px;color:#64748b}.cs-day-cell.low {background:#fff1f2}.cs-day-cell.low small {color:#b91c1c}.cs-day-cell.high {background:#eff6ff}.cs-day-cell.high small {color:#1d4ed8}
 .cs-tag {display:inline-block;border-radius:12px;padding:3px 9px;font-size:11px;font-weight:600;margin:2px;color:#64748b;background:#f1f5f9}.cs-tag.low,.cs-low {color:#b91c1c}.cs-tag.low {background:#fef2f2}.cs-tag.high,.cs-high {color:#1d4ed8}.cs-tag.high {background:#eff6ff}.cs-tag.ok {color:#047857;background:#ecfdf5}
 .cs-message {padding:24px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;background:#f8fafc;margin-bottom:20px}.cs-message.error {color:#b91c1c;border-color:#fecaca;background:#fef2f2}

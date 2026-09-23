@@ -19,8 +19,9 @@
             <div class="cs-table-scroll"><table class="cs-table"><thead id="cs-table-head"></thead><tbody id="cs-table-body"></tbody></table></div>
         </section>
         <p class="cs-footnote">총수량 하루 평균은 같은 국가·제품군·리테일러에서 집계가 완료된 날짜의 총수량으로 계산하며 0건도 포함합니다. 미집계·조회 실패·수집 중인 날짜는 제외합니다. 여러 수집 시간대가 있으면 해당 날짜의 건수를 합산합니다. 총수량은 MAIN과 BSR을 더한 값이 아닙니다.</p>
-        <p class="cs-footnote">수집량 비교: 이전 28일 중 비교 가능한 7일 이상의 중앙값 기준. 30% 이상 감소는 <span class="cs-low">이상</span>, 30% 이상 증가는 <span class="cs-high">확인 필요</span>로 표시합니다.</p>
+        <p class="cs-footnote">BSR: 수집 완료 후 100개 미만이면 <span class="cs-low">이상</span>입니다. SEA Amazon TV·SEM HomeDepot은 이전 28일 중 정상 수집 완료된 최소 7일의 중앙값보다 30% 이상 감소하면 이상입니다. 이력이 7일 미만이면 통계 표에 비교 이력 부족으로 표시합니다.</p>
+        <p class="cs-footnote">MAIN·총수량 비교: 이전 28일 중 비교 가능한 7일 이상의 중앙값 기준. 30% 이상 감소는 <span class="cs-low">이상</span>, 30% 이상 증가는 <span class="cs-high">확인 필요</span>로 표시합니다.</p>
     </div>
 </section>
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/collection-statistics.js' %}?v=6"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/collection-statistics.js' %}?v=8-bsr"></script>{% endblock %}

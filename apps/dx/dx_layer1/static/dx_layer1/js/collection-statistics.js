@@ -69,13 +69,19 @@
             return values.length ? values.reduce((total, value) => total + value, 0) : null;
         };
         const total = sum('total'), main = sum('main'), bsr = sum('bsr');
-        if (total === 0) return {total, main, bsr, label: '미수집', kind: 'low'};
         const alerts = active.flatMap(day => day.alerts || []);
-        const low = alerts.some(alert => alert.status === 'VOLUME_LOW');
-        const high = alerts.some(alert => alert.status === 'VOLUME_HIGH');
-        if (low) return {total, main, bsr, label: '이상', kind: 'low'};
-        if (high) return {total, main, bsr, label: '확인 필요', kind: 'high'};
-        return {total, main, bsr, label: active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족'};
+        const bsrAlerts = alerts.filter(alert => alert.metric === 'bsr' && alert.status === 'VOLUME_LOW');
+        const bsrInfo = {
+            bsrKind: bsrAlerts.length ? 'low' : '',
+            bsrLabel: bsrAlerts.length ? '이상' : active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : '',
+            bsrReason: bsrAlerts.map(alert => alert.reason || 'BSR 수량 부족').join(' · '),
+        };
+        if (total === 0) return {total, main, bsr, ...bsrInfo, label: '미수집', kind: 'low'};
+        const low = alerts.some(alert => alert.metric !== 'bsr' && alert.status === 'VOLUME_LOW');
+        const high = alerts.some(alert => alert.metric !== 'bsr' && alert.status === 'VOLUME_HIGH');
+        if (low) return {total, main, bsr, ...bsrInfo, label: '이상', kind: 'low'};
+        if (high) return {total, main, bsr, ...bsrInfo, label: '확인 필요', kind: 'high'};
+        return {total, main, bsr, ...bsrInfo, label: active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족'};
     }
 
     function syncRetailers(preferred = byId('cs-retailer').value) {
@@ -108,12 +114,12 @@
         byId('cs-table-body').innerHTML = groups.map(group => {
             let heading = '';
             if (group.country !== previousCountry) {
-                heading += `<tr class="cs-country-row"><th colspan="${dates.length * 3 + 2}">${safe(group.country)}</th></tr>`;
+                heading += `<tr class="cs-country-row"><th colspan="${dates.length * 3 + 2}"><span class="cs-group-label">${safe(group.country)}</span></th></tr>`;
                 previousCountry = group.country;
                 previousProduct = '';
             }
             if (group.product !== previousProduct) {
-                heading += `<tr class="cs-product-row"><th colspan="${dates.length * 3 + 2}">${safe(group.product)}</th></tr>`;
+                heading += `<tr class="cs-product-row"><th colspan="${dates.length * 3 + 2}"><span class="cs-group-label">${safe(group.product)}</span></th></tr>`;
                 previousProduct = group.product;
             }
             const results = dates.map(day => dayResult(group.daily.get(day) || []));
@@ -127,7 +133,7 @@
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
                     if (day.total == null) return `<td class="cs-day-cell cs-unavailable${day.kind ? ' ' + day.kind : ''}" colspan="3" title="${safe(title)}"><strong>—</strong><small>${safe(day.label)}</small></td>`;
                     return `<td class="cs-day-cell">${number(day.main)}</td>`
-                        + `<td class="cs-day-cell">${number(day.bsr)}</td>`
+                        + `<td class="cs-day-cell${day.bsrKind ? ' ' + day.bsrKind + ' cs-bsr-low' : ''}"${day.bsrReason || day.bsrLabel ? ` title="${safe(day.bsrReason || day.bsrLabel)}"` : ''}>${number(day.bsr)}${day.bsrLabel ? `<small>${safe(day.bsrLabel)}</small>` : ''}</td>`
                         + `<td class="cs-day-cell cs-total${day.kind ? ' ' + day.kind : ''}" title="${safe(title)}"><strong>${number(day.total)}</strong>${day.label ? `<small>${safe(day.label)}</small>` : ''}</td>`;
                 }).join('') + '</tr>';
         }).join('');

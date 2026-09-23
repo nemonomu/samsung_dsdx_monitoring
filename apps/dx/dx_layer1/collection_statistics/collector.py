@@ -103,17 +103,26 @@ def refresh_country(country, start, end, *, loader=load_check, today=None):
 def rebuild(country, start, end, last_due):
     """Read small stored snapshots only. Publish weekly data and alerts atomically."""
     first_week, last_week = week_start(start), week_start(end)
+    # Upgrade existing saved comparisons on the next normal background refresh,
+    # without re-querying raw source data or changing the web read path.
+    policy_start = min(start, last_due - timedelta(days=111))
     snapshots = list(Daily.objects.filter(country=country,
-        source_date__range=(first_week - timedelta(days=28), last_week + timedelta(days=6))).order_by('source_date'))
+        source_date__range=(week_start(policy_start) - timedelta(days=28), last_week + timedelta(days=6))).order_by('source_date'))
+    stale_days = [snapshot.source_date for snapshot in snapshots
+                  if policy_start <= snapshot.source_date <= end
+                  and any('bsr_rule' not in row for row in snapshot.rows)]
+    if stale_days:
+        start = min(start, min(stale_days))
+        first_week = week_start(start)
     by_date = {snapshot.source_date: snapshot for snapshot in snapshots}
     updated = []
     for snapshot in snapshots:
         if not start <= snapshot.source_date <= end:
             continue
-        history = [row for older in snapshots
+        history = [{**row, 'source_date': str(older.source_date)} for older in snapshots
                    if snapshot.source_date - timedelta(days=28) <= older.source_date < snapshot.source_date
                    and not older.refresh_error for row in older.rows]
-        snapshot.rows = compare_rows(snapshot.rows, history)
+        snapshot.rows = compare_rows(snapshot.rows, history, country=country)
         updated.append(snapshot)
     with transaction.atomic():
         if updated:

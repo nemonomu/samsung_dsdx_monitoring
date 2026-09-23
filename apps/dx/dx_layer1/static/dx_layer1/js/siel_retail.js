@@ -21,7 +21,7 @@ function renderSielRetailerRow(retailer) {
     return '<tr>' +
         '<td class="rt-name">' + esc(retailer.retailer || '-') + batchHtml + '</td>' +
         '<td>' + mainCount.toLocaleString() + '</td>' +
-        '<td>' + bsrCount.toLocaleString() + '</td>' +
+        (L1.retailStatus.bsrCell ? L1.retailStatus.bsrCell(retailer, bsrCount.toLocaleString()) : '<td>' + bsrCount.toLocaleString() + '</td>') +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
         '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(retailer) + '</td>' +
     '</tr>';

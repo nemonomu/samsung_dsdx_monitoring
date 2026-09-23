@@ -16,14 +16,12 @@ function renderTseRetailerRow(retailer) {
     var batchHtml = batchId
         ? ' <span class="retail-batch-id" style="font-size:11px;color:#64748b;">/ ' + esc(batchId) + '</span>'
         : '';
-    var bsrDisplay = retailer.bsr_applicable === false
-        ? '-'
-        : bsrCount.toLocaleString();
+    var bsrDisplay = bsrCount.toLocaleString();
 
     return '<tr>' +
         '<td class="rt-name">' + retailerLabel + batchHtml + '</td>' +
         '<td>' + mainCount.toLocaleString() + '</td>' +
-        '<td>' + bsrDisplay + '</td>' +
+        (L1.retailStatus.bsrCell ? L1.retailStatus.bsrCell(retailer, bsrDisplay) : '<td>' + bsrDisplay + '</td>') +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
         '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(retailer) + '</td>' +
     '</tr>';
@@ -32,9 +30,7 @@ function renderTseRetailerRow(retailer) {
 function renderTseTotalRow(retailers) {
     var totals = retailers.reduce(function(result, retailer) {
         result.main += tseNumber(retailer.main_count);
-        if (retailer.bsr_applicable !== false) {
-            result.bsr += tseNumber(retailer.bsr_count);
-        }
+        result.bsr += tseNumber(retailer.bsr_count);
         result.actual += tseNumber(
             retailer.actual !== undefined ? retailer.actual : retailer.count
         );

@@ -114,6 +114,31 @@ assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'zero collected rows must 
 assert.strictEqual(data.checks[0].status, 'OK');
 assert.strictEqual(data.checks[0].categories[0].retailers[0].status, 'OK');
 assert.strictEqual(volume.merge('OK', [{status: 'VOLUME_HIGH'}, {status: 'VOLUME_LOW'}]), 'VOLUME_LOW');
+const bsrPayload = saved();
+bsrPayload.snapshots[0].rows[0].bsr = 99;
+bsrPayload.snapshots[0].rows[0].comparison_state = 'insufficient';
+bsrPayload.snapshots[0].rows[0].alerts = [{metric: 'bsr', status: 'VOLUME_LOW', baseline: 100,
+    actual: 99, reason: 'BSR 기준 100개 / 수집 99개 / 1개 부족'}];
+const bsrData = fixture('WARNING');
+bsrData.checks[0].categories[0].retailers[0].bsr_count = 99;
+bsrData.summary = {};
+bsrData.checks[0].is_target_date = true;
+volume.decorate(bsrData, bsrPayload, day);
+assert.strictEqual(bsrData.checks[0].status, 'VOLUME_LOW');
+assert.strictEqual(bsrData.summary.failed, 1);
+const bsrBanner = context.L1.retailStatus.render(bsrData.checks[0], 0, 'seg_retail');
+assert(bsrBanner.includes('BSR 기준 100개 / 수집 99개 / 1개 부족'));
+assert(!bsrBanner.includes('비교 이력 부족'));
+const bsrCell = context.L1.retailStatus.bsrCell(bsrData.checks[0].categories[0].retailers[0], '99');
+assert(bsrCell.includes('class="cs-bsr-low"'));
+assert(bsrCell.includes('>99<small'));
+assert.strictEqual(volume.metrics({bsr_count: 99, bsr_applicable: false}).bsr, 99);
+const insufficient = saved();
+insufficient.snapshots[0].rows[0].alerts = [];
+insufficient.snapshots[0].rows[0].comparison_state = 'insufficient';
+const insufficientData = volume.decorate(fixture(), insufficient, day);
+assert.strictEqual(insufficientData.checks[0].status, 'OK');
+assert.strictEqual(context.L1.retailStatus.render(insufficientData.checks[0], 0, 'seg_retail'), '');
 console.log('Collection volume: threshold states, precedence, snapshot matching and stale-response tests passed.');
 
 // A stalled volume API must never delay the existing page; old dates cannot repaint it.

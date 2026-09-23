@@ -92,7 +92,7 @@ async function flush() {
     assert(elements['cs-table-head'].innerHTML.includes('rowspan="2">총수량 하루 평균'));
     assert(elements['cs-table-head'].innerHTML.includes('>MAIN</th><th scope="col">BSR</th><th scope="col" class="cs-total-heading">총수량</th>'));
     assert.match(elements['cs-table-body'].innerHTML,
-        /cs-country-row[^>]*><th[^>]*>SEA<\/th>.*cs-product-row[^>]*><th[^>]*>TV<\/th>.*Amazon.*Bestbuy.*cs-product-row[^>]*><th[^>]*>REF<\/th>.*Lowes.*cs-country-row[^>]*><th[^>]*>SEG<\/th>.*OTTO/s);
+        /cs-country-row[^>]*><th[^>]*><span class="cs-group-label">SEA<\/span><\/th>.*cs-product-row[^>]*><th[^>]*><span class="cs-group-label">TV<\/span><\/th>.*Amazon.*Bestbuy.*cs-product-row[^>]*><th[^>]*><span class="cs-group-label">REF<\/span><\/th>.*Lowes.*cs-country-row[^>]*><th[^>]*><span class="cs-group-label">SEG<\/span><\/th>.*OTTO/s);
     assert(!elements['cs-table-body'].innerHTML.includes('<small>SEA · TV</small>'));
     assert(elements['cs-table-body'].innerHTML.includes('Bestbuy'));
     assert(elements['cs-table-body'].innerHTML.includes('Lowes'));
@@ -137,5 +137,21 @@ async function flush() {
     elements['cs-date'].fire('change');
     await flush();
     assert.strictEqual(Number(requests.at(-1).searchParams.get('weeks')), 8);
+    const fixtureDay = weeks[0].rows.find(row => row.retailer === 'Amazon').daily[6];
+    fixtureDay.bsr = 56;
+    fixtureDay.alerts = [{metric: 'bsr', status: 'VOLUME_LOW',
+        reason: 'BSR 과거 중앙값 80개 / 수집 56개 / 30% 이상 감소 <unsafe>'}];
+    elements['cs-retailer'].value = 'Amazon';
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML,
+        /class="cs-day-cell low cs-bsr-low"[^>]*>56<small>이상<\/small>/);
+    assert(elements['cs-table-body'].innerHTML.includes('&lt;unsafe&gt;'));
+    assert(!elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total low"'),
+        'BSR-only shortages must highlight BSR, not the unchanged total');
+    fixtureDay.alerts = [];
+    fixtureDay.bsr_comparison_state = 'insufficient';
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML, />56<small>비교 이력 부족<\/small>/);
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
     console.log('Daily statistics: default all, per-retailer averages, local filters and 2/7-week dates passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

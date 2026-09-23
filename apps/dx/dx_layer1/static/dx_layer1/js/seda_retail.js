@@ -12,7 +12,7 @@
         return '<tr>' +
             '<td class="rt-name">' + esc(row.retailer || '-') + batchHtml + '</td>' +
             '<td>' + count(row.main_count) + '</td>' +
-            '<td>' + count(row.bsr_count) + '</td>' +
+            (L1.retailStatus.bsrCell ? L1.retailStatus.bsrCell(row, count(row.bsr_count)) : '<td>' + count(row.bsr_count) + '</td>') +
             '<td class="rt-total">' + count(row.raw_count) + '</td>' +
             '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(row) + '</td></tr>';
     }

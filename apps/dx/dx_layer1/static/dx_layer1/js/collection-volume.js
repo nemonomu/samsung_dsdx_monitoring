@@ -6,7 +6,7 @@
         const items = Object.fromEntries((row.items || []).map(item => [item.name, Number(item.count || 0)]));
         const totalKey = ['raw_count', 'actual', 'count', 'total'].find(key => row[key] != null);
         return {main: Number(row.main_count == null ? items['Main Rank'] || 0 : row.main_count),
-            bsr: row.bsr_applicable === false ? null : Number(row.bsr_count == null ? items['BSR Rank'] || 0 : row.bsr_count),
+            bsr: Number(row.bsr_count == null ? items['BSR Rank'] || 0 : row.bsr_count),
             total: Number((['SEM', 'TSE'].includes(country) || row.bsr_applicable === false) && row.actual != null ? row.actual : totalKey ? row[totalKey] : 0)};
     }
     function restore(item) {
@@ -15,6 +15,7 @@
         delete item.volume_alerts;
     }
     function merge(base, alerts) {
+        if (base === 'WARNING' && alerts.some(alert => alert.metric === 'bsr' && alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
         if (['CRITICAL', 'ERROR', 'WARNING'].includes(base) || pending.includes(base)) return base;
         if (alerts.some(alert => alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
         if (alerts.some(alert => alert.status === 'VOLUME_HIGH')) return 'VOLUME_HIGH';

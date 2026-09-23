@@ -22,6 +22,19 @@
         return Number.isInteger(count) && count >= 0 ? count : 0;
     }
 
+    function bsrAlerts(retailer) {
+        return (retailer.volume_alerts || []).filter(function(alert) {
+            return alert.metric === 'bsr' && alert.status === 'VOLUME_LOW';
+        });
+    }
+
+    function bsrCell(retailer, value) {
+        var alerts = bsrAlerts(retailer || {});
+        var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
+        return '<td' + (alerts.length ? ' class="cs-bsr-low" title="' + esc(reason) + '"' : '') + '>'
+            + esc(value) + (alerts.length ? '<small style="display:block">이상</small>' : '') + '</td>';
+    }
+
     function rowBadge(retailer) {
         var count = batchCount(retailer);
         var volumeBadge = (retailer.volume_alerts || []).length ? getStatusBadge(retailer.status) + ' ' : '';
@@ -52,7 +65,8 @@
                 var key = product + ':' + name.toLowerCase();
                 var missing = isMissing(retailer);
                 var multiple = batchCount(retailer) >= 2;
-                var volumeLow = retailer.status === 'VOLUME_LOW' &&
+                var bsrLow = bsrAlerts(retailer);
+                var volumeLow = (retailer.status === 'VOLUME_LOW' || bsrLow.length > 0) &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
                 var volumeHigh = retailer.status === 'VOLUME_HIGH' &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
@@ -74,7 +88,13 @@
                     items.push('<span class="retail-missing-item">' + link + esc(product) + ' 배치 2개 이상</span>');
                 }
                 if (volumeLow) {
-                    items.push('<span class="retail-missing-item">' + link + esc(product) + ' 건수 부족</span>');
+                    bsrLow.forEach(function(alert) {
+                        items.push('<span class="retail-missing-item">' + link + esc(product) + ' '
+                            + esc(alert.reason || 'BSR 수량 부족') + '</span>');
+                    });
+                    if (!bsrLow.length || (retailer.volume_alerts || []).some(function(alert) {
+                        return alert.metric !== 'bsr' && alert.status === 'VOLUME_LOW';
+                    })) items.push('<span class="retail-missing-item">' + link + esc(product) + ' 건수 부족</span>');
                 } else if (volumeHigh) {
                     items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' 건수 증가</span>');
                 }
@@ -115,5 +135,5 @@
         if (icon) icon.classList.add('expanded');
     }
 
-    L1.retailStatus = { render: render, toggle: toggle, open: open, rowBadge: rowBadge };
+    L1.retailStatus = { render: render, toggle: toggle, open: open, rowBadge: rowBadge, bsrCell: bsrCell };
 })();

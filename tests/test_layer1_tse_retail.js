@@ -90,7 +90,7 @@ assert(html.includes('<td>330</td>'));
 assert(html.includes('<td>180</td>'));
 assert(html.includes('<td>550</td>'));
 assert(commonSource.includes("'TSE Retail': '/dx/layer1/'"));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260921-batches1"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260923-bsr"));
 
 const checkHtml = context.renderTseRetailCheck({
     name: 'TSE Retail',
@@ -138,7 +138,7 @@ const lotussHtml = context.renderTseCategory({
 }, 0, 1);
 
 assert(!lotussHtml.includes('최근 7일 MAIN 평균 76건'));
-assert(lotussHtml.includes('<td class="rt-name">Lotuss</td><td>86</td><td>-</td>'));
+assert(lotussHtml.includes('<td class="rt-name">Lotuss</td><td>86</td><td>0</td>'));
 assert(lotussHtml.includes('<tr class="rt-sum"><td>합계</td><td>386</td><td>100</td><td>386</td>'));
 assert(lotussHtml.includes('386/376건'));
 

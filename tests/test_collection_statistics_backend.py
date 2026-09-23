@@ -101,14 +101,63 @@ class CalculationTests(SimpleTestCase):
         self.assertEqual((2, 3, 1, 1), (week['completed_days'], week['expected_days'], week['missing_days'], week['unknown_days']))
         self.assertEqual('future', week['daily'][3]['state'])
 
-    def test_unsupported_bsr_not_zero_and_raw_total_not_main_plus_bsr(self):
+    def test_all_bsr_counts_retained_and_raw_total_not_main_plus_bsr(self):
         rows = calc.normalize_check(check_for(300, raw_count=320), 'SEG', date(2026, 9, 21))
         self.assertEqual((300, 100, 320), (rows[0]['main'], rows[0]['bsr'], rows[0]['total']))
         rows = calc.normalize_check(check_for(300, bsr_applicable=False, actual=300, raw_count=315), 'TSE', date(2026, 9, 21))
-        self.assertIsNone(rows[0]['bsr'])
+        self.assertEqual(100, rows[0]['bsr'])
         self.assertEqual(300, rows[0]['total'])
         rows = calc.normalize_check(check_for(300, actual=300, raw_count=315), 'SEM', date(2026, 9, 21))
         self.assertEqual(300, rows[0]['total'])
+
+    def test_fixed_bsr_99_is_low_without_history_100_is_normal(self):
+        for current in (0, 99, 100, 101):
+            row = calc.compare_rows([sample(bsr=current)], [], country='SEG')[0]
+            bsr = [a for a in row['alerts'] if a['metric'] == 'bsr']
+            self.assertEqual(current < 100, bool(bsr))
+            self.assertEqual('ready', row['bsr_comparison_state'])
+            if bsr:
+                self.assertEqual(('VOLUME_LOW', 100, current),
+                                 (bsr[0]['status'], bsr[0]['baseline'], bsr[0]['actual']))
+
+    def test_variable_bsr_exact_30_percent_drop_and_seven_days(self):
+        for country, retailer, product in [('SEA', 'Amazon', 'TV'),
+                                           ('SEM', 'HomeDepot', 'TV'),
+                                           ('SEM', 'HomeDepot', 'REF'),
+                                           ('SEM', 'HomeDepot', 'LDY')]:
+            history = [sample(retailer=retailer, product=product, bsr=80)] * 7
+            for count, low in ((56, True), (57, False), (79, False), (120, False), (0, True)):
+                row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=count)],
+                                        history, country=country)[0]
+                self.assertEqual(low, any(a['metric'] == 'bsr' for a in row['alerts']))
+                self.assertEqual(80, row['baselines']['bsr']['value'])
+            row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=40)],
+                                    history[:6], country=country)[0]
+            self.assertEqual('insufficient', row['bsr_comparison_state'])
+            self.assertFalse(any(a['metric'] == 'bsr' for a in row['alerts']))
+
+    def test_exception_scope_and_pending_or_failed_do_not_make_bsr_alerts(self):
+        for country, retailer, product in [('SEG', 'Amazon', 'TV'), ('SEA', 'Amazon', 'REF'),
+                                           ('SEA', 'HomeDepot', 'REF'), ('SEM', 'Liverpool', 'TV')]:
+            row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=99)], [], country=country)[0]
+            self.assertEqual('fixed_100', row['bsr_rule'])
+            self.assertEqual(1, len(row['alerts']))
+        for extra in ({'complete': False}, {'base_status': 'ERROR'}, {'refresh_error': True}):
+            row = calc.compare_rows([sample(bsr=0, **extra)], [], country='SEG')[0]
+            self.assertEqual([], row['alerts'])
+            self.assertEqual('pending', row['bsr_comparison_state'])
+
+    def test_variable_history_counts_distinct_normal_days(self):
+        history = [sample(retailer='Amazon', product='TV', bsr=80, source_date=f'2026-09-{n:02}')
+                   for n in range(1, 8)]
+        current = sample(retailer='Amazon', product='TV', bsr=55)
+        for index in range(7):
+            history[index]['source_date'] = '2026-09-01'
+        self.assertEqual('insufficient', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
+        for index in range(7):
+            history[index]['source_date'] = f'2026-09-{index+1:02}'
+        history[-1]['alerts'] = [{'metric': 'bsr', 'status': 'VOLUME_LOW'}]
+        self.assertEqual('insufficient', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
 
     def test_sea_d1_slot_counts_and_launch(self):
         check = {'categories': [{'name': 'REF', 'time_slots': [{'name': 'daily', 'retailers': [
@@ -150,6 +199,39 @@ class StoreTests(TestCase):
         self.assertEqual(210, target.rows[0]['total'])
         self.assertEqual('VOLUME_LOW', target.rows[0]['alerts'][0]['status'])
         self.assertEqual(2010, Weekly.objects.get(week_start=date(2026, 9, 14)).rows[0]['metrics']['total']['sum'])
+
+    def test_old_saved_bsr_decisions_upgrade_on_normal_refresh_without_source_reread(self):
+        old = self.end - timedelta(days=40)
+        Daily.objects.create(country='SEG', source_date=old, inspection_date=old,
+                             rows=[sample(bsr=99)], digest='old-policy', updated_at=timezone.now())
+        from unittest.mock import Mock
+        load = Mock(return_value=check_for())
+        self.refresh(country='SEG', loader=load)
+        self.assertEqual(1, load.call_count)
+        upgraded = Daily.objects.get(country='SEG', source_date=old).rows[0]
+        self.assertEqual('fixed_100', upgraded['bsr_rule'])
+        self.assertEqual(99, upgraded['alerts'][0]['actual'])
+        weekly = Weekly.objects.get(country='SEG', week_start=calc.week_start(old))
+        matching = [day for row in weekly.rows for day in row['daily'] if day['date'] == str(old)]
+        self.assertEqual(upgraded['alerts'], matching[0]['alerts'])
+
+    def test_exception_bsr_decision_shared_by_stats_and_dashboard(self):
+        def loader(country, inspection):
+            count = 56 if inspection == self.end else 80
+            return {'phase': 'complete', 'categories': [{'name': 'REF', 'retailers': [
+                {'retailer': 'HomeDepot', 'main_count': 300, 'bsr_count': count,
+                 'count': 300, 'batch_id': 'b1', 'status': 'OK'}]}]}
+        self.refresh(self.end - timedelta(days=7), country='SEM', loader=loader)
+        saved = Daily.objects.get(country='SEM', source_date=self.end).rows[0]
+        self.assertEqual('median_28d', saved['bsr_rule'])
+        self.assertEqual(('bsr', 'VOLUME_LOW', -30.0),
+                         tuple(saved['alerts'][0][key] for key in ('metric', 'status', 'percent')))
+        alerts = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end)})).content)
+        weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(self.end), 'country': 'SEM'})).content)
+        self.assertEqual(saved['alerts'], alerts['snapshots'][0]['rows'][0]['alerts'])
+        day = next(day for week in weekly['weeks'] for row in week['rows'] for day in row['daily']
+                   if day['date'] == str(self.end))
+        self.assertEqual(saved['alerts'], day['alerts'])
 
     def test_failed_refresh_preserves_previous_good_snapshot_and_never_creates_zero(self):
         self.refresh()

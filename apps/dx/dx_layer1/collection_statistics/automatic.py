@@ -8,8 +8,9 @@ from .collector import refresh_country
 
 def history_range(country, last_due):
     start, end = last_due - timedelta(days=111), last_due - timedelta(days=3)
-    stored = set(Daily.objects.filter(country=country, refresh_error=False,
-        source_date__range=(start, end)).values_list('source_date', flat=True))
+    stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
+        source_date__range=(start, end)).values_list('source_date', 'rows')
+        if not any(row.get('bsr') is None for row in rows)}
     # Most recent missing history first, so the default page becomes useful early.
     day = end
     while day >= start and day in stored:
