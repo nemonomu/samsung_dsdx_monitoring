@@ -796,6 +796,8 @@
     .screenshot-modal.show { display: flex; }
     .screenshot-modal-content {
         position: relative;
+        display: flex;
+        flex-direction: column;
         max-width: 90vw;
         max-height: 90vh;
         background: white;
@@ -804,15 +806,19 @@
     }
     .screenshot-modal-header {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        gap: 20px;
+        gap: 12px 20px;
+        flex-shrink: 0;
         padding: 12px 16px;
         border-bottom: 1px solid #e5e7eb;
         background: #f8fafc;
     }
     .screenshot-modal-heading {
+        grid-column: 1 / -1;
         display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
         align-items: center;
         justify-self: start;
         max-width: 100%;
@@ -821,18 +827,31 @@
     .screenshot-modal-title {
         font-weight: 600;
         color: #1a1a1a;
-        max-width: 420px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+    .screenshot-product-field {
+        color: #475569;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+    }
+    .screenshot-product-field strong {
+        color: #1a1a1a;
+        font-weight: 700;
+    }
+    .screenshot-product-field .missing-value {
+        color: #dc2626;
     }
     .screenshot-cause-editor {
+        grid-column: 1;
+        grid-row: 2;
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        justify-content: center;
-        justify-self: center;
+        justify-content: flex-start;
+        justify-self: start;
         gap: 8px;
-        min-width: 330px;
+        min-width: 0;
     }
     .screenshot-cause-editor label {
         flex: 0 0 auto;
@@ -894,6 +913,8 @@
     }
     .screenshot-cause-readonly.empty { color: #94a3b8; }
     .screenshot-modal-actions {
+        grid-column: 2;
+        grid-row: 2;
         display: flex;
         align-items: center;
         justify-self: end;
@@ -919,6 +940,7 @@
     }
     .screenshot-delete-btn:hover { background: #b91c1c; }
     .screenshot-modal-body {
+        min-height: 0;
         padding: 16px;
         text-align: center;
         overflow: auto;
@@ -961,17 +983,6 @@
         margin-left: 8px;
         white-space: nowrap;
     }
-    @media (max-width: 1050px) {
-        .screenshot-modal-header {
-            grid-template-columns: minmax(0, 1fr) auto;
-        }
-        .screenshot-cause-editor {
-            grid-column: 1 / -1;
-            grid-row: 2;
-            justify-content: center;
-            width: 100%;
-        }
-    }
     @media (max-width: 700px) {
         .screenshot-modal-header { gap: 10px; }
         .screenshot-cause-editor {
@@ -979,15 +990,19 @@
             min-width: 0;
         }
         .screenshot-cause-editor select {
-            flex-basis: 180px;
+            flex: 0 1 180px;
             width: 180px !important;
-            min-width: 180px;
-            max-width: 180px;
+            min-width: 0;
+            max-width: 100%;
         }
         .screenshot-cause-editor input {
-            flex-basis: min(260px, 70vw);
-            width: min(260px, 70vw) !important;
+            flex: 0 1 260px;
+            width: 100% !important;
             min-width: 0;
+            max-width: 100%;
+        }
+        .screenshot-cause-readonly {
+            max-width: 100%;
         }
     }
 

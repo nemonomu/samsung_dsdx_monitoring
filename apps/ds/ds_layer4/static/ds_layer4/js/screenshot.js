@@ -9,11 +9,23 @@ let screenshotList = []; // { fileId, anomalyId, retailer } 리스트
 let screenshotIndex = -1;
 let screenshotCauseEdited = false;
 let screenshotCauseSaving = false;
+let screenshotImageRequest = 0;
 const SCREENSHOT_CUSTOM_CAUSE = '__custom__';
 
 function getScreenshotAnomaly(anomalyId) {
     if (!reportData || !reportData.anomalies) return null;
     return reportData.anomalies.find(a => a.id === anomalyId) || null;
+}
+
+function renderScreenshotProductInfo(anomalyId) {
+    const anomaly = getScreenshotAnomaly(anomalyId);
+    [['screenshotPrice', anomaly?.retailprice], ['screenshotSoldBy', anomaly?.sold_by]].forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        const text = String(value ?? '').trim();
+        const missing = !text || text.toUpperCase() === 'NULL';
+        element.textContent = missing ? 'NULL' : text;
+        element.classList.toggle('missing-value', missing);
+    });
 }
 
 function getScreenshotCauseValue() {
@@ -235,8 +247,9 @@ async function navigateScreenshot(direction) {
     screenshotIndex = newIndex;
     const item = screenshotList[screenshotIndex];
     currentScreenshotAnomalyId = item.anomalyId;
-    loadScreenshotImage(item.fileId, item.anomalyId);
+    const loading = loadScreenshotImage(item.fileId, item.anomalyId);
     updateScreenshotNav();
+    return loading;
 }
 
 async function showScreenshot(fileId, anomalyId) {
@@ -246,31 +259,42 @@ async function showScreenshot(fileId, anomalyId) {
     currentScreenshotAnomalyId = anomalyId || null;
 
     modal.classList.add('show');
-    loadScreenshotImage(fileId, anomalyId);
+    const loading = loadScreenshotImage(fileId, anomalyId);
     updateScreenshotNav();
+    return loading;
 }
 
 async function loadScreenshotImage(fileId, anomalyId) {
+    const requestId = ++screenshotImageRequest;
     const body = document.getElementById('screenshotBody');
     const title = document.getElementById('screenshotTitle');
     const deleteBtn = document.getElementById('screenshotDeleteBtn');
 
     deleteBtn.style.display = (!isClosed && anomalyId) ? 'inline-block' : 'none';
     body.innerHTML = '<div class="screenshot-loading">로딩 중...</div>';
+    title.textContent = '스크린샷 로딩 중...';
+    title.title = '';
+    renderScreenshotProductInfo(anomalyId);
     renderScreenshotCauseEditor(anomalyId);
 
     try {
         const response = await fetch(`/ds/layer4/api/screenshot/?file_id=${fileId}`);
         const data = await response.json();
 
+        // 빠르게 이동했을 때 이전 응답이 현재 상품의 이미지와 파일명을 덮지 않도록 한다.
+        if (requestId !== screenshotImageRequest) return;
+
         if (data.success) {
             title.textContent = data.file_name || '스크린샷';
             title.title = data.file_name || '스크린샷';
             body.innerHTML = `<img src="${safeUrl(data.url)}" alt="스크린샷" style="max-width:100%; max-height:80vh;">`;
         } else {
+            title.textContent = '스크린샷';
             body.innerHTML = `<div class="screenshot-loading" style="color: #dc2626;">이미지를 불러올 수 없습니다: ${esc(data.error)}</div>`;
         }
     } catch (error) {
+        if (requestId !== screenshotImageRequest) return;
+        title.textContent = '스크린샷';
         body.innerHTML = '<div class="screenshot-loading" style="color: #dc2626;">이미지 로드 실패</div>';
         console.error('Screenshot error:', error);
     }

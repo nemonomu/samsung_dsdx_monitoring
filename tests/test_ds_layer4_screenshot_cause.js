@@ -19,16 +19,16 @@ const layer4Template = fs.readFileSync(
 );
 
 assert.ok(screenshotCss.includes(
-    'grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);'
+    'grid-template-columns: minmax(0, 1fr) auto;'
 ));
 assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260923-1"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260923-2"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260903-4"
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-2"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20260923-1"
@@ -81,6 +81,14 @@ const elements = {
     screenshotCauseSaveBtn: fakeElement(),
     screenshotCauseReadonly: fakeElement(),
     screenshotDeleteBtn: fakeElement(),
+    screenshotPrice: fakeElement(),
+    screenshotSoldBy: fakeElement(),
+    screenshotModal: fakeElement(),
+    screenshotTitle: fakeElement(),
+    screenshotBody: fakeElement(),
+    screenshotPrev: fakeElement(),
+    screenshotNext: fakeElement(),
+    screenshotCounter: fakeElement(),
     totalRetailers: fakeElement(),
     totalAnomalies: fakeElement(),
     screenshotStatus: fakeElement(),
@@ -116,6 +124,7 @@ const sandbox = {
         return { json: async () => ({ success: true }) };
     },
     getCsrfToken() { return 'csrf'; },
+    safeUrl(value) { return value; },
     showToast() {},
     showConfirm: async () => true,
     renderReportTable() {},
@@ -271,6 +280,54 @@ assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
         elements.screenshotCauseReadonly.textContent,
         '재고 상황에 따른 판매자 변경'
     );
+
+    // 상품별 수집값 표시 및 이동 중 늦게 도착하는 이미지 응답 검증.
+    vm.runInContext(`
+        isClosed = false;
+        reportData.anomalies = [
+            { id: 101, retailer: 'Amazon_GB', screenshot_id: 501, retailprice: '399.99', sold_by: 'TechAzonia®' },
+            { id: 102, retailer: 'Amazon_GB', screenshot_id: 502, retailprice: null, sold_by: '  ' },
+            { id: 103, retailer: 'Amazon_GB', screenshot_id: 503, retailprice: 0, sold_by: '<판매자 & 이름>' }
+        ];
+    `, sandbox);
+    const pending = new Map();
+    sandbox.fetch = url => new Promise(resolve => pending.set(url, resolve));
+    function completeImage(fileId) {
+        pending.get(`/ds/layer4/api/screenshot/?file_id=${fileId}`)({
+            json: async () => ({ success: true, file_name: `${fileId}.png`, url: `/image/${fileId}.png` })
+        });
+    }
+    const firstImage = sandbox.showScreenshot(501, 101);
+    assert.strictEqual(elements.screenshotPrice.textContent, '399.99');
+    assert.strictEqual(elements.screenshotSoldBy.textContent, 'TechAzonia®');
+    assert.strictEqual(elements.screenshotPrice.classList.contains('missing-value'), false);
+    const nextImage = sandbox.navigateScreenshot(1);
+    assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
+    assert.strictEqual(elements.screenshotSoldBy.textContent, 'NULL');
+    assert.strictEqual(elements.screenshotPrice.classList.contains('missing-value'), true);
+    assert.strictEqual(elements.screenshotSoldBy.classList.contains('missing-value'), true);
+    completeImage(502);
+    await nextImage;
+    completeImage(501);
+    await firstImage;
+    assert.strictEqual(elements.screenshotTitle.textContent, '502.png');
+    assert.ok(elements.screenshotBody.innerHTML.includes('/image/502.png'));
+    assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
+
+    const thirdImage = sandbox.navigateScreenshot(1);
+    completeImage(503);
+    await thirdImage;
+    assert.strictEqual(elements.screenshotPrice.textContent, '0');
+    assert.strictEqual(elements.screenshotPrice.classList.contains('missing-value'), false);
+    assert.strictEqual(elements.screenshotSoldBy.textContent, '<판매자 & 이름>');
+    assert.strictEqual(elements.screenshotSoldBy.innerHTML, '');
+    const previousImage = sandbox.navigateScreenshot(-1);
+    completeImage(502);
+    await previousImage;
+    assert.strictEqual(elements.screenshotTitle.textContent, '502.png');
+    assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
+    sandbox.renderScreenshotProductInfo(999);
+    assert.strictEqual(elements.screenshotSoldBy.textContent, 'NULL');
 })().catch(error => {
     console.error(error);
     process.exitCode = 1;
