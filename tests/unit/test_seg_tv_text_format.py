@@ -49,13 +49,13 @@ class SegTvTextFormatTests(unittest.TestCase):
             ['Nur noch 25 auf Lager', 'Nur noch 3 auf Lager (mehr ist unterwegs).'],
             ['Nur noch 0 auf Lager', 'Nur noch -1 auf Lager', 'Nur noch abc auf Lager', '3'])
         self.check_values('Amazon', 'inventory_status',
-            ['In Stock', 'Currently unavailable.', 'Only 1 left in stock',
+            ['In Stock', 'Currently unavailable.', 'Currently out of stock.', 'Only 1 left in stock',
              'Only 20 left in stock (more on the way).', 'Usually ready to ship in 2 to 3 days',
              'Usually ready to ship in 3 to 7 months', 'Gewoehnlich versandfertig in 2 bis 5 Wochen'],
             ['Only 0 left in stock', 'Usually ready to ship in 5 to 2 days',
              'Gewoehnlich versandfertig in 0 bis 5 Wochen',
              'PHILIPS Smart TV 399,00€ FREE delivery Only 1 left in stock In den Einkaufswagen',
-             'In Stock product description'])
+             'In Stock product description', 'Currently out of stock. product description'])
 
     def test_amazon_delivery_variants_and_invalid_dates(self):
         self.check_values('Amazon', 'delivery_availability',

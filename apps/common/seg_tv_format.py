@@ -71,7 +71,7 @@ def _otto_delivery(value):
 
 
 def _inventory(value):
-    if value in ('In Stock', 'Currently unavailable.'):
+    if value in ('In Stock', 'Currently unavailable.', 'Currently out of stock.'):
         return True
     if re.fullmatch(r'Only [1-9][0-9]* left in stock(?: \(more on the way\)\.)?', value):
         return True
@@ -111,7 +111,7 @@ RULES = {
         'available_quantity_for_purchase': (_match(r'Nur noch [1-9][0-9]* auf Lager(?: \(mehr ist unterwegs\)\.)?'), 'Nur noch N auf Lager / Nur noch N auf Lager (mehr ist unterwegs). (N은 양의 정수)'),
         'delivery_availability': (_amazon_delivery, '무료·유료·예약 배송 + 영문 날짜/날짜 범위, 선택 연도·첫 주문 조건·Order within 시간'),
         'fastest_delivery': (lambda v: _amazon_delivery(v, fastest=True), 'Or fastest delivery / Or earliest delivery + 날짜 또는 tomorrow, 선택 시간대·Order within 시간'),
-        'inventory_status': (_inventory, 'In Stock / Currently unavailable. / Only N left in stock (선택 추가 입고 문구) / Usually ready to ship in N to M days·weeks·months / Gewoehnlich versandfertig in N bis M Tagen·Wochen·Monaten'),
+        'inventory_status': (_inventory, 'In Stock / Currently unavailable. / Currently out of stock. / Only N left in stock (선택 추가 입고 문구) / Usually ready to ship in N to M days·weeks·months / Gewoehnlich versandfertig in N bis M Tagen·Wochen·Monaten'),
     },
 }
 
