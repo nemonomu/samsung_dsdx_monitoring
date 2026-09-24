@@ -22,7 +22,6 @@ MONTH = '(?:' + '|'.join(calendar.month_name[1:]) + ')'
 DELIVERY_DATE = rf'{WEEKDAY}, (?P<month>{MONTH}) (?P<day>0?[1-9]|[12][0-9]|3[01])'
 CASAS_UNAVAILABLE = (
     'Delivery unavailable for your region at the moment. Try another ZIP code?',
-    'Delivery unavailable for this ZIP code',
     'Desculpe! No momento este produto não pode ser entregue na região informada.',
 )
 
@@ -143,7 +142,7 @@ def rule_details(product_line, retailer, field):
         'discount_type': ('Coupon R$ 양수금액 off 형식이어야 합니다.' if seda_retailer_key(retailer) == 'magalu'
                           else 'USE O CUPOM DESCONTO 1~100% 형식이어야 합니다.'),
         'delivery_availability': ('Receive by 요일, 월 날짜 / Receive today·tomorrow / Receive within N business day(s) 형식이어야 합니다.'
-                                  if seda_retailer_key(retailer) == 'magalu' else 'Normal by 요일, 월 날짜 또는 확인된 배송 불가 문구여야 합니다.'),
+                                  if seda_retailer_key(retailer) == 'magalu' else 'Normal by 요일, 월 날짜 또는 확인된 배송 불가 문구여야 합니다. Delivery unavailable for this ZIP code는 이상입니다.'),
         'pick_up_availability': ('Pick up in store 또는 Pick up in store starting tomorrow여야 합니다.'
                                  if seda_retailer_key(retailer) == 'magalu' else 'Pick up in store 또는 Fast pickup in 2h여야 합니다.'),
         'product_url': '해당 리테일러 도메인의 유효한 HTTP(S) URL이어야 합니다.',

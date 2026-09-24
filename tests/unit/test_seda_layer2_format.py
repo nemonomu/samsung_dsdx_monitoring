@@ -114,6 +114,27 @@ class SedaFormatScopeTests(unittest.TestCase):
         self.assertNotIn('account_name', detail['field_counts'])
         self.assertIsNone(seda.select_record(self.cursor, DAY, 'seda_tv', 3, 'account_name'))
 
+    def test_zip_delivery_unavailable_is_reported_in_detail_and_stats(self):
+        for product, source in SEDA_SOURCE_CONFIG.items():
+            with self.subTest(product=product):
+                self.add(product, id=1, account_name='CasasBahia', star_rating='5',
+                         delivery_availability='Delivery unavailable for this ZIP code')
+                self.add(product, id=2, account_name='CasasBahia', star_rating='5',
+                         delivery_availability='Normal by Tuesday, January 05')
+                detail = services.get_format_detail(
+                    self.cursor, DAY, source['section_code'], 'Casas Bahia', 1)
+                self.assertEqual({'delivery_availability': 1}, detail['field_counts'])
+                self.assertEqual(1, detail['total_format_count'])
+                self.assertEqual([1], [row['id'] for row in detail['results']])
+                self.assertEqual(['delivery_availability'], detail['results'][0]['error_fields'])
+                validation = {'tables': []}
+                self.assertEqual(1, seda.append_format_stats(
+                    self.cursor, DAY, validation, source['section_code']))
+                retailer = next(row for row in validation['tables'][0]['retailers']
+                                if row['retailer'] == 'Casas Bahia')
+                self.assertEqual(1, retailer['issue_count'])
+                self.assertEqual('CRITICAL', retailer['status'])
+
     def test_null_batch_selector_scope_and_edit_allowlist(self):
         self.add(id=1, page_type='bsr', batch_id=None)
         self.assertIsNone(seda.select_record(self.cursor, DAY, 'seda_tv', 1, 'star_rating'))
