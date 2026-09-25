@@ -254,7 +254,8 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             };
             const querySource = querySources[tableParam];
             const tblName = querySource.tableName;
-            const retailerName = modalState.retailer || '';
+            const retailerName = _retailSqlAccountName(data, filteredRecords,
+                modalState.retailer || '', isSedaRetail);
             const dateCol = querySource.dateColumn;
             const inClause = items.map(_tseSqlLiteral).join(', ');
             const sourceDate = data.source_date || date;

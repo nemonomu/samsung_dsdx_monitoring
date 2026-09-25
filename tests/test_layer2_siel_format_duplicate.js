@@ -78,7 +78,7 @@ assert(formatTemplate.includes(
     "dx_layer2/js/layer2-common.js' %}?v=20260923-price2"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20260922-simple-sql"
+    "dx_layer2/js/format_validation.js' %}?v=20260925-account-sql"
 ));
 assert(formatTemplate.includes(
     "dx_layer2/js/dashboard.js' %}?v=20260921-seda-duplicate1"

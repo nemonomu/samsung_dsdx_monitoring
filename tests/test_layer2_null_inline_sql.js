@@ -65,6 +65,37 @@ for (const entry of cases) {
     if (country === 'TSE') assert(query.includes("country = 'TSE'"));
 }
 
+for (const [entry, displayName, dbName] of [
+    [cases[2], 'Casas Bahia', 'CasasBahia'],
+    [cases[4], 'OTTO', 'OTTO'],
+    [cases[6], 'Homepro', 'Homepro'],
+]) {
+    const {sandbox, data} = setup(...entry);
+    data.query_retailer = displayName === 'Casas Bahia' ? displayName : displayName.toLowerCase();
+    data.results[0].account_name = dbName;
+    const query = sandbox._buildNullRetailDisplayQuery(
+        'ref_capacity', data, data.results, data.date, 3, displayName,
+        entry[1] === 'TSE'
+    );
+    assert(query.includes(`account_name = '${dbName}'`), entry[1]);
+    assert(!query.includes(`account_name = '${data.query_retailer}'`), entry[1]);
+}
+
+const sedaWithoutAccount = setup(...cases[2]);
+sedaWithoutAccount.data.query_retailer = 'Casas Bahia';
+assert(sedaWithoutAccount.sandbox._buildNullRetailDisplayQuery(
+    'ref_capacity', sedaWithoutAccount.data, sedaWithoutAccount.data.results,
+    sedaWithoutAccount.data.date, 3, 'Casas Bahia', false
+).includes("account_name = 'CasasBahia'"));
+
+const tseWithoutAccount = setup(...cases[6]);
+tseWithoutAccount.data.query_retailer = 'homepro';
+tseWithoutAccount.data.retailer = 'Homepro';
+assert(tseWithoutAccount.sandbox._buildNullRetailDisplayQuery(
+    'ref_capacity', tseWithoutAccount.data, tseWithoutAccount.data.results,
+    tseWithoutAccount.data.date, 3, 'Homepro', true
+).includes("account_name = 'Homepro'"));
+
 const {sandbox, data} = setup(...cases[1]);
 data.results = [{id: 9, item: null, ref_capacity: null}];
 data.batch_id = "b'2";

@@ -72,6 +72,17 @@ function _tseSqlLiteral(value) {
     return "'" + String(value == null ? '' : value).replace(/'/g, "''") + "'";
 }
 
+function _retailSqlAccountName(data, records, fallback, isSedaRetail = false) {
+    const sourceRow = records.find(row => row.account_name != null && String(row.account_name).trim() !== '');
+    if (sourceRow) return String(sourceRow.account_name);
+    const name = data.query_retailer != null ? data.query_retailer : (fallback || '');
+    if (isSedaRetail && name === 'Casas Bahia') return 'CasasBahia';
+    if (data.retailer && String(data.retailer).toLowerCase() === String(name).toLowerCase()) {
+        return data.retailer;
+    }
+    return name;
+}
+
 function _isTseSqlIdentifier(value, allowQualified) {
     const pattern = allowQualified
         ? /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/
@@ -113,7 +124,7 @@ function _tseCountryScope(alias) {
 
 function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) {
     const tableName = data.actual_table || '';
-    const retailer = data.query_retailer || '';
+    const retailer = _retailSqlAccountName(data, records, data.retailer);
     if (!_isTseSqlIdentifier(tableName, true)
         || !_isTseSqlIdentifier(fieldName, false)
         || !queryColumns.length
@@ -207,7 +218,8 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
         .filter(id => Number.isSafeInteger(id) && id > 0))];
     if (!items.length && !ids.length) return '';
 
-    const accountName = data.query_retailer || retailer;
+    const accountName = _retailSqlAccountName(data, records, retailer,
+        /^dx_seda\./.test(tableName));
     const where = [
         `${dateColumn} >= ${_tseSqlLiteral(_tseHistoryStartDate(sourceDate, days))}`,
         `${dateColumn} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
@@ -609,8 +621,8 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 const sourceDate = data.source_date || date;
                 const historyDays = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail) ? currentDays : 3;
                 const historyStartDate = _tseHistoryStartDate(sourceDate, historyDays);
-                const accountName = isSedaRetail && modalState.retailer === 'Casas Bahia'
-                    ? 'CasasBahia' : (modalState.retailer || '');
+                const accountName = _retailSqlAccountName(data, records,
+                    modalState.retailer || '', isSedaRetail);
                 const batchFilter = historyDays === 1 && data.batch_id != null && data.batch_id !== ''
                     ? `\n  AND batch_id = ${_tseSqlLiteral(data.batch_id)}` : '';
                 const query3Days = `SELECT *\nFROM ${tblName}\nWHERE ${dateColumn} >= '${historyStartDate}'\n  AND ${dateColumn} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(accountName)}${batchFilter}\n  AND item IN (${inClause})\nORDER BY item, ${dateColumn};`;
