@@ -148,6 +148,15 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('&lt;unsafe&gt;'));
     assert(!elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total low"'),
         'BSR-only shortages must highlight BSR, not the unchanged total');
+    fixtureDay.alerts = [{metric: 'bsr', status: 'VOLUME_REVIEW', reason: 'BSR 15% 이상 감소 / 확인 필요'}];
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML,
+        /class="cs-day-cell high cs-bsr-review"[^>]*>56<small>확인 필요<\/small>/);
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
+    fixtureDay.alerts = [{metric: 'main', status: 'VOLUME_REVIEW'}];
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML,
+        /class="cs-day-cell cs-total high"[^>]*><strong>[^<]+<\/strong><small>확인 필요<\/small>/);
     fixtureDay.alerts = [];
     fixtureDay.bsr_comparison_state = 'insufficient';
     elements['cs-retailer'].fire('change');

@@ -241,7 +241,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         self.assertEqual('CRITICAL', ldy_lowes['status'])
         self.assertEqual(0, ldy_lowes['count'])
         self.assertEqual(
-            {'main_min': 150, 'bsr_min': 90}, ldy_lowes['criteria']
+            {'main_min': 150}, ldy_lowes['criteria']
         )
 
     def test_ldy_lowes_component_threshold_normal(self):
@@ -262,7 +262,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         self.assertEqual('OK', ldy['status'])
         self.assertEqual('OK', lowes['status'])
         self.assertEqual(
-            {'main_min': 150, 'bsr_min': 90}, lowes['criteria']
+            {'main_min': 150}, lowes['criteria']
         )
         self.assertEqual(
             {'main': 194, 'bsr': 100}, lowes['criteria_actual']
@@ -288,7 +288,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
         self.assertEqual(250, lowes['count'])
         self.assertEqual(1, len(result['failed_items']))
         self.assertEqual(
-            'MAIN >= 150 / BSR >= 90',
+            'MAIN >= 150',
             result['failed_items'][0]['expected'],
         )
         self.assertEqual(
@@ -296,7 +296,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             result['failed_items'][0]['actual_detail'],
         )
 
-    def test_ldy_lowes_bsr_below_minimum_is_critical(self):
+    def test_ldy_lowes_bsr_below_90_defers_to_history(self):
         service = load_service(RepoStub())
 
         retailers, _total, _status = service.check_retailer_data(
@@ -307,7 +307,7 @@ class SeaLayer1ServiceTests(unittest.TestCase):
             row for row in retailers if row['retailer'] == 'Lowes'
         )
 
-        self.assertEqual('CRITICAL', lowes['status'])
+        self.assertEqual('OK', lowes['status'])
 
     def test_ldy_lowes_component_threshold_boundary_is_ok(self):
         service = load_service(RepoStub())

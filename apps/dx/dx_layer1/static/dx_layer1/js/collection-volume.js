@@ -19,12 +19,14 @@
         if (base === 'WARNING' && alerts.some(alert => alert.metric === 'bsr' && alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
         if (['CRITICAL', 'ERROR', 'WARNING'].includes(base) || pending.includes(base)) return base;
         if (alerts.some(alert => alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
+        if (alerts.some(alert => alert.status === 'VOLUME_REVIEW')) return 'VOLUME_REVIEW';
         if (alerts.some(alert => alert.status === 'VOLUME_HIGH')) return 'VOLUME_HIGH';
         return base;
     }
     function variableBsr(country, product, retailer) {
         const name = String(retailer || '').trim().toLowerCase();
-        return (country === 'SEA' && product === 'TV' && name === 'amazon')
+        return (country === 'SEA' && ['REF', 'LDY'].includes(product) && name === 'lowes')
+            || (name === 'amazon' && ({SEA: ['TV'], SIEL: ['TV', 'REF', 'LDY'], SEG: ['TV', 'REF']}[country] || []).includes(product))
             || (country === 'SEM' && name === 'homedepot');
     }
     function fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate) {

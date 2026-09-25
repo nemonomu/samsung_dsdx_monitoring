@@ -25,15 +25,16 @@
     function bsrAlerts(retailer) {
         if (isMissing(retailer)) return [];
         return (retailer.volume_alerts || []).filter(function(alert) {
-            return alert.metric === 'bsr' && alert.status === 'VOLUME_LOW';
+            return alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status);
         });
     }
 
     function bsrCell(retailer, value) {
         var alerts = bsrAlerts(retailer || {});
         var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
-        return '<td' + (alerts.length ? ' class="cs-bsr-low" title="' + esc(reason) + '"' : '') + '>'
-            + esc(value) + (alerts.length ? '<small style="display:block">이상</small>' : '') + '</td>';
+        var low = alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; });
+        return '<td' + (alerts.length ? ' class="' + (low ? 'cs-bsr-low' : 'cs-bsr-review') + '" title="' + esc(reason) + '"' : '') + '>'
+            + esc(value) + (alerts.length ? '<small style="display:block">' + (low ? '이상' : '확인 필요') + '</small>' : '') + '</td>';
     }
 
     function rowBadge(retailer) {
@@ -70,12 +71,17 @@
                 var key = product + ':' + name.toLowerCase();
                 var missing = isMissing(retailer);
                 var multiple = batchCount(retailer) >= 2;
-                var bsrLow = bsrAlerts(retailer);
+                var bsr = bsrAlerts(retailer);
+                var bsrLow = bsr.filter(function(alert) { return alert.status === 'VOLUME_LOW'; });
+                var bsrReview = bsr.filter(function(alert) { return alert.status === 'VOLUME_REVIEW'; });
+                var mainReview = !missing ? (retailer.volume_alerts || []).filter(function(alert) {
+                    return alert.metric === 'main' && alert.status === 'VOLUME_REVIEW';
+                }) : [];
                 var volumeLow = !missing && (retailer.status === 'VOLUME_LOW' || bsrLow.length > 0) &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
                 var volumeHigh = !missing && retailer.status === 'VOLUME_HIGH' &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
-                if (!name || (!missing && !multiple && !volumeLow && !volumeHigh) || seen.has(key)) return;
+                if (!name || (!missing && !multiple && !volumeLow && !volumeHigh && !bsrReview.length && !mainReview.length) || seen.has(key)) return;
                 seen.add(key);
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
@@ -92,6 +98,14 @@
                 if (multiple) {
                     items.push('<span class="retail-missing-item">' + link + esc(product) + ' 배치 2개 이상</span>');
                 }
+                bsrReview.forEach(function(alert) {
+                    items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' '
+                        + esc(alert.reason || 'BSR 감소 확인 필요') + '</span>');
+                });
+                mainReview.forEach(function(alert) {
+                    items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' '
+                        + esc(alert.reason || 'MAIN 감소 확인 필요') + '</span>');
+                });
                 if (volumeLow) {
                     bsrLow.forEach(function(alert) {
                         items.push('<span class="retail-missing-item">' + link + esc(product) + ' '

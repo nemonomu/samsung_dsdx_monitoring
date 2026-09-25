@@ -48,13 +48,25 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-def variable_bsr(row, country):
+BSR_POLICY_VERSION = 2
+MAIN_POLICY_VERSION = 1
+
+
+def tiered_bsr(row, country):
     retailer = str(row['retailer']).strip().casefold()
-    return ((country == 'SEA' and row['product'] == 'TV' and retailer == 'amazon')
-            or (country == 'SEM' and retailer == 'homedepot'))
+    product = row['product']
+    return ((country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY'))
+            or (retailer == 'amazon' and product in {
+                'SEA': ('TV',), 'SIEL': ('TV', 'REF', 'LDY'), 'SEG': ('TV', 'REF'),
+            }.get(country, ())))
 
 
-def _compare_bsr(row, history, country):
+def variable_bsr(row, country):
+    return tiered_bsr(row, country) or (
+        country == 'SEM' and str(row['retailer']).strip().casefold() == 'homedepot')
+
+
+def _compare_bsr(row, history, country, *, saved_basis=None):
     """Fixed targets need no history; variable targets require seven good days."""
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
@@ -66,45 +78,57 @@ def _compare_bsr(row, history, country):
     if current is None:
         # Older snapshots can contain NULL; never invent zero collected rows.
         return rule, 'insufficient', None, None
-    if variable:
+    if variable and saved_basis is not None:
+        if (saved_basis.get('rule') != rule or saved_basis.get('days', 0) < 7
+                or saved_basis.get('value', 0) <= 0):
+            return rule, 'insufficient', None, None
+        basis = dict(saved_basis)
+        baseline = basis['value']
+    elif variable:
         days = {}
         for index, old in enumerate(history):
             if (old.get('complete') and old.get('bsr') is not None and old['bsr'] > 0
-                    and not any(a.get('metric') == 'bsr' and a.get('status') == 'VOLUME_LOW'
+                    and not any(a.get('metric') == 'bsr' and a.get('status') in ('VOLUME_LOW', 'VOLUME_REVIEW')
+                                and not (tiered_bsr(row, country) and a.get('rule') == 'fixed_100')
                                 for a in old.get('alerts', []))):
                 days[old.get('source_date', index)] = old['bsr']
         if len(days) < 7:
             return rule, 'insufficient', None, None
         baseline = median(days.values())
         basis = {'value': baseline, 'days': len(days), 'rule': rule}
-        low = (baseline - current) * 100 >= baseline * 30
     else:
         baseline = 100
         basis = {'value': baseline, 'days': 0, 'rule': rule}
-        low = current < baseline
+    threshold = 15 if tiered_bsr(row, country) else 30
+    low = ((baseline - current) * 100 >= baseline * threshold
+           if variable else current < baseline)
     alert = None
     if low:
+        review = tiered_bsr(row, country) and (baseline - current) * 100 < baseline * 20
+        threshold = 15 if review else 20 if tiered_bsr(row, country) else 30
         alert = {'metric': 'bsr', 'baseline': baseline, 'actual': current,
                  'percent': round((current - baseline) * 100 / baseline, 1),
-                 'status': 'VOLUME_LOW', 'rule': rule,
+                 'status': 'VOLUME_REVIEW' if review else 'VOLUME_LOW', 'rule': rule,
                  'reason': (f'BSR 기준 100개 / 수집 {current}개 / {100-current}개 부족'
                             if not variable else
-                            f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / 30% 이상 감소')}
+                            f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / {threshold}% 이상 감소'
+                            + (' / 확인 필요' if review else ''))}
     return rule, 'ready', basis, alert
 
 
 def current_bsr_decision(row, country):
-    """Apply fixed targets even to snapshots saved before the BSR policy existed.
+    """Reapply current thresholds using stored counts and a valid median only.
 
-    Variable targets retain the collector's history-based decision. This is a
-    read-only projection: no source query or snapshot write is needed.
+    Legacy fixed baselines cannot stand in for history. The offline collector
+    rebuilds them; until then their BSR comparison is insufficient.
     """
-    if variable_bsr(row, country):
+    if variable_bsr(row, country) and not tiered_bsr(row, country):
         return row
     candidate = {**row, 'complete': row.get('complete', row.get('state') == 'complete')}
     if row.get('state', 'complete') != 'complete':
         candidate['complete'] = False
-    rule, state, basis, alert = _compare_bsr(candidate, [], country)
+    saved_basis = row.get('baselines', {}).get('bsr', {}) if tiered_bsr(row, country) else None
+    rule, state, basis, alert = _compare_bsr(candidate, [], country, saved_basis=saved_basis)
     baselines = {k: v for k, v in row.get('baselines', {}).items() if k != 'bsr'}
     if basis is not None:
         baselines['bsr'] = basis
@@ -113,6 +137,42 @@ def current_bsr_decision(row, country):
         alerts.append(alert)
     return {**row, 'baselines': baselines, 'alerts': alerts,
             'bsr_rule': rule, 'bsr_comparison_state': state}
+
+
+def _main_alert(current, basis):
+    """Classify before rounding: 5 through 15 percent down needs review."""
+    baseline = basis.get('value', 0)
+    if current is None or baseline <= 0 or basis.get('days', 0) < 7:
+        return None
+    change = (current - baseline) * 100
+    if change < -baseline * 15:
+        status = 'VOLUME_LOW'
+    elif change <= -baseline * 5:
+        status = 'VOLUME_REVIEW'
+    elif change >= baseline * 30:
+        status = 'VOLUME_HIGH'
+    else:
+        return None
+    percent = change / baseline
+    return {'metric': 'main', 'baseline': baseline, 'actual': current,
+            'percent': round(percent, 1), 'status': status,
+            'reason': f'MAIN 과거 중앙값 {baseline:g}개 / 수집 {current}개 / '
+                      + ('15% 초과 감소' if status == 'VOLUME_LOW' else
+                         '5~15% 감소 / 확인 필요' if status == 'VOLUME_REVIEW' else
+                         '30% 이상 증가 / 확인 필요')}
+
+
+def current_volume_decision(row, country):
+    """Reapply MAIN and BSR policies to stored baselines without database writes."""
+    result = current_bsr_decision(row, country)
+    alerts = [a for a in result.get('alerts', []) if a.get('metric') != 'main']
+    if (row.get('complete', row.get('state') == 'complete')
+            and row.get('state', 'complete') == 'complete'
+            and row.get('base_status') != 'ERROR' and not row.get('refresh_error')):
+        alert = _main_alert(row.get('main'), row.get('baselines', {}).get('main', {}))
+        if alert:
+            alerts.insert(0, alert)
+    return {**result, 'alerts': alerts}
 
 
 def compare_rows(rows, history, country=None):
@@ -135,6 +195,12 @@ def compare_rows(rows, history, country=None):
             current = row.get(metric)
             if not row['complete'] or baseline <= 0 or current is None:
                 continue
+            if metric == 'main':
+                if row.get('base_status') != 'ERROR' and not row.get('refresh_error'):
+                    alert = _main_alert(current, baselines[metric])
+                    if alert:
+                        alerts.append(alert)
+                continue
             # Compare before rounding: 29.95% must not become an alert.
             delta = (current - baseline) * 100 / baseline
             if abs(delta) >= 30:
@@ -148,6 +214,8 @@ def compare_rows(rows, history, country=None):
             alerts.append(bsr_alert)
         state = ('pending' if not row['complete'] else 'ready' if len(baselines) == len([m for m in METRICS if row.get(m) is not None]) else 'insufficient')
         result.append({**row, 'baselines': baselines, 'alerts': alerts, 'comparison_state': state,
+                       'bsr_policy_version': BSR_POLICY_VERSION,
+                       'main_policy_version': MAIN_POLICY_VERSION,
                        'bsr_rule': bsr_rule, 'bsr_comparison_state': bsr_state})
     return result
 

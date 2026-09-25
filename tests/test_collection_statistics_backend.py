@@ -43,6 +43,55 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_main_review_and_abnormal_boundaries_all_countries(self):
+        history = [sample(total=3000, main=2000)] * 7
+        for country in calc.COUNTRIES:
+            for current, expected in [(1901, None), (1900, 'VOLUME_REVIEW'),
+                                      (1800, 'VOLUME_REVIEW'), (1700, 'VOLUME_REVIEW'),
+                                      (1699, 'VOLUME_LOW'), (0, 'VOLUME_LOW'),
+                                      (2599, None), (2600, 'VOLUME_HIGH')]:
+                with self.subTest(country=country, current=current):
+                    result = calc.compare_rows([sample(total=3000, main=current)], history, country=country)[0]
+                    alerts = [a for a in result['alerts'] if a['metric'] == 'main']
+                    self.assertEqual([expected] if expected else [], [a['status'] for a in alerts])
+                    projected = calc.current_volume_decision(result, country)
+                    self.assertEqual(result['alerts'], projected['alerts'])
+        for extra in ({'complete': False}, {'base_status': 'ERROR'}, {'refresh_error': True}):
+            row = calc.compare_rows([sample(main=1800, **extra)], history, country='SEA')[0]
+            self.assertFalse(any(a['metric'] == 'main' for a in row['alerts']))
+
+    def test_tiered_bsr_scope_and_exact_unrounded_boundaries(self):
+        targets = [('SEA', 'Lowes', 'REF'), ('SEA', 'Lowes', 'LDY'),
+                   ('SEA', 'Amazon', 'TV'), ('SIEL', 'Amazon', 'TV'),
+                   ('SIEL', 'Amazon', 'REF'), ('SIEL', 'Amazon', 'LDY'),
+                   ('SEG', 'Amazon', 'TV'), ('SEG', 'Amazon', 'REF')]
+        for country, retailer, product in targets:
+            history = [sample(retailer=retailer, product=product, bsr=2000)] * 7
+            for current, expected in [(1701, None), (1700, 'VOLUME_REVIEW'),
+                                      (1601, 'VOLUME_REVIEW'), (1600, 'VOLUME_LOW'),
+                                      (0, 'VOLUME_LOW'), (2200, None)]:
+                with self.subTest(country=country, product=product, retailer=retailer, current=current):
+                    row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=current)],
+                                            history, country=country)[0]
+                    alerts = [a for a in row['alerts'] if a['metric'] == 'bsr']
+                    self.assertEqual([expected] if expected else [], [a['status'] for a in alerts])
+                    self.assertEqual('median_28d', row['bsr_rule'])
+            current = sample(retailer=retailer, product=product, bsr=79)
+            history = [sample(retailer=retailer, product=product, bsr=80)] * 7
+            self.assertEqual([], calc.compare_rows([current], history, country=country)[0]['alerts'])
+            self.assertEqual('insufficient', calc.compare_rows([current], history[:6], country=country)[0]['bsr_comparison_state'])
+
+    def test_tiered_projection_removes_fixed_alert_and_rechecks_saved_median(self):
+        old = sample(bsr=80, alerts=[{'metric': 'bsr', 'status': 'VOLUME_LOW', 'rule': 'fixed_100'}],
+                     baselines={'bsr': {'value': 100, 'days': 0, 'rule': 'fixed_100'}})
+        result = calc.current_bsr_decision(old, 'SEA')
+        self.assertEqual([], result['alerts'])
+        self.assertEqual('insufficient', result['bsr_comparison_state'])
+        for current, expected in [(99, None), (85, 'VOLUME_REVIEW'), (80, 'VOLUME_LOW')]:
+            row = {**old, 'bsr': current, 'baselines': {'bsr': {'value': 100, 'days': 7, 'rule': 'median_28d'}}}
+            projected = calc.current_bsr_decision(row, 'SEA')
+            self.assertEqual([expected] if expected else [], [a['status'] for a in projected['alerts']])
+
     def test_collector_passes_legacy_naive_kst_clock_only_to_sea(self):
         seen = []
         cursor = SimpleNamespace(execute=lambda statement: None)
@@ -72,7 +121,7 @@ class CalculationTests(SimpleTestCase):
         history = [sample(2000)] * 7
         for current, expected in [(1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH'), (1401, None), (2599, None)]:
             row = calc.compare_rows([sample(current)], history)[0]
-            states = {alert['status'] for alert in row['alerts']}
+            states = {alert['status'] for alert in row['alerts'] if alert['metric'] == 'total'}
             self.assertEqual({expected} if expected else set(), states)
 
     def test_median_ignores_one_extreme_day_without_excluding_current_findings(self):
@@ -121,8 +170,7 @@ class CalculationTests(SimpleTestCase):
                                  (bsr[0]['status'], bsr[0]['baseline'], bsr[0]['actual']))
 
     def test_variable_bsr_exact_30_percent_drop_and_seven_days(self):
-        for country, retailer, product in [('SEA', 'Amazon', 'TV'),
-                                           ('SEM', 'HomeDepot', 'TV'),
+        for country, retailer, product in [('SEM', 'HomeDepot', 'TV'),
                                            ('SEM', 'HomeDepot', 'REF'),
                                            ('SEM', 'HomeDepot', 'LDY')]:
             history = [sample(retailer=retailer, product=product, bsr=80)] * 7
@@ -137,7 +185,7 @@ class CalculationTests(SimpleTestCase):
             self.assertFalse(any(a['metric'] == 'bsr' for a in row['alerts']))
 
     def test_exception_scope_and_pending_or_failed_do_not_make_bsr_alerts(self):
-        for country, retailer, product in [('SEG', 'Amazon', 'TV'), ('SEA', 'Amazon', 'REF'),
+        for country, retailer, product in [('SEG', 'OTTO', 'TV'), ('SEA', 'Amazon', 'REF'),
                                            ('SEA', 'HomeDepot', 'REF'), ('SEM', 'Liverpool', 'TV')]:
             row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=99)], [], country=country)[0]
             self.assertEqual('fixed_100', row['bsr_rule'])
@@ -158,6 +206,8 @@ class CalculationTests(SimpleTestCase):
             history[index]['source_date'] = f'2026-09-{index+1:02}'
         history[-1]['alerts'] = [{'metric': 'bsr', 'status': 'VOLUME_LOW'}]
         self.assertEqual('insufficient', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
+        history[-1]['alerts'] = [{'metric': 'bsr', 'status': 'VOLUME_REVIEW'}]
+        self.assertEqual('insufficient', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
 
     def test_fixed_projection_replaces_stale_bsr_only_and_preserves_exceptions(self):
         main_alert = {'metric': 'main', 'status': 'VOLUME_HIGH'}
@@ -168,8 +218,7 @@ class CalculationTests(SimpleTestCase):
                     source = sample(retailer=retailer, product=product, bsr=99,
                                     alerts=[main_alert], bsr_comparison_state='insufficient')
                     result = calc.current_bsr_decision(source, country)
-                    exception = (country == 'SEA' and product == 'TV' and retailer == 'Amazon'
-                                 or country == 'SEM' and retailer == 'HomeDepot')
+                    exception = calc.variable_bsr(source, country)
                     self.assertEqual(not exception, any(a['metric'] == 'bsr' for a in result['alerts']))
                     self.assertIn(main_alert, result['alerts'])
                     self.assertEqual([main_alert], source['alerts'])
@@ -200,6 +249,45 @@ class CalculationTests(SimpleTestCase):
 
 
 class StoreTests(TestCase):
+    def test_saved_main_baseline_uses_new_thresholds_in_both_apis_without_writes(self):
+        for current, expected in [(1900, 'VOLUME_REVIEW'), (1700, 'VOLUME_REVIEW'), (1699, 'VOLUME_LOW')]:
+            source = sample(retailer='Walmart', product='TV', main=current, total=3000,
+                            alerts=[], baselines={'main': {'value': 2000, 'days': 7}},
+                            comparison_state='ready')
+            Daily.objects.update_or_create(country='SEA', source_date=self.end,
+                inspection_date=self.end + timedelta(days=1), defaults={
+                    'rows': [source], 'digest': 'legacy', 'updated_at': timezone.now()})
+            Weekly.objects.update_or_create(country='SEA', week_start=calc.week_start(self.end), defaults={
+                'rows': calc.build_week({self.end: [source]}, calc.week_start(self.end), self.end),
+                'updated_at': timezone.now()})
+            with self.assertNumQueries(1):
+                dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end + timedelta(days=1))})).content)
+            with self.assertNumQueries(1):
+                weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(self.end), 'country': 'SEA', 'weeks': '1'})).content)
+            alerts = dashboard['snapshots'][0]['rows'][0]['alerts']
+            self.assertEqual(expected, alerts[0]['status'])
+            self.assertEqual(alerts, weekly['weeks'][0]['rows'][0]['daily'][6]['alerts'])
+            self.assertEqual([], Daily.objects.get().rows[0]['alerts'])
+
+    def test_existing_fixed_policy_upgrades_target_history_without_source_reread(self):
+        old = date(2026, 8, 1)
+        for offset in range(8):
+            day = old + timedelta(days=offset)
+            row = sample(bsr=68 if offset == 7 else 80, bsr_rule='fixed_100',
+                         alerts=[{'metric': 'bsr', 'status': 'VOLUME_LOW', 'rule': 'fixed_100'}])
+            Daily.objects.create(country='SEA', source_date=day, inspection_date=day + timedelta(days=1),
+                                 rows=[row], digest='old', updated_at=timezone.now())
+        self.refresh()
+        upgraded = Daily.objects.get(country='SEA', source_date=old + timedelta(days=7)).rows[0]
+        self.assertEqual(80, upgraded['baselines']['bsr']['value'])
+        self.assertEqual('VOLUME_REVIEW', upgraded['alerts'][0]['status'])
+        dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(old + timedelta(days=8))})).content)
+        weekly = json.loads(api.weekly(self.factory.get('/', {'country': 'SEA', 'date': str(old + timedelta(days=7))})).content)
+        day = next(day for week in weekly['weeks'] for row in week['rows'] for day in row['daily']
+                   if day['date'] == str(old + timedelta(days=7)))
+        self.assertEqual(upgraded['alerts'], dashboard['snapshots'][0]['rows'][0]['alerts'])
+        self.assertEqual(upgraded['alerts'], day['alerts'])
+
     def setUp(self):
         self.factory = RequestFactory()
         self.end = date(2026, 9, 20)

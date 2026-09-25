@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="{% static 'dx_layer1/css/retail-batches.css' %}?v=1">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/layer1.css' %}?v=5-column-alerts">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/column-alert-summary.css' %}?v=1">
-<link rel="stylesheet" href="{% static 'dx_layer1/css/collection-statistics.css' %}?v=6-bsr">
+<link rel="stylesheet" href="{% static 'dx_layer1/css/collection-statistics.css' %}?v=7-bsr-review">
 <style>
     :root {
         --page-color: {{ layer.color }};
@@ -58,10 +58,10 @@
 {{ column_alert_catalog|json_script:'l1-column-alert-catalog' }}
 <script src="{% static 'dx_layer1/js/column-alert-cache.js' %}?v=1"></script>
 <script src="{% static 'dx_layer1/js/column-alert-summary.js' %}?v=2-shared-comparisons"></script>
-<script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=20260923-page-loading"></script>
-<script src="{% static 'dx_layer1/js/collection-volume.js' %}?v=4-current-bsr"></script>
+<script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=20260925-bsr-review"></script>
+<script src="{% static 'dx_layer1/js/collection-volume.js' %}?v=5-bsr-review"></script>
 <script src="{% static 'dx_layer1/js/retail-query.js' %}?v=20260922-simple-sql"></script>
-<script src="{% static 'dx_layer1/js/retail-status.js' %}?v=20260923-missing"></script>
+<script src="{% static 'dx_layer1/js/retail-status.js' %}?v=20260925-main-review"></script>
 <script src="{% static 'dx_layer1/js/retail-batches.js' %}?v=1"></script>
 <script src="{% static 'dx_layer1/js/raw-data-view.js' %}?v=1"></script>
 {% block layer1_js %}{% endblock %}

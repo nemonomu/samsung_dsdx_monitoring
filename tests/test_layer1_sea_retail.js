@@ -149,7 +149,7 @@ function categoryFromSummary(key) {
                     count: retailer.total,
                     batch_id: retailer.batch_id,
                     criteria: key === 'ldy' && retailer.retailer === 'Lowes'
-                        ? { main_min: 150, bsr_min: 90 }
+                        ? { main_min: 150 }
                         : { total_min: 200 },
                     status: 'OK',
                     items: [],
@@ -264,12 +264,14 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
-    assert(baseSource.includes("layer1-common.js' %}?v=20260923-page-loading"));
-    assert(baseSource.includes("collection-volume.js' %}?v=4-current-bsr"));
-    assert(baseSource.includes("retail-status.js' %}?v=20260923-missing"));
+    assert(baseSource.includes("layer1-common.js' %}?v=20260925-bsr-review"));
+    assert(baseSource.includes("collection-volume.js' %}?v=5-bsr-review"));
+    assert(baseSource.includes("retail-status.js' %}?v=20260925-main-review"));
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));
+    assert(context.getStatusBadge('VOLUME_REVIEW').includes('확인 필요'));
+    assert(context.getStatusBadge('VOLUME_REVIEW').includes('volume-review'));
     assert(baseSource.includes("retail-query.js' %}?v=20260922-simple-sql"));
     assert.strictEqual(context.getStatusClass('UNASSESSED'), 'pending');
     assert.strictEqual(context.getRetailerStatusClass('UNASSESSED'), 'pending');

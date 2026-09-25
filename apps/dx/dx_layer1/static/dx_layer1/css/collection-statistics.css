@@ -1,6 +1,7 @@
 .status-badge.volume-review {color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
 .status-badge.volume-review .status-dot {background:#3b82f6}
 .cs-bsr-low {background:#fff1f2 !important;color:#b91c1c !important;font-weight:700}
+.cs-bsr-review {background:#eff6ff !important;color:#1d4ed8 !important;font-weight:700}
 .cs-page {max-width:1500px;margin:auto;color:#1e293b;font-family:inherit}
 .cs-intro {display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 22px}
 .cs-intro p {margin:5px 0}.cs-eyebrow {font-size:10px;letter-spacing:.15em;font-weight:700;color:#64748b}

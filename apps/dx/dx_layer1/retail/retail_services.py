@@ -21,7 +21,6 @@ DEFAULT_EXPECTED_COUNT = 300
 HOMEDEPOT = 'HomeDepot'
 HOMEDEPOT_COLLECTION_WINDOW = {'start_kst': '13:00', 'end_kst': '14:00'}
 LDY_LOWES_MAIN_MIN = 150
-LDY_LOWES_BSR_MIN = 90
 
 ALLOWED_TABLES = {
     source['table_name'] for source in SEA_RETAIL_SOURCES.values()
@@ -145,7 +144,6 @@ def _retailer_criteria(category, retailer):
     ):
         return {
             'main_min': LDY_LOWES_MAIN_MIN,
-            'bsr_min': LDY_LOWES_BSR_MIN,
         }
     return {'total_min': OK_THRESHOLD}
 
@@ -165,7 +163,8 @@ def _criteria_expected(criteria):
     if 'main_min' in criteria or 'bsr_min' in criteria:
         return (
             f"MAIN >= {criteria.get('main_min', 0)} / "
-            f"BSR >= {criteria.get('bsr_min', 0)}"
+            f"BSR >= {criteria['bsr_min']}"
+            if 'bsr_min' in criteria else f"MAIN >= {criteria.get('main_min', 0)}"
         )
     return f">= {criteria.get('total_min', OK_THRESHOLD)}"
 

@@ -12,7 +12,8 @@ from apps.dx.dx_layer1.models import (
     CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly,
     CollectionStatisticsLease as Lease,
 )
-from .calculations import COUNTRIES, OFFSETS, normalize_check, compare_rows, week_start, build_week
+from .calculations import (COUNTRIES, OFFSETS, BSR_POLICY_VERSION, MAIN_POLICY_VERSION, tiered_bsr,
+                           normalize_check, compare_rows, week_start, build_week)
 
 SERVICE_MODULES = {
     country: f'apps.dx.dx_layer1.{country.lower()}_retail.{country.lower()}_retail_services'
@@ -110,7 +111,10 @@ def rebuild(country, start, end, last_due):
         source_date__range=(week_start(policy_start) - timedelta(days=28), last_week + timedelta(days=6))).order_by('source_date'))
     stale_days = [snapshot.source_date for snapshot in snapshots
                   if policy_start <= snapshot.source_date <= end
-                  and any('bsr_rule' not in row for row in snapshot.rows)]
+                  and any(row.get('main_policy_version') != MAIN_POLICY_VERSION
+                          or 'bsr_rule' not in row or (tiered_bsr(row, country)
+                          and row.get('bsr_policy_version') != BSR_POLICY_VERSION)
+                          for row in snapshot.rows)]
     if stale_days:
         start = min(start, min(stale_days))
         first_week = week_start(start)

@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET
 
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 from apps.dx.dx_layer1.common.context import build_context
-from .calculations import COUNTRIES, current_bsr_decision, week_start
+from .calculations import COUNTRIES, current_volume_decision, week_start
 
 
 def page(request):
@@ -56,7 +56,7 @@ def weekly(request):
         monday = end_week - timedelta(weeks=offset)
         week_snapshots = by_week.get(monday, [])
         rows = [{**row, 'country': snapshot.country,
-                 'daily': [current_bsr_decision({**day, 'product': row['product'],
+                 'daily': [current_volume_decision({**day, 'product': row['product'],
                                                 'retailer': row['retailer']}, snapshot.country)
                            for day in row.get('daily', [])]}
                 for snapshot in week_snapshots for row in snapshot.rows
@@ -89,5 +89,5 @@ def alerts(request):
             if day >= timezone.localdate(timezone=tz(timedelta(hours=9))) else not snapshot.refresh_error,
         'rows': [{key: row.get(key) for key in ('product', 'retailer', 'slot', 'main', 'bsr', 'total',
                    'batch_id', 'complete', 'alerts', 'comparison_state')}
-                 for saved in snapshot.rows for row in [current_bsr_decision(saved, snapshot.country)]],
+                 for saved in snapshot.rows for row in [current_volume_decision(saved, snapshot.country)]],
     } for snapshot in snapshots]})

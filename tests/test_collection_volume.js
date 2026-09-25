@@ -28,6 +28,16 @@ for (const status of ['VOLUME_LOW', 'VOLUME_HIGH']) {
 const semBannerData = volume.decorate(fixture(), saved(), day);
 assert(context.L1.retailStatus.render(semBannerData.checks[0], 1, 'sem_retail')
     .includes('Lowes</a> REF 건수 부족'));
+const mainReviewPayload = saved('VOLUME_REVIEW');
+mainReviewPayload.snapshots[0].rows[0].alerts[0] = {
+    metric: 'main', status: 'VOLUME_REVIEW', reason: 'MAIN 중앙값 대비 감소 / 확인 필요',
+};
+const mainReviewData = volume.decorate(fixture(), mainReviewPayload, day);
+assert.strictEqual(mainReviewData.checks[0].status, 'VOLUME_REVIEW');
+const mainReviewBanner = context.L1.retailStatus.render(mainReviewData.checks[0], 1, 'sem_retail');
+assert(mainReviewBanner.includes('retail-missing-item volume-review'));
+assert(mainReviewBanner.includes('MAIN 중앙값 대비 감소 / 확인 필요'));
+assert(!mainReviewBanner.includes('건수 증가'));
 for (const status of ['CRITICAL', 'WARNING', 'PENDING', 'COLLECTING']) {
     assert.strictEqual(volume.decorate(fixture(status), saved('VOLUME_HIGH'), day).checks[0].status, status);
 }
@@ -152,6 +162,33 @@ function fixedFixture(country = 'SEA', product = 'TV', retailer = 'Walmart', bsr
     return data;
 }
 const rowOf = data => data.checks[0].categories[0].retailers[0];
+for (const [country, product, retailer] of [
+    ['SEA', 'REF', 'Lowes'], ['SEA', 'LDY', 'Lowes'], ['SEA', 'TV', 'Amazon'],
+    ['SIEL', 'TV', 'Amazon'], ['SIEL', 'REF', 'Amazon'], ['SIEL', 'LDY', 'Amazon'],
+    ['SEG', 'TV', 'Amazon'], ['SEG', 'REF', 'Amazon'],
+]) {
+    const current = fixedFixture(country, product, retailer, 85);
+    assert.strictEqual(rowOf(volume.decorate(current, null, day)).status, 'OK');
+    const payload = {inspection_date: day, snapshots: [{country, source_date: day, available: true,
+        rows: [{product, retailer, slot: 'daily', main: 299, bsr: 85, total: 337, batch_id: 'b1',
+            complete: true, comparison_state: 'ready', alerts: [{metric: 'bsr', status: 'VOLUME_REVIEW',
+                reason: 'BSR 과거 중앙값 100개 / 수집 85개 / 15% 이상 감소 / 확인 필요'}]}]}]};
+    volume.decorate(current, payload, day);
+    assert.strictEqual(current.checks[0].status, 'VOLUME_REVIEW');
+    assert.strictEqual(current.checks[0].categories[0].status, 'VOLUME_REVIEW');
+    assert.strictEqual(rowOf(current).status, 'VOLUME_REVIEW');
+    assert.strictEqual(current.summary.failed, 0);
+    const cell = context.L1.retailStatus.bsrCell(rowOf(current), '85');
+    assert(cell.includes('cs-bsr-review') && cell.includes('확인 필요'));
+    const banner = context.L1.retailStatus.render(current.checks[0], 0, current.checks[0].check_type);
+    assert(banner.includes('retail-missing-item volume-review') && banner.includes('15% 이상 감소'));
+    assert(!banner.includes('건수 증가'));
+    payload.snapshots[0].rows[0].alerts = [];
+    volume.decorate(current, payload, day);
+    assert.strictEqual(rowOf(current).status, 'OK');
+}
+assert.strictEqual(volume.merge('OK', [{status: 'VOLUME_REVIEW'}, {status: 'VOLUME_LOW'}]), 'VOLUME_LOW');
+assert.strictEqual(volume.merge('CRITICAL', [{status: 'VOLUME_REVIEW'}]), 'CRITICAL');
 // Fixed targets do not depend on a snapshot being present, fresh or matching.
 for (const payload of [null, {inspection_date:day,snapshots:[]},
     {inspection_date:day,snapshots:[{country:'SEA',available:false,rows:[]}]},
@@ -165,7 +202,7 @@ for (const payload of [null, {inspection_date:day,snapshots:[]},
 }
 for (const [country, product, retailer] of [
     ['SEA','REF','Amazon'], ['SEA','LDY','HomeDepot'], ['SEM','REF','Liverpool'],
-    ['SEDA','TV','Magalu'], ['SEG','TV','OTTO'], ['SIEL','TV','Amazon'], ['TSE','TV','Homepro'],
+    ['SEDA','TV','Magalu'], ['SEG','TV','OTTO'], ['SIEL','TV','Flipkart'], ['TSE','TV','Homepro'],
 ]) {
     assert.strictEqual(rowOf(volume.decorate(fixedFixture(country, product, retailer), null, day)).status, 'VOLUME_LOW');
 }
