@@ -241,22 +241,27 @@ def update_daily_memo_db(body, user_id):
             updated_count = 0
             for item in memos:
                 daily_id = item.get('daily_id')
-                memo = item.get('memo', '')
-                file_memo = item.get('file_memo')
-                if daily_id:
-                    if file_memo is not None:
-                        cursor.execute("""
-                            UPDATE ssd_crawl_db.ds_monitoring_report_daily
-                            SET memo = %s, file_memo = %s, updated_at = %s, updated_id = %s
-                            WHERE id = %s AND is_del = 0
-                        """, (memo, file_memo, now, user_id, daily_id))
-                    else:
-                        cursor.execute("""
-                            UPDATE ssd_crawl_db.ds_monitoring_report_daily
-                            SET memo = %s, updated_at = %s, updated_id = %s
-                            WHERE id = %s AND is_del = 0
-                        """, (memo, now, user_id, daily_id))
-                    updated_count += cursor.rowcount
+                if not daily_id:
+                    continue
+
+                # 단건 저장과 동일하게 전달된 필드만 갱신한다. 빈 문자열은 명시적 삭제다.
+                update_fields = []
+                update_values = []
+                for field in ('memo', 'file_memo'):
+                    if field in item:
+                        update_fields.append(f'{field} = %s')
+                        update_values.append(item[field])
+                if not update_fields:
+                    continue
+
+                update_fields.extend(['updated_at = %s', 'updated_id = %s'])
+                update_values.extend([now, user_id, daily_id])
+                cursor.execute(f"""
+                    UPDATE ssd_crawl_db.ds_monitoring_report_daily
+                    SET {', '.join(update_fields)}
+                    WHERE id = %s AND is_del = 0
+                """, update_values)
+                updated_count += cursor.rowcount
 
             conn.commit()
             return {'success': True, 'message': f'{updated_count}건 메모 저장 완료', 'updated_count': updated_count}
