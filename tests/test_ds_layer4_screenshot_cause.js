@@ -23,16 +23,16 @@ assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20260923-5"
+    "{% static 'ds_layer4/css/index.css' %}?v=20260928-inline-detail"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-4"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/index.js' %}?v=20260928-report-flow"
+    "{% static 'ds_layer4/js/index.js' %}?v=20260928-inline-detail"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260928-report-flow"
+    "{% static 'ds_layer4/js/report.js' %}?v=20260928-inline-detail"
 ));
 
 function fakeClassList() {
@@ -173,7 +173,7 @@ const mixedData = {
     daily_reports: [{ retailer: 'Currys', anomaly_total: 7 }],
     anomalies: mixedAnomalies
 };
-vm.runInContext("currentReportView = 'detail'; currentReportRetailer = 'Currys'; isClosed = false;", sandbox);
+vm.runInContext("currentReportView = 'status'; isClosed = false;", sandbox);
 sandbox.renderReportTable(mixedData);
 const initialHtml = elements.reportContent.innerHTML;
 assert.ok(initialHtml.includes('원인 미선택 5건'));

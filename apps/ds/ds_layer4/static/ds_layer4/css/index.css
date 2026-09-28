@@ -240,6 +240,34 @@
         background: #f0f9ff;
     }
 
+    #statusTable > tbody > .retailer-row {
+        cursor: default;
+    }
+
+    #statusTable .report-retailer-cell {
+        padding: 0;
+        cursor: pointer;
+    }
+
+    .report-retailer-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 44px;
+        padding: 12px 10px;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .report-retailer-toggle .expand-icon {
+        flex-shrink: 0;
+    }
+
     .expand-icon {
         transition: transform 0.2s;
         width: 16px;

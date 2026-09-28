@@ -24,29 +24,7 @@ function renderReportTable(data) {
         return;
     }
 
-    // 뷰 모드에 따라 다른 렌더링
-    if (currentReportView !== 'detail') {
-        renderStatusTable(data);
-        return;
-    }
-
-    // 현황에서 선택한 리테일러의 기존 SKU 상세와 저장 기능을 사용한다.
-    const report = data.daily_reports.find(row => row.retailer === currentReportRetailer);
-    if (!report) {
-        currentReportRetailer = null;
-        currentReportView = 'status';
-        updateReportNavigation();
-        renderStatusTable(data);
-        return;
-    }
-    const anomalies = (data.anomalies || []).filter(row => row.retailer === currentReportRetailer);
-    const missingCauseCount = anomalies.filter(row => !normalizeReportCause(row.cause)).length;
-    content.innerHTML = `<div class="anomaly-list">
-        ${missingCauseCount ? `<div style="margin-bottom:12px;"><span class="missing-cause-badge">원인 미선택 ${missingCauseCount}건</span></div>` : ''}
-        ${renderAnomalyItems(anomalies, currentReportRetailer)}</div>`;
-    actions.innerHTML = '';
-    const table = content.querySelector('.anomaly-table');
-    if (table) enableColumnResize(table);
+    renderStatusTable(data);
 }
 
 // 현황 탭 렌더링 (체크박스로 선택 후 저장)
@@ -55,6 +33,11 @@ function renderStatusTable(data) {
 
     // 리테일러별 원인 건수 (서버에서 계산된 데이터 사용)
     const causeSummaryByRetailer = data.cause_summary || {};
+    const anomaliesByRetailer = new Map();
+    (data.anomalies || []).forEach(anomaly => {
+        if (!anomaliesByRetailer.has(anomaly.retailer)) anomaliesByRetailer.set(anomaly.retailer, []);
+        anomaliesByRetailer.get(anomaly.retailer).push(anomaly);
+    });
 
     let html = `
         <table class="report-table" id="statusTable">
@@ -72,7 +55,9 @@ function renderStatusTable(data) {
             <tbody>
     `;
 
-    data.daily_reports.forEach(report => {
+    data.daily_reports.forEach((report, idx) => {
+        const anomalies = anomaliesByRetailer.get(report.retailer) || [];
+        const missingCauseCount = anomalies.filter(row => !normalizeReportCause(row.cause)).length;
         const escMemo = (report.memo || '').replace(/"/g, '&quot;');
         // 원인별 현황 텍스트 생성
         const causeCounts = causeSummaryByRetailer[report.retailer] || {};
@@ -82,13 +67,18 @@ function renderStatusTable(data) {
         const escCauseSummary = causeSummary.replace(/"/g, '&quot;');
 
         html += `
-            <tr>
+            <tr class="retailer-row" data-retailer="${esc(report.retailer)}">
                 ${isClosed ? '' : `
                 <td class="text-center">
                     <input type="checkbox" id="statusCheck_${report.id}" class="memo-checkbox status-checkbox" onchange="toggleStatusInput(${report.id})" data-cause-summary="${escCauseSummary}">
                 </td>
                 `}
-                <td><button type="button" class="app-btn app-btn-sm" style="background:transparent;color:inherit;padding:4px 0;" onclick="openReportRetailerDetail(${Number(report.id)})"><strong>${esc(report.retailer)}</strong></button></td>
+                <td class="report-retailer-cell" onclick="openReportRetailerDetail(${Number(report.id)})">
+                    <button type="button" class="report-retailer-toggle" aria-expanded="false" aria-controls="anomalyDetails${idx}">
+                        <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                        <strong>${esc(report.retailer)}</strong>
+                    </button>
+                </td>
                 <td class="text-center">${report.total_count?.toLocaleString() || 0}</td>
                 <td class="text-center" style="color: ${report.anomaly_total > 0 ? '#dc2626' : '#16a34a'}; font-weight: 600;">
                     ${report.anomaly_total || 0}
@@ -101,6 +91,14 @@ function renderStatusTable(data) {
                 </td>
                 <td class="text-center">
                     ${AppButton.iconHtml('info', "showStatusDetail('" + report.retailer + "', '" + (report.created_id || '-') + "', '" + (report.created_at || '-') + "')", { size: 'sm', bg: '#6b7280', title: '상세보기' })}
+                </td>
+            </tr>
+            <tr class="anomaly-details" id="anomalyDetails${idx}">
+                <td colspan="${isClosed ? 6 : 7}">
+                    <div class="anomaly-list">
+                        ${missingCauseCount ? `<div style="margin-bottom:12px;"><span class="missing-cause-badge">원인 미선택 ${missingCauseCount}건</span></div>` : ''}
+                        ${renderAnomalyItems(anomalies, report.retailer)}
+                    </div>
                 </td>
             </tr>
         `;
@@ -121,6 +119,7 @@ function renderStatusTable(data) {
     // 컬럼 리사이즈 적용
     const table = content.querySelector('.report-table');
     if (table) enableColumnResize(table);
+    restoreExpandedAccordions();
 }
 
 function getCheckedStatusMemo(checkbox, memoInput) {
@@ -423,11 +422,14 @@ function toggleAnomalies(idx, retailer) {
     const row = document.querySelectorAll('.retailer-row')[idx];
     const details = document.getElementById(`anomalyDetails${idx}`);
 
-    row.classList.toggle('expanded');
-    details.classList.toggle('show');
+    if (!row || !details) return;
+    const expanded = !expandedRetailers.has(retailer);
+    row.classList.toggle('expanded', expanded);
+    details.classList.toggle('show', expanded);
+    row.querySelector('.report-retailer-toggle').setAttribute('aria-expanded', String(expanded));
 
     // 펼쳐진 상태 추적
-    if (details.classList.contains('show')) {
+    if (expanded) {
         expandedRetailers.add(retailer);
         // 컬럼 리사이즈 적용 (최초 1회)
         const table = details.querySelector('.anomaly-table');
@@ -446,12 +448,13 @@ function restoreExpandedAccordions() {
 
     const rows = document.querySelectorAll('.retailer-row');
     rows.forEach((row, idx) => {
-        const retailer = row.querySelector('td:nth-child(2) strong')?.textContent;
+        const retailer = row.dataset.retailer;
         if (retailer && expandedRetailers.has(retailer)) {
             const details = document.getElementById(`anomalyDetails${idx}`);
             if (details) {
                 row.classList.add('expanded');
                 details.classList.add('show');
+                row.querySelector('.report-retailer-toggle').setAttribute('aria-expanded', 'true');
                 // 컬럼 리사이즈 적용
                 const table = details.querySelector('.anomaly-table');
                 if (table && !table.dataset.resizeApplied) {
