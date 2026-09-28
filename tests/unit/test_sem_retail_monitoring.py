@@ -57,10 +57,10 @@ class SemRetailConfigurationTests(unittest.TestCase):
             self.assertEqual(key, product_line_for(source['table_name']))
         self.assertEqual(('Liverpool',), SEM_LAYER1_RETAILERS['sem_tv'])
         self.assertEqual(
-            ('Liverpool', 'HomeDepot'), SEM_LAYER1_RETAILERS['sem_ref']
+            ('Liverpool', 'HomeDepot', 'Coppel'), SEM_LAYER1_RETAILERS['sem_ref']
         )
         self.assertEqual(
-            ('Liverpool', 'HomeDepot'), SEM_LAYER1_RETAILERS['sem_ldy']
+            ('Liverpool', 'HomeDepot', 'Coppel'), SEM_LAYER1_RETAILERS['sem_ldy']
         )
 
     def test_layer1_repository_filters_requested_retailer(self):
@@ -163,7 +163,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
         )
         self.assertEqual('KST 09:00~11:00', result['check']['collection_window'])
 
-    def test_layer1_adds_homedepot_to_ref_and_ldy_only(self):
+    def test_layer1_adds_homedepot_and_coppel_to_ref_and_ldy_only(self):
         def current_counts(_cursor, product_line, retailer, _target_date):
             return {
                 'retailer': retailer,
@@ -193,9 +193,9 @@ class SemRetailConfigurationTests(unittest.TestCase):
             for category in result['check']['categories']
         }
         self.assertEqual(['Liverpool'], retailers['TV'])
-        self.assertEqual(['Liverpool', 'HomeDepot'], retailers['REF'])
-        self.assertEqual(['Liverpool', 'HomeDepot'], retailers['LDY'])
-        self.assertEqual(1500, result['check']['actual'])
+        self.assertEqual(['Liverpool', 'HomeDepot', 'Coppel'], retailers['REF'])
+        self.assertEqual(['Liverpool', 'HomeDepot', 'Coppel'], retailers['LDY'])
+        self.assertEqual(2100, result['check']['actual'])
 
     def test_layer1_truncates_display_average_but_keeps_precise_rate(self):
         current = {
@@ -216,11 +216,11 @@ class SemRetailConfigurationTests(unittest.TestCase):
             )
 
         self.assertEqual(
-            [196, 392, 392],
+            [196, 588, 588],
             [category['expected'] for category in result['check']['categories']],
         )
         self.assertEqual(
-            [196.5, 393.0, 393.0],
+            [196.5, 589.5, 589.5],
             [
                 category['expected_precise']
                 for category in result['check']['categories']
@@ -230,7 +230,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
             category['rate'] == 99.7
             for category in result['check']['categories']
         ))
-        self.assertEqual(980, result['check']['expected'])
+        self.assertEqual(1372, result['check']['expected'])
         self.assertEqual(99.7, result['check']['rate'])
 
     def test_layer1_marks_completed_product_ok_during_collection(self):
@@ -287,7 +287,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
                 self.assertEqual([], result['failed_items'])
                 for category in result['check']['categories']:
                     self.assertEqual(expected_status, category['status'])
-                    expected_total = 264 if category['name'] == 'TV' else 528
+                    expected_total = 264 if category['name'] == 'TV' else 792
                     self.assertEqual(expected_total, category['expected'])
                     for retailer in category['retailers']:
                         self.assertEqual(expected_status, retailer['status'])
@@ -306,7 +306,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
             with self.subTest(history=history):
                 result = self._count_stats(0, history, raw_count=0)
                 self.assertEqual('CRITICAL', result['check']['status'])
-                self.assertEqual(5, len(result['failed_items']))
+                self.assertEqual(7, len(result['failed_items']))
                 self.assertTrue(all(
                     item['error_type'] == '수집 데이터 없음'
                     for item in result['failed_items']
@@ -352,9 +352,9 @@ class SemRetailConfigurationTests(unittest.TestCase):
             ['REVIEW', 'CRITICAL', 'OK'],
             [category['status'] for category in result['check']['categories']],
         )
-        self.assertEqual(2, len(result['failed_items']))
+        self.assertEqual(3, len(result['failed_items']))
         self.assertEqual(
-            ['SEM REF (Liverpool)', 'SEM REF (HomeDepot)'],
+            ['SEM REF (Liverpool)', 'SEM REF (HomeDepot)', 'SEM REF (Coppel)'],
             [item['source'] for item in result['failed_items']],
         )
 
@@ -545,13 +545,13 @@ class SemRetailValidationTests(unittest.TestCase):
 
         fixture_rows, fixture_mapping = latest_rows.return_value
         latest_rows.side_effect = lambda *_args, **kwargs: (
-            [] if kwargs.get('retailer') == 'HomeDepot' else fixture_rows,
+            [] if kwargs.get('retailer') in ('HomeDepot', 'Coppel') else fixture_rows,
             fixture_mapping,
         )
         total = append_null_stats(None, date(2026, 9, 7), validation)
 
         self.assertEqual(6, total)
-        self.assertEqual(['Liverpool', 'HomeDepot'], [
+        self.assertEqual(['Liverpool', 'HomeDepot', 'Coppel'], [
             row['retailer'] for row in validation['tables'][1]['retailers']
         ])
         retailer = validation['tables'][0]['retailers'][0]

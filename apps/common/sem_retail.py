@@ -7,10 +7,14 @@ SEM_CHECK_TYPE = 'sem_retail'
 SEM_COUNTRY = 'SEM'
 SEM_RETAILER = 'Liverpool'
 SEM_HOMEDEPOT_RETAILER = 'HomeDepot'
+SEM_COPPEL_RETAILER = 'Coppel'
+SEM_COPPEL_EXCLUDED_COLUMNS = (
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+)
 SEM_LAYER1_RETAILERS = {
     'sem_tv': (SEM_RETAILER,),
-    'sem_ref': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
-    'sem_ldy': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
+    'sem_ref': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
+    'sem_ldy': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
 }
 SEM_COLLECTION_START = time(9, 0)
 SEM_COLLECTION_END = time(11, 0)
@@ -84,7 +88,7 @@ SEM_SOURCE_CONFIG = {
         'table_name': 'dx_sem.dx_sem_ref_retail_com',
         'backup_table_name': 'dx_sem.dx_sem_ref_retail_com_backup',
         'date_column': 'crawl_datetime',
-        'retailers': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
+        'retailers': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
         'extra_required_columns': ('ref_capacity',),
         'extra_format_columns': ('ref_capacity', 'ref_refrigerator_type'),
         'extra_table_columns': ('ref_capacity', 'ref_refrigerator_type'),
@@ -97,7 +101,7 @@ SEM_SOURCE_CONFIG = {
         'table_name': 'dx_sem.dx_sem_ldy_retail_com',
         'backup_table_name': 'dx_sem.dx_sem_ldy_retail_com_backup',
         'date_column': 'crawl_datetime',
-        'retailers': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER),
+        'retailers': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
         'extra_required_columns': ('ldy_capacity',),
         'extra_format_columns': ('ldy_capacity', 'ldy_loading_type'),
         'extra_table_columns': ('ldy_loading_type', 'ldy_capacity'),
@@ -135,9 +139,13 @@ def resolve_sem_table(value):
     raise ValueError(f'Unsupported SEM table: {value}')
 
 
-def get_sem_required_columns(product_line):
+def get_sem_required_columns(product_line, retailer=SEM_RETAILER):
     source = get_sem_source(product_line)
-    return SEM_COMMON_REQUIRED_COLUMNS + source['extra_required_columns']
+    columns = SEM_COMMON_REQUIRED_COLUMNS + source['extra_required_columns']
+    if normalize_sem_retailer(product_line, retailer) == SEM_COPPEL_RETAILER:
+        return tuple(column for column in columns
+                     if column not in SEM_COPPEL_EXCLUDED_COLUMNS)
+    return columns
 
 
 def get_sem_product_line_for_table(table_name):
@@ -161,7 +169,9 @@ def get_sem_editable_columns(product_line, retailer=SEM_RETAILER):
     )
     return tuple(dict.fromkeys(
         SEM_COMMON_EDITABLE_COLUMNS + source['extra_format_columns']
-        + (('savings',) if SEM_HOMEDEPOT_RETAILER in retailers else ())
+        + (('savings',) if any(account in retailers for account in (
+            SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER,
+        )) else ())
     ))
 
 

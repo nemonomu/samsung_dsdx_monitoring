@@ -7,6 +7,7 @@ from apps.common.crossfield_history import build_detail_history
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.sem_retail import (
     SEM_COUNTRY,
+    SEM_COPPEL_RETAILER,
     SEM_HOMEDEPOT_RETAILER,
     SEM_RETAILER,
     SEM_SOURCE_CONFIG,
@@ -14,7 +15,7 @@ from apps.common.sem_retail import (
     get_sem_table_columns,
 )
 from apps.dx.dx_layer2.sem_validation import (
-    _format_checks, _history_rows, _latest_rows, product_line_for,
+    _COPPEL_SAVINGS, _format_checks, _history_rows, _latest_rows, product_line_for,
 )
 
 
@@ -44,6 +45,18 @@ _HOMEDEPOT_RULES = (
 _REVIEW_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
+_COPPEL_RULES = (
+    ('coppel_savings_missing', 'Coppel savings 누락', 'final_sku_price',
+     'original_sku_price', '최종가와 원가가 있는데 savings가 없습니다.'),
+    ('coppel_original_missing', 'Coppel 원가 누락', 'original_sku_price',
+     'savings', '최종가와 savings가 있는데 원가가 없습니다.'),
+    ('coppel_final_missing', 'Coppel 최종가 누락', 'final_sku_price',
+     'savings', '최종가가 없는데 원가 또는 savings가 있습니다.'),
+    ('coppel_savings_amount_match', 'Coppel 할인금액 일치', 'savings',
+     'original_sku_price', '가격과 savings 형식이 유효하고 원가 > 0, 최종가 < 원가일 때 원가−최종가와 savings 할인금액이 다르면 이상입니다.'),
+    ('coppel_savings_rate_match', 'Coppel 할인율 일치', 'savings',
+     'original_sku_price', '가격과 savings 형식이 유효하고 원가 > 0, 최종가 < 원가일 때 계산 할인율이 표시 할인율 이상, 표시 할인율+1 미만 범위를 벗어나면 이상입니다.'),
+)
 
 
 def _blank(value):
@@ -58,7 +71,7 @@ def _number(value):
 
 
 def _rule_select_fields(field1, field2, rule_key=None):
-    if rule_key in {rule[0] for rule in _HOMEDEPOT_RULES}:
+    if rule_key in {rule[0] for rule in (*_HOMEDEPOT_RULES, *_COPPEL_RULES)}:
         return 'final_sku_price|original_sku_price|savings'
     fields = (field1, field2)
     if any(field in _REVIEW_COLUMNS for field in fields):
@@ -67,6 +80,8 @@ def _rule_select_fields(field1, field2, rule_key=None):
 
 
 def _failed_rules(row, retailer=SEM_RETAILER, product_line='sem_ref'):
+    if retailer == SEM_COPPEL_RETAILER:
+        return _coppel_price_rules(row, _format_checks(product_line, retailer))
     original_row = row
     if retailer == SEM_HOMEDEPOT_RETAILER:
         # Invalid present values belong to format validation. Do not compare
@@ -140,6 +155,38 @@ def _homedepot_price_rules(row, checks):
     return []
 
 
+def _coppel_price_rules(row, checks):
+    fields = ('final_sku_price', 'original_sku_price', 'savings')
+    final, original, savings = [not _blank(row.get(field)) for field in fields]
+    money = lambda value: Decimal(str(value).strip().replace('$', '').replace(',', ''))
+    final_price = money(row[fields[0]]) if final and checks[fields[0]](row[fields[0]]) else None
+    original_price = money(row[fields[1]]) if original and checks[fields[1]](row[fields[1]]) else None
+    failed = []
+    if original_price == 0:
+        failed.append('original_price_zero')
+    elif original_price is not None and final_price is not None and final_price >= original_price:
+        failed.append('final_original_price')
+    if not final and (original or savings):
+        failed.append('coppel_final_missing')
+    elif final and original and not savings:
+        failed.append('coppel_savings_missing')
+    elif final and savings and not original:
+        failed.append('coppel_original_missing')
+    if not all((final, original, savings)) or any(not checks[field](row[field]) for field in fields):
+        return failed
+    if original_price <= 0 or final_price >= original_price:
+        return failed
+    match = _COPPEL_SAVINGS.fullmatch(str(row['savings']).strip())
+    amount, rate = money(match[1]), int(match[2])
+    difference = original_price - final_price
+    if difference != amount:
+        failed.append('coppel_savings_amount_match')
+    # Compare exact decimal amounts without rounding the calculated percent.
+    if not rate * original_price <= difference * 100 < (rate + 1) * original_price:
+        failed.append('coppel_savings_rate_match')
+    return failed
+
+
 def _result(cursor, target_date, product_line):
     key = product_line_for(product_line)
     source = SEM_SOURCE_CONFIG.get(key)
@@ -147,6 +194,8 @@ def _result(cursor, target_date, product_line):
         raise ValueError(f'Unsupported SEM product line: {product_line}')
     definitions = _RULES + (
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in source['retailers'] else ()
+    ) + (
+        _COPPEL_RULES if SEM_COPPEL_RETAILER in source['retailers'] else ()
     )
     rows = []
     page_exclusions = []
@@ -170,12 +219,19 @@ def _result(cursor, target_date, product_line):
     summaries = []
     for index, rule in enumerate(definitions, 1):
         rule_key, name, field1, field2, message = rule
+        applicable_retailers = (
+            [SEM_COPPEL_RETAILER] if rule in _COPPEL_RULES
+            else [SEM_HOMEDEPOT_RETAILER] if rule in _HOMEDEPOT_RULES
+            else [retailer for retailer in source['retailers']
+                  if retailer != SEM_COPPEL_RETAILER
+                  or not any(field in _REVIEW_COLUMNS for field in (field1, field2))]
+        )
         summaries.append({
             'rule_id': f'{key}:{rule_key}',
             'detail_code': f'{key}_{rule_key}',
             'rule_key': rule_key,
             'detail_name': name,
-            'retailers': list(source['retailers']) if rule in _RULES else [SEM_HOMEDEPOT_RETAILER],
+            'retailers': applicable_retailers,
             'field1': field1,
             'field2': field2,
             'validation_type': rule_key,
@@ -253,6 +309,10 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     history = []
     retailer_summary = {}
     for retailer in source['retailers']:
+        if rule['rule_key'].startswith('coppel_') and retailer != SEM_COPPEL_RETAILER:
+            continue
+        if retailer == SEM_COPPEL_RETAILER and retailer not in rule['retailers']:
+            continue
         targets = [row for row in target_anomalies
                    if str(row.get('account_name') or '').strip().casefold() == retailer.casefold()]
         items = sorted({str(row['item']) for row in targets if not _blank(row.get('item'))})

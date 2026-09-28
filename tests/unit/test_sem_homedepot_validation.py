@@ -45,7 +45,7 @@ def errors(**changes):
 class HomeDepotRulesTests(unittest.TestCase):
     def test_scope_null_columns_and_retailer_edit_permissions(self):
         for product in ('sem_ref', 'sem_ldy'):
-            self.assertEqual(('Liverpool', 'HomeDepot'), SEM_SOURCE_CONFIG[product]['retailers'])
+            self.assertEqual(('Liverpool', 'HomeDepot', 'Coppel'), SEM_SOURCE_CONFIG[product]['retailers'])
             self.assertEqual('HomeDepot', normalize_sem_retailer(product, ' homedepot '))
             self.assertIn('sku', get_sem_required_columns(product))
             self.assertEqual(11, len(get_sem_required_columns(product)))
@@ -148,14 +148,16 @@ class HomeDepotRulesTests(unittest.TestCase):
             rules = summary['rule_summary']
             self.assertEqual(0, summary['total_anomalies'])
             expected_common = ['Liverpool'] if product == 'sem_tv' else ['Liverpool', 'HomeDepot']
-            self.assertEqual([expected_common] * 4, [rule['retailers'] for rule in rules[:4]])
+            self.assertEqual([expected_common] * 2, [rule['retailers'] for rule in rules[:2]])
+            expected_price = expected_common if product == 'sem_tv' else expected_common + ['Coppel']
+            self.assertEqual([expected_price] * 2, [rule['retailers'] for rule in rules[2:4]])
             if product != 'sem_tv':
-                self.assertEqual([['HomeDepot']] * 4, [rule['retailers'] for rule in rules[4:]])
+                self.assertEqual([['HomeDepot']] * 4, [rule['retailers'] for rule in rules[4:8]])
 
 
 class HomeDepotIntegrationTests(unittest.TestCase):
     def latest(self, _cursor, _date, source, retailer='Liverpool'):
-        if source['source_key'] == 'sem_tv':
+        if source['source_key'] == 'sem_tv' or retailer == 'Coppel':
             return [], MAPPING
         row = record(id=2 if retailer == 'HomeDepot' else 1, account_name=retailer, sku=None)
         if retailer == 'Liverpool':
@@ -171,8 +173,8 @@ class HomeDepotIntegrationTests(unittest.TestCase):
             self.assertEqual(0, layer2.append_format_stats(None, DAY, format_result))
         for table in null_result['tables'][1:]:
             self.assertEqual(2, table['total_records'])
-            self.assertEqual(['Liverpool', 'HomeDepot'], [r['retailer'] for r in table['retailers']])
-            self.assertEqual([1, 1], [r['fields_detail']['sku'] for r in table['retailers']])
+            self.assertEqual(['Liverpool', 'HomeDepot', 'Coppel'], [r['retailer'] for r in table['retailers']])
+            self.assertEqual([1, 1, 0], [r['fields_detail']['sku'] for r in table['retailers']])
 
     def test_detail_routes_keep_retailer_and_savings(self):
         with patch.object(layer2, '_latest_rows', return_value=([record(savings='invalid', sku=None)], MAPPING)) as latest, \
@@ -202,6 +204,8 @@ class HomeDepotIntegrationTests(unittest.TestCase):
 
     def test_crossfield_aggregate_and_history_keep_retailer_permissions(self):
         def latest(_cursor, _date, _source, retailer='Liverpool'):
+            if retailer == 'Coppel':
+                return [], MAPPING
             return [record(id=2 if retailer == 'HomeDepot' else 1,
                            account_name=retailer, original_sku_price='$0.00')], MAPPING
         with patch.object(crossfield, '_latest_rows', side_effect=latest), \
@@ -210,7 +214,7 @@ class HomeDepotIntegrationTests(unittest.TestCase):
             detail = crossfield.get_sem_cross_field_rule_detail(
                 None, DAY, 'sem_ref', 'sem_ref:original_price_zero', days=3,
             )
-        self.assertEqual(8, len(summary['rule_summary']))
+        self.assertEqual(13, len(summary['rule_summary']))
         self.assertEqual(2, summary['total_checked'])
         self.assertEqual(2, detail['total_anomalies'])
         self.assertEqual(1, detail['retailer_summary']['HomeDepot']['count'])
@@ -223,6 +227,8 @@ class HomeDepotIntegrationTests(unittest.TestCase):
 
     def test_homedepot_only_rules_expose_all_three_price_columns(self):
         def latest(_cursor, _date, _source, retailer='Liverpool'):
+            if retailer == 'Coppel':
+                return [], MAPPING
             return [record(account_name=retailer, savings=None)], MAPPING
         with patch.object(crossfield, '_latest_rows', side_effect=latest):
             result = crossfield.get_sem_cross_field_rule_detail(

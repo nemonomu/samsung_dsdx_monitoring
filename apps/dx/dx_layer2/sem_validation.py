@@ -9,6 +9,8 @@ from apps.common.null_review_evidence import uses_new_policy
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 from apps.common.sem_retail import (
     SEM_COUNTRY,
+    SEM_COPPEL_RETAILER,
+    SEM_COPPEL_EXCLUDED_COLUMNS,
     SEM_HOMEDEPOT_RETAILER,
     SEM_RETAILER,
     SEM_SECTION_TO_PRODUCT_LINE,
@@ -32,6 +34,11 @@ _HOMEDEPOT_WEEK = re.compile(r'^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$')
 _HOMEDEPOT_PRICE = re.compile(rf'^{_MONEY_VALUE}$')
 _HOMEDEPOT_SAVINGS = re.compile(r'^-(?:0|[1-9]\d?|100)%$')
 _HOMEDEPOT_REF_TYPES = {'Top Mount', 'Bottom Mount', 'French Door', 'Side by Side'}
+_COPPEL_MONEY = r'\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?'
+_COPPEL_PRICE = re.compile(rf'^{_COPPEL_MONEY}$')
+_COPPEL_SAVINGS = re.compile(rf'^({_COPPEL_MONEY}) \((0|[1-9]\d?|100)%\)$')
+_COPPEL_URL = re.compile(r'^https://(?:www\.)?coppel\.com/pdp/[^\s]+$', re.I)
+_COPPEL_REF_TYPES = {'Top Mount', 'Bottom Mount', 'French Door', 'Side by Side'}
 _SIZE_VALUE = r'\d+(?:\.\d+)?\s+inch'
 _SIZE = re.compile(rf'^{_SIZE_VALUE}(?:\s*/\s*{_SIZE_VALUE})*$', re.I)
 _REF_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s*(?:cu\s*ft|l|liters?)'
@@ -283,6 +290,17 @@ def _format_checks(product_line, retailer=SEM_RETAILER):
         })
         if product_line == 'sem_ref':
             checks['ref_refrigerator_type'] = lambda value: str(value).strip() in _HOMEDEPOT_REF_TYPES
+    if retailer == SEM_COPPEL_RETAILER:
+        for field in SEM_COPPEL_EXCLUDED_COLUMNS:
+            checks.pop(field)
+        checks.update({
+            'product_url': lambda value: bool(_COPPEL_URL.fullmatch(str(value).strip())),
+            'final_sku_price': lambda value: bool(_COPPEL_PRICE.fullmatch(str(value).strip())),
+            'original_sku_price': lambda value: bool(_COPPEL_PRICE.fullmatch(str(value).strip())),
+            'savings': lambda value: bool(_COPPEL_SAVINGS.fullmatch(str(value).strip())),
+        })
+        if product_line == 'sem_ref':
+            checks['ref_refrigerator_type'] = lambda value: str(value).strip() in _COPPEL_REF_TYPES
     return checks
 
 
@@ -297,7 +315,7 @@ def get_review_allowed_columns(product_line, correction_type, retailer=SEM_RETAI
         ))
     normalize_sem_retailer(product_line, retailer)
     if correction_type == 'null_check':
-        return tuple(get_sem_required_columns(product_line))
+        return tuple(get_sem_required_columns(product_line, retailer))
     if correction_type == 'format_check':
         return tuple(_format_checks(product_line, retailer))
     return ()
@@ -316,6 +334,15 @@ def get_format_rule_details(product_line, retailer=SEM_RETAILER):
             'original_sku_price': {'description': '값이 있으면 멕시코 페소 단일 금액, 소수점 두 자리', 'pattern': '$16,599.00'},
             'savings': {'description': '마이너스 부호와 정수 할인율, 크기 0~100', 'pattern': '-30%'},
             'ref_refrigerator_type': {'description': '허용된 HomeDepot 냉장고 유형', 'pattern': 'Top Mount / Bottom Mount / French Door / Side by Side'},
+        })
+    if retailer == SEM_COPPEL_RETAILER:
+        details.update({
+            'account_name': {'description': 'SEM 수집 리테일러명과 일치', 'pattern': 'Coppel'},
+            'product_url': {'description': 'Coppel 상품 상세 URL', 'pattern': 'https://www.coppel.com/pdp/...'},
+            'final_sku_price': {'description': '멕시코 페소 단일 금액, 소수점 두 자리 선택', 'pattern': '$10,499 / $10,499.00'},
+            'original_sku_price': {'description': '값이 있으면 멕시코 페소 단일 금액, 소수점 두 자리 선택', 'pattern': '$18,699 / $18,699.00'},
+            'savings': {'description': '할인금액과 괄호 안 정수 할인율 0~100', 'pattern': '$8,200 (43%)'},
+            'ref_refrigerator_type': {'description': '허용된 Coppel 냉장고 유형', 'pattern': 'Top Mount / Bottom Mount / French Door / Side by Side'},
         })
     return [
         {
@@ -427,12 +454,13 @@ def append_null_stats(cursor, target_date, validation, category=None):
         retailers = []
         mapping = _mapping(target_date, source)
         for retailer in source['retailers']:
+            retailer_fields = get_sem_required_columns(product_line, retailer)
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             reviews = normal_reviews
             review_stats = {}
             if uses_new_policy(target_date, SEM_COUNTRY):
                 reviews, review_stats, auto_logs = review_state(
-                    cursor, target_date, rows, fields, normal_reviews,
+                    cursor, target_date, rows, retailer_fields, normal_reviews,
                     table_name=source['table_name'], country=SEM_COUNTRY,
                     product_line=product_line, retailer=retailer,
                     is_null=lambda value, _field: _missing(value),
@@ -444,7 +472,7 @@ def append_null_stats(cursor, target_date, validation, category=None):
                     if _missing(row.get(field))
                     and f"{row.get('id')}_{field}" not in reviews
                 )
-                for field in fields
+                for field in retailer_fields
             }
             issue_count = sum(field_counts.values())
             retailers.append({
@@ -475,7 +503,7 @@ def append_null_stats(cursor, target_date, validation, category=None):
 def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILER):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
-    if not source or column not in get_sem_required_columns(product_line):
+    if not source or column not in get_sem_required_columns(product_line, retailer):
         return {'results': [], 'display_config': {}, 'query_config': {}}
     retailer = normalize_sem_retailer(product_line, retailer)
     rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
@@ -493,7 +521,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILE
     target_results = []
     for row in rows:
         null_fields = [
-            field for field in get_sem_required_columns(product_line)
+            field for field in get_sem_required_columns(product_line, retailer)
             if _missing(row.get(field))
         ]
         if column in null_fields:
@@ -525,7 +553,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILE
             results = []
             for row in history_rows:
                 null_fields = [
-                    field for field in get_sem_required_columns(product_line)
+                    field for field in get_sem_required_columns(product_line, retailer)
                     if _missing(row.get(field))
                 ]
                 results.append({**row, 'null_fields': null_fields})
@@ -633,7 +661,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER):
         'original_sku_price', 'star_rating', 'count_of_star_ratings',
         'count_of_reviews', 'calendar_week', 'product_url',
     )))
-    if retailer == SEM_HOMEDEPOT_RETAILER:
+    if retailer in (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER):
         columns.insert(columns.index('original_sku_price') + 1, 'savings')
     editable = list(get_sem_editable_columns(product_line, retailer))
     return {

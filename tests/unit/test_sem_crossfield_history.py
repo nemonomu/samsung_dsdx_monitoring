@@ -44,7 +44,7 @@ class SemCrossfieldHistoryTests(unittest.TestCase):
         with patch.object(sem_services, '_latest_rows') as latest:
             with patch.object(sem_services, '_history_rows') as load_history:
                 latest.side_effect = lambda *_args, **kwargs: (
-                    ([] if kwargs.get('retailer') == 'HomeDepot' else
+                    ([] if kwargs.get('retailer') in ('HomeDepot', 'Coppel') else
                      [self.target] if targets is None else targets), self.mapping,
                 )
                 load_history.return_value = history

@@ -51,7 +51,7 @@ row = {
 mapping = {'inspection_date': '2026-09-13', 'source_date': '2026-09-13', 'offset_days': 0}
 fixtures = []
 def latest(*args, **kwargs):
-    return ([] if kwargs.get('retailer') == 'HomeDepot' else [row]), mapping
+    return ([] if kwargs.get('retailer') in ('HomeDepot', 'Coppel') else [row]), mapping
 with patch.object(sem_services, 'exclude_page_absent_records', side_effect=lambda cursor, day, records, **kwargs: (records, [])), patch.object(sem_services, '_latest_rows', side_effect=latest), patch.object(sem_services, '_history_rows', return_value=[]):
     for product in ('sem_tv', 'sem_ref', 'sem_ldy'):
         summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), product)
@@ -64,6 +64,13 @@ with patch.object(sem_services, 'exclude_page_absent_records', side_effect=lambd
     summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), 'sem_ref')
     detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), 'sem_ref', 'sem_ref:savings_missing', days=3)
     fixtures.append({'summary': summary, 'detail': detail, 'retailer': 'HomeDepot'})
+def coppel_latest(*args, **kwargs):
+    rows = [{**row, 'account_name': 'Coppel', 'original_sku_price': '$120', 'savings': '$19 (16%)'}]
+    return (rows if kwargs.get('retailer') == 'Coppel' else []), mapping
+with patch.object(sem_services, 'exclude_page_absent_records', side_effect=lambda cursor, day, records, **kwargs: (records, [])), patch.object(sem_services, '_latest_rows', side_effect=coppel_latest), patch.object(sem_services, '_history_rows', return_value=[]):
+    summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), 'sem_ref')
+    detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 9, 13), 'sem_ref', 'sem_ref:coppel_savings_amount_match', days=3)
+    fixtures.append({'summary': summary, 'detail': detail, 'retailer': 'Coppel'})
 with patch.object(sem_services, '_latest_rows', return_value=([], mapping)):
     for product in ('sem_ref', 'sem_ldy'):
         summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), product)
@@ -101,8 +108,10 @@ print(json.dumps(fixtures))
             if (rule.rule_key === 'savings_missing') assert(!card.includes('Liverpool'));
         }
         if (fixture.no_findings) {
-            assert.strictEqual((summaryHtml.match(/class="rule-count zero"/g) || []).length, 8);
+            assert.strictEqual((summaryHtml.match(/class="rule-count zero"/g) || []).length, 13);
             assert(summaryHtml.includes('HomeDepot 할인율 일치'));
+            assert(summaryHtml.includes('Coppel 할인금액 일치'));
+            assert(summaryHtml.includes('Coppel 할인율 일치'));
             assert(summaryHtml.includes('적용 대상: Liverpool · HomeDepot'));
             let guideHtml;
             context.AppModal = {
@@ -130,6 +139,12 @@ print(json.dumps(fixtures))
             assert(context._cfEditableColumns('Liverpool').has('savings'));
             assert(context._cfUsesEqualReviewCounts('SEM_REF', 'HomeDepot'));
             assert.strictEqual(context.crossfieldSelectFields, 'final_sku_price|original_sku_price|savings');
+        }
+        if (fixture.retailer === 'Coppel') {
+            assert(context._cfEditableColumns('Coppel').has('savings'));
+            assert(!context._cfUsesEqualReviewCounts('SEM_REF', 'Coppel'));
+            assert.strictEqual(context.crossfieldSelectFields, 'final_sku_price|original_sku_price|savings');
+            assert.deepStrictEqual(Object.keys(fixture.detail.retailer_summary), ['Coppel']);
         }
     }
     console.log('Layer3 SEM real summary-to-detail date routing tests passed.');
