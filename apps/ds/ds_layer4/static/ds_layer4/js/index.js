@@ -6,7 +6,10 @@
 const currentUserId = document.getElementById('app-data').dataset.userId;
 let reportData = null;
 let isClosed = false;
-let currentReportView = 'status'; // 'status' or 'detail'
+let currentReportView = 'status'; // 'status', 'detail' (선택한 리테일러), 'file'
+let currentReportRetailer = null;
+let reportListDate = null;
+let reportLoadSequence = 0;
 let expandedRetailers = new Set(); // 펼쳐진 아코디언 리테일러 추적
 let causeOptions = {}; // 리테일러별 원인 옵션
 const INTERNAL_CAUSE_MARKERS = new Set(['crawler_null_capture']);
@@ -46,12 +49,13 @@ const reportBar = new FilterBar('#reportControlsBar', {
 // ── 뷰 토글 초기화 ──────────────────────────────
 (function() {
     const wrapper = document.getElementById('reportViewToggle');
-    const options = ['현황', '파일', '상세'];
-    const views = ['status', 'file', 'detail'];
+    const options = ['상세/현황', '파일'];
+    const views = ['status', 'file'];
     options.forEach((opt, i) => {
         const btn = document.createElement('button');
         btn.textContent = opt;
         btn.style.minWidth = '80px';
+        btn.dataset.reportView = views[i];
         btn.className = 'app-btn app-btn-md ' + (i === 0 ? 'app-btn-primary' : 'app-btn-cancel');
         btn.addEventListener('click', () => {
             wrapper.querySelectorAll('button').forEach(b => {
@@ -87,13 +91,23 @@ async function loadReportList() {
         date = document.getElementById('targetDate').value; // 보정된 날짜
     }
     setPersistedDate(date); // 날짜 저장
+    if (reportListDate !== null && reportListDate !== date) {
+        currentReportRetailer = null;
+        if (currentReportView === 'detail') currentReportView = 'status';
+    }
+    reportListDate = date;
+    updateReportNavigation();
+    const requestSequence = ++reportLoadSequence;
+    const requestView = currentReportView;
     const content = document.getElementById('reportContent');
 
     content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div></div>';
+    document.getElementById('reportActions').innerHTML = '';
 
     try {
-        const response = await fetch(`/ds/layer4/api/report-list/?date=${date}&view=${currentReportView}`);
+        const response = await fetch(`/ds/layer4/api/report-list/?date=${date}&view=${requestView}`);
         const data = await response.json();
+        if (requestSequence !== reportLoadSequence || date !== document.getElementById('targetDate').value) return;
 
         if (!data.success) {
             throw new Error(data.error || '데이터 로드 실패');
@@ -111,6 +125,7 @@ async function loadReportList() {
         checkRunningCaptures(data);
 
     } catch (error) {
+        if (requestSequence !== reportLoadSequence || date !== document.getElementById('targetDate').value) return;
         console.error('Error loading report list:', error);
         content.innerHTML = `
             <div class="empty-state">
@@ -185,18 +200,42 @@ function updateCloseButton(data) {
 // 뷰 전환
 function setReportView(view) {
     currentReportView = view;
+    currentReportRetailer = null;
+    ++reportLoadSequence;
+    updateReportNavigation();
     const reportTableArea = document.getElementById('reportTableArea');
     const fileSection = document.getElementById('fileTabSection');
 
     if (view === 'file') {
         reportTableArea.style.display = 'none';
         fileSection.style.display = 'block';
-        loadFileTab();
+        return loadFileTab();
     } else {
         reportTableArea.style.display = 'block';
         fileSection.style.display = 'none';
-        loadReportList();
+        return loadReportList();
     }
+}
+
+function updateReportNavigation() {
+    const detail = currentReportView === 'detail' && currentReportRetailer !== null;
+    const nav = document.getElementById('reportDetailNav');
+    if (nav) nav.hidden = !detail;
+    const name = document.getElementById('reportDetailRetailer');
+    if (name) name.textContent = detail ? currentReportRetailer : '';
+    document.getElementById('reportViewToggle').querySelectorAll('button').forEach(button => {
+        const selected = button.dataset.reportView === (currentReportView === 'file' ? 'file' : 'status');
+        button.className = 'app-btn app-btn-md ' + (selected ? 'app-btn-primary' : 'app-btn-cancel');
+        button.setAttribute('aria-pressed', String(selected));
+    });
+}
+
+function openReportRetailerDetail(reportId) {
+    const report = reportData?.daily_reports.find(row => String(row.id) === String(reportId));
+    if (!report) return;
+    currentReportRetailer = report.retailer;
+    currentReportView = 'detail';
+    return loadReportList();
 }
 
 // loadReportData alias (조회 버튼에서 사용)

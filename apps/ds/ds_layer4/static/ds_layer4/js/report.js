@@ -25,87 +25,28 @@ function renderReportTable(data) {
     }
 
     // 뷰 모드에 따라 다른 렌더링
-    if (currentReportView === 'status') {
+    if (currentReportView !== 'detail') {
         renderStatusTable(data);
         return;
     }
 
-    // 상세(detail) 모드: 리테일러별 이상치 그룹화
-    const anomaliesByRetailer = {};
-    data.anomalies.forEach(a => {
-        if (!anomaliesByRetailer[a.retailer]) {
-            anomaliesByRetailer[a.retailer] = [];
-        }
-        anomaliesByRetailer[a.retailer].push(a);
-    });
-
-    let html = `
-        <table class="report-table">
-            <thead>
-                <tr>
-                    <th style="width: 40px;"></th>
-                    <th>리테일러</th>
-                    <th class="text-center">이상치</th>
-                    <th class="text-center">스크린샷</th>
-                    <th class="text-center">원인</th>
-                </tr>
-            </thead>
-            <tbody>
-    `;
-
-    // 이상치가 있는 리테일러만 필터링
-    const retailersWithAnomalies = data.daily_reports.filter(r => r.anomaly_total > 0);
-
-    if (retailersWithAnomalies.length === 0) {
-        html += `<tr><td colspan="5" style="text-align: center; padding: 40px; color: #666;">이상치가 있는 리테일러가 없습니다.</td></tr>`;
+    // 현황에서 선택한 리테일러의 기존 SKU 상세와 저장 기능을 사용한다.
+    const report = data.daily_reports.find(row => row.retailer === currentReportRetailer);
+    if (!report) {
+        currentReportRetailer = null;
+        currentReportView = 'status';
+        updateReportNavigation();
+        renderStatusTable(data);
+        return;
     }
-
-    retailersWithAnomalies.forEach((report, idx) => {
-        const retailerAnomalies = anomaliesByRetailer[report.retailer] || [];
-        const screenshotCount = retailerAnomalies.filter(a => a.screenshot_id).length;
-        const causeCount = retailerAnomalies.filter(a => normalizeReportCause(a.cause)).length;
-        const missingCauseCount = retailerAnomalies.length - causeCount;
-        const escRetailer = report.retailer.replace(/'/g, "\\'");
-
-        html += `
-            <tr class="retailer-row">
-                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')">
-                    <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                </td>
-                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')"><strong>${report.retailer}</strong>${missingCauseCount > 0 ? ` <span class="missing-cause-badge">원인 미선택 ${missingCauseCount}건</span>` : ''}</td>
-                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')" class="text-center" style="color: #dc2626; font-weight: 600;">
-                    ${report.anomaly_total}
-                </td>
-                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')" class="text-center" style="color: ${screenshotCount > 0 ? '#2563eb' : '#999'}; font-weight: 600;">
-                    ${screenshotCount}
-                </td>
-                <td onclick="toggleAnomalies(${idx}, '${escRetailer}')" class="text-center" style="color: ${causeCount > 0 ? '#16a34a' : '#999'}; font-weight: 600;">
-                    ${causeCount}
-                </td>
-            </tr>
-            <tr class="anomaly-details" id="anomalyDetails${idx}">
-                <td colspan="5">
-                    <div class="anomaly-list">
-                        ${renderAnomalyItems(retailerAnomalies, report.retailer)}
-                    </div>
-                </td>
-            </tr>
-        `;
-    });
-
-    html += '</tbody></table>';
-
-    content.innerHTML = html;
-    actions.innerHTML = ''; // 상세 탭에서는 하단 저장 버튼 없음
-
-    // 컬럼 리사이즈 적용
-    const table = content.querySelector('.report-table');
+    const anomalies = (data.anomalies || []).filter(row => row.retailer === currentReportRetailer);
+    const missingCauseCount = anomalies.filter(row => !normalizeReportCause(row.cause)).length;
+    content.innerHTML = `<div class="anomaly-list">
+        ${missingCauseCount ? `<div style="margin-bottom:12px;"><span class="missing-cause-badge">원인 미선택 ${missingCauseCount}건</span></div>` : ''}
+        ${renderAnomalyItems(anomalies, currentReportRetailer)}</div>`;
+    actions.innerHTML = '';
+    const table = content.querySelector('.anomaly-table');
     if (table) enableColumnResize(table);
-
-    // 펼쳐진 아코디언 복원
-    restoreExpandedAccordions();
 }
 
 // 현황 탭 렌더링 (체크박스로 선택 후 저장)
@@ -147,7 +88,7 @@ function renderStatusTable(data) {
                     <input type="checkbox" id="statusCheck_${report.id}" class="memo-checkbox status-checkbox" onchange="toggleStatusInput(${report.id})" data-cause-summary="${escCauseSummary}">
                 </td>
                 `}
-                <td><strong>${report.retailer}</strong></td>
+                <td><button type="button" class="app-btn app-btn-sm" style="background:transparent;color:inherit;padding:4px 0;" onclick="openReportRetailerDetail(${Number(report.id)})"><strong>${esc(report.retailer)}</strong></button></td>
                 <td class="text-center">${report.total_count?.toLocaleString() || 0}</td>
                 <td class="text-center" style="color: ${report.anomaly_total > 0 ? '#dc2626' : '#16a34a'}; font-weight: 600;">
                     ${report.anomaly_total || 0}

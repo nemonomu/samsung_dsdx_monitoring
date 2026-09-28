@@ -29,10 +29,10 @@ assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-4"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/index.js' %}?v=20260923-1"
+    "{% static 'ds_layer4/js/index.js' %}?v=20260928-report-flow"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260923-6"
+    "{% static 'ds_layer4/js/report.js' %}?v=20260928-report-flow"
 ));
 
 function fakeClassList() {
@@ -173,7 +173,7 @@ const mixedData = {
     daily_reports: [{ retailer: 'Currys', anomaly_total: 7 }],
     anomalies: mixedAnomalies
 };
-vm.runInContext("currentReportView = 'detail'; isClosed = false;", sandbox);
+vm.runInContext("currentReportView = 'detail'; currentReportRetailer = 'Currys'; isClosed = false;", sandbox);
 sandbox.renderReportTable(mixedData);
 const initialHtml = elements.reportContent.innerHTML;
 assert.ok(initialHtml.includes('원인 미선택 5건'));
