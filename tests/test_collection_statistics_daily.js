@@ -184,5 +184,26 @@ async function flush() {
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
         /class="cs-day-cell low cs-bsr-low" title="BSR 기준 100개 \/ 수집 99개 \/ 1개 부족">99<small>이상<\/small>/);
-    console.log('Daily statistics: default all, per-retailer averages, local filters and 2/7-week dates passed.');
+    elements['cs-retailer'].value = 'Amazon';
+    Object.assign(fixtureDay, {state: 'complete', main: 60, bsr: 60, total: 60,
+        observation_state: 'observing', observation_days: 3,
+        alerts: [{metric: 'bsr', status: 'VOLUME_LOW'}, {metric: 'main', status: 'VOLUME_LOW'}]});
+    elements['cs-retailer'].fire('change');
+    assert(elements['cs-table-body'].innerHTML.includes('신규 · 관찰 중 (3/5일)'));
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
+    Object.assign(fixtureDay, {main: 0, bsr: 0, total: 0});
+    elements['cs-retailer'].fire('change');
+    assert(elements['cs-table-body'].innerHTML.includes('미수집 · 신규 · 관찰 중 (3/5일)'));
+    fixtureDay.collected_count = 80;
+    elements['cs-retailer'].fire('change');
+    assert(!elements['cs-table-body'].innerHTML.includes('미수집'));
+    fixtureDay.state = 'error';
+    elements['cs-retailer'].fire('change');
+    assert(elements['cs-table-body'].innerHTML.includes('갱신 실패 · 신규 · 관찰 중 (3/5일)'));
+    Object.assign(fixtureDay, {state: 'complete', main: 60, bsr: 60, total: 60,
+        observation_state: 'ready', observation_days: 5, alerts: [], bsr_comparison_state: 'ready'});
+    elements['cs-retailer'].fire('change');
+    assert(!elements['cs-table-body'].innerHTML.includes('신규'));
+    console.log('Daily statistics: counts, filters, observation, missing and error display passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

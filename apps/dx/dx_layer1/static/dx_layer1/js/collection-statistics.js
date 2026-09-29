@@ -58,9 +58,14 @@
     function dayResult(entries) {
         if (!entries.length) return {total: null, label: '미집계'};
         const active = entries.filter(day => day.state !== 'not_scheduled');
+        const observing = active.filter(day => day.observation_state === 'observing');
+        const observation = observing.length
+            ? `신규 · 관찰 중 (${Math.min(...observing.map(day => Math.max(0, Math.min(5, Number(day.observation_days) || 0))))}/5일)`
+            : active.some(day => day.observation_state === 'unknown') ? '관찰 이력 확인 중' : '';
+        const annotate = result => ({...result, label: [result.label, observation].filter(Boolean).join(' · ')});
         if (!active.length) return {total: null, label: '수집 시작 전'};
-        if (active.some(day => day.state === 'error')) return {total: null, label: '갱신 실패', kind: 'low'};
-        if (active.some(day => day.state === 'pending')) return {total: null, label: '수집 중'};
+        if (active.some(day => day.state === 'error' || day.base_status === 'ERROR')) return annotate({total: null, label: '갱신 실패', kind: 'low'});
+        if (active.some(day => day.state === 'pending')) return annotate({total: null, label: '수집 중'});
         if (active.every(day => day.state === 'unknown')) return {total: null, label: '미집계'};
         if (active.some(day => day.state === 'unknown')) return {total: null, label: '부분 집계'};
         if (active.some(day => day.state === 'future')) return {total: null, label: '예정'};
@@ -69,23 +74,22 @@
             return values.length ? values.reduce((total, value) => total + value, 0) : null;
         };
         const total = sum('total'), main = sum('main'), bsr = sum('bsr');
-        if (total === 0 && main === 0 && bsr === 0) {
-            return {total, main, bsr, label: '미수집', kind: 'low'};
+        if (total === 0 && (main || 0) === 0 && (bsr || 0) === 0 && !sum('collected_count')) {
+            return annotate({total, main, bsr, label: '미수집', kind: 'low'});
         }
-        const alerts = active.flatMap(day => day.alerts || []);
+        const alerts = active.flatMap(day => ['observing', 'unknown'].includes(day.observation_state) ? [] : day.alerts || []);
         const bsrAlerts = alerts.filter(alert => alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status));
         const bsrLow = bsrAlerts.some(alert => alert.status === 'VOLUME_LOW');
         const bsrInfo = {
             bsrKind: bsrAlerts.length ? (bsrLow ? 'low' : 'high') : '',
-            bsrLabel: bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : '',
+            bsrLabel: bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
             bsrReason: bsrAlerts.map(alert => alert.reason || 'BSR 수량 부족').join(' · '),
         };
-        if (total === 0) return {total, main, bsr, ...bsrInfo, label: '미수집', kind: 'low'};
         const low = alerts.some(alert => alert.metric !== 'bsr' && alert.status === 'VOLUME_LOW');
         const high = alerts.some(alert => alert.metric !== 'bsr' && ['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(alert.status));
         if (low) return {total, main, bsr, ...bsrInfo, label: '이상', kind: 'low'};
         if (high) return {total, main, bsr, ...bsrInfo, label: '확인 필요', kind: 'high'};
-        return {total, main, bsr, ...bsrInfo, label: active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족'};
+        return {total, main, bsr, ...bsrInfo, label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
     }
 
     function syncRetailers(preferred = byId('cs-retailer').value) {

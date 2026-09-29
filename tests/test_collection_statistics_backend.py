@@ -43,6 +43,62 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_new_retailer_fifth_day_observes_sixth_compares_prior_median(self):
+        for retailer, country in [('Coppel', 'SEM'), ('FutureRetailer', 'SEG')]:
+            history = [sample(retailer=retailer, bsr=60, source_date=f'2026-09-{n:02}') for n in range(1, 6)]
+            for days in range(5):
+                row = calc.compare_rows([sample(retailer=retailer, bsr=10, main=10)], history[:days], country=country)[0]
+                self.assertEqual(('observing', days + 1, days, []),
+                                 (row['observation_state'], row['observation_days'], row['observation_prior_days'], row['alerts']))
+                self.assertEqual([], calc.current_volume_decision(row, country)['alerts'])
+            row = calc.compare_rows([sample(retailer=retailer, bsr=42)], history, country=country)[0]
+            self.assertEqual('ready', row['observation_state'])
+            expected = 60 if retailer == 'Coppel' else 100
+            self.assertEqual(expected, row['baselines']['bsr']['value'])
+            self.assertEqual('VOLUME_LOW', row['alerts'][0]['status'])
+            self.assertEqual(row['alerts'], calc.current_volume_decision(row, country)['alerts'])
+
+    def test_observation_deduplicates_dates_across_slots_and_isolates_products(self):
+        history = [sample(retailer='Coppel', source_date='2026-09-01', slot=slot) for slot in ('AM', 'PM')]
+        history += [sample(retailer='Coppel', product='TV', source_date=f'2026-08-{n:02}') for n in range(1, 8)]
+        history += [sample(retailer='Other', source_date=f'2026-08-{n:02}') for n in range(1, 8)]
+        rows = calc.compare_rows([sample(retailer='Coppel', slot=s) for s in ('AM', 'PM')], history, country='SEM')
+        self.assertEqual([2, 2], [row['observation_days'] for row in rows])
+        self.assertTrue(all(not row['alerts'] for row in rows))
+
+    def test_missing_error_pending_days_do_not_advance_observation_bsr_zero_does(self):
+        history = [sample(retailer='Coppel', source_date='2026-09-01')]
+        for extra, state in [({'main': 0, 'total': 0, 'bsr': 0}, 'missing'),
+                             ({'complete': False}, 'pending'), ({'base_status': 'ERROR'}, 'pending'),
+                             ({'refresh_error': True}, 'pending')]:
+            current = sample(retailer='Coppel', **extra)
+            row = calc.compare_rows([current], history + [current] * 8, country='SEM')[0]
+            self.assertEqual(1, row['observation_days'])
+            self.assertEqual(state, row['bsr_comparison_state'])
+            self.assertEqual([], row['alerts'])
+        row = calc.compare_rows([sample(retailer='Coppel', bsr=0)], history, country='SEM')[0]
+        self.assertEqual(2, row['observation_days'])
+        self.assertEqual('observing', row['bsr_comparison_state'])
+
+    def test_raw_collection_without_ranks_is_not_whole_collection_missing(self):
+        row = calc.normalize_check(check_for(0, bsr_count=0, raw_count=80, actual=0), 'SEM', date(2026, 9, 20))[0]
+        self.assertEqual((0, 80), (row['total'], row['collected_count']))
+        compared = calc.compare_rows([row], [], country='SEM')[0]
+        self.assertEqual(('observing', 1), (compared['bsr_comparison_state'], compared['observation_days']))
+        week = calc.build_week({date(2026, 9, 20): [compared]}, date(2026, 9, 14), date(2026, 9, 20))[0]
+        self.assertEqual(0, week['missing_days'])
+
+    def test_coppel_legacy_fixed_alert_is_not_excluded_from_median_history(self):
+        history = [sample(retailer='Coppel', bsr=60, alerts=[
+            {'metric': 'bsr', 'status': 'VOLUME_LOW', 'rule': 'fixed_100'}])] * 5
+        row = calc.compare_rows([sample(retailer='Coppel', bsr=60)], history, country='SEM')[0]
+        self.assertEqual([], row['alerts'])
+        self.assertEqual(60, row['baselines']['bsr']['value'])
+        legacy = sample(retailer='Coppel', bsr=60, baselines={
+            'bsr': {'value': 100, 'days': 0, 'rule': 'fixed_100'}}, alerts=history[0]['alerts'])
+        self.assertEqual([], calc.current_volume_decision(legacy, 'SEM')['alerts'])
+        self.assertEqual('unknown', calc.current_volume_decision(legacy, 'SEM')['observation_state'])
+
     def test_main_review_and_abnormal_boundaries_all_countries(self):
         history = [sample(total=3000, main=2000)] * 7
         for country in calc.COUNTRIES:
@@ -79,7 +135,7 @@ class CalculationTests(SimpleTestCase):
             current = sample(retailer=retailer, product=product, bsr=79)
             history = [sample(retailer=retailer, product=product, bsr=80)] * 7
             self.assertEqual([], calc.compare_rows([current], history, country=country)[0]['alerts'])
-            self.assertEqual('insufficient', calc.compare_rows([current], history[:6], country=country)[0]['bsr_comparison_state'])
+            self.assertEqual('observing', calc.compare_rows([current], history[:4], country=country)[0]['bsr_comparison_state'])
 
     def test_tiered_projection_removes_fixed_alert_and_rechecks_saved_median(self):
         old = sample(bsr=80, alerts=[{'metric': 'bsr', 'status': 'VOLUME_LOW', 'rule': 'fixed_100'}],
@@ -131,12 +187,12 @@ class CalculationTests(SimpleTestCase):
         self.assertEqual('VOLUME_LOW', row['alerts'][0]['status'])
 
     def test_history_minimum_zero_baseline_and_collecting(self):
-        self.assertEqual('insufficient', calc.compare_rows([sample(100)], [sample()] * 6)[0]['comparison_state'])
+        self.assertEqual('observing', calc.compare_rows([sample(100)], [sample()] * 4)[0]['comparison_state'])
         self.assertEqual([], calc.compare_rows([sample(100)], [sample(0)] * 7)[0]['alerts'])
         self.assertEqual([], calc.compare_rows([sample(100, complete=False)], [sample()] * 7)[0]['alerts'])
 
     def test_other_products_retailers_slots_and_failed_history_are_not_mixed(self):
-        history = [sample(), sample(retailer='Amazon'), sample(product='TV'), sample(slot='AM'), sample(baseline_eligible=False)] * 6
+        history = [sample(), sample(retailer='Amazon'), sample(product='TV'), sample(slot='AM'), sample(baseline_eligible=False)] * 4
         self.assertEqual([], calc.compare_rows([sample(100)], history)[0]['alerts'])
 
     def test_main_drop_not_hidden_by_total_increase(self):
@@ -145,7 +201,7 @@ class CalculationTests(SimpleTestCase):
 
     def test_week_zeros_are_included_unknowns_are_not_zero_and_future_not_due(self):
         monday = date(2026, 9, 14)
-        week = calc.build_week({monday: [sample(300)], monday + timedelta(days=1): [sample(0)]}, monday, monday + timedelta(days=2))[0]
+        week = calc.build_week({monday: [sample(300)], monday + timedelta(days=1): [sample(0, bsr=0)]}, monday, monday + timedelta(days=2))[0]
         self.assertEqual({'sum': 300, 'average': 150}, week['metrics']['total'])
         self.assertEqual((2, 3, 1, 1), (week['completed_days'], week['expected_days'], week['missing_days'], week['unknown_days']))
         self.assertEqual('future', week['daily'][3]['state'])
@@ -159,9 +215,9 @@ class CalculationTests(SimpleTestCase):
         rows = calc.normalize_check(check_for(300, actual=300, raw_count=315), 'SEM', date(2026, 9, 21))
         self.assertEqual(300, rows[0]['total'])
 
-    def test_fixed_bsr_99_is_low_without_history_100_is_normal(self):
+    def test_fixed_bsr_99_is_low_after_observation_100_is_normal(self):
         for current in (0, 99, 100, 101):
-            row = calc.compare_rows([sample(bsr=current)], [], country='SEG')[0]
+            row = calc.compare_rows([sample(bsr=current)], [sample()] * 5, country='SEG')[0]
             bsr = [a for a in row['alerts'] if a['metric'] == 'bsr']
             self.assertEqual(current < 100, bool(bsr))
             self.assertEqual('ready', row['bsr_comparison_state'])
@@ -169,25 +225,27 @@ class CalculationTests(SimpleTestCase):
                 self.assertEqual(('VOLUME_LOW', 100, current),
                                  (bsr[0]['status'], bsr[0]['baseline'], bsr[0]['actual']))
 
-    def test_variable_bsr_exact_30_percent_drop_and_seven_days(self):
+    def test_variable_bsr_exact_30_percent_drop_and_five_days(self):
         for country, retailer, product in [('SEM', 'HomeDepot', 'TV'),
                                            ('SEM', 'HomeDepot', 'REF'),
-                                           ('SEM', 'HomeDepot', 'LDY')]:
-            history = [sample(retailer=retailer, product=product, bsr=80)] * 7
+                                           ('SEM', 'HomeDepot', 'LDY'),
+                                           ('SEM', 'Coppel', 'REF'), ('SEM', 'Coppel', 'LDY')]:
+            history = [sample(retailer=retailer, product=product, bsr=80)] * 5
             for count, low in ((56, True), (57, False), (79, False), (120, False), (0, True)):
                 row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=count)],
                                         history, country=country)[0]
                 self.assertEqual(low, any(a['metric'] == 'bsr' for a in row['alerts']))
                 self.assertEqual(80, row['baselines']['bsr']['value'])
             row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=40)],
-                                    history[:6], country=country)[0]
-            self.assertEqual('insufficient', row['bsr_comparison_state'])
+                                    history[:4], country=country)[0]
+            self.assertEqual('observing', row['bsr_comparison_state'])
             self.assertFalse(any(a['metric'] == 'bsr' for a in row['alerts']))
 
     def test_exception_scope_and_pending_or_failed_do_not_make_bsr_alerts(self):
         for country, retailer, product in [('SEG', 'OTTO', 'TV'), ('SEA', 'Amazon', 'REF'),
                                            ('SEA', 'HomeDepot', 'REF'), ('SEM', 'Liverpool', 'TV')]:
-            row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=99)], [], country=country)[0]
+            row = calc.compare_rows([sample(retailer=retailer, product=product, bsr=99)],
+                                    [sample(retailer=retailer, product=product)] * 5, country=country)[0]
             self.assertEqual('fixed_100', row['bsr_rule'])
             self.assertEqual(1, len(row['alerts']))
         for extra in ({'complete': False}, {'base_status': 'ERROR'}, {'refresh_error': True}):
@@ -197,12 +255,12 @@ class CalculationTests(SimpleTestCase):
 
     def test_variable_history_counts_distinct_normal_days(self):
         history = [sample(retailer='Amazon', product='TV', bsr=80, source_date=f'2026-09-{n:02}')
-                   for n in range(1, 8)]
+                   for n in range(1, 6)]
         current = sample(retailer='Amazon', product='TV', bsr=55)
-        for index in range(7):
+        for index in range(5):
             history[index]['source_date'] = '2026-09-01'
-        self.assertEqual('insufficient', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
-        for index in range(7):
+        self.assertEqual('observing', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
+        for index in range(5):
             history[index]['source_date'] = f'2026-09-{index+1:02}'
         history[-1]['alerts'] = [{'metric': 'bsr', 'status': 'VOLUME_LOW'}]
         self.assertEqual('insufficient', calc.compare_rows([current], history, country='SEA')[0]['bsr_comparison_state'])
@@ -249,6 +307,50 @@ class CalculationTests(SimpleTestCase):
 
 
 class StoreTests(TestCase):
+    def test_coppel_observation_survives_rebuild_and_both_apis(self):
+        def loader(_country, day):
+            return check_for(bsr_count=42 if day == self.end else 60, retailer='Coppel')
+        self.refresh(self.end - timedelta(days=5), country='SEM', loader=loader)
+        fifth = Daily.objects.get(country='SEM', source_date=self.end - timedelta(days=1)).rows[0]
+        sixth = Daily.objects.get(country='SEM', source_date=self.end).rows[0]
+        self.assertEqual(('observing', 5, []), (fifth['observation_state'], fifth['observation_days'], fifth['alerts']))
+        self.assertEqual(('ready', 60), (sixth['observation_state'], sixth['baselines']['bsr']['value']))
+        for day, expected in [(self.end - timedelta(days=1), fifth), (self.end, sixth)]:
+            with self.assertNumQueries(1):
+                dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(day)})).content)
+            with self.assertNumQueries(1):
+                weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(day), 'country': 'SEM'})).content)
+            displayed = next(d for w in weekly['weeks'] for r in w['rows'] for d in r['daily'] if d['date'] == str(day))
+            for actual in [dashboard['snapshots'][0]['rows'][0], displayed]:
+                self.assertEqual(expected['observation_state'], actual['observation_state'])
+                self.assertEqual(expected['observation_days'], actual['observation_days'])
+                self.assertEqual(expected['alerts'], actual['alerts'])
+        self.refresh(country='SEM', loader=loader)
+        self.assertEqual(sixth, Daily.objects.get(country='SEM', source_date=self.end).rows[0])
+
+    def test_long_outage_does_not_restart_observation_or_mix_countries(self):
+        for offset in range(5):
+            day = self.end - timedelta(days=200 + offset)
+            Daily.objects.create(country='SEM', source_date=day, inspection_date=day,
+                                 rows=[sample(retailer='Coppel')], digest='old', updated_at=timezone.now())
+        self.refresh(country='SEM', loader=lambda *_: check_for(retailer='Coppel', bsr_count=60))
+        row = Daily.objects.get(country='SEM', source_date=self.end).rows[0]
+        self.assertEqual('ready', row['observation_state'])
+        self.assertEqual('insufficient', row['bsr_comparison_state'])
+        self.assertEqual([], row['alerts'])
+        self.refresh(country='SEG', loader=lambda *_: check_for(retailer='Coppel', bsr_count=60))
+        other = Daily.objects.get(country='SEG', source_date=self.end).rows[0]
+        self.assertEqual(('observing', 1), (other['observation_state'], other['observation_days']))
+
+    def test_backfill_recalculates_observation_in_date_order(self):
+        self.refresh(country='SEM', loader=lambda *_: check_for(retailer='Coppel', bsr_count=60))
+        self.assertEqual('observing', Daily.objects.get().rows[0]['observation_state'])
+        self.refresh(self.end - timedelta(days=5), self.end - timedelta(days=1), country='SEM',
+                     loader=lambda *_: check_for(retailer='Coppel', bsr_count=60))
+        row = Daily.objects.get(country='SEM', source_date=self.end).rows[0]
+        self.assertEqual('ready', row['observation_state'])
+        self.assertEqual(60, row['baselines']['bsr']['value'])
+
     def test_saved_main_baseline_uses_new_thresholds_in_both_apis_without_writes(self):
         for current, expected in [(1900, 'VOLUME_REVIEW'), (1700, 'VOLUME_REVIEW'), (1699, 'VOLUME_LOW')]:
             source = sample(retailer='Walmart', product='TV', main=current, total=3000,
@@ -318,6 +420,10 @@ class StoreTests(TestCase):
 
     def test_old_saved_bsr_decisions_upgrade_on_normal_refresh_without_source_reread(self):
         old = self.end - timedelta(days=40)
+        for offset in range(1, 6):
+            day = old - timedelta(days=offset)
+            Daily.objects.create(country='SEG', source_date=day, inspection_date=day,
+                                 rows=[sample()], digest='history', updated_at=timezone.now())
         Daily.objects.create(country='SEG', source_date=old, inspection_date=old,
                              rows=[sample(bsr=99)], digest='old-policy', updated_at=timezone.now())
         from unittest.mock import Mock
@@ -352,7 +458,8 @@ class StoreTests(TestCase):
     def test_legacy_walmart_99_is_red_in_both_apis_without_refresh_or_writes(self):
         # Reproduce the screenshot: saved counts exist but old alerts are empty.
         source = sample(retailer='Walmart', product='TV', main=299, total=321, bsr=99,
-                        alerts=[], comparison_state='insufficient')
+                        alerts=[], comparison_state='insufficient',
+                        baselines={'main': {'value': 299, 'days': 5}})
         Daily.objects.create(country='SEA', source_date=self.end, inspection_date=self.end + timedelta(days=1),
                              rows=[source], digest='legacy', updated_at=timezone.now())
         rows = calc.build_week({self.end: [source]}, calc.week_start(self.end), self.end)

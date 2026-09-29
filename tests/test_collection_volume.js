@@ -6,6 +6,7 @@ vm.createContext(context);
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/collection-volume.js', 'utf8'), context);
 context.esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 context.getSelectedDate = () => '2026-09-21';
+context.getStatusBadge = value => '<status>' + value + '</status>';
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-status.js', 'utf8'), context);
 const volume = context.L1.collectionVolume;
 const day = '2026-09-21';
@@ -17,7 +18,7 @@ function fixture(base = 'OK') {
 function saved(status = 'VOLUME_LOW') {
     return {inspection_date: day, snapshots: [{country: 'SEM', source_date: day, available: true,
         rows: [{product: 'REF', retailer: 'Lowes', slot: 'daily', main: 210, bsr: 100, total: 210,
-            batch_id: 'b1', complete: true, comparison_state: 'ready', alerts: [{status}]}]}]};
+            batch_id: 'b1', complete: true, observation_state: 'ready', comparison_state: 'ready', alerts: [{status}]}]}]};
 }
 for (const status of ['VOLUME_LOW', 'VOLUME_HIGH']) {
     const data = volume.decorate(fixture(), saved(status), day);
@@ -162,6 +163,15 @@ function fixedFixture(country = 'SEA', product = 'TV', retailer = 'Walmart', bsr
     return data;
 }
 const rowOf = data => data.checks[0].categories[0].retailers[0];
+function maturePayload(data) {
+    const check = data.checks[0], cat = check.categories[0], row = rowOf(data);
+    const country = {retail:'SEA', sem_retail:'SEM', seg_retail:'SEG', seda_retail:'SEDA', siel_retail:'SIEL', tse_retail:'TSE'}[check.check_type];
+    return {inspection_date: day, snapshots: [{country, source_date: day, available: true, rows: [{
+        product: cat.name, retailer: row.retailer, slot: 'daily', ...volume.metrics(row, country),
+        batch_id: row.batch_id, complete: true, observation_state: 'ready', observation_prior_days: 5,
+        observation_days: 5, comparison_state: 'ready', alerts: [],
+    }]}]};
+}
 for (const [country, product, retailer] of [
     ['SEA', 'REF', 'Lowes'], ['SEA', 'LDY', 'Lowes'], ['SEA', 'TV', 'Amazon'],
     ['SIEL', 'TV', 'Amazon'], ['SIEL', 'REF', 'Amazon'], ['SIEL', 'LDY', 'Amazon'],
@@ -171,7 +181,7 @@ for (const [country, product, retailer] of [
     assert.strictEqual(rowOf(volume.decorate(current, null, day)).status, 'OK');
     const payload = {inspection_date: day, snapshots: [{country, source_date: day, available: true,
         rows: [{product, retailer, slot: 'daily', main: 299, bsr: 85, total: 337, batch_id: 'b1',
-            complete: true, comparison_state: 'ready', alerts: [{metric: 'bsr', status: 'VOLUME_REVIEW',
+            complete: true, observation_state: 'ready', comparison_state: 'ready', alerts: [{metric: 'bsr', status: 'VOLUME_REVIEW',
                 reason: 'BSR 과거 중앙값 100개 / 수집 85개 / 15% 이상 감소 / 확인 필요'}]}]}]};
     volume.decorate(current, payload, day);
     assert.strictEqual(current.checks[0].status, 'VOLUME_REVIEW');
@@ -189,25 +199,28 @@ for (const [country, product, retailer] of [
 }
 assert.strictEqual(volume.merge('OK', [{status: 'VOLUME_REVIEW'}, {status: 'VOLUME_LOW'}]), 'VOLUME_LOW');
 assert.strictEqual(volume.merge('CRITICAL', [{status: 'VOLUME_REVIEW'}]), 'CRITICAL');
-// Fixed targets do not depend on a snapshot being present, fresh or matching.
+// Missing or stale observation evidence must not invent a fixed-target failure.
 for (const payload of [null, {inspection_date:day,snapshots:[]},
     {inspection_date:day,snapshots:[{country:'SEA',available:false,rows:[]}]},
     {inspection_date:'2026-09-20',snapshots:[]}, saved()]) {
     const current = volume.decorate(fixedFixture(), payload, day);
-    assert.strictEqual(rowOf(current).status, 'VOLUME_LOW');
-    assert.strictEqual(current.checks[0].status, 'VOLUME_LOW');
-    assert.strictEqual(current.summary.failed, 1);
-    assert(context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('class="cs-bsr-low"'));
-    assert(context.L1.retailStatus.render(current.checks[0], 0, 'retail').includes('BSR 기준 100개 / 수집 99개 / 1개 부족'));
+    assert.strictEqual(rowOf(current).status, 'OK');
+    assert.strictEqual(rowOf(current).observation_state, 'unknown');
+    assert.strictEqual(current.summary.failed, 0);
+    assert(context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('관찰 이력 확인 중'));
+    assert(!context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('cs-bsr-low'));
 }
 for (const [country, product, retailer] of [
     ['SEA','REF','Amazon'], ['SEA','LDY','HomeDepot'], ['SEM','REF','Liverpool'],
     ['SEDA','TV','Magalu'], ['SEG','TV','OTTO'], ['SIEL','TV','Flipkart'], ['TSE','TV','Homepro'],
 ]) {
-    assert.strictEqual(rowOf(volume.decorate(fixedFixture(country, product, retailer), null, day)).status, 'VOLUME_LOW');
+    const current = fixedFixture(country, product, retailer);
+    assert.strictEqual(rowOf(volume.decorate(current, maturePayload(current), day)).status, 'VOLUME_LOW');
+    assert(context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('cs-bsr-low'));
 }
-for (const [country, product, retailer] of [['SEA','TV','Amazon'], ['SEM','REF','HomeDepot']]) {
-    assert.strictEqual(rowOf(volume.decorate(fixedFixture(country, product, retailer), null, day)).status, 'OK', 'variable targets still need the median decision');
+for (const [country, product, retailer] of [['SEA','TV','Amazon'], ['SEM','REF','HomeDepot'], ['SEM','REF','Coppel'], ['SEM','LDY','Coppel']]) {
+    const current = fixedFixture(country, product, retailer);
+    assert.strictEqual(rowOf(volume.decorate(current, maturePayload(current), day)).status, 'OK', 'variable targets use the median decision');
 }
 for (const adjust of [
     d => {rowOf(d).bsr_count = 100;},
@@ -219,21 +232,73 @@ for (const adjust of [
     d => {rowOf(d).collection_status = 'COLLECTING';},
     d => {d.checks[0].inspection_date = '2026-09-20';},
 ]) {
-    const current = fixedFixture(); adjust(current); volume.decorate(current, null, day);
+    const current = fixedFixture(); adjust(current); volume.decorate(current, maturePayload(current), day);
     assert(!context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('cs-bsr-low'));
 }
 const displayedSummary = {tv:{inspection_date:day,source_date:day,summary:[{retailer:'Walmart',rows:[{time_slot:'daily',main:299,bsr:99,total:337}]}]}};
 const updated = fixedFixture('SEA','TV','Walmart',100);
-volume.decorate(updated, null, day, displayedSummary);
+volume.decorate(updated, maturePayload(updated), day, displayedSummary);
 assert.strictEqual(rowOf(updated).volume_alerts[0].actual, 99, 'use the counts actually displayed by the current SEA summary');
 displayedSummary.tv.summary[0].rows[0].bsr = 100;
-volume.decorate(updated, null, day, displayedSummary);
+volume.decorate(updated, maturePayload(updated), day, displayedSummary);
 assert.strictEqual(rowOf(updated).status, 'OK', 'recovered counts remove the previous alert');
 displayedSummary.tv.summary[0].rows[0].bsr = 99;
 displayedSummary.tv.inspection_date = '2026-09-20';
-volume.decorate(updated, null, day, displayedSummary);
+volume.decorate(updated, maturePayload(updated), day, displayedSummary);
 assert.strictEqual(rowOf(updated).status, 'OK', 'a different date must not supply current BSR values');
 console.log('Collection volume: threshold states, precedence, snapshot matching and stale-response tests passed.');
+
+for (const retailer of ['Coppel', 'FutureRetailer']) {
+    const current = fixedFixture('SEM', 'REF', retailer, 60);
+    const payload = maturePayload(current), stored = payload.snapshots[0].rows[0];
+    Object.assign(stored, {observation_state: 'observing', observation_prior_days: 1, observation_days: 2,
+        alerts: [{metric: 'bsr', status: 'VOLUME_LOW', rule: 'fixed_100'}, {metric: 'main', status: 'VOLUME_LOW'}]});
+    volume.decorate(current, payload, day);
+    assert.strictEqual(rowOf(current).status, 'OK');
+    assert.strictEqual(rowOf(current).volume_alerts.length, 0);
+    assert(context.L1.retailStatus.rowBadge(rowOf(current)).includes('신규 · 관찰 중 (2/5일)'));
+    assert(context.L1.retailStatus.render(current.checks[0], 0, 'sem_retail').includes('신규 · 관찰 중 (2/5일)'));
+    stored.observation_prior_days = 4;
+    volume.decorate(current, payload, day);
+    assert.strictEqual(rowOf(current).observation_days, 5);
+    assert.strictEqual(rowOf(current).volume_alerts.length, 0, 'fifth day is still observation');
+    for (const status of ['CRITICAL', 'ERROR', 'COLLECTING']) {
+        const failed = fixedFixture('SEM', 'REF', retailer, 0);
+        Object.assign(rowOf(failed), {status, count: 0, main_count: 0});
+        volume.decorate(failed, payload, day);
+        assert.strictEqual(rowOf(failed).status, status);
+        assert.strictEqual(rowOf(failed).observation_days, 4);
+        assert.strictEqual(rowOf(failed).volume_alerts.length, 0);
+        const badge = context.L1.retailStatus.rowBadge(rowOf(failed));
+        assert(badge.includes('신규 · 관찰 중 (4/5일)'));
+        assert(badge.includes(status === 'CRITICAL' ? '미수집' : status));
+    }
+    Object.assign(stored, {observation_state: 'ready', observation_prior_days: 5,
+        alerts: retailer === 'Coppel' ? [] : [{metric: 'bsr', status: 'VOLUME_LOW'}]});
+    volume.decorate(current, payload, day);
+    assert.strictEqual(rowOf(current).status, retailer === 'Coppel' ? 'OK' : 'VOLUME_LOW');
+    assert(!context.L1.retailStatus.rowBadge(rowOf(current)).includes('신규'));
+}
+
+// Observation on one slot must not hide missing/error alerts on another slot.
+const multiSlot = fixedFixture('SEM', 'REF', 'Coppel', 60);
+const multiRow = {...rowOf(multiSlot)};
+const multiCat = multiSlot.checks[0].categories[0];
+multiCat.retailers = [];
+multiCat.time_slots = [
+    {name: 'AM', retailers: [multiRow]},
+    {name: 'PM', retailers: [{...multiRow, status: 'CRITICAL', main_count: 0, bsr_count: 0, count: 0}]},
+    {name: 'night', retailers: [{...multiRow, status: 'ERROR'}]},
+];
+const multiPayload = {inspection_date: day, snapshots: [{country: 'SEM', source_date: day, available: true,
+    rows: multiCat.time_slots.map(slot => ({product: 'REF', retailer: 'Coppel', slot: slot.name,
+        observation_state: 'observing', observation_prior_days: 1, observation_days: 2, complete: true}))}]};
+volume.decorate(multiSlot, multiPayload, day);
+assert(multiCat.time_slots.every(slot => slot.retailers[0].observation_days === 2));
+const multiBanner = context.L1.retailStatus.render(multiSlot.checks[0], 0, 'sem_retail');
+assert.strictEqual((multiBanner.match(/신규 · 관찰 중/g) || []).length, 1);
+assert(multiBanner.includes('미수집'));
+assert(multiBanner.includes('오류'));
 
 // A stalled volume API must never delay the existing page; old dates cannot repaint it.
 async function verifyIndependentLoading() {

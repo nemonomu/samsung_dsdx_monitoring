@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET
 
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 from apps.dx.dx_layer1.common.context import build_context
-from .calculations import COUNTRIES, current_volume_decision, week_start
+from .calculations import COUNTRIES, MINIMUM_DAYS, current_volume_decision, week_start
 
 
 def page(request):
@@ -68,7 +68,7 @@ def weekly(request):
                                          default=None)})
     return JsonResponse({'country': country, 'product': product, 'retailers': retailers, 'weeks': result,
                          'updated_at': min((s.updated_at for s in snapshots), default=None),
-                         'basis': 'source_date', 'baseline_days': 28, 'minimum_history_days': 7})
+                         'basis': 'source_date', 'baseline_days': 28, 'minimum_history_days': MINIMUM_DAYS})
 
 
 @require_GET
@@ -88,6 +88,7 @@ def alerts(request):
         'available': not snapshot.refresh_error and now - snapshot.updated_at < timedelta(minutes=60)
             if day >= timezone.localdate(timezone=tz(timedelta(hours=9))) else not snapshot.refresh_error,
         'rows': [{key: row.get(key) for key in ('product', 'retailer', 'slot', 'main', 'bsr', 'total',
-                   'batch_id', 'complete', 'alerts', 'comparison_state')}
+                   'batch_id', 'complete', 'alerts', 'comparison_state', 'bsr_comparison_state',
+                   'observation_state', 'observation_days', 'observation_prior_days')}
                  for saved in snapshot.rows for row in [current_volume_decision(saved, snapshot.country)]],
     } for snapshot in snapshots]})

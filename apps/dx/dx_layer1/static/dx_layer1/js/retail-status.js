@@ -23,10 +23,17 @@
     }
 
     function bsrAlerts(retailer) {
-        if (isMissing(retailer)) return [];
+        if (isMissing(retailer) || ['observing', 'unknown'].includes(retailer.observation_state)) return [];
         return (retailer.volume_alerts || []).filter(function(alert) {
             return alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status);
         });
+    }
+
+    function observationLabel(retailer) {
+        if (retailer.observation_state === 'observing') {
+            return '신규 · 관찰 중 (' + Math.max(0, Math.min(5, Number(retailer.observation_days) || 0)) + '/5일)';
+        }
+        return retailer.observation_state === 'unknown' ? '관찰 이력 확인 중' : '';
     }
 
     function bsrCell(retailer, value) {
@@ -34,7 +41,8 @@
         var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
         var low = alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; });
         return '<td' + (alerts.length ? ' class="' + (low ? 'cs-bsr-low' : 'cs-bsr-review') + '" title="' + esc(reason) + '"' : '') + '>'
-            + esc(value) + (alerts.length ? '<small style="display:block">' + (low ? '이상' : '확인 필요') + '</small>' : '') + '</td>';
+            + esc(value) + (alerts.length ? '<small style="display:block">' + (low ? '이상' : '확인 필요') + '</small>'
+                : observationLabel(retailer || {}) ? '<small style="display:block">' + esc(observationLabel(retailer)) + '</small>' : '') + '</td>';
     }
 
     function rowBadge(retailer) {
@@ -43,7 +51,12 @@
         var statusBadge = missing
             ? '<span class="status-badge critical"><span class="status-dot"></span>미수집</span>'
             : getStatusBadge(retailer.status);
-        var volumeBadge = missing || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
+        var observation = observationLabel(retailer);
+        if (observation) {
+            var observationBadge = '<span class="status-badge">' + esc(observation) + '</span>';
+            statusBadge = observationBadge + (missing || !['OK', 'REVIEW', 'UNASSESSED'].includes(retailer.status) ? ' ' + statusBadge : '');
+        }
+        var volumeBadge = observation || missing || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
         if (count >= 2 && retailer.batch_context) {
             return volumeBadge + '<button type="button" class="status-badge critical l1-batch-toggle" aria-expanded="false" ' +
                 'data-batch-count="' + count + '" data-batch-context="' + esc(JSON.stringify(retailer.batch_context)).replace(/"/g, '&quot;') + '" ' +
@@ -58,7 +71,6 @@
         var prefix = categoryPrefixes[checkType];
         if (!prefix) return '';
         var items = [];
-        var seen = new Set();
         (check.categories || []).forEach(function(cat, catIdx) {
             var product = String(cat.name || cat.category || cat.product_line || '').toUpperCase();
             if (!['TV', 'REF', 'LDY'].includes(product)) return;
@@ -68,9 +80,10 @@
             });
             retailers.forEach(function(retailer) {
                 var name = String(retailer.retailer || '').trim();
-                var key = product + ':' + name.toLowerCase();
                 var missing = isMissing(retailer);
                 var multiple = batchCount(retailer) >= 2;
+                var observing = retailer.observation_state === 'observing';
+                var failed = retailer.status === 'ERROR';
                 var bsr = bsrAlerts(retailer);
                 var bsrLow = bsr.filter(function(alert) { return alert.status === 'VOLUME_LOW'; });
                 var bsrReview = bsr.filter(function(alert) { return alert.status === 'VOLUME_REVIEW'; });
@@ -81,8 +94,7 @@
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
                 var volumeHigh = !missing && retailer.status === 'VOLUME_HIGH' &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
-                if (!name || (!missing && !multiple && !volumeLow && !volumeHigh && !bsrReview.length && !mainReview.length) || seen.has(key)) return;
-                seen.add(key);
+                if (!name || (!observing && !failed && !missing && !multiple && !volumeLow && !volumeHigh && !bsrReview.length && !mainReview.length)) return;
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
                 if (checkType === 'retail') {
@@ -92,6 +104,12 @@
                     onclick = 'event.stopPropagation()';
                 }
                 var link = '<a href="' + esc(href) + '" onclick="' + onclick + '">' + esc(name) + '</a> ';
+                if (observing) {
+                    items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' ' + esc(observationLabel(retailer)) + '</span>');
+                }
+                if (failed) {
+                    items.push('<span class="retail-missing-item">' + link + esc(product) + ' 오류</span>');
+                }
                 if (missing) {
                     items.push('<span class="retail-missing-item">' + link + esc(product) + ' 미수집</span>');
                 }
@@ -122,6 +140,13 @@
         if (check.batch_count_error) {
             items.push('<span class="retail-missing-item">배치 조회 실패</span>');
         }
+        var seen = new Set();
+        items = items.filter(function(item) {
+            var key = item.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
         return items.length
             ? '<div class="retail-missing-summary" aria-label="수집 상태 알림">' + items.join('') + '</div>'
             : '';

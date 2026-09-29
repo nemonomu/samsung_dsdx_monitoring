@@ -30,6 +30,7 @@ def normalize_check(check, country, inspection_date):
                 items = {item['name']: int(item.get('count') or 0) for item in retailer.get('items', [])}
                 total = next((retailer[key] for key in ('raw_count', 'actual', 'count', 'total')
                               if retailer.get(key) is not None), 0)
+                collected_count = int(total or 0)
                 if country in ('SEM', 'TSE') and retailer.get('actual') is not None:
                     total = retailer['actual']
                 complete = (check.get('phase', 'complete') == 'complete'
@@ -41,6 +42,7 @@ def normalize_check(check, country, inspection_date):
                     'main': int(retailer.get('main_count', items.get('Main Rank', 0)) or 0),
                     'bsr': int(retailer.get('bsr_count', items.get('BSR Rank', 0)) or 0),
                     'total': int(total or 0), 'batch_id': str(retailer.get('batch_id') or ''),
+                    'collected_count': collected_count,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status not in ('CRITICAL', 'WARNING', 'ERROR'),
                     'active_from': '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None,
@@ -48,8 +50,28 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 2
-MAIN_POLICY_VERSION = 1
+BSR_POLICY_VERSION = 3
+MAIN_POLICY_VERSION = 2
+OBSERVATION_POLICY_VERSION = 1
+MINIMUM_DAYS = 5
+
+
+def observation_key(row):
+    # Observation belongs to a retailer/product, regardless of collection slots.
+    return (row['product'], row['retailer'])
+
+
+def observation_eligible(row):
+    return (row.get('complete') and row.get('base_status') != 'ERROR'
+            and not row.get('refresh_error')
+            and any((row.get(metric) or 0) > 0 for metric in (*METRICS, 'collected_count')))
+
+
+def remember_observation(days, rows, source_date):
+    for row in rows:
+        key = observation_key(row)
+        if observation_eligible(row) and len(days[key]) < MINIMUM_DAYS:
+            days[key].add(source_date)
 
 
 def tiered_bsr(row, country):
@@ -63,23 +85,25 @@ def tiered_bsr(row, country):
 
 def variable_bsr(row, country):
     return tiered_bsr(row, country) or (
-        country == 'SEM' and str(row['retailer']).strip().casefold() == 'homedepot')
+        country == 'SEM' and str(row['retailer']).strip().casefold() in ('homedepot', 'coppel'))
 
 
 def _compare_bsr(row, history, country, *, saved_basis=None):
-    """Fixed targets need no history; variable targets require seven good days."""
+    """After observation, compare fixed targets or five good days of history."""
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
         return rule, 'pending', None, None
-    if all(row.get(metric) == 0 for metric in METRICS):
+    if all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
         return rule, 'missing', None, None
+    if row.get('observation_state') in ('observing', 'unknown'):
+        return rule, row['observation_state'], None, None
     current = row.get('bsr')
     if current is None:
         # Older snapshots can contain NULL; never invent zero collected rows.
         return rule, 'insufficient', None, None
     if variable and saved_basis is not None:
-        if (saved_basis.get('rule') != rule or saved_basis.get('days', 0) < 7
+        if (saved_basis.get('rule') != rule or saved_basis.get('days', 0) < MINIMUM_DAYS
                 or saved_basis.get('value', 0) <= 0):
             return rule, 'insufficient', None, None
         basis = dict(saved_basis)
@@ -89,10 +113,10 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
         for index, old in enumerate(history):
             if (old.get('complete') and old.get('bsr') is not None and old['bsr'] > 0
                     and not any(a.get('metric') == 'bsr' and a.get('status') in ('VOLUME_LOW', 'VOLUME_REVIEW')
-                                and not (tiered_bsr(row, country) and a.get('rule') == 'fixed_100')
+                                and a.get('rule') != 'fixed_100'
                                 for a in old.get('alerts', []))):
                 days[old.get('source_date', index)] = old['bsr']
-        if len(days) < 7:
+        if len(days) < MINIMUM_DAYS:
             return rule, 'insufficient', None, None
         baseline = median(days.values())
         basis = {'value': baseline, 'days': len(days), 'rule': rule}
@@ -122,12 +146,10 @@ def current_bsr_decision(row, country):
     Legacy fixed baselines cannot stand in for history. The offline collector
     rebuilds them; until then their BSR comparison is insufficient.
     """
-    if variable_bsr(row, country) and not tiered_bsr(row, country):
-        return row
     candidate = {**row, 'complete': row.get('complete', row.get('state') == 'complete')}
     if row.get('state', 'complete') != 'complete':
         candidate['complete'] = False
-    saved_basis = row.get('baselines', {}).get('bsr', {}) if tiered_bsr(row, country) else None
+    saved_basis = row.get('baselines', {}).get('bsr', {}) if variable_bsr(row, country) else None
     rule, state, basis, alert = _compare_bsr(candidate, [], country, saved_basis=saved_basis)
     baselines = {k: v for k, v in row.get('baselines', {}).items() if k != 'bsr'}
     if basis is not None:
@@ -142,7 +164,7 @@ def current_bsr_decision(row, country):
 def _main_alert(current, basis):
     """Classify before rounding: 5 through 15 percent down needs review."""
     baseline = basis.get('value', 0)
-    if current is None or baseline <= 0 or basis.get('days', 0) < 7:
+    if current is None or baseline <= 0 or basis.get('days', 0) < MINIMUM_DAYS:
         return None
     change = (current - baseline) * 100
     if change < -baseline * 15:
@@ -164,7 +186,15 @@ def _main_alert(current, basis):
 
 def current_volume_decision(row, country):
     """Reapply MAIN and BSR policies to stored baselines without database writes."""
+    if 'observation_state' not in row:
+        # A saved median proves sufficient prior history. Otherwise wait for the
+        # offline rebuild; a missing snapshot is not evidence of a new retailer.
+        proven = any(b.get('days', 0) >= MINIMUM_DAYS for b in row.get('baselines', {}).values())
+        row = {**row, 'observation_state': 'ready' if proven else 'unknown'}
     result = current_bsr_decision(row, country)
+    if row['observation_state'] != 'ready':
+        return {**result, 'alerts': [], 'baselines': {},
+                'comparison_state': row['observation_state']}
     alerts = [a for a in result.get('alerts', []) if a.get('metric') != 'main']
     if (row.get('complete', row.get('state') == 'complete')
             and row.get('state', 'complete') == 'complete'
@@ -175,25 +205,39 @@ def current_volume_decision(row, country):
     return {**result, 'alerts': alerts}
 
 
-def compare_rows(rows, history, country=None):
+def compare_rows(rows, history, country=None, *, observed_dates=None):
     """history contains only the previous 28 source dates, never the target day."""
     groups = defaultdict(list)
     for old in history:
-        if old.get('baseline_eligible'):
+        if old.get('baseline_eligible') and observation_eligible(old):
             groups[row_key(old)].append(old)
+    if observed_dates is None:
+        observed_dates = defaultdict(set)
+        for index, old in enumerate(history):
+            remember_observation(observed_dates, [old], old.get('source_date', index))
+    collected_today = {observation_key(row) for row in rows if observation_eligible(row)}
     result = []
     for row in rows:
+        prior_days = min(MINIMUM_DAYS, len(observed_dates.get(observation_key(row), ())))
+        observing = prior_days < MINIMUM_DAYS
+        row = {**row, 'observation_state': 'observing' if observing else 'ready',
+               'observation_days': min(MINIMUM_DAYS, prior_days + (observation_key(row) in collected_today)),
+               'observation_prior_days': prior_days,
+               'observation_policy_version': OBSERVATION_POLICY_VERSION}
         baselines, alerts = {}, []
         for metric in METRICS:
-            if metric == 'bsr':
+            if metric == 'bsr' or observing:
                 continue
-            values = [old[metric] for old in groups[row_key(row)] if old.get(metric) is not None]
-            if len(values) < 7:
+            values = list({old.get('source_date', index): old[metric]
+                           for index, old in enumerate(groups[row_key(row)])
+                           if old.get(metric) is not None}.values())
+            if len(values) < MINIMUM_DAYS:
                 continue
             baseline = median(values)
             baselines[metric] = {'value': baseline, 'days': len(values)}
             current = row.get(metric)
-            if not row['complete'] or baseline <= 0 or current is None:
+            if (not row['complete'] or baseline <= 0 or current is None
+                    or row.get('base_status') == 'ERROR' or row.get('refresh_error')):
                 continue
             if metric == 'main':
                 if row.get('base_status') != 'ERROR' and not row.get('refresh_error'):
@@ -212,7 +256,8 @@ def compare_rows(rows, history, country=None):
             baselines['bsr'] = bsr_basis
         if bsr_alert:
             alerts.append(bsr_alert)
-        state = ('pending' if not row['complete'] else 'ready' if len(baselines) == len([m for m in METRICS if row.get(m) is not None]) else 'insufficient')
+        state = ('pending' if not row['complete'] else 'observing' if observing else
+                 'ready' if len(baselines) == len([m for m in METRICS if row.get(m) is not None]) else 'insufficient')
         result.append({**row, 'baselines': baselines, 'alerts': alerts, 'comparison_state': state,
                        'bsr_policy_version': BSR_POLICY_VERSION,
                        'main_policy_version': MAIN_POLICY_VERSION,
@@ -252,7 +297,7 @@ def build_week(rows_by_date, monday, last_due_date):
                                'average': round(sum(values) / len(values), 1) if values else None}
         result.append({'product': product, 'retailer': retailer, 'slot': slot,
                        'metrics': metrics, 'completed_days': len(completed), 'expected_days': due_days,
-                       'missing_days': sum(r['total'] == 0 for r in completed),
+                       'missing_days': sum(not any((r.get(metric) or 0) > 0 for metric in (*METRICS, 'collected_count')) for r in completed),
                        'unknown_days': sum(r['state'] in ('unknown', 'error') for r in daily),
                        'partial': len(completed) < due_days or due_days < 7,
                        'daily': daily})

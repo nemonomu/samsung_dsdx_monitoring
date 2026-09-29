@@ -27,9 +27,18 @@
         const name = String(retailer || '').trim().toLowerCase();
         return (country === 'SEA' && ['REF', 'LDY'].includes(product) && name === 'lowes')
             || (name === 'amazon' && ({SEA: ['TV'], SIEL: ['TV', 'REF', 'LDY'], SEG: ['TV', 'REF']}[country] || []).includes(product))
-            || (country === 'SEM' && name === 'homedepot');
+            || (country === 'SEM' && ['homedepot', 'coppel'].includes(name));
+    }
+    function collectedToday(check, slots, retailer, country) {
+        return (!check.phase || check.phase === 'complete') && slots.some(slot =>
+            !pending.includes(slot.status) && (slot.retailers || []).some(row =>
+                row.retailer === retailer && !pending.includes(row.status)
+                && !pending.includes(row.collection_status) && row.status !== 'ERROR'
+                && (Object.values(metrics(row, country)).some(value => value > 0)
+                    || Number(row.raw_count || row.actual_count || 0) > 0)));
     }
     function fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate) {
+        if (row.observation_state !== 'ready') return null;
         if ((check.phase && check.phase !== 'complete') || pending.includes(row.status)
             || pending.includes(slot.status) || row.status === 'ERROR'
             || pending.includes(row.collection_status)
@@ -80,8 +89,17 @@
                             && (!cat.source_date || cat.source_date === snapshot.source_date)
                             && String(saved.batch_id || '') === String(row.batch_id || '')
                             && ['main', 'bsr', 'total'].every(key => counts[key] === saved[key]);
+                        const historyMatches = saved && (!cat.source_date || cat.source_date === snapshot.source_date)
+                            && (!check.inspection_date || check.inspection_date === selectedDate)
+                            && (!cat.inspection_date || cat.inspection_date === selectedDate);
+                        row.observation_state = historyMatches && saved.observation_state || 'unknown';
+                        row.observation_days = null;
+                        if (row.observation_state === 'observing') {
+                            const completed = collectedToday(check, slots, row.retailer, country);
+                            row.observation_days = Math.min(5, Number(saved.observation_prior_days || 0) + (completed ? 1 : 0));
+                        }
                         row.volume_comparison_state = matches ? saved.comparison_state : 'unavailable';
-                        row.volume_alerts = matches ? (saved.alerts || []).slice() : [];
+                        row.volume_alerts = matches && row.observation_state === 'ready' ? (saved.alerts || []).slice() : [];
                         if (!variableBsr(country, product, row.retailer)) {
                             row.volume_alerts = row.volume_alerts.filter(alert => alert.metric !== 'bsr');
                             const fixedAlert = fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate);

@@ -2,6 +2,7 @@
 import hashlib
 import importlib
 import json
+from collections import defaultdict
 from datetime import timedelta, timezone as tz
 from uuid import uuid4
 
@@ -12,7 +13,8 @@ from apps.dx.dx_layer1.models import (
     CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly,
     CollectionStatisticsLease as Lease,
 )
-from .calculations import (COUNTRIES, OFFSETS, BSR_POLICY_VERSION, MAIN_POLICY_VERSION, tiered_bsr,
+from .calculations import (COUNTRIES, OFFSETS, BSR_POLICY_VERSION, MAIN_POLICY_VERSION,
+                           OBSERVATION_POLICY_VERSION, remember_observation,
                            normalize_check, compare_rows, week_start, build_week)
 
 SERVICE_MODULES = {
@@ -57,7 +59,7 @@ def renew_lease(country, owner):
 
 
 def refresh_country(country, start, end, *, loader=load_check, today=None):
-    """Dates are source dates. Changed history also rebuilds following 28-day comparisons."""
+    """Dates are source dates. Rebuild later medians and lifetime observation progress."""
     if country not in COUNTRIES or start > end or (end - start).days > 119:
         raise ValueError('Invalid statistics refresh range')
     owner = acquire_lease(country)
@@ -95,7 +97,7 @@ def refresh_country(country, start, end, *, loader=load_check, today=None):
                 result['errors'] += 1
             day += timedelta(days=1)
         renew_lease(country, owner)
-        rebuild(country, start, min(last_due, end + timedelta(days=28)), last_due)
+        rebuild(country, start, last_due, last_due)
         return result
     finally:
         Lease.objects.filter(name=country, owner=owner).update(expires_at=timezone.now())
@@ -107,26 +109,40 @@ def rebuild(country, start, end, last_due):
     # Upgrade existing saved comparisons on the next normal background refresh,
     # without re-querying raw source data or changing the web read path.
     policy_start = min(start, last_due - timedelta(days=111))
+    history_start = week_start(policy_start) - timedelta(days=28)
     snapshots = list(Daily.objects.filter(country=country,
-        source_date__range=(week_start(policy_start) - timedelta(days=28), last_week + timedelta(days=6))).order_by('source_date'))
+        source_date__range=(history_start, last_week + timedelta(days=6))).order_by('source_date'))
     stale_days = [snapshot.source_date for snapshot in snapshots
                   if policy_start <= snapshot.source_date <= end
                   and any(row.get('main_policy_version') != MAIN_POLICY_VERSION
-                          or 'bsr_rule' not in row or (tiered_bsr(row, country)
-                          and row.get('bsr_policy_version') != BSR_POLICY_VERSION)
+                          or row.get('bsr_policy_version') != BSR_POLICY_VERSION
+                          or row.get('observation_policy_version') != OBSERVATION_POLICY_VERSION
                           for row in snapshot.rows)]
     if stale_days:
         start = min(start, min(stale_days))
         first_week = week_start(start)
     by_date = {snapshot.source_date: snapshot for snapshot in snapshots}
+    # Keep only the first five successful dates per retailer/product. Read older
+    # stored summaries in chunks so a long outage never resets an established
+    # retailer to new. No raw source queries or schema changes are needed.
+    observed_dates = defaultdict(set)
+    for old in Daily.objects.filter(country=country, source_date__lt=history_start,
+                                   refresh_error=False).only('source_date', 'rows').order_by('source_date').iterator(chunk_size=100):
+        remember_observation(observed_dates, old.rows, str(old.source_date))
     updated = []
     for snapshot in snapshots:
         if not start <= snapshot.source_date <= end:
+            if not snapshot.refresh_error:
+                remember_observation(observed_dates, snapshot.rows, str(snapshot.source_date))
             continue
         history = [{**row, 'source_date': str(older.source_date)} for older in snapshots
                    if snapshot.source_date - timedelta(days=28) <= older.source_date < snapshot.source_date
                    and not older.refresh_error for row in older.rows]
-        snapshot.rows = compare_rows(snapshot.rows, history, country=country)
+        snapshot.rows = compare_rows(
+            [{**row, 'refresh_error': snapshot.refresh_error} for row in snapshot.rows],
+            history, country=country, observed_dates=observed_dates)
+        if not snapshot.refresh_error:
+            remember_observation(observed_dates, snapshot.rows, str(snapshot.source_date))
         updated.append(snapshot)
     with transaction.atomic():
         if updated:
