@@ -65,7 +65,7 @@
         const annotate = result => ({...result, label: [result.label, observation].filter(Boolean).join(' · ')});
         if (!active.length) return {total: null, label: '수집 시작 전'};
         if (active.some(day => day.state === 'error' || day.base_status === 'ERROR')) return annotate({total: null, label: '갱신 실패', kind: 'low'});
-        if (active.some(day => day.state === 'pending')) return annotate({total: null, label: '수집 중'});
+        if (active.some(day => day.state === 'pending' && day.verification_state !== 'waiting')) return annotate({total: null, label: '수집 중'});
         if (active.every(day => day.state === 'unknown')) return {total: null, label: '미집계'};
         if (active.some(day => day.state === 'unknown')) return {total: null, label: '부분 집계'};
         if (active.some(day => day.state === 'future')) return {total: null, label: '예정'};
@@ -74,6 +74,9 @@
             return values.length ? values.reduce((total, value) => total + value, 0) : null;
         };
         const total = sum('total'), main = sum('main'), bsr = sum('bsr');
+        if (active.some(day => day.state === 'pending')) {
+            return annotate({total, main, bsr, provisional: true, label: '수집 확인 · 검증 대기'});
+        }
         if (total === 0 && (main || 0) === 0 && (bsr || 0) === 0 && !sum('collected_count')) {
             return annotate({total, main, bsr, label: '미수집', kind: 'low'});
         }
@@ -131,7 +134,7 @@
                 previousProduct = group.product;
             }
             const results = dates.map(day => dayResult(group.daily.get(day) || []));
-            const completed = results.filter(day => day.total != null);
+            const completed = results.filter(day => day.total != null && !day.provisional);
             const average = completed.length
                 ? completed.reduce((sum, day) => sum + day.total, 0) / completed.length : null;
             return heading + `<tr class="cs-retailer-row"><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong></th>`

@@ -309,6 +309,7 @@ def _build_category(cursor, source, inspection_date, now):
 
     for retailer in retailer_details:
         if retailer['status'] == 'UNASSESSED':
+            retailer['collection_phase'] = 'complete'
             retailer['collection_window'] = dict(HOMEDEPOT_COLLECTION_WINDOW)
             retailer['collection_status'] = _homedepot_collection_status(inspection_date, now, retailer['count'])
             continue
@@ -322,6 +323,7 @@ def _build_category(cursor, source, inspection_date, now):
         ]
         # Other retailers' later schedules must not hide an overdue collection.
         schedule_status = _daily_schedule_status(retailer_slots or schedule_slots)
+        retailer['collection_phase'] = 'collecting' if schedule_status else 'complete'
         if schedule_status and retailer['status'] != 'OK':
             retailer['status'] = 'COLLECTING'
     statuses = [retailer['status'] for retailer in retailer_details]

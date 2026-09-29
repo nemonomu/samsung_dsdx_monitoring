@@ -52,7 +52,7 @@ for (const modify of [
 ]) {
     const payload = saved(); modify(payload);
     const data = volume.decorate(fixture(), payload, day);
-    assert.strictEqual(data.checks[0].status, 'OK');
+    assert.strictEqual(data.checks[0].status, 'VERIFYING');
     assert.strictEqual(data.checks[0].categories[0].retailers[0].volume_comparison_state, 'unavailable');
 }
 const data = fixture();
@@ -62,7 +62,7 @@ volume.decorate(data, saved(), day);
 assert.strictEqual(data.summary.passed, 0);
 assert.strictEqual(data.summary.failed, 1);
 volume.decorate(data, null, day);
-assert.strictEqual(data.summary.passed, 1);
+assert.strictEqual(data.summary.passed, 0);
 assert.strictEqual(data.summary.failed, 0);
 assert.strictEqual(volume.metrics({bsr_applicable: false, actual: 300, raw_count: 315}).total, 300);
 assert.strictEqual(volume.metrics({actual: 300, raw_count: 315}, 'SEM').total, 300);
@@ -73,7 +73,7 @@ const summary = {ref: {summary: [{retailer: 'Lowes', batch_id: 'new', rows: [
     {time_slot: 'daily', main: 210, bsr: 100, total: 210},
 ]}]}};
 volume.decorate(sea, seaSaved, day, summary);
-assert.strictEqual(sea.checks[0].status, 'OK', 'newer displayed SEA batch must discard the old alert');
+assert.strictEqual(sea.checks[0].status, 'VERIFYING', 'newer displayed SEA batch must wait for its own verification');
 summary.ref.summary[0].batch_id = 'b1';
 volume.decorate(sea, seaSaved, day, summary);
 assert.strictEqual(sea.checks[0].status, 'VOLUME_LOW');
@@ -106,7 +106,7 @@ homeDepotSaved.snapshots[0].rows[0].comparison_state = 'ready';
 volume.decorate(homeDepot, homeDepotSaved, day);
 assert.strictEqual(homeDepotRow.status, 'OK');
 volume.decorate(homeDepot, null, day);
-assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'missing comparison must restore the base status');
+assert.strictEqual(homeDepotRow.status, 'VERIFYING', 'missing comparison must wait for verification');
 homeDepotSaved.snapshots[0].rows[0].alerts = [{status: 'VOLUME_LOW'}];
 volume.decorate(homeDepot, homeDepotSaved, day);
 assert.strictEqual(homeDepotRow.status, 'VOLUME_LOW');
@@ -116,14 +116,14 @@ assert.strictEqual(homeDepotRow.status, 'VOLUME_HIGH');
 homeDepotSaved.snapshots[0].rows[0].alerts = [];
 homeDepotSaved.snapshots[0].rows[0].batch_id = 'old';
 volume.decorate(homeDepot, homeDepotSaved, day);
-assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'old batch must not produce a normal result');
+assert.strictEqual(homeDepotRow.status, 'VERIFYING', 'old batch must not produce a normal result');
 homeDepotSaved.snapshots[0].rows[0].batch_id = 'b1';
 homeDepotRow.count = 0;
 homeDepotSaved.snapshots[0].rows[0].total = 0;
 volume.decorate(homeDepot, homeDepotSaved, day);
 assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'zero collected rows must not be called normal');
-assert.strictEqual(data.checks[0].status, 'OK');
-assert.strictEqual(data.checks[0].categories[0].retailers[0].status, 'OK');
+assert.strictEqual(data.checks[0].status, 'VERIFYING');
+assert.strictEqual(data.checks[0].categories[0].retailers[0].status, 'VERIFYING');
 assert.strictEqual(volume.merge('OK', [{status: 'VOLUME_HIGH'}, {status: 'VOLUME_LOW'}]), 'VOLUME_LOW');
 const bsrPayload = saved();
 bsrPayload.snapshots[0].rows[0].bsr = 99;
@@ -178,7 +178,7 @@ for (const [country, product, retailer] of [
     ['SEG', 'TV', 'Amazon'], ['SEG', 'REF', 'Amazon'],
 ]) {
     const current = fixedFixture(country, product, retailer, 85);
-    assert.strictEqual(rowOf(volume.decorate(current, null, day)).status, 'OK');
+    assert.strictEqual(rowOf(volume.decorate(current, null, day)).status, 'VERIFYING');
     const payload = {inspection_date: day, snapshots: [{country, source_date: day, available: true,
         rows: [{product, retailer, slot: 'daily', main: 299, bsr: 85, total: 337, batch_id: 'b1',
             complete: true, observation_state: 'ready', comparison_state: 'ready', alerts: [{metric: 'bsr', status: 'VOLUME_REVIEW',
@@ -204,7 +204,7 @@ for (const payload of [null, {inspection_date:day,snapshots:[]},
     {inspection_date:day,snapshots:[{country:'SEA',available:false,rows:[]}]},
     {inspection_date:'2026-09-20',snapshots:[]}, saved()]) {
     const current = volume.decorate(fixedFixture(), payload, day);
-    assert.strictEqual(rowOf(current).status, 'OK');
+    assert.strictEqual(rowOf(current).status, 'VERIFYING');
     assert.strictEqual(rowOf(current).observation_state, 'unknown');
     assert.strictEqual(current.summary.failed, 0);
     assert(context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('관찰 이력 확인 중'));
@@ -235,7 +235,7 @@ for (const adjust of [
     const current = fixedFixture(); adjust(current); volume.decorate(current, maturePayload(current), day);
     assert(!context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('cs-bsr-low'));
 }
-const displayedSummary = {tv:{inspection_date:day,source_date:day,summary:[{retailer:'Walmart',rows:[{time_slot:'daily',main:299,bsr:99,total:337}]}]}};
+const displayedSummary = {tv:{inspection_date:day,source_date:day,summary:[{retailer:'Walmart',rows:[{time_slot:'daily',main:299,bsr:99,total:337,batch_id:'b1'}]}]}};
 const updated = fixedFixture('SEA','TV','Walmart',100);
 volume.decorate(updated, maturePayload(updated), day, displayedSummary);
 assert.strictEqual(rowOf(updated).volume_alerts[0].actual, 99, 'use the counts actually displayed by the current SEA summary');
@@ -245,7 +245,8 @@ assert.strictEqual(rowOf(updated).status, 'OK', 'recovered counts remove the pre
 displayedSummary.tv.summary[0].rows[0].bsr = 99;
 displayedSummary.tv.inspection_date = '2026-09-20';
 volume.decorate(updated, maturePayload(updated), day, displayedSummary);
-assert.strictEqual(rowOf(updated).status, 'OK', 'a different date must not supply current BSR values');
+assert.strictEqual(rowOf(updated).status, 'VERIFYING', 'a different date must not supply current BSR values');
+assert.strictEqual(rowOf(updated).volume_alerts.length, 0);
 console.log('Collection volume: threshold states, precedence, snapshot matching and stale-response tests passed.');
 
 for (const retailer of ['Coppel', 'FutureRetailer']) {
@@ -279,6 +280,58 @@ for (const retailer of ['Coppel', 'FutureRetailer']) {
     assert.strictEqual(rowOf(current).status, retailer === 'Coppel' ? 'OK' : 'VOLUME_LOW');
     assert(!context.L1.retailStatus.rowBadge(rowOf(current)).includes('신규'));
 }
+
+// Receipt during the window cannot be shown as normal, even if an old saved
+// result has identical counts. End-of-window verification uses the same batch.
+const early = fixedFixture('SEM', 'REF', 'Coppel', 56);
+early.checks[0].phase = 'collecting';
+const earlyPayload = maturePayload(early);
+earlyPayload.snapshots[0].rows[0].alerts = [{metric: 'bsr', status: 'VOLUME_LOW'}];
+volume.decorate(early, earlyPayload, day);
+assert.strictEqual(rowOf(early).status, 'VERIFYING');
+assert.strictEqual(early.checks[0].status, 'VERIFYING');
+assert.strictEqual(early.checks[0].categories[0].status, 'VERIFYING');
+assert.strictEqual(early.summary.passed, 0);
+assert.strictEqual(early.summary.total_completed, 0);
+assert.strictEqual(rowOf(early).volume_alerts.length, 0);
+early.checks[0].phase = 'complete';
+volume.decorate(early, earlyPayload, day);
+assert.strictEqual(rowOf(early).status, 'VOLUME_LOW');
+assert.strictEqual(early.checks[0].status, 'VOLUME_LOW');
+assert.strictEqual(early.summary.failed, 1);
+earlyPayload.snapshots[0].rows[0].alerts = [];
+volume.decorate(early, earlyPayload, day);
+assert.strictEqual(rowOf(early).status, 'OK');
+assert.strictEqual(early.summary.passed, 1);
+assert.strictEqual(early.summary.total_completed, 1);
+assert.strictEqual(early.summary.pass_rate, 100);
+rowOf(early).batch_id = 'retry';
+volume.decorate(early, earlyPayload, day);
+assert.strictEqual(rowOf(early).status, 'VERIFYING', 'a retry waits for its own statistics');
+
+const newDuringWindow = fixedFixture('SEM', 'LDY', 'Coppel', 60);
+newDuringWindow.checks[0].phase = 'collecting';
+const newDuringPayload = maturePayload(newDuringWindow);
+Object.assign(newDuringPayload.snapshots[0].rows[0], {
+    observation_state: 'observing', observation_prior_days: 2, observation_days: 2,
+});
+volume.decorate(newDuringWindow, newDuringPayload, day);
+assert.strictEqual(rowOf(newDuringWindow).observation_days, 2);
+assert.strictEqual(rowOf(newDuringWindow).status, 'VERIFYING');
+assert(context.L1.retailStatus.rowBadge(rowOf(newDuringWindow)).includes('신규 · 관찰 중 (2/5일)'));
+
+const separate = fixedFixture('SEA', 'REF', 'Lowes', 50);
+const separatePayload = maturePayload(separate);
+separatePayload.snapshots[0].rows[0].alerts = [{metric: 'bsr', status: 'VOLUME_LOW'}];
+rowOf(separate).collection_phase = 'complete';
+separate.checks[0].phase = 'collecting';
+separate.checks[0].status = 'COLLECTING';
+separate.checks[0].categories[0].status = 'COLLECTING';
+separate.checks[0].categories[0].retailers.push({retailer: 'Walmart', count: 300, status: 'OK', collection_phase: 'collecting'});
+volume.decorate(separate, separatePayload, day);
+assert.strictEqual(rowOf(separate).status, 'VOLUME_LOW');
+assert.strictEqual(separate.checks[0].status, 'VOLUME_LOW', 'a pending sibling cannot hide a verified shortage');
+assert.strictEqual(separate.checks[0].categories[0].retailers[1].status, 'VERIFYING');
 
 // Observation on one slot must not hide missing/error alerts on another slot.
 const multiSlot = fixedFixture('SEM', 'REF', 'Coppel', 60);

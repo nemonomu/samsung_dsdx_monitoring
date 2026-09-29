@@ -205,5 +205,24 @@ async function flush() {
         observation_state: 'ready', observation_days: 5, alerts: [], bsr_comparison_state: 'ready'});
     elements['cs-retailer'].fire('change');
     assert(!elements['cs-table-body'].innerHTML.includes('신규'));
-    console.log('Daily statistics: counts, filters, observation, missing and error display passed.');
+    elements['cs-date'].value = '2026-09-20';
+    elements['cs-days'].value = '5';
+    Object.assign(fixtureDay, {state: 'pending', verification_state: 'waiting', main: 5000, bsr: 60, total: 5000,
+        observation_state: 'observing', observation_days: 2, alerts: [{metric: 'main', status: 'VOLUME_LOW'}]});
+    elements['cs-days'].fire('change');
+    await flush();
+    elements['cs-retailer'].value = 'Amazon';
+    elements['cs-retailer'].fire('change');
+    assert(elements['cs-table-body'].innerHTML.includes('수집 확인 · 검증 대기'));
+    assert(elements['cs-table-body'].innerHTML.includes('신규 · 관찰 중 (2/5일)'));
+    assert(elements['cs-table-body'].innerHTML.includes('5,000'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>240</strong><small>4/5일 집계'));
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
+    Object.assign(fixtureDay, {state: 'complete', verification_state: 'ready', main: 60, total: 60,
+        observation_state: 'ready', alerts: [{metric: 'main', status: 'VOLUME_LOW'}]});
+    elements['cs-retailer'].fire('change');
+    assert(!elements['cs-table-body'].innerHTML.includes('검증 대기'));
+    assert(elements['cs-table-body'].innerHTML.includes('cs-total low'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong><small>5/5일 집계'));
+    console.log('Daily statistics: verification, averages, observation, missing and error display passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

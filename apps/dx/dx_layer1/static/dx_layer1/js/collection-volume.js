@@ -2,7 +2,7 @@
 // Never requests history or blocks the counts request.
 (function () {
     const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE'};
-    const pending = ['PENDING', 'COLLECTING', 'ANALYZING'];
+    const pending = ['PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'];
     function metrics(row, country) {
         const items = Object.fromEntries((row.items || []).map(item => [item.name, Number(item.count || 0)]));
         const totalKey = ['raw_count', 'actual', 'count', 'total'].find(key => row[key] != null);
@@ -11,13 +11,13 @@
             total: Number((['SEM', 'TSE'].includes(country) || row.bsr_applicable === false) && row.actual != null ? row.actual : totalKey ? row[totalKey] : 0)};
     }
     function restore(item) {
-        if (item._volumeBaseStatus === undefined) item._volumeBaseStatus = item.status;
+        if (!Object.prototype.hasOwnProperty.call(item, '_volumeBaseStatus')) item._volumeBaseStatus = item.status;
         item.status = item._volumeBaseStatus;
         delete item.volume_alerts;
     }
     function merge(base, alerts) {
         if (base === 'WARNING' && alerts.some(alert => alert.metric === 'bsr' && alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
-        if (['CRITICAL', 'ERROR', 'WARNING'].includes(base) || pending.includes(base)) return base;
+        if (['CRITICAL', 'ERROR', 'WARNING'].includes(base)) return base;
         if (alerts.some(alert => alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
         if (alerts.some(alert => alert.status === 'VOLUME_REVIEW')) return 'VOLUME_REVIEW';
         if (alerts.some(alert => alert.status === 'VOLUME_HIGH')) return 'VOLUME_HIGH';
@@ -29,19 +29,25 @@
             || (name === 'amazon' && ({SEA: ['TV'], SIEL: ['TV', 'REF', 'LDY'], SEG: ['TV', 'REF']}[country] || []).includes(product))
             || (country === 'SEM' && ['homedepot', 'coppel'].includes(name));
     }
+    function windowComplete(check, slot, row) {
+        if (row.collection_phase) return row.collection_phase === 'complete';
+        if (check.phase && check.phase !== 'complete') return false;
+        const original = item => Object.prototype.hasOwnProperty.call(item, '_volumeBaseStatus') ? item._volumeBaseStatus : item.status;
+        return !pending.includes(original(row)) && !pending.includes(row.collection_status)
+            && (check.phase === 'complete' || !pending.includes(original(slot)));
+    }
+    function received(row, country) {
+        return Object.values(metrics(row, country)).some(value => value > 0)
+            || Number(row.raw_count || row.actual_count || 0) > 0;
+    }
     function collectedToday(check, slots, retailer, country) {
-        return (!check.phase || check.phase === 'complete') && slots.some(slot =>
-            !pending.includes(slot.status) && (slot.retailers || []).some(row =>
-                row.retailer === retailer && !pending.includes(row.status)
-                && !pending.includes(row.collection_status) && row.status !== 'ERROR'
-                && (Object.values(metrics(row, country)).some(value => value > 0)
-                    || Number(row.raw_count || row.actual_count || 0) > 0)));
+        return slots.some(slot => (slot.retailers || []).some(row =>
+            row.retailer === retailer && windowComplete(check, slot, row)
+            && row.status !== 'ERROR' && received(row, country)));
     }
     function fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate) {
         if (row.observation_state !== 'ready') return null;
-        if ((check.phase && check.phase !== 'complete') || pending.includes(row.status)
-            || pending.includes(slot.status) || row.status === 'ERROR'
-            || pending.includes(row.collection_status)
+        if (!windowComplete(check, slot, row) || row.status === 'ERROR'
             || (check.inspection_date && check.inspection_date !== selectedDate)
             || (cat.inspection_date && cat.inspection_date !== selectedDate)) return null;
         if (displayed && ((summary.inspection_date || summary.date) && (summary.inspection_date || summary.date) !== selectedDate
@@ -82,10 +88,14 @@
                         const displayedRows = displayedRetailer && displayedRetailer.rows || [];
                         const displayed = displayedRows.find(r => r.time_slot === slot.name) || displayedRows[slotIndex];
                         const displayMatches = !displayed || (saved && ['main', 'bsr', 'total'].every(key => Number(displayed[key] || 0) === saved[key])
+                            && (!(summary.inspection_date || summary.date) || (summary.inspection_date || summary.date) === selectedDate)
+                            && (!cat.source_date || !summary.source_date || cat.source_date === summary.source_date)
                             && String(displayed.batch_id || displayedRetailer.batch_id || '') === String(saved.batch_id || ''));
-                        const matches = saved && saved.complete && !pending.includes(row.status)
+                        const complete = windowComplete(check, slot, row);
+                        const matches = saved && saved.complete && complete && row.status !== 'ERROR'
                             && displayMatches
-                            && (!check.phase || check.phase === 'complete') && !pending.includes(slot.status)
+                            && (!check.inspection_date || check.inspection_date === selectedDate)
+                            && (!cat.inspection_date || cat.inspection_date === selectedDate)
                             && (!cat.source_date || cat.source_date === snapshot.source_date)
                             && String(saved.batch_id || '') === String(row.batch_id || '')
                             && ['main', 'bsr', 'total'].every(key => counts[key] === saved[key]);
@@ -100,10 +110,18 @@
                         }
                         row.volume_comparison_state = matches ? saved.comparison_state : 'unavailable';
                         row.volume_alerts = matches && row.observation_state === 'ready' ? (saved.alerts || []).slice() : [];
+                        row.verification_state = row.status === 'ERROR' ? 'error'
+                            : complete ? 'ready' : received(row, country) ? 'waiting' : 'collecting';
+                        if (row.verification_state === 'waiting') row.status = 'VERIFYING';
                         if (!variableBsr(country, product, row.retailer)) {
                             row.volume_alerts = row.volume_alerts.filter(alert => alert.metric !== 'bsr');
                             const fixedAlert = fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate);
                             if (fixedAlert) row.volume_alerts.push(fixedAlert);
+                        }
+                        if (complete && !matches && received(row, country) && !row.volume_alerts.length
+                            && ['OK', 'REVIEW', 'UNASSESSED'].includes(row.status)) {
+                            row.verification_state = 'waiting';
+                            row.status = 'VERIFYING';
                         }
                         if (!matches && !row.volume_alerts.length) return;
                         const homeDepotReady = matches && country === 'SEA' && row.retailer === 'HomeDepot'
@@ -113,17 +131,22 @@
                         slotAlerts.push(...row.volume_alerts);
                     });
                     slot.status = merge(slot.status, slotAlerts);
+                    if ((slot.status == null || slot.status === 'OK') && (slot.retailers || []).some(row => row.status === 'VERIFYING')) slot.status = 'VERIFYING';
                     catAlerts.push(...slotAlerts);
                 });
                 cat.status = merge(cat.status, catAlerts);
+                if (cat.status === 'OK' && slots.some(slot => slot.status === 'VERIFYING')) cat.status = 'VERIFYING';
                 checkAlerts.push(...catAlerts);
             });
             check.status = merge(check.status, checkAlerts);
+            if (check.status === 'OK' && (check.categories || []).some(cat => cat.status === 'VERIFYING')) check.status = 'VERIFYING';
         });
         if (data.summary && !data.error) {
             const targets = (data.checks || []).filter(check => check.is_target_date);
             data.summary.passed = targets.filter(check => check.status === 'OK').length;
             data.summary.failed = targets.filter(check => ['CRITICAL', 'VOLUME_LOW'].includes(check.status)).length;
+            data.summary.total_completed = targets.filter(check => !pending.includes(check.status)).length;
+            data.summary.pass_rate = targets.length ? Math.round(data.summary.passed * 1000 / targets.length) / 10 : 0;
         }
         return data;
     }

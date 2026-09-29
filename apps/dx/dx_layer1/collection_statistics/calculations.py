@@ -2,11 +2,12 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
+from apps.dx.dx_layer1.common.retail_verification import verification_state
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE')
 OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0}
 METRICS = ('main', 'bsr', 'total')
-PENDING = {'PENDING', 'COLLECTING', 'ANALYZING'}
+PENDING = {'PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'}
 
 
 def row_key(row):
@@ -33,9 +34,8 @@ def normalize_check(check, country, inspection_date):
                 collected_count = int(total or 0)
                 if country in ('SEM', 'TSE') and retailer.get('actual') is not None:
                     total = retailer['actual']
-                complete = (check.get('phase', 'complete') == 'complete'
-                            and retailer.get('status') not in PENDING
-                            and slot.get('status') not in PENDING)
+                verification = verification_state(check, slot, retailer)
+                complete = verification == 'ready'
                 status = retailer.get('status', 'UNASSESSED')
                 rows.append({
                     'product': product, 'retailer': name, 'slot': slot.get('name') or 'daily',
@@ -43,6 +43,7 @@ def normalize_check(check, country, inspection_date):
                     'bsr': int(retailer.get('bsr_count', items.get('BSR Rank', 0)) or 0),
                     'total': int(total or 0), 'batch_id': str(retailer.get('batch_id') or ''),
                     'collected_count': collected_count,
+                    'verification_state': verification,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status not in ('CRITICAL', 'WARNING', 'ERROR'),
                     'active_from': '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None,
@@ -186,6 +187,9 @@ def _main_alert(current, basis):
 
 def current_volume_decision(row, country):
     """Reapply MAIN and BSR policies to stored baselines without database writes."""
+    if 'verification_state' not in row and row.get('state') == 'pending':
+        received = any((row.get(metric) or 0) > 0 for metric in (*METRICS, 'collected_count'))
+        row = {**row, 'verification_state': 'waiting' if received else 'collecting'}
     if 'observation_state' not in row:
         # A saved median proves sufficient prior history. Otherwise wait for the
         # offline rebuild; a missing snapshot is not evidence of a new retailer.

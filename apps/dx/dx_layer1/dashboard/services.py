@@ -8,6 +8,7 @@ from apps.common.response import log_error
 from apps.common.dx_schedules import load_collection_schedules, is_target_date as check_target_date
 from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 from apps.dx.dx_layer1.common.retail_batches import add_batch_counts
+from apps.dx.dx_layer1.common.retail_verification import apply_verification_status
 
 from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
@@ -384,6 +385,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                     comp_batch_id = svc_result['comp_batch_id']
 
                 check_data = svc_result['check']
+                apply_verification_status(check_data)
                 try:
                     add_batch_counts(cursor, check_data, target_date)
                 except Exception as exc:
@@ -403,7 +405,7 @@ def get_dashboard_stats(target_date, check_type_filter=None):
             ]
             target_items = [item for item in check_items if item['is_target']]
             target_statuses = [item['status'] for item in target_items]
-            completed_statuses = [s for s in target_statuses if s not in ('PENDING', 'COLLECTING', 'ANALYZING')]
+            completed_statuses = [s for s in target_statuses if s not in ('PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING')]
 
             passed = len([s for s in completed_statuses if s == 'OK'])
             failed = len([s for s in completed_statuses if s == 'CRITICAL'])

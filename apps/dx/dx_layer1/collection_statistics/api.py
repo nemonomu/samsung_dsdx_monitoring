@@ -89,6 +89,7 @@ def alerts(request):
             if day >= timezone.localdate(timezone=tz(timedelta(hours=9))) else not snapshot.refresh_error,
         'rows': [{key: row.get(key) for key in ('product', 'retailer', 'slot', 'main', 'bsr', 'total',
                    'batch_id', 'complete', 'alerts', 'comparison_state', 'bsr_comparison_state',
+                   'verification_state',
                    'observation_state', 'observation_days', 'observation_prior_days')}
                  for saved in snapshot.rows for row in [current_volume_decision(saved, snapshot.country)]],
     } for snapshot in snapshots]})

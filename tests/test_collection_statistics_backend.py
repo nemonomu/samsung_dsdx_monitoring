@@ -27,6 +27,7 @@ from django.test.runner import DiscoverRunner
 from django.utils import timezone
 from apps.dx.dx_layer1.collection_statistics import calculations as calc, collector, api
 from apps.dx.dx_layer1.collection_statistics import automatic
+from apps.dx.dx_layer1.common.retail_verification import apply_verification_status
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 
 
@@ -43,6 +44,46 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_received_rows_and_batch_id_do_not_prove_load_completion(self):
+        for country in calc.COUNTRIES:
+            check = check_for(250, bsr_count=60)
+            check.update(check_type='retail' if country == 'SEA' else country.lower() + '_retail',
+                         phase='collecting', status='OK')
+            category = check['categories'][0]
+            category['status'] = 'OK'
+            apply_verification_status(check)
+            row = category['retailers'][0]
+            self.assertEqual(('VERIFYING', 'waiting'), (row['status'], row['verification_state']))
+            self.assertEqual('VERIFYING', check['status'])
+            normalized = calc.normalize_check(check, country, date(2026, 9, 29))[0]
+            self.assertFalse(normalized['complete'])
+            self.assertFalse(normalized['baseline_eligible'])
+            compared = calc.compare_rows([normalized], [], country=country)[0]
+            self.assertEqual(0, compared['observation_days'])
+            self.assertEqual([], compared['alerts'])
+
+    def test_completed_retailer_is_not_blocked_by_another_retailers_window(self):
+        check = {'categories': [{'name': 'REF', 'time_slots': [{
+            'name': 'daily', 'status': 'COLLECTING', 'retailers': [
+                {'retailer': 'Lowes', 'collection_phase': 'complete', 'status': 'OK', 'count': 250},
+                {'retailer': 'Walmart', 'collection_phase': 'collecting', 'status': 'OK', 'count': 250},
+            ]}]}]}
+        rows = calc.normalize_check(check, 'SEA', date(2026, 9, 29))
+        self.assertEqual([True, False], [r['complete'] for r in rows])
+        self.assertEqual(['ready', 'waiting'], [r['verification_state'] for r in rows])
+
+    def test_verification_keeps_errors_and_overdue_zero_collection(self):
+        for status, count, phase, expected in [
+            ('ERROR', 300, 'collecting', 'error'), ('CRITICAL', 0, 'complete', 'ready'),
+            ('COLLECTING', 0, 'collecting', 'collecting'), ('PENDING', 0, 'pending', 'pending'),
+        ]:
+            check = check_for(count, bsr_count=0, status=status)
+            check.update(check_type='sem_retail', phase=phase, status=status)
+            apply_verification_status(check)
+            row = check['categories'][0]['retailers'][0]
+            self.assertEqual(status, row['status'])
+            self.assertEqual(expected, row['verification_state'])
+
     def test_new_retailer_fifth_day_observes_sixth_compares_prior_median(self):
         for retailer, country in [('Coppel', 'SEM'), ('FutureRetailer', 'SEG')]:
             history = [sample(retailer=retailer, bsr=60, source_date=f'2026-09-{n:02}') for n in range(1, 6)]
@@ -307,6 +348,33 @@ class CalculationTests(SimpleTestCase):
 
 
 class StoreTests(TestCase):
+    def test_window_end_rechecks_same_batch_and_counts_without_early_normal(self):
+        self.refresh(self.end - timedelta(days=5), self.end - timedelta(days=1), country='SEM',
+                     loader=lambda *_: check_for(300, retailer='Coppel', bsr_count=80))
+        def loader(phase):
+            def load(*_):
+                check = check_for(200, retailer='Coppel', bsr_count=56)
+                check['phase'] = phase
+                return check
+            return load
+        self.refresh(country='SEM', loader=loader('collecting'))
+        waiting = Daily.objects.get(country='SEM', source_date=self.end).rows[0]
+        self.assertEqual(('waiting', False, []),
+                         (waiting['verification_state'], waiting['complete'], waiting['alerts']))
+        dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end)})).content)
+        self.assertEqual('waiting', dashboard['snapshots'][0]['rows'][0]['verification_state'])
+        weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(self.end), 'country': 'SEM'})).content)
+        day = next(d for w in weekly['weeks'] for r in w['rows'] for d in r['daily'] if d['date'] == str(self.end))
+        self.assertEqual(('pending', 'waiting', 200), (day['state'], day['verification_state'], day['main']))
+        self.refresh(country='SEM', loader=loader('complete'))
+        ready = Daily.objects.get(country='SEM', source_date=self.end).rows[0]
+        self.assertEqual(waiting['batch_id'], ready['batch_id'])
+        self.assertEqual('ready', ready['verification_state'])
+        self.assertTrue(ready['complete'])
+        self.assertEqual({'main', 'bsr', 'total'}, {a['metric'] for a in ready['alerts']})
+        dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end)})).content)
+        self.assertEqual(ready['alerts'], dashboard['snapshots'][0]['rows'][0]['alerts'])
+
     def test_coppel_observation_survives_rebuild_and_both_apis(self):
         def loader(_country, day):
             return check_for(bsr_count=42 if day == self.end else 60, retailer='Coppel')
