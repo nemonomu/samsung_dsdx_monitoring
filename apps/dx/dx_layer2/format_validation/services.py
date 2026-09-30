@@ -232,17 +232,17 @@ TSE_FORMAT_RULES = (
     {
         'field': 'final_sku_price',
         'description': '태국 바트 금액 또는 품절 표시',
-        'pattern': '฿10,820, ฿10,820.00 또는 สินค้าหมด',
+        'pattern': '฿10,820, ฿25,640.5, ฿10,820.00 또는 สินค้าหมด',
     },
     {
         'field': 'original_sku_price',
         'description': '값이 있으면 태국 바트 금액 형식',
-        'pattern': '฿13,820 또는 ฿13,820.00',
+        'pattern': '฿13,820, ฿13,820.5 또는 ฿13,820.00',
     },
     {
         'field': 'savings',
         'description': '값이 있으면 할인금액과 음수 할인율 형식',
-        'pattern': '฿3,000 (-3%) 또는 ฿9 (-0%)',
+        'pattern': '฿3,000 (-3%), ฿3,000.5 (-3%) 또는 ฿9 (-0%)',
     },
     {
         'field': 'original_sku_price / savings',
@@ -322,8 +322,11 @@ TSE_LOTUSS_FORMAT_RULES = {
 _TSE_MONEY_PATTERN = re.compile(
     r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{2})?$'
 )
+_TSE_HOMEPRO_MONEY_PATTERN = re.compile(
+    r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{1,2})?$'
+)
 _TSE_SAVINGS_PATTERN = re.compile(
-    r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{2})? '
+    r'^฿(?:0|[1-9]\d{0,2}(?:,\d{3})*)(?:\.\d{1,2})? '
     r'\(-(?:100|[1-9]?\d)%\)$'
 )
 _TSE_COUNT_PATTERN = re.compile(
@@ -795,22 +798,22 @@ def evaluate_tse_format_row(row, product_line=None, retailer=None):
         normalized_final_price = str(final_price).strip()
         if (
             normalized_final_price not in _TSE_OUT_OF_STOCK_VALUES
-            and not _TSE_MONEY_PATTERN.fullmatch(normalized_final_price)
+            and not _TSE_HOMEPRO_MONEY_PATTERN.fullmatch(normalized_final_price)
         ):
             errors['final_sku_price'] = (
-                '฿10,820 금액 또는 สินค้าหมด 품절 표시가 아닙니다.'
+                '฿10,820, ฿25,640.5, ฿10,820.00 금액 또는 สินค้าหมด 품절 표시가 아닙니다.'
             )
-    if original_present and not _TSE_MONEY_PATTERN.fullmatch(
+    if original_present and not _TSE_HOMEPRO_MONEY_PATTERN.fullmatch(
         str(original_price).strip()
     ):
-        errors['original_sku_price'] = '฿13,820 형식이 아닙니다.'
+        errors['original_sku_price'] = '฿13,820, ฿13,820.5 또는 ฿13,820.00 형식이 아닙니다.'
     if (
         savings_present
         and not _TSE_SAVINGS_PATTERN.fullmatch(
             str(savings).strip()
         )
     ):
-        errors['savings'] = '฿3,000 (-3%) 형식이 아닙니다.'
+        errors['savings'] = '฿3,000 (-3%) 또는 소수점 1~2자리 할인금액 형식이 아닙니다.'
 
     if savings_present and not original_present:
         errors['original_sku_price'] = 'savings가 있으면 original_sku_price도 필요합니다.'

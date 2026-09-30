@@ -7,6 +7,8 @@ from tests.unit.support import (
     load_module,
     module_stub,
     package_stub,
+    seg_validation_stub,
+    sem_validation_stub,
 )
 
 
@@ -103,6 +105,8 @@ def shared_stubs():
         ),
         'apps.dx': package_stub('apps.dx'),
         'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),
+        'apps.dx.dx_layer2.seg_validation': seg_validation_stub(),
+        'apps.dx.dx_layer2.sem_validation': sem_validation_stub(),
         'apps.dx.dx_layer2.common': package_stub(
             'apps.dx.dx_layer2.common'
         ),
@@ -163,6 +167,22 @@ class TSEFormatValidationTests(unittest.TestCase):
         self.assertEqual(
             {'final_sku_price', 'original_sku_price'}, set(errors)
         )
+
+    def test_homepro_amounts_allow_one_or_two_decimal_places(self):
+        for product in ('tse_tv', 'tse_ref', 'tse_ldy'):
+            for amount in ('฿25,640', '฿25,640.5', '฿25,640.50', '฿25,640.25'):
+                with self.subTest(product=product, amount=amount):
+                    errors = self.service.evaluate_tse_format_row(self.valid_row(
+                        final_sku_price=amount, original_sku_price=amount,
+                        savings=amount + ' (-3%)',
+                    ), product, 'Homepro')
+                    self.assertEqual({}, errors)
+        for amount in ('฿25,640.', '฿25,640.500', '฿-25,640.5', '฿25,64.5', '25,640.5'):
+            with self.subTest(amount=amount):
+                errors = self.service.evaluate_tse_format_row(self.valid_row(
+                    final_sku_price=amount, original_sku_price=amount,
+                ), 'tse_tv', 'Homepro')
+                self.assertEqual({'final_sku_price', 'original_sku_price'}, set(errors))
 
     def test_out_of_stock_final_price_and_zero_percent_savings_are_valid(self):
         self.assertEqual(

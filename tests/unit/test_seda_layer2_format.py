@@ -48,6 +48,7 @@ class SedaFormatRulesTests(unittest.TestCase):
             self.assertEqual(set(invalid), set(rules.evaluate(invalid, 'seda_tv', retailer)))
         for value in rules.CASAS_UNAVAILABLE:
             self.assertTrue(rules.valid_delivery(value, 'casasbahia'))
+            self.assertFalse(rules.valid_delivery(value, 'magalu'))
         for value in ('Receive today', 'Receive tomorrow', 'Receive within 2 business days', 'Receive within 1 business day'):
             self.assertTrue(rules.valid_delivery(value, 'magalu'))
         self.assertTrue(rules.valid_review_body('review1 - Muito bom! 👍 ||| review2 - texto\ncontinua'))
@@ -114,7 +115,7 @@ class SedaFormatScopeTests(unittest.TestCase):
         self.assertNotIn('account_name', detail['field_counts'])
         self.assertIsNone(seda.select_record(self.cursor, DAY, 'seda_tv', 3, 'account_name'))
 
-    def test_zip_delivery_unavailable_is_reported_in_detail_and_stats(self):
+    def test_zip_delivery_unavailable_is_normal_in_detail_and_stats(self):
         for product, source in SEDA_SOURCE_CONFIG.items():
             with self.subTest(product=product):
                 self.add(product, id=1, account_name='CasasBahia', star_rating='5',
@@ -123,17 +124,16 @@ class SedaFormatScopeTests(unittest.TestCase):
                          delivery_availability='Normal by Tuesday, January 05')
                 detail = services.get_format_detail(
                     self.cursor, DAY, source['section_code'], 'Casas Bahia', 1)
-                self.assertEqual({'delivery_availability': 1}, detail['field_counts'])
-                self.assertEqual(1, detail['total_format_count'])
-                self.assertEqual([1], [row['id'] for row in detail['results']])
-                self.assertEqual(['delivery_availability'], detail['results'][0]['error_fields'])
+                self.assertEqual({}, detail['field_counts'])
+                self.assertEqual(0, detail['total_format_count'])
+                self.assertEqual([], detail['results'])
                 validation = {'tables': []}
-                self.assertEqual(1, seda.append_format_stats(
+                self.assertEqual(0, seda.append_format_stats(
                     self.cursor, DAY, validation, source['section_code']))
                 retailer = next(row for row in validation['tables'][0]['retailers']
                                 if row['retailer'] == 'Casas Bahia')
-                self.assertEqual(1, retailer['issue_count'])
-                self.assertEqual('CRITICAL', retailer['status'])
+                self.assertEqual(0, retailer['issue_count'])
+                self.assertEqual('OK', retailer['status'])
 
     def test_null_batch_selector_scope_and_edit_allowlist(self):
         self.add(id=1, page_type='bsr', batch_id=None)
