@@ -29,3 +29,14 @@ class CollectionStatisticsLease(models.Model):
     name = models.CharField(max_length=40, primary_key=True)
     owner = models.CharField(max_length=36)
     expires_at = models.DateTimeField()
+
+
+class RetailNormalReview(models.Model):
+    """Manual decisions are separate from automatic collection results."""
+
+    fingerprint = models.CharField(max_length=64, unique=True)
+    inspection_date = models.DateField(db_index=True)
+    context = models.JSONField()
+    active = models.BooleanField(default=False)
+    revision = models.PositiveIntegerField(default=0)
+    history = models.JSONField(default=list)

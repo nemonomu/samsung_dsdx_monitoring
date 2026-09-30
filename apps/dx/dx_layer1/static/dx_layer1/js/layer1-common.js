@@ -213,14 +213,18 @@ var currentRetailSummary = null;
 // ============================================================
 // Common utility functions
 // ============================================================
-function getStatusBadge(status) {
+function getStatusBadge(status, detail) {
+    if (detail && L1.retailReview) {
+        var reviewBadge = L1.retailReview.badge(detail, status);
+        if (reviewBadge) return reviewBadge;
+    }
     var statusMap = {
         'OK': { class: 'ok', text: '정상' },
         'VOLUME_LOW': { class: 'critical', text: '이상' },
         'VOLUME_HIGH': { class: 'volume-review', text: '확인 필요' },
         'VOLUME_REVIEW': { class: 'volume-review', text: '확인 필요' },
         'WARNING': { class: 'warning', text: '주의' },
-        'REVIEW': { class: 'warning', text: '확인필요' },
+        'REVIEW': { class: 'volume-review', text: '확인 필요' },
         'CRITICAL': { class: 'critical', text: '이상' },
         'PENDING': { class: 'pending', text: '대기중' },
         'UNASSESSED': { class: 'pending', text: '미판정' },
@@ -237,7 +241,7 @@ function getStatusClass(status) {
     if (['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(status)) return 'volume-review';
     if (status === 'VERIFYING') return 'collecting';
     if (status === 'UNASSESSED') return 'pending';
-    if (status === 'REVIEW') return 'warning';
+    if (status === 'REVIEW') return 'volume-review';
     return status ? status.toLowerCase() : 'pending';
 }
 
@@ -246,7 +250,7 @@ function getRetailerStatusClass(status) {
     if (['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(status)) return 'volume-review';
     if (status === 'VERIFYING') return 'collecting';
     if (status === 'UNASSESSED') return 'pending';
-    var classMap = { 'OK': 'ok', 'WARNING': 'warning', 'REVIEW': 'warning', 'CRITICAL': 'critical', 'PENDING': 'pending', 'COLLECTING': 'collecting' };
+    var classMap = { 'OK': 'ok', 'WARNING': 'warning', 'REVIEW': 'volume-review', 'CRITICAL': 'critical', 'PENDING': 'pending', 'COLLECTING': 'collecting' };
     return classMap[status] || 'ok';
 }
 

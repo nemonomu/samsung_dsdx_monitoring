@@ -37,6 +37,7 @@ async function loadStats() {
         render();
     }).catch(function() {});
     const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
+    if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
 
     try {
         const url = selectedDate
@@ -60,6 +61,7 @@ async function loadStats() {
 }
 
 function renderLayer1Stats(data) {
+    if (L1.retailReview) L1.retailReview.decorate(data, getSelectedDate());
     // Summary stats
     document.getElementById('total-checked').textContent = data.summary.total_checked;
     document.getElementById('total-passed').textContent = data.summary.passed;

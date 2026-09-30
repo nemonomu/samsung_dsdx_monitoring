@@ -70,7 +70,7 @@ function renderTseCategory(cat, checkIdx, catIdx, country) {
             '<div class="sentiment-category-stats">' +
                 L1.retailQuery.button(country || 'TSE', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + countLabel + '</span>' +
-                getStatusBadge(cat.status) +
+                getStatusBadge(cat.status, cat) +
             '</div>' +
         '</div>' +
         '<div class="sentiment-two-column retail-single-column" id="tse-cat-' + checkIdx + '-' + catIdx + '">' +
@@ -123,7 +123,7 @@ function renderTseRetailCheck(check, checkIdx) {
                     '<div class="value">' + actual.toLocaleString() + '</div>' +
                     '<div class="label">총 수집량</div>' +
                 '</div>' +
-                getStatusBadge(check.status) +
+                getStatusBadge(check.status, check) +
             '</div>' +
         '</div>' +
         '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +

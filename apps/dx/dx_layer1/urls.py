@@ -1,11 +1,13 @@
 from django.urls import path, include
 from django.shortcuts import redirect
 from apps.dx.dx_layer1.common import api as check_api
+from apps.dx.dx_layer1.common.retail_review_api import reviews as retail_reviews
 from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 
 app_name = 'layer1'
 
 urlpatterns = [
+    path('api/retail-reviews/', retail_reviews, name='api_retail_reviews'),
     path('', include('apps.dx.dx_layer1.dashboard.urls')),
     path('retail/', include('apps.dx.dx_layer1.retail.urls')),
     path('sentiment/', include('apps.dx.dx_layer1.sentiment.urls')),

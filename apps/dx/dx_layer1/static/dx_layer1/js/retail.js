@@ -109,7 +109,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
             '<div class="sentiment-category-stats">' +
                 L1.retailQuery.button('SEA', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + retailCount(cat.total).toLocaleString() + '</span>' +
-                getStatusBadge(cat.status) +
+                getStatusBadge(cat.status, cat) +
                 (hasUnassessed ? ' <span class="status-badge pending">최소 건수 미판정 포함</span>' : '') +
             '</div>' +
         '</div>' +
@@ -293,7 +293,7 @@ function renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, categoryName, cat
                 '<span class="sentiment-column-title">' + period + '</span>' +
             '<div class="sentiment-column-stats">' +
                 '<span class="sentiment-column-count">' + retailCount(slot.total).toLocaleString() + '건</span>' +
-                getStatusBadge(slot.status) +
+                getStatusBadge(slot.status, slot) +
             '</div>' +
         '</div>' +
         '<div class="retail-rank-wrap">' +
@@ -445,7 +445,7 @@ function renderRetailCheck(check, checkIdx) {
                     '<div class="value">' + (check.actual !== undefined ? check.actual.toLocaleString() : '-') + '</div>' +
                     '<div class="label">총 수집량</div>' +
                 '</div>' +
-                getStatusBadge(check.status) +
+                getStatusBadge(check.status, check) +
             '</div>' +
         '</div>' +
         categoriesHtml +

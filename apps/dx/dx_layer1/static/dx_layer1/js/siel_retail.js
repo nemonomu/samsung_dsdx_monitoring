@@ -62,7 +62,7 @@ function renderSielCategory(cat, checkIdx, catIdx) {
             '<div class="sentiment-category-stats">' +
                 L1.retailQuery.button('SIEL', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' + actual.toLocaleString() + '건</span>' +
-                getStatusBadge(cat.status) +
+                getStatusBadge(cat.status, cat) +
             '</div>' +
         '</div>' +
         '<div class="sentiment-two-column retail-single-column" id="siel-cat-' + checkIdx + '-' + catIdx + '">' +
@@ -110,7 +110,7 @@ function renderSielRetailCheck(check, checkIdx) {
                     '<div class="value">' + actual.toLocaleString() + '</div>' +
                     '<div class="label">총 수집량</div>' +
                 '</div>' +
-                getStatusBadge(check.status) +
+                getStatusBadge(check.status, check) +
             '</div>' +
         '</div>' +
         '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +

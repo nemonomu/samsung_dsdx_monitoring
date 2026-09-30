@@ -18,7 +18,7 @@ context.filterBar = { getDate: () => '2026-09-13' };
 
 for (const [status, count, expectedLabel, expectedClass] of [
     ['OK', 300, '정상', 'ok'],
-    ['REVIEW', 314, '확인필요', 'warning'],
+    ['REVIEW', 314, '확인 필요', 'volume-review'],
     ['CRITICAL', 0, '이상', 'critical'],
 ]) {
     const retailer = {
@@ -43,8 +43,8 @@ for (const [status, count, expectedLabel, expectedClass] of [
     if (status === 'REVIEW') assert(!html.includes('이상'));
 }
 
-assert.strictEqual(context.getStatusClass('REVIEW'), 'warning');
-assert.strictEqual(context.getRetailerStatusClass('REVIEW'), 'warning');
+assert.strictEqual(context.getStatusClass('REVIEW'), 'volume-review');
+assert.strictEqual(context.getRetailerStatusClass('REVIEW'), 'volume-review');
 assert(context.getStatusBadge('WARNING').includes('주의'));
 assert(context.getStatusBadge('CRITICAL').includes('이상'));
 

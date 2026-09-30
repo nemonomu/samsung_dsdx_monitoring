@@ -248,11 +248,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260923-bsr"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260923-bsr"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260922-volume1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260930-review1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260930-review1"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260930-review1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260923-bsr"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260930-review1"));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
     assert.ok(!youtubeSource.includes("(offset_days="));
@@ -264,9 +264,9 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
-    assert(baseSource.includes("layer1-common.js' %}?v=20260930-status-labels"));
+    assert(baseSource.includes("layer1-common.js' %}?v=20260930-review1"));
     assert(baseSource.includes("collection-volume.js' %}?v=8-tse-received"));
-    assert(baseSource.includes("retail-status.js' %}?v=20260930-status-labels"));
+    assert(baseSource.includes("retail-status.js' %}?v=20260930-review1"));
     assert(context.getStatusBadge('VERIFYING').includes('수집중'));
     assert.strictEqual(context.getStatusClass('VERIFYING'), 'collecting');
     assert.strictEqual(context.getRetailerStatusClass('VERIFYING'), 'collecting');

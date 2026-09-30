@@ -28,7 +28,7 @@
                 '<span class="sentiment-category-name">' + esc(cat.category) + '</span></div>' +
                 '<div class="sentiment-category-stats">' + L1.retailQuery.button('SEG', cat, checkIdx, catIdx) +
                 '<span class="sentiment-category-count">' +
-                countLabel + '</span>' + getStatusBadge(cat.status) + '</div></div>' +
+                countLabel + '</span>' + getStatusBadge(cat.status, cat) + '</div></div>' +
             '<div class="sentiment-two-column retail-single-column" id="seg-cat-' + checkIdx + '-' + catIdx + '">' +
                 '<div class="sentiment-column"><div class="retail-rank-wrap">' +
                 '<table class="ct ct-grid"><colgroup><col style="width:28%"><col style="width:18%">' +
@@ -48,7 +48,7 @@
             esc(check.description || '') + '</div></div>' + L1.retailStatus.render(check, checkIdx, 'seg_retail') +
             '<div class="check-stats"><div class="check-stat">' +
             '<div class="value">' + count(check.raw_count) + '</div><div class="label">총 수집량</div></div>' +
-            getStatusBadge(check.status) + '</div></div>' +
+            getStatusBadge(check.status, check) + '</div></div>' +
             '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
             '<div class="time-slot-item" style="margin-bottom:16px;"><div class="time-slot-header" style="cursor:default;">' +
             '<div class="time-slot-info"><span class="time-slot-name">수집 시간</span>' +
