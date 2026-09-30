@@ -265,7 +265,7 @@ function categoryFromSummary(key) {
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
     assert(baseSource.includes("layer1-common.js' %}?v=20260930-verification"));
-    assert(baseSource.includes("collection-volume.js' %}?v=9-verification-reasons"));
+    assert(baseSource.includes("collection-volume.js' %}?v=10-preserve-auto-status"));
     assert(baseSource.includes("retail-status.js' %}?v=20260930-review1"));
     assert(context.getStatusBadge('VERIFYING').includes('검증 대기'));
     assert(!context.getStatusBadge('VERIFYING').includes('수집중'));

@@ -32,18 +32,14 @@ def verification_state(check, slot, row):
 
 
 def apply_verification_status(check):
-    """Annotate existing counts without extra source reads or volume decisions."""
+    """Annotate history eligibility without overriding the automatic verdict.
+
+    A pending statistics refresh is not a collection or manual-review status.
+    In particular, an existing OK result must remain OK on the dashboard.
+    """
     if check.get('check_type') not in RETAIL_TYPES:
         return
-    updates = []
     for category in check.get('categories', []):
         for slot in category.get('time_slots') or [{'retailers': category.get('retailers', [])}]:
             for row in slot.get('retailers', []):
-                updates.append((row, verification_state(check, slot, row), slot, category))
-    for row, state, slot, category in updates:
-        row['verification_state'] = state
-        if state == 'waiting':
-            row['status'] = 'VERIFYING'
-            for parent in (slot, category, check):
-                if parent.get('status') in ('OK', 'UNASSESSED'):
-                    parent['status'] = 'VERIFYING'
+                row['verification_state'] = verification_state(check, slot, row)

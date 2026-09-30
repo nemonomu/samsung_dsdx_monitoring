@@ -52,35 +52,31 @@ for (const modify of [
 ]) {
     const payload = saved(); modify(payload);
     const data = volume.decorate(fixture(), payload, day);
-    assert.strictEqual(data.checks[0].status, 'VERIFYING');
+    assert.strictEqual(data.checks[0].status, 'OK');
     assert.strictEqual(data.checks[0].categories[0].retailers[0].volume_comparison_state, 'unavailable');
 }
 const data = fixture();
-// Received counts must explain why verification is pending, without claiming
-// that the collector is still running or marking unverified data as normal.
-for (const [country, type] of [['SEA', 'retail'], ['SEDA', 'seda_retail'], ['SIEL', 'siel_retail'], ['SEG', 'seg_retail']]) {
-    const current = fixture();
-    current.checks[0].check_type = type;
-    volume.decorate(current, null, day);
-    const row = current.checks[0].categories[0].retailers[0];
-    assert.strictEqual(row.status, 'VERIFYING', country);
-    assert(row.verification_reason.includes('유효한 수집량 비교 결과가 없어'), country);
-    assert(current.checks[0].verification_reason.includes('유효한 수집량 비교 결과가 없어'), country);
+// Snapshot absence is not a user-review state: preserve all automatic verdicts.
+for (const [country, type] of [['SEA', 'retail'], ['SEDA', 'seda_retail'], ['SIEL', 'siel_retail'],
+    ['SEG', 'seg_retail'], ['SEM', 'sem_retail'], ['TSE', 'tse_retail']]) {
+    for (const status of ['OK', 'REVIEW', 'UNASSESSED', 'COLLECTING', 'PENDING', 'CRITICAL', 'ERROR']) {
+        const current = fixture(status);
+        current.checks[0].check_type = type;
+        volume.decorate(current, null, day);
+        const row = current.checks[0].categories[0].retailers[0];
+        assert.strictEqual(row.status, status, country);
+        assert.strictEqual(current.checks[0].status, status, country);
+        assert.strictEqual(current.checks[0].categories[0].status, status, country);
+        assert.strictEqual(row.verification_reason, undefined);
+    }
 }
-const retryWaiting = fixture();
-const retrySaved = saved();
-retrySaved.snapshots[0].rows[0].batch_id = 'old-batch';
-volume.decorate(retryWaiting, retrySaved, day);
-assert(retryWaiting.checks[0].verification_reason.includes('재검증'));
-volume.decorate(retryWaiting, saved(), day);
-assert.strictEqual(retryWaiting.checks[0].verification_reason, undefined, 'ready results clear stale waiting reasons');
 data.summary = {passed: 1, failed: 0};
 data.checks[0].is_target_date = true;
 volume.decorate(data, saved(), day);
 assert.strictEqual(data.summary.passed, 0);
 assert.strictEqual(data.summary.failed, 1);
 volume.decorate(data, null, day);
-assert.strictEqual(data.summary.passed, 0);
+assert.strictEqual(data.summary.passed, 1);
 assert.strictEqual(data.summary.failed, 0);
 assert.strictEqual(volume.metrics({bsr_applicable: false, actual: 300, raw_count: 315}).total, 300);
 assert.strictEqual(volume.metrics({actual: 300, raw_count: 315}, 'SEM').total, 300);
@@ -91,7 +87,7 @@ const summary = {ref: {summary: [{retailer: 'Lowes', batch_id: 'new', rows: [
     {time_slot: 'daily', main: 210, bsr: 100, total: 210},
 ]}]}};
 volume.decorate(sea, seaSaved, day, summary);
-assert.strictEqual(sea.checks[0].status, 'VERIFYING', 'newer displayed SEA batch must wait for its own verification');
+assert.strictEqual(sea.checks[0].status, 'OK', 'a newer batch must not inherit an old alert or lose the source verdict');
 summary.ref.summary[0].batch_id = 'b1';
 volume.decorate(sea, seaSaved, day, summary);
 assert.strictEqual(sea.checks[0].status, 'VOLUME_LOW');
@@ -124,7 +120,7 @@ homeDepotSaved.snapshots[0].rows[0].comparison_state = 'ready';
 volume.decorate(homeDepot, homeDepotSaved, day);
 assert.strictEqual(homeDepotRow.status, 'OK');
 volume.decorate(homeDepot, null, day);
-assert.strictEqual(homeDepotRow.status, 'VERIFYING', 'missing comparison must wait for verification');
+assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'missing comparison preserves the source verdict');
 homeDepotSaved.snapshots[0].rows[0].alerts = [{status: 'VOLUME_LOW'}];
 volume.decorate(homeDepot, homeDepotSaved, day);
 assert.strictEqual(homeDepotRow.status, 'VOLUME_LOW');
@@ -134,14 +130,14 @@ assert.strictEqual(homeDepotRow.status, 'VOLUME_HIGH');
 homeDepotSaved.snapshots[0].rows[0].alerts = [];
 homeDepotSaved.snapshots[0].rows[0].batch_id = 'old';
 volume.decorate(homeDepot, homeDepotSaved, day);
-assert.strictEqual(homeDepotRow.status, 'VERIFYING', 'old batch must not produce a normal result');
+assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'old batch must not produce a normal result');
 homeDepotSaved.snapshots[0].rows[0].batch_id = 'b1';
 homeDepotRow.count = 0;
 homeDepotSaved.snapshots[0].rows[0].total = 0;
 volume.decorate(homeDepot, homeDepotSaved, day);
 assert.strictEqual(homeDepotRow.status, 'UNASSESSED', 'zero collected rows must not be called normal');
-assert.strictEqual(data.checks[0].status, 'VERIFYING');
-assert.strictEqual(data.checks[0].categories[0].retailers[0].status, 'VERIFYING');
+assert.strictEqual(data.checks[0].status, 'OK');
+assert.strictEqual(data.checks[0].categories[0].retailers[0].status, 'OK');
 assert.strictEqual(volume.merge('OK', [{status: 'VOLUME_HIGH'}, {status: 'VOLUME_LOW'}]), 'VOLUME_LOW');
 const bsrPayload = saved();
 bsrPayload.snapshots[0].rows[0].bsr = 99;
@@ -220,7 +216,7 @@ for (const [country, product, retailer] of [
     ['SEG', 'TV', 'Amazon'], ['SEG', 'REF', 'Amazon'],
 ]) {
     const current = fixedFixture(country, product, retailer, 85);
-    assert.strictEqual(rowOf(volume.decorate(current, null, day)).status, 'VERIFYING');
+    assert.strictEqual(rowOf(volume.decorate(current, null, day)).status, 'OK');
     const payload = {inspection_date: day, snapshots: [{country, source_date: day, available: true,
         rows: [{product, retailer, slot: 'daily', main: 299, bsr: 85, total: 337, batch_id: 'b1',
             complete: true, observation_state: 'ready', comparison_state: 'ready', alerts: [{metric: 'bsr', status: 'VOLUME_REVIEW',
@@ -246,7 +242,7 @@ for (const payload of [null, {inspection_date:day,snapshots:[]},
     {inspection_date:day,snapshots:[{country:'SEA',available:false,rows:[]}]},
     {inspection_date:'2026-09-20',snapshots:[]}, saved()]) {
     const current = volume.decorate(fixedFixture(), payload, day);
-    assert.strictEqual(rowOf(current).status, 'VERIFYING');
+    assert.strictEqual(rowOf(current).status, 'OK');
     assert.strictEqual(rowOf(current).observation_state, 'unknown');
     assert.strictEqual(current.summary.failed, 0);
     assert(context.L1.retailStatus.bsrCell(rowOf(current), '99').includes('관찰 이력 확인 중'));
@@ -287,7 +283,7 @@ assert.strictEqual(rowOf(updated).status, 'OK', 'recovered counts remove the pre
 displayedSummary.tv.summary[0].rows[0].bsr = 99;
 displayedSummary.tv.inspection_date = '2026-09-20';
 volume.decorate(updated, maturePayload(updated), day, displayedSummary);
-assert.strictEqual(rowOf(updated).status, 'VERIFYING', 'a different date must not supply current BSR values');
+assert.strictEqual(rowOf(updated).status, 'OK', 'a different date must not supply current BSR values');
 assert.strictEqual(rowOf(updated).volume_alerts.length, 0);
 console.log('Collection volume: threshold states, precedence, snapshot matching and stale-response tests passed.');
 
@@ -323,18 +319,18 @@ for (const retailer of ['Coppel', 'FutureRetailer']) {
     assert(!context.L1.retailStatus.rowBadge(rowOf(current)).includes('신규'));
 }
 
-// Receipt during the window cannot be shown as normal, even if an old saved
-// result has identical counts. End-of-window verification uses the same batch.
+// Preserve the source verdict during the window. Historical alerts still
+// require a completed window and matching batch before they can apply.
 const early = fixedFixture('SEM', 'REF', 'Coppel', 56);
 early.checks[0].phase = 'collecting';
 const earlyPayload = maturePayload(early);
 earlyPayload.snapshots[0].rows[0].alerts = [{metric: 'bsr', status: 'VOLUME_LOW'}];
 volume.decorate(early, earlyPayload, day);
-assert.strictEqual(rowOf(early).status, 'VERIFYING');
-assert.strictEqual(early.checks[0].status, 'VERIFYING');
-assert.strictEqual(early.checks[0].categories[0].status, 'VERIFYING');
-assert.strictEqual(early.summary.passed, 0);
-assert.strictEqual(early.summary.total_completed, 0);
+assert.strictEqual(rowOf(early).status, 'OK');
+assert.strictEqual(early.checks[0].status, 'OK');
+assert.strictEqual(early.checks[0].categories[0].status, 'OK');
+assert.strictEqual(early.summary.passed, 1);
+assert.strictEqual(early.summary.total_completed, 1);
 assert.strictEqual(rowOf(early).volume_alerts.length, 0);
 early.checks[0].phase = 'complete';
 volume.decorate(early, earlyPayload, day);
@@ -349,7 +345,7 @@ assert.strictEqual(early.summary.total_completed, 1);
 assert.strictEqual(early.summary.pass_rate, 100);
 rowOf(early).batch_id = 'retry';
 volume.decorate(early, earlyPayload, day);
-assert.strictEqual(rowOf(early).status, 'VERIFYING', 'a retry waits for its own statistics');
+assert.strictEqual(rowOf(early).status, 'OK', 'a retry preserves its automatic verdict until matching statistics are available');
 
 const newDuringWindow = fixedFixture('SEM', 'LDY', 'Coppel', 60);
 newDuringWindow.checks[0].phase = 'collecting';
@@ -359,7 +355,7 @@ Object.assign(newDuringPayload.snapshots[0].rows[0], {
 });
 volume.decorate(newDuringWindow, newDuringPayload, day);
 assert.strictEqual(rowOf(newDuringWindow).observation_days, 2);
-assert.strictEqual(rowOf(newDuringWindow).status, 'VERIFYING');
+assert.strictEqual(rowOf(newDuringWindow).status, 'OK');
 assert(context.L1.retailStatus.rowBadge(rowOf(newDuringWindow)).includes('신규 · 관찰 중 (2/5일)'));
 
 const separate = fixedFixture('SEA', 'REF', 'Lowes', 50);
@@ -373,7 +369,7 @@ separate.checks[0].categories[0].retailers.push({retailer: 'Walmart', count: 300
 volume.decorate(separate, separatePayload, day);
 assert.strictEqual(rowOf(separate).status, 'VOLUME_LOW');
 assert.strictEqual(separate.checks[0].status, 'VOLUME_LOW', 'a pending sibling cannot hide a verified shortage');
-assert.strictEqual(separate.checks[0].categories[0].retailers[1].status, 'VERIFYING');
+assert.strictEqual(separate.checks[0].categories[0].retailers[1].status, 'OK');
 
 // Observation on one slot must not hide missing/error alerts on another slot.
 const multiSlot = fixedFixture('SEM', 'REF', 'Coppel', 60);

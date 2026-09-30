@@ -44,7 +44,7 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
-    def test_received_rows_and_batch_id_do_not_prove_load_completion(self):
+    def test_history_eligibility_does_not_override_automatic_normal_status(self):
         for country in calc.COUNTRIES:
             check = check_for(250, bsr_count=60)
             check.update(check_type='retail' if country == 'SEA' else country.lower() + '_retail',
@@ -53,8 +53,9 @@ class CalculationTests(SimpleTestCase):
             category['status'] = 'OK'
             apply_verification_status(check)
             row = category['retailers'][0]
-            self.assertEqual(('VERIFYING', 'waiting'), (row['status'], row['verification_state']))
-            self.assertEqual('VERIFYING', check['status'])
+            self.assertEqual(('OK', 'waiting'), (row['status'], row['verification_state']))
+            self.assertEqual('OK', check['status'])
+            self.assertEqual('OK', category['status'])
             normalized = calc.normalize_check(check, country, date(2026, 9, 29))[0]
             self.assertFalse(normalized['complete'])
             self.assertFalse(normalized['baseline_eligible'])
@@ -74,6 +75,7 @@ class CalculationTests(SimpleTestCase):
 
     def test_verification_keeps_errors_and_overdue_zero_collection(self):
         for status, count, phase, expected in [
+            ('REVIEW', 160, 'collecting', 'waiting'), ('OK', 300, 'collecting', 'waiting'),
             ('ERROR', 300, 'collecting', 'error'), ('CRITICAL', 0, 'complete', 'ready'),
             ('COLLECTING', 0, 'collecting', 'collecting'), ('PENDING', 0, 'pending', 'pending'),
         ]:

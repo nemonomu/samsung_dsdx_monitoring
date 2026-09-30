@@ -75,7 +75,8 @@ class ReviewTests(TestCase):
     def test_reject_bad_inputs_and_unauthenticated_requests(self):
         self.assertEqual(401, self.request('confirm', user='')[0])
         self.assertEqual(401, self.request(user='')[0])
-        for field, value in [('status', 'CRITICAL'), ('date', 'invalid'), ('batch_id', ''),
+        for field, value in [('status', 'OK'), ('status', 'COLLECTING'), ('status', 'UNASSESSED'),
+                             ('status', 'VERIFYING'), ('status', 'CRITICAL'), ('date', 'invalid'), ('batch_id', ''),
                              ('counts', [-1, 100, 264, 1]), ('counts', [True, 100, 264, 1]),
                              ('reasons', []), ('basis', '[]'), ('country', 'INVALID')]:
             context = sample()

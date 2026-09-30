@@ -199,7 +199,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
                 self.assertEqual(1 if retail_status == 'OK' else 0, result['summary']['passed'])
                 self.assertEqual([], result['failed_items'])
 
-    def test_received_during_collection_is_not_counted_as_passed(self):
+    def test_automatic_normal_verdict_is_preserved_while_statistics_wait(self):
         @contextmanager
         def connection():
             yield object(), RecordingCursor()
@@ -216,12 +216,12 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             result = self.service.get_dashboard_stats(date(2026, 9, 29))
         self.assertNotIn('error', result)
         check = result['checks'][0]
-        self.assertEqual('VERIFYING', check['status'])
+        self.assertEqual('OK', check['status'])
         row = check['categories'][0]['retailers'][0]
-        self.assertEqual(('VERIFYING', 'waiting', 250),
+        self.assertEqual(('OK', 'waiting', 250),
                          (row['status'], row['verification_state'], row['count']))
-        self.assertEqual(0, result['summary']['passed'])
-        self.assertEqual(0, result['summary']['total_completed'])
+        self.assertEqual(1, result['summary']['passed'])
+        self.assertEqual(1, result['summary']['total_completed'])
         self.assertEqual(0, result['summary']['failed'])
 
     def test_youtube_exception_rolls_back_and_preserves_tv(self):

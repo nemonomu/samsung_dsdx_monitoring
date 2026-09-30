@@ -130,10 +130,12 @@ def main():
             renderLayer1Stats(currentStatsData);
         }""")
         group = page.locator('.check-item').nth(1)
-        expect(group.locator('.check-stats')).to_contain_text('검증 대기')
-        expect(group.locator('.sentiment-category-stats')).to_contain_text('검증 대기')
-        expect(group.locator('.rt-status')).to_contain_text('검증 대기')
-        assert '유효한 수집량 비교 결과가 없어' in group.locator('.check-stats .status-badge').get_attribute('title')
+        expect(group.locator('.check-stats .status-badge')).to_have_text('정상')
+        expect(group.locator('.sentiment-category-stats .status-badge')).to_have_text('정상')
+        expect(group.locator('.rt-status')).to_contain_text('정상')
+        expect(group.locator('.l1-review-badge')).to_have_count(0)
+        assert '정상 확인' not in group.inner_text()
+        assert '검증 대기' not in group.inner_text()
         assert '수집중' not in group.inner_text()
         assert not errors, errors
         browser.close()
