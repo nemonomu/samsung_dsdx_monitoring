@@ -98,7 +98,7 @@ class SielRetailCommonTests(unittest.TestCase):
 
         self.assertIn('star_rating', amazon)
         self.assertIn('page_type', amazon)
-        self.assertNotIn('detailed_review_content', amazon)
+        self.assertIn('detailed_review_content', amazon)
         self.assertIn('count_of_reviews', flipkart)
         self.assertIn('detailed_review_content', flipkart)
         self.assertNotIn('main_rank', flipkart)

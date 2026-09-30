@@ -118,7 +118,7 @@ SIEL_CROSSFIELD_COMMON_EDITABLE_COLUMNS = (
     'final_sku_price', 'original_sku_price', 'savings',
 )
 SIEL_CROSSFIELD_RETAILER_EDITABLE_COLUMNS = {
-    'amazon': ('page_type', 'main_rank', 'bsr_rank'),
+    'amazon': ('page_type', 'main_rank', 'bsr_rank', 'detailed_review_content'),
     'flipkart': ('count_of_reviews', 'detailed_review_content'),
 }
 

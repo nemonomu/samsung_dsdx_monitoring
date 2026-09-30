@@ -159,6 +159,7 @@ class AmazonReviewIntegrationTests(unittest.TestCase):
                 result = self.detail(country, [day(20, 80)], [evidence])
                 self.assertTrue(result['found'])
                 self.assertEqual(1, result['total_anomalies'])
+                self.assertIn('detailed_review_content', result['editable_columns'])
                 self.assertEqual(['comparison_history', 'target'], [r['row_role'] for r in result['anomalies']])
                 self.assertEqual('2026-09-20', result['anomalies'][1]['previous_source_date'])
                 self.assertIn('2026-09-20', result['query'])

@@ -18,7 +18,7 @@ SELECT
     'detailed_review_content'::text AS field1,
     'star_rating|count_of_star_ratings|count_of_reviews'::text AS field2,
     '최근 10일 내 리뷰본문이 있었으나 현재 누락되었거나, 과거 수집 이력 없이 별점·평가/리뷰 수만 있습니다.'::text AS error_message,
-    'issue_type|star_rating|count_of_star_ratings|count_of_reviews|detailed_review_content|review_history_days|review_history_start|review_history_end|previous_source_date'::text AS select_fields
+    'issue_type|star_rating|count_of_star_ratings|count_of_reviews|detailed_review_content|previous_source_date'::text AS select_fields
 FROM (VALUES
     ('seg_tv', 'seg_tv_retail', 'SEG TV',
      'dx_seg.dx_seg_tv_retail_com', 'crawl_strdatetime'),

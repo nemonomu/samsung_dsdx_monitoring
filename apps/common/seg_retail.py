@@ -165,6 +165,8 @@ def get_seg_crossfield_editable_columns(product_line, retailer):
     columns = list(SEG_CROSSFIELD_COMMON_EDITABLE_COLUMNS)
     if retailer_name in ('Mediamarkt', 'OTTO'):
         columns.extend(('count_of_reviews', 'detailed_review_content'))
+    elif retailer_name == 'Amazon':
+        columns.append('detailed_review_content')
     return columns
 
 

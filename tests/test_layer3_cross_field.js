@@ -312,6 +312,32 @@ function testSeaCorrectionQueryUsesInspectionAndSourceDates() {
 
 testSeaCorrectionQueryUsesInspectionAndSourceDates();
 
+function testAmazonHistoryMetadataHiddenWithPreviouslyRegisteredRule() {
+    for (const product of ['SEG_TV', 'SIEL_TV']) {
+        const metadata = ['review_history_days', 'review_history_start', 'review_history_end'];
+        sandbox.window.crossfieldProductLine = product;
+        sandbox.window.crossfieldSelectFields = ['detailed_review_content', 'previous_source_date', ...metadata].join('|');
+        sandbox.window.crossfieldRetailerData = { Amazon: { rows: [{
+            id: 1, item: 'A-1', account_name: 'Amazon', detailed_review_content: null,
+            previous_source_date: null, review_history_days: 0,
+            review_history_start: '2026-09-20', review_history_end: '2026-09-29',
+        }] } };
+        sandbox.window.crossfieldRetailerSummary = { Amazon: {count: 1, items: ['A-1']} };
+        sandbox.window.crossfieldEditableCols = new Set(['detailed_review_content']);
+        sandbox.isCrossFieldInline = () => true;
+        sandbox.showRetailerDetail('Amazon');
+        const state = sandbox.window._cfDetailState;
+        for (const key of metadata) {
+            assert(!state.visibleKeys.includes(key));
+            assert(!state.allColumns.some(column => column.key === key));
+        }
+        assert(state.visibleKeys.includes('detailed_review_content'));
+        assert(state.editableCols.has('detailed_review_content'));
+        assert(state.visibleKeys.includes('previous_source_date'));
+    }
+}
+testAmazonHistoryMetadataHiddenWithPreviouslyRegisteredRule();
+
 function testEqualReviewCountsAreVisibleTogetherInOtherRuleDetails() {
     for (const [product, retailer, expected] of [
         ['TV', 'Bestbuy', true], ['SEA_REF', 'Bestbuy', true],

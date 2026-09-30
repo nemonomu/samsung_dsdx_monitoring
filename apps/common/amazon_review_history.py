@@ -19,8 +19,7 @@ RULE_SPEC = {
     'field2': 'star_rating|count_of_star_ratings|count_of_reviews',
     'retailers': ('Amazon',),
     'display_fields': ('issue_type', 'star_rating', 'count_of_star_ratings', 'count_of_reviews',
-                       'detailed_review_content', 'review_history_days', 'review_history_start',
-                       'review_history_end', 'previous_source_date'),
+                       'detailed_review_content', 'previous_source_date'),
     'error_message': '최근 10일 내 리뷰본문이 있었으나 현재 누락되었거나, 과거 수집 이력 없이 별점·평가/리뷰 수만 있습니다.',
 }
 

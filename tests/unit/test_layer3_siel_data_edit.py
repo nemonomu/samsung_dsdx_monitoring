@@ -75,6 +75,26 @@ class SielLayer3DataEditTests(unittest.TestCase):
             'dx_siel.any_retail_com', services.VALID_TABLES_UPDATE
         )
 
+    def test_amazon_review_body_update_saves_text_and_audit_for_all_supported_sources(self):
+        for product in ('seg_tv', 'seg_ref', 'siel_tv', 'siel_ref', 'siel_ldy'):
+            with self.subTest(product=product):
+                table = f'dx_{product.split("_")[0]}.dx_{product}_retail_com'
+                cursor = ScriptedCursor([
+                    {'fetchone': (None, 'batch-1', 'Amazon', 'A-1')}, {}, {},
+                ])
+                conn = FakeConnection()
+                body = "review1 - Good\nreview2 - It's useful"
+                result = services.update_cell_value(
+                    cursor, conn, table, 20, 'detailed_review_content', body,
+                    '2026-09-30', 'cross_field', 'tester', '본문 수정', 71,
+                )
+                self.assertTrue(result['success'])
+                self.assertEqual((body, 20), cursor.calls[1][1])
+                self.assertIn(f'UPDATE {table} SET detailed_review_content = %s', cursor.calls[1][0])
+                self.assertEqual(body, cursor.calls[2][1][6])
+                self.assertEqual('corrected', cursor.calls[2][1][10])
+                self.assertEqual(1, conn.commits)
+
     def test_update_uses_kst_same_day_latest_batch_and_redirect_scope(self):
         cursor = ScriptedCursor([
             {'fetchone': ('5.5', None, 'Amazon', 'A-1')},
@@ -237,13 +257,13 @@ class SielLayer3DataEditTests(unittest.TestCase):
                     )
                     self.assertTrue(result['success'])
 
-    def test_seg_amazon_review_body_edit_is_not_enabled(self):
+    def test_seg_amazon_item_edit_remains_disabled(self):
         cursor = ScriptedCursor([
             {'fetchone': ('old', 'batch', 'Amazon', 'item-1')},
         ])
         result = services.update_cell_value(
             cursor, FakeConnection(), 'dx_seg.dx_seg_tv_retail_com', 1,
-            'detailed_review_content', 'new', '2026-09-09', 'cross_field',
+            'item', 'new', '2026-09-09', 'cross_field',
             'tester', '', 101,
         )
         self.assertEqual(403, result['status'])
