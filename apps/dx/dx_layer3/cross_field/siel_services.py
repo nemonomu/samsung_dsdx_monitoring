@@ -12,6 +12,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common import amazon_review_history
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
@@ -28,6 +29,7 @@ from apps.common.siel_retail import (
 SIEL_NO_REVIEW_TEXT = 'No customer reviews'
 
 SIEL_RULE_SPECS = OrderedDict((
+    (amazon_review_history.RULE_KEY, amazon_review_history.RULE_SPEC),
     ('rating_count_presence', {
         'guide_description': '별점이 0보다 큰데 별점 수를 숫자로 읽을 수 없거나, 두 값이 숫자일 때 별점과 별점 수 중 한쪽만 0이면 이상입니다.',
         'detail_name': '별점과 별점 수 존재 일치',
@@ -651,6 +653,9 @@ def build_siel_crossfield_result(
         str(row.get('id')): evaluate_siel_row(row)
         for row in rows
     }
+    amazon_findings, amazon_evidence = amazon_review_history.load_findings(
+        cursor, 'SIEL', key, rows, date_of=_detail_row_source_date, parse_number=parse_siel_number,
+    ) if any(rule['rule_key'] == amazon_review_history.RULE_KEY for rule in rules) else ({}, [])
     retailer_rows = {}
     for row in rows:
         retailer = display_siel_retailer(row.get('account_name')) or 'Unknown'
@@ -669,7 +674,10 @@ def build_siel_crossfield_result(
             row_id = str(row.get('id'))
             if not _rule_applies_to_retailer(rule, retailer):
                 continue
-            if rule['rule_key'] not in evaluations[row_id]:
+            matches = (row_id in amazon_findings
+                       if rule['rule_key'] == amazon_review_history.RULE_KEY
+                       else rule['rule_key'] in evaluations[row_id])
+            if not matches:
                 continue
             source_rule_ids = {
                 str(rule_id)
@@ -682,6 +690,8 @@ def build_siel_crossfield_result(
                 continue
             detail = dict(row)
             detail['validation_tag'] = rule['error_message']
+            if rule['rule_key'] == amazon_review_history.RULE_KEY:
+                detail.update(amazon_findings[row_id])
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
             error_details.append(detail)
@@ -690,6 +700,7 @@ def build_siel_crossfield_result(
         result = dict(rule)
         result['error_details'] = error_details
         result['error_count'] = len(error_details)
+        result['comparison_rows'] = amazon_evidence if rule['rule_key'] == amazon_review_history.RULE_KEY else []
         rule_results.append(result)
         finding_count += len(error_details)
 
@@ -761,6 +772,8 @@ def build_siel_display_query(
     source = get_siel_source(key)
     day_count = min(30, max(1, int(days)))
     date_column = source['date_column']
+    if rule['rule_key'] == amazon_review_history.RULE_KEY:
+        day_count += amazon_review_history.LOOKBACK_DAYS
 
     select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SIEL_RULE_SPECS[rule['rule_key']]
@@ -974,6 +987,7 @@ def get_siel_cross_field_rule_detail(
         result['source_rows'], selected['error_details'] + selected.get('review_details', []),
         result['source_date'], result['date_col'], days,
         date_of=_detail_row_source_date,
+        comparison_rows=selected.get('comparison_rows', []),
     )
     retailers = sorted({
         display_siel_retailer(row.get('account_name')) or 'Unknown'

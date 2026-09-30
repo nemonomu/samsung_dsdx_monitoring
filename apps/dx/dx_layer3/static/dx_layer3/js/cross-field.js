@@ -127,6 +127,9 @@ function _cfOrderReviewDetailKeys(keys) {
         'review_body_count',
         'previous_review_body_count',
         'previous_source_date',
+        'review_history_days',
+        'review_history_start',
+        'review_history_end',
         'detailed_review_content',
     ];
     return priority.filter(key => keys.includes(key))
@@ -142,6 +145,9 @@ function _cfColumnDefinition(key) {
         review_body_count: { label: '리뷰본문 수', width: 105 },
         previous_review_body_count: { label: '비교일 리뷰본문 수', width: 140 },
         previous_source_date: { label: '비교일', width: 120 },
+        review_history_days: { label: '기간 내 수집 일수', width: 130 },
+        review_history_start: { label: '이력 조회 시작일', width: 130 },
+        review_history_end: { label: '이력 조회 종료일', width: 130 },
         detailed_review_content: { label: 'detailed_review_content', width: 240 },
     };
     const definition = definitions[key] || { label: key, width: 140 };

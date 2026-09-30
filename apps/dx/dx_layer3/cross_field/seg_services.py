@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 import re
 
 from apps.common.crossfield_history import build_detail_history
+from apps.common import amazon_review_history
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seg_retail import (
@@ -34,6 +35,7 @@ SEG_PRICE_STATUS_TEXTS = {
 }
 
 SEG_RULE_SPECS = OrderedDict((
+    (amazon_review_history.RULE_KEY, amazon_review_history.RULE_SPEC),
     ('rating_count_presence', {
         'guide_description': (
             '별점이 0보다 큰데 별점 수를 숫자로 읽을 수 없거나, 두 값이 숫자일 때 한쪽만 0이면 이상입니다. '
@@ -721,6 +723,12 @@ def build_seg_crossfield_result(
     )
     comparison_data = load_seg_review_history(cursor, start_day, key, rows) if needs_previous else []
     previous_rows = _previous_body_rows(comparison_data + rows, source['date_column']) if needs_previous else {}
+    amazon_findings, amazon_evidence = amazon_review_history.load_findings(
+        cursor, 'SEG', key, rows, date_of=_detail_row_source_date, parse_number=parse_seg_number,
+    ) if any(rule['rule_key'] == amazon_review_history.RULE_KEY for rule in rules) else ({}, [])
+    amazon_evidence_by_item = {}
+    for evidence in amazon_evidence:
+        amazon_evidence_by_item.setdefault(_detail_row_item_key(evidence), []).append(evidence)
     rule_ids = [
         rule_id
         for rule in rules
@@ -772,7 +780,14 @@ def build_seg_crossfield_result(
                    for rule_id in source_rule_ids):
                 continue
             detail = dict(row)
-            if rule['rule_key'] == 'review_body_count':
+            if rule['rule_key'] == amazon_review_history.RULE_KEY:
+                finding = amazon_findings.get(row_id)
+                if not finding:
+                    continue
+                detail.update(finding)
+                for evidence in amazon_evidence_by_item.get(_detail_row_item_key(row), []):
+                    comparison_rows[str(evidence['id'])] = evidence
+            elif rule['rule_key'] == 'review_body_count':
                 issue = evaluate_seg_review_body(row)
                 if not issue:
                     continue
@@ -784,7 +799,7 @@ def build_seg_crossfield_result(
                 review_details.append(detail)
                 review_record_ids.add(row_id)
                 continue
-            if rule['rule_key'] == 'review_body_decrease':
+            elif rule['rule_key'] == 'review_body_decrease':
                 previous = previous_rows.get(row_id)
                 finding_level = _review_body_decrease_level(row, previous)
                 if not _review_collection_complete(
@@ -819,7 +834,7 @@ def build_seg_crossfield_result(
                     continue
             elif rule['rule_key'] not in evaluations[row_id]:
                 continue
-            detail['validation_tag'] = rule['error_message']
+            detail.setdefault('validation_tag', rule['error_message'])
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
             error_details.append(detail)
@@ -915,6 +930,8 @@ def build_seg_display_query(
     source = get_seg_source(key)
     day_count = min(30, max(1, int(days)))
     date_column = source['date_column']
+    if rule['rule_key'] == amazon_review_history.RULE_KEY:
+        day_count += amazon_review_history.LOOKBACK_DAYS
 
     select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SEG_RULE_SPECS[rule['rule_key']]

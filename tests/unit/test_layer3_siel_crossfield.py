@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, datetime, timedelta, timezone
 
-from apps.common import inspection_dates, retail_validation, siel_retail
+from apps.common import amazon_review_history, inspection_dates, retail_validation, siel_retail
 from tests.unit.support import (
     ScriptedCursor,
     load_module,
@@ -16,6 +16,7 @@ siel_services = load_module(
     {
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
+        'apps.common.amazon_review_history': amazon_review_history,
         'apps.common.inspection_dates': inspection_dates,
         'apps.common.retail_validation': retail_validation,
         'apps.common.siel_retail': siel_retail,
@@ -429,7 +430,9 @@ class SielCrossfieldSeedTests(unittest.TestCase):
         ):
             self.assertIn(section, sql)
         for rule_key in siel_services.SIEL_RULE_SPECS:
-            self.assertIn(f"'{rule_key}'", sql)
+            seed_sql = (Path('sql/seed_amazon_review_body_history.sql').read_text(encoding='utf-8')
+                        if rule_key == 'amazon_review_body_history' else sql)
+            self.assertIn(f"'{rule_key}'", seed_sql)
 
 
 if __name__ == '__main__':

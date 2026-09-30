@@ -54,6 +54,7 @@ config/create_admin.py
 !sql/setup_seda_recommendation_crossfield.sql
 !sql/setup_seda_crossfield.sql
 !sql/create_null_review_evidence.sql
+!sql/seed_amazon_review_body_history.sql
 
 # Nginx (서버에서 직접 설정)
 nginx/
