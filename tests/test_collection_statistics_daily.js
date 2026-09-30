@@ -213,7 +213,7 @@ async function flush() {
     await flush();
     elements['cs-retailer'].value = 'Amazon';
     elements['cs-retailer'].fire('change');
-    assert(elements['cs-table-body'].innerHTML.includes('수집중'));
+    assert(elements['cs-table-body'].innerHTML.includes('검증 대기'));
     assert(elements['cs-table-body'].innerHTML.includes('신규 · 관찰 중 (2/5일)'));
     assert(elements['cs-table-body'].innerHTML.includes('5,000'));
     assert(elements['cs-table-body'].innerHTML.includes('<strong>240</strong><small>4/5일 집계'));

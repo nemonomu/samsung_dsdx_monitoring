@@ -122,6 +122,19 @@ def main():
         assert count == len(posts)
         page.keyboard.press('Escape')
         expect(page.locator('dialog')).to_have_count(0)
+        page.evaluate("""() => {
+            const check = currentStatsData.checks[1], cat = check.categories[0], row = cat.retailers[0];
+            check.status = cat.status = row.status = 'OK';
+            check.phase = 'complete';
+            L1.collectionVolume.decorate(currentStatsData, null, selectedDate);
+            renderLayer1Stats(currentStatsData);
+        }""")
+        group = page.locator('.check-item').nth(1)
+        expect(group.locator('.check-stats')).to_contain_text('검증 대기')
+        expect(group.locator('.sentiment-category-stats')).to_contain_text('검증 대기')
+        expect(group.locator('.rt-status')).to_contain_text('검증 대기')
+        assert '유효한 수집량 비교 결과가 없어' in group.locator('.check-stats .status-badge').get_attribute('title')
+        assert '수집중' not in group.inner_text()
         assert not errors, errors
         browser.close()
     print('Browser: unified colors, reasons, confirm/reload/cancel, failure and stale modal passed.')

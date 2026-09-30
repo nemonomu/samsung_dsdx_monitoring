@@ -56,6 +56,24 @@ for (const modify of [
     assert.strictEqual(data.checks[0].categories[0].retailers[0].volume_comparison_state, 'unavailable');
 }
 const data = fixture();
+// Received counts must explain why verification is pending, without claiming
+// that the collector is still running or marking unverified data as normal.
+for (const [country, type] of [['SEA', 'retail'], ['SEDA', 'seda_retail'], ['SIEL', 'siel_retail'], ['SEG', 'seg_retail']]) {
+    const current = fixture();
+    current.checks[0].check_type = type;
+    volume.decorate(current, null, day);
+    const row = current.checks[0].categories[0].retailers[0];
+    assert.strictEqual(row.status, 'VERIFYING', country);
+    assert(row.verification_reason.includes('유효한 수집량 비교 결과가 없어'), country);
+    assert(current.checks[0].verification_reason.includes('유효한 수집량 비교 결과가 없어'), country);
+}
+const retryWaiting = fixture();
+const retrySaved = saved();
+retrySaved.snapshots[0].rows[0].batch_id = 'old-batch';
+volume.decorate(retryWaiting, retrySaved, day);
+assert(retryWaiting.checks[0].verification_reason.includes('재검증'));
+volume.decorate(retryWaiting, saved(), day);
+assert.strictEqual(retryWaiting.checks[0].verification_reason, undefined, 'ready results clear stale waiting reasons');
 data.summary = {passed: 1, failed: 0};
 data.checks[0].is_target_date = true;
 volume.decorate(data, saved(), day);

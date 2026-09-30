@@ -14,6 +14,7 @@
         if (!Object.prototype.hasOwnProperty.call(item, '_volumeBaseStatus')) item._volumeBaseStatus = item.status;
         item.status = item._volumeBaseStatus;
         delete item.volume_alerts;
+        delete item.verification_reason;
     }
     function merge(base, alerts) {
         if (base === 'WARNING' && alerts.some(alert => alert.metric === 'bsr' && alert.status === 'VOLUME_LOW')) return 'VOLUME_LOW';
@@ -39,6 +40,13 @@
     function received(row, country) {
         return Object.values(metrics(row, country)).some(value => value > 0)
             || Number(row.raw_count || row.actual_count || 0) > 0;
+    }
+    function summarizeWaiting(parent, children) {
+        const waiting = children.filter(child => child.status === 'VERIFYING');
+        if (!waiting.length) return;
+        parent.verification_reason = waiting.map(child =>
+            [child.retailer || child.name || child.category, child.verification_reason].filter(Boolean).join(' · ')
+        ).join('\n');
     }
     function collectedToday(check, slots, retailer, country) {
         return slots.some(slot => (slot.retailers || []).some(row =>
@@ -112,7 +120,10 @@
                         row.volume_alerts = matches && row.observation_state === 'ready' ? (saved.alerts || []).slice() : [];
                         row.verification_state = row.status === 'ERROR' ? 'error'
                             : complete ? 'ready' : received(row, country) ? 'waiting' : 'collecting';
-                        if (row.verification_state === 'waiting') row.status = 'VERIFYING';
+                        if (row.verification_state === 'waiting') {
+                            row.status = 'VERIFYING';
+                            row.verification_reason = '수집 건수는 확인되었습니다. 수집 일정 종료 및 수집량 검증을 기다리고 있습니다.';
+                        }
                         if (!variableBsr(country, product, row.retailer)) {
                             row.volume_alerts = row.volume_alerts.filter(alert => alert.metric !== 'bsr');
                             const fixedAlert = fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate);
@@ -122,6 +133,11 @@
                             && ['OK', 'REVIEW', 'UNASSESSED'].includes(row.status)) {
                             row.verification_state = 'waiting';
                             row.status = 'VERIFYING';
+                            row.verification_reason = !snapshot
+                                ? '수집 건수는 확인되었습니다. 현재 날짜의 유효한 수집량 비교 결과가 없어 검증을 기다리고 있습니다.'
+                                : !saved ? '수집 건수는 확인되었습니다. 해당 리테일러의 수집량 비교 결과가 아직 없습니다.'
+                                : !saved.complete ? '수집 건수는 확인되었습니다. 저장된 비교 결과가 아직 검증 완료 상태가 아닙니다.'
+                                : '수집 건수는 확인되었습니다. 현재 날짜·배치·건수와 저장된 비교 결과가 달라 재검증을 기다리고 있습니다.';
                         }
                         if (!matches && !row.volume_alerts.length) return;
                         const homeDepotReady = matches && country === 'SEA' && row.retailer === 'HomeDepot'
@@ -132,14 +148,17 @@
                     });
                     slot.status = merge(slot.status, slotAlerts);
                     if ((slot.status == null || slot.status === 'OK') && (slot.retailers || []).some(row => row.status === 'VERIFYING')) slot.status = 'VERIFYING';
+                    summarizeWaiting(slot, slot.retailers || []);
                     catAlerts.push(...slotAlerts);
                 });
                 cat.status = merge(cat.status, catAlerts);
                 if (cat.status === 'OK' && slots.some(slot => slot.status === 'VERIFYING')) cat.status = 'VERIFYING';
+                summarizeWaiting(cat, slots);
                 checkAlerts.push(...catAlerts);
             });
             check.status = merge(check.status, checkAlerts);
             if (check.status === 'OK' && (check.categories || []).some(cat => cat.status === 'VERIFYING')) check.status = 'VERIFYING';
+            summarizeWaiting(check, check.categories || []);
         });
         if (data.summary && !data.error) {
             const targets = (data.checks || []).filter(check => check.is_target_date);

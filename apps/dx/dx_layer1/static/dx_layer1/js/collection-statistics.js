@@ -75,7 +75,7 @@
         };
         const total = sum('total'), main = sum('main'), bsr = sum('bsr');
         if (active.some(day => day.state === 'pending')) {
-            return annotate({total, main, bsr, provisional: true, label: '수집중'});
+            return annotate({total, main, bsr, provisional: true, label: '검증 대기'});
         }
         if (total === 0 && (main || 0) === 0 && (bsr || 0) === 0 && !sum('collected_count')) {
             return annotate({total, main, bsr, label: '미수집', kind: 'low'});

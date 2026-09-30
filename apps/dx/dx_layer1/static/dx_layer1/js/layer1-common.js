@@ -229,17 +229,20 @@ function getStatusBadge(status, detail) {
         'PENDING': { class: 'pending', text: '대기중' },
         'UNASSESSED': { class: 'pending', text: '미판정' },
         'COLLECTING': { class: 'collecting', text: '수집중' },
-        'VERIFYING': { class: 'collecting', text: '수집중' },
+        'VERIFYING': { class: 'pending', text: '검증 대기' },
         'ANALYZING': { class: 'collecting', text: '분석중' }
     };
     var s = statusMap[status] || { class: 'ok', text: status };
-    return '<span class="status-badge ' + s.class + '"><span class="status-dot"></span>' + s.text + '</span>';
+    var reason = status === 'VERIFYING'
+        ? (detail && detail.verification_reason || '수집 건수는 확인되었지만 수집량 검증이 아직 완료되지 않았습니다.') : '';
+    var tooltip = reason ? ' tabindex="0" title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '';
+    return '<span class="status-badge ' + s.class + '"' + tooltip + '><span class="status-dot"></span>' + s.text + '</span>';
 }
 
 function getStatusClass(status) {
     if (status === 'VOLUME_LOW') return 'critical';
     if (['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(status)) return 'volume-review';
-    if (status === 'VERIFYING') return 'collecting';
+    if (status === 'VERIFYING') return 'pending';
     if (status === 'UNASSESSED') return 'pending';
     if (status === 'REVIEW') return 'volume-review';
     return status ? status.toLowerCase() : 'pending';
@@ -248,7 +251,7 @@ function getStatusClass(status) {
 function getRetailerStatusClass(status) {
     if (status === 'VOLUME_LOW') return 'critical';
     if (['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(status)) return 'volume-review';
-    if (status === 'VERIFYING') return 'collecting';
+    if (status === 'VERIFYING') return 'pending';
     if (status === 'UNASSESSED') return 'pending';
     var classMap = { 'OK': 'ok', 'WARNING': 'warning', 'REVIEW': 'volume-review', 'CRITICAL': 'critical', 'PENDING': 'pending', 'COLLECTING': 'collecting' };
     return classMap[status] || 'ok';
