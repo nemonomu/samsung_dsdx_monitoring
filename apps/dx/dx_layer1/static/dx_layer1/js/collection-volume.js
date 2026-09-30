@@ -118,7 +118,7 @@
                             const fixedAlert = fixedBsrAlert(check, cat, slot, row, counts, displayed, summary, selectedDate);
                             if (fixedAlert) row.volume_alerts.push(fixedAlert);
                         }
-                        if (complete && !matches && received(row, country) && !row.volume_alerts.length
+                        if (country !== 'TSE' && complete && !matches && received(row, country) && !row.volume_alerts.length
                             && ['OK', 'REVIEW', 'UNASSESSED'].includes(row.status)) {
                             row.verification_state = 'waiting';
                             row.status = 'VERIFYING';

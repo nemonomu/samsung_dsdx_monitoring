@@ -264,12 +264,12 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
-    assert(baseSource.includes("layer1-common.js' %}?v=20260929-verification"));
-    assert(baseSource.includes("collection-volume.js' %}?v=7-verification"));
-    assert(baseSource.includes("retail-status.js' %}?v=20260929-new-retailer"));
-    assert(context.getStatusBadge('VERIFYING').includes('수집 확인 · 검증 대기'));
-    assert.strictEqual(context.getStatusClass('VERIFYING'), 'pending');
-    assert.strictEqual(context.getRetailerStatusClass('VERIFYING'), 'pending');
+    assert(baseSource.includes("layer1-common.js' %}?v=20260930-status-labels"));
+    assert(baseSource.includes("collection-volume.js' %}?v=8-tse-received"));
+    assert(baseSource.includes("retail-status.js' %}?v=20260930-status-labels"));
+    assert(context.getStatusBadge('VERIFYING').includes('수집중'));
+    assert.strictEqual(context.getStatusClass('VERIFYING'), 'collecting');
+    assert.strictEqual(context.getRetailerStatusClass('VERIFYING'), 'collecting');
     assert(context.getStatusBadge('VOLUME_LOW').includes('이상'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('volume-review'));
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));

@@ -54,7 +54,7 @@
         var observation = observationLabel(retailer);
         if (observation) {
             var observationBadge = '<span class="status-badge">' + esc(observation) + '</span>';
-            statusBadge = observationBadge + (missing || !['OK', 'REVIEW', 'UNASSESSED'].includes(retailer.status) ? ' ' + statusBadge : '');
+            statusBadge = statusBadge + ' ' + observationBadge;
         }
         var volumeBadge = observation || missing || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
         if (count >= 2 && retailer.batch_context) {

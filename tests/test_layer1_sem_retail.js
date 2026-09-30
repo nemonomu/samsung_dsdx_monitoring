@@ -19,7 +19,7 @@ context.filterBar = { getDate: () => '2026-09-13' };
 for (const [status, count, expectedLabel, expectedClass] of [
     ['OK', 300, '정상', 'ok'],
     ['REVIEW', 314, '확인필요', 'warning'],
-    ['CRITICAL', 0, '심각', 'critical'],
+    ['CRITICAL', 0, '이상', 'critical'],
 ]) {
     const retailer = {
         retailer: 'Liverpool', batch_id: 'liv20260913_000003',
@@ -36,16 +36,17 @@ for (const [status, count, expectedLabel, expectedClass] of [
     }, 0);
     const badge = '<span class="status-badge ' + expectedClass +
         '"><span class="status-dot"></span>' + expectedLabel + '</span>';
-    assert.strictEqual(html.split(badge).length - 1, 3, status + ' at check/category/retailer');
+    assert.strictEqual(html.split(badge).length - 1, status === 'CRITICAL' ? 2 : 3,
+        status + ' at check/category/retailer (zero-count row displays missing)');
     assert(html.includes(count + '/264건'));
     assert.strictEqual(html.includes('REF 미수집'), status === 'CRITICAL');
-    if (status === 'REVIEW') assert(!html.includes('심각'));
+    if (status === 'REVIEW') assert(!html.includes('이상'));
 }
 
 assert.strictEqual(context.getStatusClass('REVIEW'), 'warning');
 assert.strictEqual(context.getRetailerStatusClass('REVIEW'), 'warning');
 assert(context.getStatusBadge('WARNING').includes('주의'));
-assert(context.getStatusBadge('CRITICAL').includes('심각'));
+assert(context.getStatusBadge('CRITICAL').includes('이상'));
 
 const multiRetailerHtml = context.L1.renderers.sem_retail({
     name: 'SEM Retail', check_type: 'sem_retail', actual: 600, status: 'OK',

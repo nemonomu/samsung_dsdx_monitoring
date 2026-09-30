@@ -142,6 +142,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
         raw_count = int(data.get('actual_count') or 0)
         main_count = int(data.get('main_count') or 0)
         is_lotuss = retailer_key == TSE_LOTUSS_RETAILER
+        row_phase = 'complete' if phase == 'collecting' and raw_count > 0 else phase
 
         if is_lotuss:
             history_rows = repo.get_previous_main_counts(
@@ -158,7 +159,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
             ][:TSE_LOTUSS_HISTORY_DAYS]
             status, baseline = _status_for_lotuss_main(
                 main_count,
-                phase,
+                row_phase,
                 history_counts,
             )
             expected = round(baseline, 1) if baseline is not None else None
@@ -179,7 +180,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
             expected = TSE_EXPECTED_COUNT
             actual = raw_count
             rate = round(actual / TSE_EXPECTED_COUNT * 100, 1)
-            status = _status_for_count(actual, phase)
+            status = _status_for_count(actual, row_phase)
             deviation = None
             status_basis = 'fixed_count'
 
@@ -196,6 +197,7 @@ def _build_category(cursor, product_line, source, target_date, phase):
             'bsr_applicable': not is_lotuss,
             'rate': rate,
             'status': status,
+            'collection_phase': row_phase,
             'status_basis': status_basis,
             'history_day_count': len(history_counts),
             'allowed_deviation': (
@@ -244,7 +246,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     ]
 
     failed_items = []
-    if phase == 'complete':
+    if phase != 'pending':
         for category in categories:
             if category['retailers']:
                 candidates = category['retailers']

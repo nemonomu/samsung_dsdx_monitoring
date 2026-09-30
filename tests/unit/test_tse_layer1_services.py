@@ -282,6 +282,41 @@ class TseLayer1ServiceTests(unittest.TestCase):
         self.assertEqual('CRITICAL', complete['check']['status'])
         self.assertEqual(3, len(complete['failed_items']))
 
+    def test_received_rows_are_assessed_before_window_ends(self):
+        self._set_counts({
+            product: [{'retailer': 'Homepro', 'actual_count': count,
+                       'main_count': count, 'bsr_count': 100 if count else 0}]
+            for product, count in zip(SOURCE_CONFIG, (300, 199, 0))
+        })
+        result = self.service.get_layer1_stats(
+            object(), date(2026, 9, 30), datetime(2026, 9, 30, 9, 58)
+        )
+        verification = load_module(
+            'apps/dx/dx_layer1/common/retail_verification.py',
+            'tse_verification_under_test', {},
+        )
+        verification.apply_verification_status(result['check'])
+        rows = [category['retailers'][0] for category in result['check']['categories']]
+        self.assertEqual(['OK', 'CRITICAL', 'COLLECTING'], [row['status'] for row in rows])
+        self.assertEqual(['ready', 'ready', 'collecting'], [row['verification_state'] for row in rows])
+        self.assertEqual('CRITICAL', result['check']['status'])
+        self.assertEqual(1, len(result['failed_items']))
+        self.assertEqual(199, result['failed_items'][0]['actual'])
+
+    def test_screenshot_counts_are_normal_before_window_ends(self):
+        self._set_counts({
+            product: [{'retailer': 'Homepro', 'actual_count': count,
+                       'main_count': min(count, 300), 'bsr_count': 100}]
+            for product, count in zip(SOURCE_CONFIG, (300, 301, 264))
+        })
+        result = self.service.get_layer1_stats(
+            object(), date(2026, 9, 30), datetime(2026, 9, 30, 9, 58)
+        )
+        self.assertEqual('OK', result['check']['status'])
+        self.assertEqual([], result['failed_items'])
+        self.assertTrue(all(category['retailers'][0]['collection_phase'] == 'complete'
+                            for category in result['check']['categories']))
+
     def test_default_clock_is_explicit_kst(self):
         self._set_counts({product_line: [] for product_line in SOURCE_CONFIG})
         expected_now = datetime(

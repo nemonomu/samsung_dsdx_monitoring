@@ -172,6 +172,30 @@ function maturePayload(data) {
         observation_days: 5, comparison_state: 'ready', alerts: [],
     }]}]};
 }
+// TSE assesses received counts immediately, independently of snapshot refresh.
+for (const savedState of ['missing', 'stale', 'previous-batch', 'collecting']) {
+    const current = fixedFixture('TSE', 'TV', 'Homepro', 100);
+    current.checks[0].phase = 'collecting';
+    rowOf(current).collection_phase = 'complete';
+    const payload = savedState === 'missing' ? null : maturePayload(current);
+    if (savedState === 'stale') payload.snapshots[0].available = false;
+    if (savedState === 'previous-batch') payload.snapshots[0].rows[0].batch_id = 'old';
+    if (savedState === 'collecting') payload.snapshots[0].rows[0].complete = false;
+    volume.decorate(current, payload, day);
+    assert.strictEqual(rowOf(current).status, 'OK', savedState);
+    assert.strictEqual(current.checks[0].status, 'OK', savedState);
+    assert.strictEqual(rowOf(current).verification_state, 'ready', savedState);
+    assert(context.L1.retailStatus.rowBadge(rowOf(current)).includes('<status>OK</status>'),
+        'observation metadata must not hide the current TSE count verdict');
+}
+const earlyTseBsr = fixedFixture('TSE', 'TV', 'Homepro', 99);
+earlyTseBsr.checks[0].phase = 'collecting';
+rowOf(earlyTseBsr).collection_phase = 'complete';
+const earlyTsePayload = maturePayload(earlyTseBsr);
+earlyTsePayload.snapshots[0].rows[0].complete = false;
+volume.decorate(earlyTseBsr, earlyTsePayload, day);
+assert.strictEqual(rowOf(earlyTseBsr).status, 'VOLUME_LOW');
+assert.strictEqual(earlyTseBsr.checks[0].status, 'VOLUME_LOW');
 for (const [country, product, retailer] of [
     ['SEA', 'REF', 'Lowes'], ['SEA', 'LDY', 'Lowes'], ['SEA', 'TV', 'Amazon'],
     ['SIEL', 'TV', 'Amazon'], ['SIEL', 'REF', 'Amazon'], ['SIEL', 'LDY', 'Amazon'],
