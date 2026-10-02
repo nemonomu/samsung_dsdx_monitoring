@@ -11,7 +11,7 @@ vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-st
 const volume = context.L1.collectionVolume;
 const day = '2026-10-02';
 const types = {SEA:'retail', SEDA:'seda_retail', SIEL:'siel_retail', SEG:'seg_retail', SEM:'sem_retail', TSE:'tse_retail'};
-const median = (baseline=300, extra={}) => ({baseline, days:7, rule:'median_28d', low_percent:30, high_percent:30, review_percent:null, ...extra});
+const median = (baseline=300, extra={}) => ({baseline, days:7, rule:'median_28d', low_percent:30, high_percent:30, review_percent:15, ...extra});
 const fixed = () => ({baseline:100, days:0, rule:'fixed_100', low_percent:30, high_percent:null, review_percent:null});
 function fixture(country='SIEL', product='TV', base='OK') {
     const source = ['SEA','SEDA'].includes(country) ? '2026-10-01' : day;
@@ -25,7 +25,7 @@ function fixture(country='SIEL', product='TV', base='OK') {
         batch_id:'original', complete:true, observation_state:'ready', observation_prior_days:5,
         comparison_state:'ready', rules:{main:median(), bsr:fixed()},
         alerts:[{metric:'total', status:'VOLUME_LOW', actual:276, baseline:500}]};
-    const payload = {inspection_date:day, policy_version:3,
+    const payload = {inspection_date:day, policy_version:4,
         snapshots:[{country, source_date:source, available:true, rows:[saved]}]};
     return {row, cat, check, data, saved, payload};
 }
@@ -53,17 +53,17 @@ for (const country of Object.keys(types)) for (const product of ['TV','REF','LDY
     }
 }
 // Boundary comparisons are evaluated before display rounding.
-for (const [count, status] of [[1400,'VOLUME_LOW'],[1401,'OK'],[1699,'OK'],[1900,'OK'],[2599,'OK'],[2600,'VOLUME_HIGH']]) {
+for (const [count, status] of [[1400,'VOLUME_LOW'],[1401,'VOLUME_REVIEW'],[1699,'VOLUME_REVIEW'],[1700,'VOLUME_REVIEW'],[1701,'OK'],[1900,'OK'],[2599,'OK'],[2600,'VOLUME_HIGH']]) {
     const f=fixture(); f.saved.rules.main=median(2000); f.row.main_count=count;
     assert.equal(apply(f),status);
 }
 const screenshot=fixture(); screenshot.row.main_count=247;
-assert.equal(apply(screenshot),'OK','247 vs median 300 is only 17.7% down under the new 30% policy');
+assert.equal(apply(screenshot),'VOLUME_REVIEW','247 vs median 300 is 17.7% down and requires review');
 screenshot.saved.rules.main=median(400);
 assert.equal(apply(screenshot),'VOLUME_LOW');
 
 // Wrong date, stale/missing history, and older API versions must never imply normal.
-for (const mutate of [f=>f.payload=null, f=>f.payload.policy_version=2,
+for (const mutate of [f=>f.payload=null, f=>f.payload.policy_version=3,
     f=>f.payload.inspection_date='2026-10-01', f=>f.payload.snapshots[0].available=false,
     f=>f.payload.snapshots[0].source_date='2026-09-30', f=>f.saved.retailer='Other',
     f=>f.saved.product='LDY', f=>f.saved.slot='different', f=>f.saved.rules={},

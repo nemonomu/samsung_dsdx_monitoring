@@ -52,8 +52,9 @@ def normalize_check(check, country, inspection_date):
 
 
 BSR_POLICY_VERSION = 3
-MAIN_POLICY_VERSION = 3
+MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
+MAIN_REVIEW_PERCENT = 15
 OBSERVATION_POLICY_VERSION = 1
 MINIMUM_DAYS = 5
 
@@ -171,6 +172,8 @@ def _main_alert(current, basis):
     change = (current - baseline) * 100
     if change <= -baseline * MAIN_CHANGE_PERCENT:
         status = 'VOLUME_LOW'
+    elif change <= -baseline * MAIN_REVIEW_PERCENT:
+        status = 'VOLUME_REVIEW'
     elif change >= baseline * MAIN_CHANGE_PERCENT:
         status = 'VOLUME_HIGH'
     else:
@@ -180,6 +183,7 @@ def _main_alert(current, basis):
             'percent': round(percent, 1), 'status': status,
             'reason': f'MAIN 과거 중앙값 {baseline:g}개 / 수집 {current}개 / '
                       + ('30% 이상 감소' if status == 'VOLUME_LOW' else
+                         '15% 이상 30% 미만 감소 / 확인 필요' if status == 'VOLUME_REVIEW' else
                          '30% 이상 증가 / 확인 필요')}
 
 
@@ -202,7 +206,7 @@ def comparison_rules(row, country):
             'baseline': basis['value'], 'days': basis['days'],
             'rule': 'median_28d' if variable else 'fixed_100',
             'low_percent': (20 if tiered_bsr(row, country) else 30) if metric == 'bsr' else MAIN_CHANGE_PERCENT,
-            'review_percent': 15 if metric == 'bsr' and tiered_bsr(row, country) else None,
+            'review_percent': MAIN_REVIEW_PERCENT if metric == 'main' else 15 if tiered_bsr(row, country) else None,
             'high_percent': MAIN_CHANGE_PERCENT if metric == 'main' else None,
         }
     return rules

@@ -61,7 +61,7 @@
             percent: Math.round(change / baseline * 10) / 10, status, rule: rule.rule, reason} : null};
     }
     function decorate(data, payload, selectedDate, seaSummaries) {
-        const snapshots = payload && payload.policy_version === 3 && payload.inspection_date === selectedDate ? payload.snapshots || [] : [];
+        const snapshots = payload && payload.policy_version === 4 && payload.inspection_date === selectedDate ? payload.snapshots || [] : [];
         (data.checks || []).forEach(check => {
             const country = countries[check.check_type];
             if (!country) return;
@@ -152,7 +152,7 @@
                 if (!response.ok) continue;
                 const result = await response.json();
                 if (generation !== loadGeneration) return null;
-                if (result && result.policy_version === 3 && result.inspection_date === day && Array.isArray(result.snapshots)) return result;
+                if (result && result.policy_version === 4 && result.inspection_date === day && Array.isArray(result.snapshots)) return result;
             } catch (_) {
                 if (generation !== loadGeneration) return null;
             } finally {
@@ -160,7 +160,7 @@
                 if (activeController === controller) activeController = null;
             }
         }
-        return {inspection_date: day, policy_version: 3, snapshots: [], load_state: 'error'};
+        return {inspection_date: day, policy_version: 4, snapshots: [], load_state: 'error'};
     }
     L1.collectionVolume = {load, decorate, metrics};
 })();

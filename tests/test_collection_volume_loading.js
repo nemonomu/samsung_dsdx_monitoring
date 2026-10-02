@@ -4,10 +4,10 @@ const vm = require('vm');
 const volumeSource = fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/collection-volume.js', 'utf8');
 const dashboardSource = fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/dashboard.js', 'utf8');
 const day = '2026-10-02';
-const good = (date = day) => ({inspection_date: date, policy_version: 3, snapshots: [{
+const good = (date = day) => ({inspection_date: date, policy_version: 4, snapshots: [{
     country: 'SIEL', source_date: date, available: true, rows: [{
         product: 'TV', retailer: 'Amazon', slot: 'daily', observation_state: 'ready', rules: {
-            main: {rule: 'median_28d', baseline: 300, days: 7, low_percent: 30, high_percent: 30},
+            main: {rule: 'median_28d', baseline: 300, days: 7, low_percent: 30, review_percent: 15, high_percent: 30},
             bsr: {rule: 'fixed_100', baseline: 100, days: 0},
         },
     }],

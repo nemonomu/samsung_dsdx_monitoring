@@ -142,11 +142,11 @@ class CalculationTests(SimpleTestCase):
         self.assertEqual([], calc.current_volume_decision(legacy, 'SEM')['alerts'])
         self.assertEqual('unknown', calc.current_volume_decision(legacy, 'SEM')['observation_state'])
 
-    def test_main_30_percent_boundaries_all_countries(self):
+    def test_main_15_and_30_percent_boundaries_all_countries(self):
         history = [sample(total=3000, main=2000)] * 7
         for country in calc.COUNTRIES:
             for current, expected in [(1901, None), (1900, None),
-                                      (1700, None), (1699, None), (1401, None),
+                                      (1701, None), (1700, 'VOLUME_REVIEW'), (1699, 'VOLUME_REVIEW'), (1401, 'VOLUME_REVIEW'),
                                       (1400, 'VOLUME_LOW'), (0, 'VOLUME_LOW'),
                                       (2599, None), (2600, 'VOLUME_HIGH')]:
                 with self.subTest(country=country, current=current):
@@ -218,7 +218,7 @@ class CalculationTests(SimpleTestCase):
 
     def test_exact_threshold_both_directions_and_rounding(self):
         history = [sample(2000)] * 7
-        for current, expected in [(1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH'), (1401, None), (2599, None)]:
+        for current, expected in [(1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH'), (1401, 'VOLUME_REVIEW'), (2599, None)]:
             row = calc.compare_rows([sample(current)], history)[0]
             states = {alert['status'] for alert in row['alerts'] if alert['metric'] == 'main'}
             self.assertEqual({expected} if expected else set(), states)
@@ -460,7 +460,7 @@ class StoreTests(TestCase):
         self.assertEqual(60, row['baselines']['bsr']['value'])
 
     def test_saved_main_baseline_uses_new_thresholds_in_both_apis_without_writes(self):
-        for current, expected in [(1900, None), (1700, None), (1401, None), (1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH')]:
+        for current, expected in [(1900, None), (1701, None), (1700, 'VOLUME_REVIEW'), (1401, 'VOLUME_REVIEW'), (1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH')]:
             source = sample(retailer='Walmart', product='TV', main=current, total=3000,
                             alerts=[], baselines={'main': {'value': 2000, 'days': 7}},
                             comparison_state='ready')
@@ -477,7 +477,7 @@ class StoreTests(TestCase):
             alerts = dashboard['snapshots'][0]['rows'][0]['alerts']
             self.assertEqual([expected] if expected else [], [alert['status'] for alert in alerts])
             rules = dashboard['snapshots'][0]['rows'][0]['rules']
-            self.assertEqual((2000, 30, 30), (rules['main']['baseline'], rules['main']['low_percent'], rules['main']['high_percent']))
+            self.assertEqual((2000, 30, 15, 30), (rules['main']['baseline'], rules['main']['low_percent'], rules['main']['review_percent'], rules['main']['high_percent']))
             self.assertEqual('fixed_100', rules['bsr']['rule'])
             self.assertEqual(alerts, weekly['weeks'][0]['rows'][0]['daily'][6]['alerts'])
             self.assertEqual([], Daily.objects.get().rows[0]['alerts'])
