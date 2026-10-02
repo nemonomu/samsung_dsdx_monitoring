@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET
 
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 from apps.dx.dx_layer1.common.context import build_context
-from .calculations import COUNTRIES, MINIMUM_DAYS, current_volume_decision, week_start
+from .calculations import COUNTRIES, MINIMUM_DAYS, MAIN_POLICY_VERSION, comparison_rules, current_volume_decision, week_start
 
 
 def page(request):
@@ -82,14 +82,15 @@ def alerts(request):
     except DatabaseError:
         return JsonResponse({'error': '수집량 비교 결과를 불러올 수 없습니다.'}, status=503)
     now = timezone.now()
-    return JsonResponse({'inspection_date': str(day), 'snapshots': [{
+    return JsonResponse({'inspection_date': str(day), 'policy_version': MAIN_POLICY_VERSION, 'snapshots': [{
         'country': snapshot.country, 'source_date': str(snapshot.source_date),
         'updated_at': snapshot.updated_at.isoformat(),
         'available': not snapshot.refresh_error and now - snapshot.updated_at < timedelta(minutes=60)
             if day >= timezone.localdate(timezone=tz(timedelta(hours=9))) else not snapshot.refresh_error,
-        'rows': [{key: row.get(key) for key in ('product', 'retailer', 'slot', 'main', 'bsr', 'total',
+        'rows': [{**{key: row.get(key) for key in ('product', 'retailer', 'slot', 'main', 'bsr', 'total',
                    'batch_id', 'complete', 'alerts', 'comparison_state', 'bsr_comparison_state',
                    'verification_state',
-                   'observation_state', 'observation_days', 'observation_prior_days')}
+                   'observation_state', 'observation_days', 'observation_prior_days')},
+                  'rules': comparison_rules(row, snapshot.country)}
                  for saved in snapshot.rows for row in [current_volume_decision(saved, snapshot.country)]],
     } for snapshot in snapshots]})

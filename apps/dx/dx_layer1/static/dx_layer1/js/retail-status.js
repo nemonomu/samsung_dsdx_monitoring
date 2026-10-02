@@ -33,7 +33,7 @@
         if (retailer.observation_state === 'observing') {
             return '신규 · 관찰 중 (' + Math.max(0, Math.min(5, Number(retailer.observation_days) || 0)) + '/5일)';
         }
-        return retailer.observation_state === 'unknown' ? '관찰 이력 확인 중' : '';
+        return '';
     }
 
     function bsrCell(retailer, value) {
@@ -42,8 +42,7 @@
         var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
         var low = alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; });
         return '<td' + (alerts.length ? ' class="' + (low ? 'cs-bsr-low' : normalReviewed ? 'cs-bsr-confirmed' : 'cs-bsr-review') + '" title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '') + '>'
-            + esc(value) + (alerts.length ? '<small style="display:block">' + (low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요') + '</small>'
-                : observationLabel(retailer || {}) ? '<small style="display:block">' + esc(observationLabel(retailer)) + '</small>' : '') + '</td>';
+            + esc(value) + (alerts.length ? '<small style="display:block">' + (low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요') + '</small>' : '') + '</td>';
     }
 
     function rowBadge(retailer) {
@@ -57,7 +56,7 @@
             var observationBadge = '<span class="status-badge">' + esc(observation) + '</span>';
             statusBadge = statusBadge + ' ' + observationBadge;
         }
-        var volumeBadge = observation || missing || retailer.status === 'REVIEW' || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
+        var volumeBadge = observation || missing || retailer.status !== 'OK' || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
         if (count >= 2 && retailer.batch_context) {
             return volumeBadge + '<button type="button" class="status-badge critical l1-batch-toggle" aria-expanded="false" ' +
                 'data-batch-count="' + count + '" data-batch-context="' + esc(JSON.stringify(retailer.batch_context)).replace(/"/g, '&quot;') + '" ' +

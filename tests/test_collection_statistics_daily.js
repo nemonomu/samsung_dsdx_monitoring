@@ -48,8 +48,8 @@ for (let week = 0; week < 8; week++) {
             const total = retailer === 'Bestbuy' && date === '2026-09-16' ? 0
                 : retailer === 'Bestbuy' && date === '2026-09-19' ? 300
                     : retailer === 'Bestbuy' && date === '2026-09-20' ? 400 : base;
-            const alerts = retailer === 'Bestbuy' && date === '2026-09-19' ? [{status: 'VOLUME_LOW'}]
-                : retailer === 'OTTO' && date === '2026-09-20' ? [{status: 'VOLUME_HIGH'}] : [];
+            const alerts = retailer === 'Bestbuy' && date === '2026-09-19' ? [{metric: 'main', status: 'VOLUME_LOW'}]
+                : retailer === 'OTTO' && date === '2026-09-20' ? [{metric: 'main', status: 'VOLUME_HIGH'}] : [];
             daily.push({date, state, main: Math.max(0, total - 10), bsr: 50, total, comparison_state: 'ready', alerts});
         }
         rows.push({country, product, retailer, slot: 'daily', daily});
@@ -102,8 +102,8 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('3/5일 집계'));
     assert.match(elements['cs-table-body'].innerHTML,
         /<td class="cs-day-cell">230<\/td><td class="cs-day-cell">50<\/td><td class="cs-day-cell cs-total"[^>]*><strong>240<\/strong>/);
-    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total low"'));
-    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total high"'));
+    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell low cs-main-low"'));
+    assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell high cs-main-high"'));
     assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-unavailable" colspan="3"'));
 
     elements['cs-country'].value = 'SEG';
@@ -156,7 +156,8 @@ async function flush() {
     fixtureDay.alerts = [{metric: 'main', status: 'VOLUME_REVIEW'}];
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
-        /class="cs-day-cell cs-total high"[^>]*><strong>[^<]+<\/strong><small>확인 필요<\/small>/);
+        /class="cs-day-cell high cs-main-high"[^>]*>[^<]+<small>확인 필요<\/small>/);
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-total high'));
     fixtureDay.alerts = [];
     fixtureDay.bsr_comparison_state = 'insufficient';
     elements['cs-retailer'].fire('change');
@@ -222,7 +223,8 @@ async function flush() {
         observation_state: 'ready', alerts: [{metric: 'main', status: 'VOLUME_LOW'}]});
     elements['cs-retailer'].fire('change');
     assert(!elements['cs-table-body'].innerHTML.includes('검증 대기'));
-    assert(elements['cs-table-body'].innerHTML.includes('cs-total low'));
+    assert(elements['cs-table-body'].innerHTML.includes('cs-main-low'));
+    assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
     assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong><small>5/5일 집계'));
     console.log('Daily statistics: verification, averages, observation, missing and error display passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -45,14 +45,15 @@ def normalize_check(check, country, inspection_date):
                     'collected_count': collected_count,
                     'verification_state': verification,
                     'complete': complete, 'base_status': status,
-                    'baseline_eligible': complete and int(total or 0) > 0 and status not in ('CRITICAL', 'WARNING', 'ERROR'),
+                    'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
                     'active_from': '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None,
                 })
     return sorted(rows, key=row_key)
 
 
 BSR_POLICY_VERSION = 3
-MAIN_POLICY_VERSION = 2
+MAIN_POLICY_VERSION = 3
+MAIN_CHANGE_PERCENT = 30
 OBSERVATION_POLICY_VERSION = 1
 MINIMUM_DAYS = 5
 
@@ -163,16 +164,14 @@ def current_bsr_decision(row, country):
 
 
 def _main_alert(current, basis):
-    """Classify before rounding: 5 through 15 percent down needs review."""
+    """Compare MAIN against its prior median before rounding."""
     baseline = basis.get('value', 0)
     if current is None or baseline <= 0 or basis.get('days', 0) < MINIMUM_DAYS:
         return None
     change = (current - baseline) * 100
-    if change < -baseline * 15:
+    if change <= -baseline * MAIN_CHANGE_PERCENT:
         status = 'VOLUME_LOW'
-    elif change <= -baseline * 5:
-        status = 'VOLUME_REVIEW'
-    elif change >= baseline * 30:
+    elif change >= baseline * MAIN_CHANGE_PERCENT:
         status = 'VOLUME_HIGH'
     else:
         return None
@@ -180,9 +179,33 @@ def _main_alert(current, basis):
     return {'metric': 'main', 'baseline': baseline, 'actual': current,
             'percent': round(percent, 1), 'status': status,
             'reason': f'MAIN 과거 중앙값 {baseline:g}개 / 수집 {current}개 / '
-                      + ('15% 초과 감소' if status == 'VOLUME_LOW' else
-                         '5~15% 감소 / 확인 필요' if status == 'VOLUME_REVIEW' else
+                      + ('30% 이상 감소' if status == 'VOLUME_LOW' else
                          '30% 이상 증가 / 확인 필요')}
+
+
+def comparison_rules(row, country):
+    """Supply historical bases and current policy for evaluating live counts."""
+    if row.get('observation_state') != 'ready':
+        return {}
+    rules = {}
+    for metric in ('main', 'bsr'):
+        variable = metric == 'main' or variable_bsr(row, country)
+        basis = row.get('baselines', {}).get(metric, {})
+        if variable:
+            if basis.get('days', 0) < MINIMUM_DAYS or basis.get('value', 0) <= 0:
+                continue
+            if metric == 'bsr' and basis.get('rule') != 'median_28d':
+                continue
+        else:
+            basis = {'value': 100, 'days': 0, 'rule': 'fixed_100'}
+        rules[metric] = {
+            'baseline': basis['value'], 'days': basis['days'],
+            'rule': 'median_28d' if variable else 'fixed_100',
+            'low_percent': (20 if tiered_bsr(row, country) else 30) if metric == 'bsr' else MAIN_CHANGE_PERCENT,
+            'review_percent': 15 if metric == 'bsr' and tiered_bsr(row, country) else None,
+            'high_percent': MAIN_CHANGE_PERCENT if metric == 'main' else None,
+        }
+    return rules
 
 
 def current_volume_decision(row, country):
@@ -199,21 +222,26 @@ def current_volume_decision(row, country):
     if row['observation_state'] != 'ready':
         return {**result, 'alerts': [], 'baselines': {},
                 'comparison_state': row['observation_state']}
-    alerts = [a for a in result.get('alerts', []) if a.get('metric') != 'main']
+    alerts = [a for a in result.get('alerts', []) if a.get('metric') == 'bsr']
     if (row.get('complete', row.get('state') == 'complete')
             and row.get('state', 'complete') == 'complete'
             and row.get('base_status') != 'ERROR' and not row.get('refresh_error')):
         alert = _main_alert(row.get('main'), row.get('baselines', {}).get('main', {}))
         if alert:
             alerts.insert(0, alert)
-    return {**result, 'alerts': alerts}
+    baselines = {k: v for k, v in result.get('baselines', {}).items() if k in ('main', 'bsr')}
+    ready = len(comparison_rules({**result, 'baselines': baselines}, country)) == 2
+    state = 'pending' if not row.get('complete', row.get('state') == 'complete') else 'ready' if ready else 'insufficient'
+    return {**result, 'alerts': alerts, 'baselines': baselines, 'comparison_state': state}
 
 
 def compare_rows(rows, history, country=None, *, observed_dates=None):
     """history contains only the previous 28 source dates, never the target day."""
     groups = defaultdict(list)
     for old in history:
-        if old.get('baseline_eligible') and observation_eligible(old):
+        # Legacy minimum-count failures are not part of the MAIN/BSR policy.
+        eligible = old.get('baseline_eligible') or old.get('base_status') in ('CRITICAL', 'WARNING', 'REVIEW')
+        if eligible and observation_eligible(old):
             groups[row_key(old)].append(old)
     if observed_dates is None:
         observed_dates = defaultdict(set)
@@ -229,31 +257,16 @@ def compare_rows(rows, history, country=None, *, observed_dates=None):
                'observation_prior_days': prior_days,
                'observation_policy_version': OBSERVATION_POLICY_VERSION}
         baselines, alerts = {}, []
-        for metric in METRICS:
-            if metric == 'bsr' or observing:
-                continue
-            values = list({old.get('source_date', index): old[metric]
+        if not observing:
+            values = list({old.get('source_date', index): old['main']
                            for index, old in enumerate(groups[row_key(row)])
-                           if old.get(metric) is not None}.values())
-            if len(values) < MINIMUM_DAYS:
-                continue
-            baseline = median(values)
-            baselines[metric] = {'value': baseline, 'days': len(values)}
-            current = row.get(metric)
-            if (not row['complete'] or baseline <= 0 or current is None
-                    or row.get('base_status') == 'ERROR' or row.get('refresh_error')):
-                continue
-            if metric == 'main':
-                if row.get('base_status') != 'ERROR' and not row.get('refresh_error'):
-                    alert = _main_alert(current, baselines[metric])
+                           if (old.get('main') or 0) > 0}.values())
+            if len(values) >= MINIMUM_DAYS:
+                baselines['main'] = {'value': median(values), 'days': len(values)}
+                if row['complete'] and row.get('base_status') != 'ERROR' and not row.get('refresh_error'):
+                    alert = _main_alert(row.get('main'), baselines['main'])
                     if alert:
                         alerts.append(alert)
-                continue
-            # Compare before rounding: 29.95% must not become an alert.
-            delta = (current - baseline) * 100 / baseline
-            if abs(delta) >= 30:
-                alerts.append({'metric': metric, 'baseline': baseline, 'actual': current,
-                               'percent': round(delta, 1), 'status': 'VOLUME_LOW' if delta < 0 else 'VOLUME_HIGH'})
         bsr_rule, bsr_state, bsr_basis, bsr_alert = _compare_bsr(
             row, groups[row_key(row)], country or row.get('country'))
         if bsr_basis is not None:
@@ -261,7 +274,7 @@ def compare_rows(rows, history, country=None, *, observed_dates=None):
         if bsr_alert:
             alerts.append(bsr_alert)
         state = ('pending' if not row['complete'] else 'observing' if observing else
-                 'ready' if len(baselines) == len([m for m in METRICS if row.get(m) is not None]) else 'insufficient')
+                 'ready' if all(baselines.get(m, {}).get('value', 0) > 0 for m in ('main', 'bsr')) else 'insufficient')
         result.append({**row, 'baselines': baselines, 'alerts': alerts, 'comparison_state': state,
                        'bsr_policy_version': BSR_POLICY_VERSION,
                        'main_policy_version': MAIN_POLICY_VERSION,

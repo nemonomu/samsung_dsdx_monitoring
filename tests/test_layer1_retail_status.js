@@ -20,6 +20,15 @@ for (const name of ['retail-status', 'retail-query', 'retail', 'seda_retail', 's
     vm.runInNewContext(fs.readFileSync(path.join(base, name + '.js'), 'utf8'), context);
 }
 const status = context.L1.retailStatus;
+for (const state of ['OK', 'CRITICAL', 'VERIFYING']) {
+    const unknown = {status: state, observation_state: 'unknown', count: 300, bsr_count: 100};
+    assert(!status.rowBadge(unknown).includes('관찰 이력 확인 중'));
+    assert.strictEqual(status.bsrCell(unknown, '100'), '<td>100</td>');
+    assert(status.rowBadge({...unknown, status: 'VERIFYING', batch_count: 2}).includes('<status>VERIFYING</status>'));
+}
+const observing = {status: 'VERIFYING', observation_state: 'observing', observation_days: 2};
+assert(status.rowBadge(observing).includes('신규 · 관찰 중 (2/5일)'));
+assert.strictEqual(status.bsrCell(observing, '100'), '<td>100</td>', 'observation belongs only to the retailer status, not the BSR cell');
 const emptyRetailer = {
     retailer: 'Casas Bahia', status: 'CRITICAL', main_count: 0, bsr_count: 0,
     raw_count: 0, count: 0, volume_alerts: [
@@ -124,6 +133,13 @@ for (const [type, country, prefix, retailer] of countries) {
         assert(header.includes('href="#' + prefix + '-cat-4-2"'));
         assert(header.includes('event.stopPropagation();L1.retailStatus.open(this, 4)'));
     }
+    for (const cat of categories) {
+        const row = (type === 'retail' ? cat.time_slots[0].retailers : cat.retailers)[0];
+        Object.assign(row, {status: 'OK', observation_state: 'unknown', count: 300, raw_count: 300, bsr_count: 100});
+    }
+    const unknownHtml = context.L1.renderers[type]({name: country + ' Retail', check_type: type,
+        status: 'OK', categories, actual: 900, raw_count: 900}, 4);
+    assert(!unknownHtml.includes('관찰 이력 확인 중'), country);
     // The warning is visible while collapsed and overrides the row's OK badge.
     for (const cat of categories) {
         const rows = type === 'retail' ? cat.time_slots[0].retailers : cat.retailers;

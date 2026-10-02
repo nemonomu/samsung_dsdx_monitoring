@@ -14,7 +14,7 @@
     function reasons(row) {
         const result = (row.volume_alerts || []).filter(alert => reviewStatuses.includes(alert.status)).map(alert =>
             alert.reason || `${String(alert.metric || '수집량').toUpperCase()} 기준 ${number(alert.baseline)}건 / 수집 ${number(alert.actual)}건 / ${number(alert.percent)}% 변동`);
-        if (row.status === 'REVIEW' || row._volumeBaseStatus === 'REVIEW') {
+        if (row.status === 'REVIEW' || (!row.volume_comparison_state && row._volumeBaseStatus === 'REVIEW')) {
             const baseline = row.expected_precise == null ? row.expected : row.expected_precise;
             const actual = row.main_count == null ? row.actual : row.main_count;
             result.unshift(Number(actual) === 0 ? 'MAIN 수집 0건 · MAIN 데이터가 없어 확인이 필요합니다.' : baseline == null
@@ -46,7 +46,7 @@
                             version: 1, date: day,
                             source_date: cat.source_date || check.source_date || day,
                             country, product: String(cat.name || cat.category || '').toUpperCase(),
-                            slot: slot.name || 'daily', retailer: row.retailer || '', batch_id: String(row.batch_id || ''),
+                            slot: slot.name || 'daily', retailer: row.retailer || '', batch_id: String(row._volumeBatchId || row.batch_id || ''),
                             status: row.status,
                             counts: [metrics.main, metrics.bsr, metrics.total, Number(row.batch_count || 0)],
                             reasons: row._reviewReasons,

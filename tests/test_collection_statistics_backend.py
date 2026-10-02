@@ -142,12 +142,12 @@ class CalculationTests(SimpleTestCase):
         self.assertEqual([], calc.current_volume_decision(legacy, 'SEM')['alerts'])
         self.assertEqual('unknown', calc.current_volume_decision(legacy, 'SEM')['observation_state'])
 
-    def test_main_review_and_abnormal_boundaries_all_countries(self):
+    def test_main_30_percent_boundaries_all_countries(self):
         history = [sample(total=3000, main=2000)] * 7
         for country in calc.COUNTRIES:
-            for current, expected in [(1901, None), (1900, 'VOLUME_REVIEW'),
-                                      (1800, 'VOLUME_REVIEW'), (1700, 'VOLUME_REVIEW'),
-                                      (1699, 'VOLUME_LOW'), (0, 'VOLUME_LOW'),
+            for current, expected in [(1901, None), (1900, None),
+                                      (1700, None), (1699, None), (1401, None),
+                                      (1400, 'VOLUME_LOW'), (0, 'VOLUME_LOW'),
                                       (2599, None), (2600, 'VOLUME_HIGH')]:
                 with self.subTest(country=country, current=current):
                     result = calc.compare_rows([sample(total=3000, main=current)], history, country=country)[0]
@@ -220,7 +220,7 @@ class CalculationTests(SimpleTestCase):
         history = [sample(2000)] * 7
         for current, expected in [(1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH'), (1401, None), (2599, None)]:
             row = calc.compare_rows([sample(current)], history)[0]
-            states = {alert['status'] for alert in row['alerts'] if alert['metric'] == 'total'}
+            states = {alert['status'] for alert in row['alerts'] if alert['metric'] == 'main'}
             self.assertEqual({expected} if expected else set(), states)
 
     def test_median_ignores_one_extreme_day_without_excluding_current_findings(self):
@@ -240,7 +240,45 @@ class CalculationTests(SimpleTestCase):
 
     def test_main_drop_not_hidden_by_total_increase(self):
         row = calc.compare_rows([sample(400, main=200)], [sample()] * 7)[0]
-        self.assertEqual({'VOLUME_LOW', 'VOLUME_HIGH'}, {a['status'] for a in row['alerts']})
+        self.assertEqual({'VOLUME_LOW'}, {a['status'] for a in row['alerts']})
+        self.assertNotIn('total', row['baselines'])
+
+    def test_total_is_informational_and_legacy_total_alerts_are_removed(self):
+        for total in (100, 9999):
+            row = calc.compare_rows([sample(total, main=300)], [sample()] * 5, country='SIEL')[0]
+            self.assertEqual([], row['alerts'])
+            row['alerts'] = [{'metric': 'total', 'status': 'VOLUME_LOW'}]
+            row['baselines']['total'] = {'value': 500, 'days': 7}
+            projected = calc.current_volume_decision(row, 'SIEL')
+            self.assertEqual([], projected['alerts'])
+            self.assertNotIn('total', projected['baselines'])
+            self.assertEqual(total, projected['total'])
+
+    def test_old_minimum_count_rules_do_not_exclude_valid_main_history(self):
+        for status in ('CRITICAL', 'WARNING', 'REVIEW'):
+            history = [sample(180, main=150, base_status=status, baseline_eligible=False)] * 5
+            row = calc.compare_rows([sample(180, main=150)], history, country='SIEL')[0]
+            self.assertEqual(150, row['baselines']['main']['value'])
+            self.assertEqual([], row['alerts'])
+
+    def test_live_rules_keep_each_bsr_policy_and_reject_insufficient_history(self):
+        for country, retailer, product, baseline, low, review in [
+            ('SIEL', 'Flipkart', 'TV', 100, 30, None),
+            ('SIEL', 'Amazon', 'TV', 80, 20, 15),
+            ('SEA', 'Lowes', 'REF', 80, 20, 15),
+            ('SEG', 'Amazon', 'REF', 80, 20, 15),
+            ('SEM', 'Coppel', 'LDY', 80, 30, None),
+        ]:
+            args = {'retailer': retailer, 'product': product, 'bsr': 80}
+            row = calc.compare_rows([sample(**args)], [sample(**args)] * 5, country=country)[0]
+            rules = calc.comparison_rules(row, country)
+            self.assertEqual({'main', 'bsr'}, set(rules))
+            self.assertEqual((baseline, low, review), (rules['bsr']['baseline'], rules['bsr']['low_percent'], rules['bsr']['review_percent']))
+            row['baselines']['main']['days'] = 4
+            self.assertNotIn('main', calc.comparison_rules(row, country))
+            self.assertEqual('insufficient', calc.current_volume_decision(row, country)['comparison_state'])
+            row['observation_state'] = 'observing'
+            self.assertEqual({}, calc.comparison_rules(row, country))
 
     def test_week_zeros_are_included_unknowns_are_not_zero_and_future_not_due(self):
         monday = date(2026, 9, 14)
@@ -373,7 +411,7 @@ class StoreTests(TestCase):
         self.assertEqual(waiting['batch_id'], ready['batch_id'])
         self.assertEqual('ready', ready['verification_state'])
         self.assertTrue(ready['complete'])
-        self.assertEqual({'main', 'bsr', 'total'}, {a['metric'] for a in ready['alerts']})
+        self.assertEqual({'main', 'bsr'}, {a['metric'] for a in ready['alerts']})
         dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end)})).content)
         self.assertEqual(ready['alerts'], dashboard['snapshots'][0]['rows'][0]['alerts'])
 
@@ -422,7 +460,7 @@ class StoreTests(TestCase):
         self.assertEqual(60, row['baselines']['bsr']['value'])
 
     def test_saved_main_baseline_uses_new_thresholds_in_both_apis_without_writes(self):
-        for current, expected in [(1900, 'VOLUME_REVIEW'), (1700, 'VOLUME_REVIEW'), (1699, 'VOLUME_LOW')]:
+        for current, expected in [(1900, None), (1700, None), (1401, None), (1400, 'VOLUME_LOW'), (2600, 'VOLUME_HIGH')]:
             source = sample(retailer='Walmart', product='TV', main=current, total=3000,
                             alerts=[], baselines={'main': {'value': 2000, 'days': 7}},
                             comparison_state='ready')
@@ -437,7 +475,10 @@ class StoreTests(TestCase):
             with self.assertNumQueries(1):
                 weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(self.end), 'country': 'SEA', 'weeks': '1'})).content)
             alerts = dashboard['snapshots'][0]['rows'][0]['alerts']
-            self.assertEqual(expected, alerts[0]['status'])
+            self.assertEqual([expected] if expected else [], [alert['status'] for alert in alerts])
+            rules = dashboard['snapshots'][0]['rows'][0]['rules']
+            self.assertEqual((2000, 30, 30), (rules['main']['baseline'], rules['main']['low_percent'], rules['main']['high_percent']))
+            self.assertEqual('fixed_100', rules['bsr']['rule'])
             self.assertEqual(alerts, weekly['weeks'][0]['rows'][0]['daily'][6]['alerts'])
             self.assertEqual([], Daily.objects.get().rows[0]['alerts'])
 

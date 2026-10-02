@@ -61,7 +61,7 @@
         const observing = active.filter(day => day.observation_state === 'observing');
         const observation = observing.length
             ? `신규 · 관찰 중 (${Math.min(...observing.map(day => Math.max(0, Math.min(5, Number(day.observation_days) || 0))))}/5일)`
-            : active.some(day => day.observation_state === 'unknown') ? '관찰 이력 확인 중' : '';
+            : '';
         const annotate = result => ({...result, label: [result.label, observation].filter(Boolean).join(' · ')});
         if (!active.length) return {total: null, label: '수집 시작 전'};
         if (active.some(day => day.state === 'error' || day.base_status === 'ERROR')) return annotate({total: null, label: '갱신 실패', kind: 'low'});
@@ -88,11 +88,14 @@
             bsrLabel: bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
             bsrReason: bsrAlerts.map(alert => alert.reason || 'BSR 수량 부족').join(' · '),
         };
-        const low = alerts.some(alert => alert.metric !== 'bsr' && alert.status === 'VOLUME_LOW');
-        const high = alerts.some(alert => alert.metric !== 'bsr' && ['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(alert.status));
-        if (low) return {total, main, bsr, ...bsrInfo, label: '이상', kind: 'low'};
-        if (high) return {total, main, bsr, ...bsrInfo, label: '확인 필요', kind: 'high'};
-        return {total, main, bsr, ...bsrInfo, label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
+        const mainAlerts = alerts.filter(alert => alert.metric === 'main');
+        const low = mainAlerts.some(alert => alert.status === 'VOLUME_LOW');
+        const high = mainAlerts.some(alert => ['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(alert.status));
+        return {total, main, bsr, ...bsrInfo,
+            mainKind: low ? 'low' : high ? 'high' : '',
+            mainLabel: low ? '이상' : high ? '확인 필요' : '',
+            mainReason: mainAlerts.map(alert => alert.reason || 'MAIN 수집량 변동').join(' · '),
+            label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
     }
 
     function syncRetailers(preferred = byId('cs-retailer').value) {
@@ -143,7 +146,7 @@
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
                     if (day.total == null) return `<td class="cs-day-cell cs-unavailable${day.kind ? ' ' + day.kind : ''}" colspan="3" title="${safe(title)}"><strong>—</strong><small>${safe(day.label)}</small></td>`;
-                    return `<td class="cs-day-cell">${number(day.main)}</td>`
+                    return `<td class="cs-day-cell${day.mainKind ? ' ' + day.mainKind + ' cs-main-' + day.mainKind : ''}"${day.mainReason ? ` title="${safe(day.mainReason)}"` : ''}>${number(day.main)}${day.mainLabel ? `<small>${day.mainLabel}</small>` : ''}</td>`
                         + `<td class="cs-day-cell${day.bsrKind ? ' ' + day.bsrKind + (day.bsrKind === 'low' ? ' cs-bsr-low' : ' cs-bsr-review') : ''}"${day.bsrReason || day.bsrLabel ? ` title="${safe(day.bsrReason || day.bsrLabel)}"` : ''}>${number(day.bsr)}${day.bsrLabel ? `<small>${safe(day.bsrLabel)}</small>` : ''}</td>`
                         + `<td class="cs-day-cell cs-total${day.kind ? ' ' + day.kind : ''}" title="${safe(title)}"><strong>${number(day.total)}</strong>${day.label ? `<small>${safe(day.label)}</small>` : ''}</td>`;
                 }).join('') + '</tr>';
