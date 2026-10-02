@@ -2,6 +2,7 @@
 DS Layer 4 Report Repository: 보고서 및 데이터베이스 SQL 처리 전담
 """
 from datetime import datetime, timedelta, date
+import re
 from apps.common.db import ds_connection
 from apps.common.targets import load_monitoring_targets
 from apps.common.ds.id_generator import generate_ds_id
@@ -206,6 +207,78 @@ def execute_cancel_close_report(crawl_date, user_id, memo):
         conn.commit()
         return {'success': True, 'message': f'{crawl_date} 마감 취소 완료'}
 
+def _cause_counts(cursor, crawl_date, retailer_id):
+    cursor.execute("""
+        SELECT cause FROM ssd_crawl_db.ds_monitoring_report_anomaly
+        WHERE crawl_date = %s AND retailer_id = %s AND is_del = 0 FOR UPDATE
+    """, (crawl_date, retailer_id))
+    counts = {}
+    for row in cursor.fetchall():
+        cause = _user_cause(row[0])
+        if cause:
+            counts[cause] = counts.get(cause, 0) + 1
+    return counts
+
+
+def _merge_cause_memo(memo, previous_counts, counts):
+    """원인별 자동 요약만 교체하고 별도로 작성한 문구는 보존한다."""
+    labels = set(previous_counts) | set(counts)
+    notes = memo or ''
+    if labels:
+        alternatives = '|'.join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
+        notes = re.sub(r'(^|,\s*|\n)(?:' + alternatives + r')\(\d+건\)(?=,|\n|$)', '', notes)
+        notes = notes.strip(', \n')
+    summary = ', '.join(f'{cause}({count}건)' for cause, count in
+                        sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+    return ', '.join(part for part in (summary, notes) if part)
+
+
+def _prepare_cause_memos(cursor, items):
+    ids = sorted({item['anomaly_id'] for item in items if item.get('anomaly_id') and 'cause' in item})
+    if not ids:
+        return []
+    placeholders = ','.join(['%s'] * len(ids))
+    cursor.execute(f"""
+        SELECT DISTINCT crawl_date, retailer_id FROM ssd_crawl_db.ds_monitoring_report_anomaly
+        WHERE id IN ({placeholders}) AND is_del = 0 ORDER BY crawl_date, retailer_id
+    """, ids)
+    groups = cursor.fetchall()
+    snapshots = []
+    for crawl_date, retailer_id in groups:
+        # 마감과 같은 순서로 잠가 원인 저장/마감의 교차 실행을 막는다.
+        cursor.execute("""
+            SELECT is_closed FROM ssd_crawl_db.ds_monitoring_report_close
+            WHERE crawl_date = %s FOR UPDATE
+        """, (crawl_date,))
+        closed = cursor.fetchone()
+        if closed and closed[0] == 1:
+            raise ValueError('마감된 날짜입니다. 마감 취소 후 원인을 수정해주세요.')
+        cursor.execute("""
+            SELECT id, memo FROM ssd_crawl_db.ds_monitoring_report_daily
+            WHERE crawl_date = %s AND retailer_id = %s AND is_del = 0 FOR UPDATE
+        """, (crawl_date, retailer_id))
+        daily = cursor.fetchone()
+        if daily:
+            snapshots.append((daily[0], crawl_date, retailer_id, daily[1],
+                              _cause_counts(cursor, crawl_date, retailer_id)))
+    return snapshots
+
+
+def _save_cause_memos(cursor, snapshots, user_id, now):
+    updates = []
+    for daily_id, crawl_date, retailer_id, memo, previous_counts in snapshots:
+        counts = _cause_counts(cursor, crawl_date, retailer_id)
+        updated_memo = _merge_cause_memo(memo, previous_counts, counts)
+        if updated_memo != (memo or ''):
+            cursor.execute("""
+                UPDATE ssd_crawl_db.ds_monitoring_report_daily
+                SET memo = %s, updated_at = %s, updated_id = %s
+                WHERE id = %s AND is_del = 0
+            """, (updated_memo, now, user_id, daily_id))
+        updates.append({'daily_id': daily_id, 'memo': updated_memo, 'cause_summary': counts})
+    return updates
+
+
 def update_anomaly_report(body, user_id):
     with ds_connection() as (conn, cursor):
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -215,6 +288,7 @@ def update_anomaly_report(body, user_id):
             if not updates or not isinstance(updates, list):
                 return {'success': False, 'error': 'updates 배열이 필요합니다.'}
 
+            memo_snapshots = _prepare_cause_memos(cursor, updates)
             updated_count = 0
             for item in updates:
                 anomaly_id = item.get('anomaly_id')
@@ -242,8 +316,10 @@ def update_anomaly_report(body, user_id):
                     if cursor.rowcount and 'cause' in item:
                         record_cause_application(cursor, anomaly_id, item['cause'], user_id, now)
 
+            daily_memos = _save_cause_memos(cursor, memo_snapshots, user_id, now)
             conn.commit()
-            return {'success': True, 'message': f'{updated_count}건 저장 완료', 'updated_count': updated_count}
+            return {'success': True, 'message': f'{updated_count}건 저장 완료',
+                    'updated_count': updated_count, 'daily_memos': daily_memos}
 
         anomaly_id = body.get('anomaly_id')
         if not anomaly_id: return {'success': False, 'error': 'anomaly_id가 필요합니다.'}
@@ -258,6 +334,7 @@ def update_anomaly_report(body, user_id):
 
         if not update_fields: return {'success': False, 'error': '수정할 필드가 없습니다.'}
 
+        memo_snapshots = _prepare_cause_memos(cursor, [body])
         update_fields.extend(['updated_at = %s', 'updated_id = %s'])
         update_values.extend([now, user_id, anomaly_id])
 
@@ -270,11 +347,13 @@ def update_anomaly_report(body, user_id):
         updated = cursor.rowcount
         if updated and 'cause' in body:
             record_cause_application(cursor, anomaly_id, body['cause'], user_id, now)
+        daily_memos = _save_cause_memos(cursor, memo_snapshots, user_id, now)
         conn.commit()
 
         if updated == 0: return {'success': False, 'error': '해당 데이터를 찾을 수 없습니다.'}
         history = fetch_cause_applications(cursor, [anomaly_id]).get(anomaly_id)
-        return {'success': True, 'message': '수정 완료', 'anomaly_id': anomaly_id, 'cause_history': history}
+        return {'success': True, 'message': '수정 완료', 'anomaly_id': anomaly_id,
+                'cause_history': history, 'daily_memos': daily_memos}
 
 def update_daily_memo_db(body, user_id):
     with ds_connection() as (conn, cursor):

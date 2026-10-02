@@ -185,6 +185,14 @@ async function saveScreenshotCause() {
 
         anomaly.cause = cause;
         anomaly.cause_history = result.cause_history || { status: 'manual', applied_by: currentUserId };
+        (result.daily_memos || []).forEach(update => {
+            const daily = (reportData.daily_reports || []).find(row => Number(row.id) === Number(update.daily_id));
+            if (daily) {
+                daily.memo = update.memo;
+                reportData.cause_summary = reportData.cause_summary || {};
+                reportData.cause_summary[daily.retailer] = update.cause_summary;
+            }
+        });
         screenshotCauseEdited = false;
         refreshCauseAfterScreenshotSave(anomaly, previousCause);
         renderScreenshotCauseEditor(anomaly.id);

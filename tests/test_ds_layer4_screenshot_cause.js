@@ -26,7 +26,7 @@ assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/css/index.css' %}?v=20260928-inline-detail"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-4"
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20261002-cause-memo"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20261002-report-close"
@@ -119,7 +119,10 @@ const sandbox = {
     },
     fetch: async (url, options) => {
         requests.push({ url, options });
-        return { json: async () => ({ success: true }) };
+        return { json: async () => ({ success: true, daily_memos: [{
+            daily_id: 10, memo: '재고 상황에 따른 판매자 변경(1건), 확인 예정',
+            cause_summary: {'재고 상황에 따른 판매자 변경': 1}
+        }] }) };
     },
     getCsrfToken() { return 'csrf'; },
     safeUrl(value) { return value; },
@@ -146,7 +149,7 @@ function setReportData(cause) {
                 screenshot_id: 501,
                 cause: ${JSON.stringify(cause)}
             }],
-            daily_reports: [],
+            daily_reports: [{id: 10, retailer: 'Danawa', memo: '확인 예정'}],
             total_anomalies: 1,
             filled_cause: ${cause ? 1 : 0},
             captured_screenshots: 1
@@ -285,6 +288,10 @@ assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
         vm.runInContext('reportData.anomalies[0].cause', sandbox),
         '재고 상황에 따른 판매자 변경'
     );
+    assert.strictEqual(vm.runInContext('reportData.daily_reports[0].memo', sandbox),
+        '재고 상황에 따른 판매자 변경(1건), 확인 예정');
+    assert.strictEqual(vm.runInContext("reportData.cause_summary.Danawa['재고 상황에 따른 판매자 변경']", sandbox), 1);
+    assert.ok(elements.reportContent.innerHTML.includes('재고 상황에 따른 판매자 변경(1건), 확인 예정'));
 
     vm.runInContext('isClosed = true', sandbox);
     sandbox.renderScreenshotCauseEditor(101);
