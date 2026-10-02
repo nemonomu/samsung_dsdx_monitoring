@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, date
 from apps.common.db import ds_connection
 from apps.common.targets import load_monitoring_targets
 from apps.common.ds.id_generator import generate_ds_id
-from apps.ds.ds_document.document import document_repositories
+from apps.ds.ds_document.document import document_repositories, document_services
 from apps.ds.cause_history import attach_cause_history, record_cause_application, fetch_cause_applications
 
 
@@ -173,9 +173,16 @@ def execute_close_report(crawl_date, user_id, content):
             VALUES (%s, 'close', %s, %s)
         """, (crawl_date, now, user_id))
 
+        share = document_services.create_share_token(
+            document_id, REPORT_CATEGORY_ID, f'{crawl_date} 보고서 마감 시 자동 생성',
+            user_id, existing=(conn, cursor))
+        if not share.get('success') or not share.get('token'):
+            raise ValueError('보고서 공유 링크를 생성하지 못했습니다. 다시 시도해주세요.')
+
         conn.commit()
         return {'success': True, 'message': f'{crawl_date} 마감 완료',
-                'document_id': document_id, 'category_id': REPORT_CATEGORY_ID}
+                'document_id': document_id, 'category_id': REPORT_CATEGORY_ID,
+                'share_token': share['token']}
 
 def execute_cancel_close_report(crawl_date, user_id, memo):
     with ds_connection() as (conn, cursor):

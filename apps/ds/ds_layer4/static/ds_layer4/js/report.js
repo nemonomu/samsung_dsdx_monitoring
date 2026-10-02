@@ -763,7 +763,7 @@ async function closeReport() {
         notice.classList.remove('hidden');
         try {
             await copyReportLink(link);
-            showToast('마감되었습니다. 보고서 링크가 복사되었습니다.', 'success');
+            showToast('마감되었습니다. 보고서 공유 링크가 복사되었습니다. (24시간 유효)', 'success');
         } catch (error) {
             showToast('마감되었습니다. 링크를 복사해주세요.', 'warning');
         }
@@ -795,7 +795,7 @@ async function copyReportLink(link) {
 async function copyClosedReportLink() {
     try {
         await copyReportLink(document.getElementById('closedReportLink').value);
-        showToast('보고서 링크가 복사되었습니다.', 'success');
+        showToast('보고서 공유 링크가 복사되었습니다.', 'success');
     } catch (error) {
         showToast('링크를 선택한 후 Ctrl+C로 복사해주세요.', 'warning');
     }

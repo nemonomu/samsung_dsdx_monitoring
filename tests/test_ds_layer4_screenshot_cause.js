@@ -32,7 +32,7 @@ assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20261002-report-close"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20261002-report-close"
+    "{% static 'ds_layer4/js/report.js' %}?v=20261002-share-link"
 ));
 
 function fakeClassList() {

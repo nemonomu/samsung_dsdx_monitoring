@@ -389,7 +389,7 @@ def get_document_for_share(token):
         return {'success': False, 'error': '문서를 불러오는 중 오류가 발생했습니다.', 'error_type': 'error'}
 
 
-def create_share_token(document_id, category_id, memo, username):
+def create_share_token(document_id, category_id, memo, username, existing=None):
     """토큰 발급"""
     if not document_id:
         return {'success': False, 'error': '문서 ID가 필요합니다.'}
@@ -405,10 +405,11 @@ def create_share_token(document_id, category_id, memo, username):
         now = datetime.now()
         expires_at = now + timedelta(seconds=SHARE_MAX_AGE)
         
-        with ds_connection() as (conn, cursor):
+        with ds_connection(existing=existing) as (conn, cursor):
             token_id = generate_ds_token_id(cursor)
             repo.insert_share_token(cursor, DS_SHARE_TOKEN_TABLE, token_id, document_id, category_id, token, memo, username, now, expires_at)
-            conn.commit()
+            if existing is None:
+                conn.commit()
 
         return {'success': True, 'token': token}
     except Exception as e:

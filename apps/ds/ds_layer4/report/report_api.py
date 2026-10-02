@@ -2,10 +2,9 @@
 DS Layer 4 Report API: 보고서 관리 HTTP 요청/응답 처리 컨트롤러
 """
 import json
-from urllib.parse import urlencode
+from urllib.parse import quote
 from datetime import datetime, timedelta, date
 from django.http import JsonResponse
-from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from apps.common.response import safe_error
 from . import report_services
@@ -54,9 +53,7 @@ def report_close(request):
             content=body.get('content')
         )
         if result.get('success'):
-            result['document_url'] = reverse('ds_document:index') + '?' + urlencode({
-                'category': result['category_id'], 'document_id': result['document_id'],
-            })
+            result['document_url'] = '/ds-share/' + quote(result.pop('share_token'), safe='') + '/'
         return JsonResponse(result)
     except Exception as e:
         return safe_error(e, success=False)

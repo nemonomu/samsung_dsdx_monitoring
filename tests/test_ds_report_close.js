@@ -32,7 +32,7 @@ function setup() {
             if (options?.method === 'POST') {
                 posts.push({url, body: JSON.parse(options.body)});
                 return {ok: true, json: async () => ({success: true,
-                    document_url: '/ds/documents/?category=20260212-0001&document_id=20261002-0001'})};
+                    document_url: '/ds-share/20260212-0001%3A20261002-0001%3Atest-signature/'})};
             }
             return {ok: true, json: async () => url.includes('report-list') ? structuredClone(data) : {}};
         },
@@ -51,8 +51,8 @@ async function testCloseFlow() {
     assert.equal(t.posts.length, 1, 'double click must send one request');
     assert.equal(t.posts[0].body.crawl_date, '2026-10-01');
     assert.equal(t.posts[0].body.content, '<p>Reviewed report</p>');
-    assert.equal(t.copies[0], 'https://monitor.example/ds/documents/?category=20260212-0001&document_id=20261002-0001');
-    assert.equal(t.notices.at(-1)[0], '마감되었습니다. 보고서 링크가 복사되었습니다.');
+    assert.equal(t.copies[0], 'https://monitor.example/ds-share/20260212-0001%3A20261002-0001%3Atest-signature/');
+    assert.equal(t.notices.at(-1)[0], '마감되었습니다. 보고서 공유 링크가 복사되었습니다. (24시간 유효)');
     assert(t.elements.closeReportBtn.disabled);
     assert(!t.elements.reportOutputOverlay.classList.contains('show'));
     assert.equal(t.refreshed(), 1);

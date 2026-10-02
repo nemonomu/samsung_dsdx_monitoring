@@ -1,10 +1,12 @@
 """Exercise save-and-close atomically without importing production settings."""
 import ast
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
+from urllib.parse import quote
 import unittest
 
 
@@ -39,6 +41,9 @@ class ReportCloseTests(unittest.TestCase):
                 document_id TEXT PRIMARY KEY, category_id TEXT, title TEXT, content TEXT,
                 object_document_id TEXT, crawl_date TEXT, created_id TEXT, created_at TEXT,
                 updated_id TEXT, updated_at TEXT, is_del INTEGER DEFAULT 0);
+            CREATE TABLE ssd_crawl_db.ds_monitoring_share_tokens (
+                id TEXT PRIMARY KEY, document_id TEXT, category_id TEXT, token TEXT, memo TEXT,
+                created_id TEXT, created_at TEXT, expires_at TEXT);
         ''')
 
         class Cursor:
@@ -59,7 +64,10 @@ class ReportCloseTests(unittest.TestCase):
                 return self.cursor.fetchall()
 
         @contextmanager
-        def connection():
+        def connection(existing=None):
+            if existing is not None:
+                yield existing
+                return
             try:
                 yield self.db, Cursor(self.db)
             except Exception:
@@ -68,10 +76,20 @@ class ReportCloseTests(unittest.TestCase):
 
         doc_namespace = {}
         load_functions('apps/ds/ds_document/document/document_repositories.py',
-                       {'get_document_by_crawl_date', 'update_document_record', 'insert_document_record'},
+                       {'get_document_by_crawl_date', 'update_document_record', 'insert_document_record', 'insert_share_token'},
                        doc_namespace)
+        share_namespace = {
+            'datetime': datetime, 'timedelta': timedelta, 'ds_connection': connection,
+            'SHARE_SIGNER': SimpleNamespace(sign=lambda value: value + ':test-signature'),
+            'SHARE_MAX_AGE': 86400, 'DS_SHARE_TOKEN_TABLE': 'ssd_crawl_db.ds_monitoring_share_tokens',
+            'generate_ds_token_id': lambda cursor: f'test-{len(self.rows("share_tokens")) + 1}',
+            'repo': SimpleNamespace(**doc_namespace), 'log_error': lambda *args: 'simulated failure',
+        }
+        load_functions('apps/ds/ds_document/document/document_services.py', {'create_share_token'}, share_namespace)
+        self.create_share = share_namespace['create_share_token']
         namespace = {'datetime': datetime, 'ds_connection': connection,
                      'REPORT_CATEGORY_ID': '20260212-0001',
+                     'document_services': SimpleNamespace(create_share_token=self.create_share),
                      'document_repositories': SimpleNamespace(**doc_namespace),
                      'generate_ds_id': lambda *args: '20261002-0001'}
         load_functions('apps/ds/ds_layer4/report/report_repositories.py', {'execute_close_report'}, namespace)
@@ -87,6 +105,11 @@ class ReportCloseTests(unittest.TestCase):
         self.assertEqual(self.rows('documents')[0][2:4], ('2026-10-01 DS 검수 보고서', '<p>Reviewed report</p>'))
         self.assertEqual(self.rows('report_close')[0][1], 1)
         self.assertEqual(self.rows('report_close_history')[0][1], 'close')
+        share = self.rows('share_tokens')[0]
+        self.assertEqual(share[1:4], ('20261002-0001', '20260212-0001', result['share_token']))
+        self.assertEqual(share[5], 'tester')
+        self.assertIn('2026-10-01', share[4])
+        self.assertEqual(datetime.fromisoformat(share[7]) - datetime.fromisoformat(share[6]), timedelta(hours=24))
 
     def test_reclose_updates_same_document(self):
         first = self.close('2026-10-01', 'tester', 'first')
@@ -97,12 +120,46 @@ class ReportCloseTests(unittest.TestCase):
         self.assertEqual(len(self.rows('documents')), 1)
         self.assertEqual(self.rows('documents')[0][3], 'revised')
         self.assertEqual(len(self.rows('report_close_history')), 2)
+        self.assertEqual(len(self.rows('share_tokens')), 2)
 
     def test_duplicate_close_does_not_overwrite_document_or_history(self):
         self.close('2026-10-01', 'tester', 'first')
         self.assertFalse(self.close('2026-10-01', 'tester', 'duplicate')['success'])
         self.assertEqual(self.rows('documents')[0][3], 'first')
         self.assertEqual(len(self.rows('report_close_history')), 1)
+        self.assertEqual(len(self.rows('share_tokens')), 1)
+
+    def test_share_failure_rolls_back_document_close_and_history(self):
+        self.db.executescript('''
+            CREATE TRIGGER ssd_crawl_db.fail_share BEFORE INSERT ON ds_monitoring_share_tokens
+            BEGIN SELECT RAISE(ABORT, 'simulated share failure'); END;
+        ''')
+        with self.assertRaisesRegex(ValueError, '공유 링크'):
+            self.close('2026-10-01', 'tester', 'report')
+        for table in ['documents', 'report_close', 'report_close_history', 'share_tokens']:
+            self.assertEqual(self.rows(table), [])
+
+    def test_standalone_document_sharing_still_commits(self):
+        result = self.create_share('doc', 'category', 'Sharing note', 'tester')
+        self.assertTrue(result['success'])
+        self.assertFalse(self.db.in_transaction)
+        self.assertEqual(self.rows('share_tokens')[0][1:3], ('doc', 'category'))
+
+    def test_close_api_returns_encoded_share_url(self):
+        namespace = {
+            'json': json, 'quote': quote, 'JsonResponse': lambda value: value,
+            'require_http_methods': lambda methods: lambda fn: fn,
+            'safe_error': lambda *args, **kwargs: {'success': False},
+            'report_services': SimpleNamespace(close_report=lambda **kwargs: self.close(
+                kwargs['crawl_date'], kwargs['user_id'], kwargs['content'])),
+        }
+        load_functions('apps/ds/ds_layer4/report/report_api.py', {'report_close'}, namespace)
+        result = namespace['report_close'](SimpleNamespace(
+            body=json.dumps({'crawl_date': '2026-10-01', 'content': 'report'}),
+            user=SimpleNamespace(username='tester')))
+        self.assertTrue(result['success'])
+        self.assertEqual(result['document_url'], '/ds-share/20260212-0001%3A20261002-0001%3Atest-signature/')
+        self.assertNotIn('share_token', result)
 
     def test_incomplete_targets_and_missing_memo_do_not_save(self):
         for sql in [
