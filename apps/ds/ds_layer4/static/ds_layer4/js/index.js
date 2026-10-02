@@ -147,8 +147,15 @@ function updateSummary(data) {
 }
 
 function updateCloseButton(data) {
-    const closeBtn = document.getElementById('closeBtn');
-    const closeBtnText = document.getElementById('closeBtnText');
+    const closeBtn = document.getElementById('closeReportBtn');
+    if (closeBtn) {
+        closeBtn.disabled = data.is_closed;
+        closeBtn.textContent = data.is_closed ? '마감 완료' : '마감';
+    }
+    const linkNotice = document.getElementById('reportLinkNotice');
+    if (linkNotice && (!data.is_closed || linkNotice.dataset.date !== document.getElementById('targetDate').value)) {
+        linkNotice.classList.add('hidden');
+    }
     const cancelCloseBtn = document.getElementById('cancelCloseBtn');
     const saveFileInfoBtn = document.getElementById('saveFileInfoBtn');
     const saveFileInfoBtnText = document.getElementById('saveFileInfoBtnText');
@@ -163,11 +170,6 @@ function updateCloseButton(data) {
     if (data.is_closed) {
         // 마감된 상태: 저장 버튼들 숨기고, 마감 완료 + 마감 취소 버튼 표시
         saveFileInfoBtn.style.display = 'none';
-        closeBtn.disabled = true;
-        closeBtn.style.background = '#7e6b9b';
-        closeBtn.style.borderColor = '#7e6b9b';
-        closeBtn.style.opacity = '1';
-        closeBtnText.textContent = '마감 완료';
         cancelCloseBtn.style.display = 'inline-flex';
         banner.classList.remove('hidden');
         bannerText.textContent = `이 날짜는 ${data.closed_at}에 ${data.closed_id}님이 마감했습니다.`;
@@ -175,8 +177,6 @@ function updateCloseButton(data) {
         // 마감되지 않은 상태: 모든 버튼 표시, 마감 취소 숨김
         saveFileInfoBtn.style.display = 'inline-flex';
         banner.classList.add('hidden');
-        closeBtn.style.background = '#7e6b9b';
-        closeBtn.style.borderColor = '#7e6b9b';
         cancelCloseBtn.style.display = 'none';
 
         // 파일용량 저장 버튼: 마감 전까지는 계속 수정(저장)될 수 있으므로 disabled 처리 해제
@@ -188,9 +188,6 @@ function updateCloseButton(data) {
             saveFileInfoBtnText.textContent = '파일용량 저장';
         }
 
-        // 마감 버튼: 항상 활성화 (클릭 시 조건 체크)
-        closeBtn.disabled = false;
-        closeBtnText.textContent = '마감';
     }
 }
 

@@ -98,12 +98,15 @@ def save_file_info(crawl_date, user_id):
         log_error(e)
         return {'success': False, 'error': str(e)}
 
-def close_report(crawl_date, user_id):
+def close_report(crawl_date, user_id, content=None):
     """보고서 마감 진행"""
     try:
         if not crawl_date:
             return {'success': False, 'error': 'crawl_date가 필요합니다.'}
-        return report_repositories.execute_close_report(crawl_date, user_id)
+        datetime.strptime(crawl_date, '%Y-%m-%d')
+        if not isinstance(content, str) or not content.strip():
+            return {'success': False, 'error': '마감할 보고서 내용이 필요합니다. 보고서 출력을 다시 열어주세요.'}
+        return report_repositories.execute_close_report(crawl_date, user_id, content)
     except Exception as e:
         log_error(e)
         return {'success': False, 'error': str(e)}

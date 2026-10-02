@@ -700,20 +700,32 @@ async function saveFileInfo() {
     }
 }
 
+let reportOutputDate = null;
+let reportOutputData = null;
+let reportClosing = false;
+
 async function closeReport() {
-    const date = document.getElementById('targetDate').value;
-    const totalRetailers = reportData?.total_retailers || 0;
-    const savedCount = reportData?.daily_reports?.length || 0;
-    const fileSavedCount = reportData?.daily_reports?.filter(r => r.file_size > 0).length || 0;
+    if (reportClosing || isClosed) return;
+    const date = reportOutputDate;
+    if (!date || date !== document.getElementById('targetDate').value || !reportOutputData) {
+        showToast('보고서 출력을 다시 열어주세요.', 'warning');
+        return;
+    }
+    const rawContent = document.getElementById('reportOutputContent').innerHTML;
+    if (!rawContent.trim()) return;
+    const content = rawContent.replace(/<h2[^>]*>.*?<\/h2>/i, '').replace(/<h3 /g, '<br><h3 ');
+    const totalRetailers = reportOutputData.total_retailers || 0;
+    const savedCount = reportOutputData.daily_reports.length;
+    const fileSavedCount = reportOutputData.daily_reports.filter(r => r.file_size > 0).length;
 
     // 현황 저장 완료 체크 (전체 리테일러)
-    if (savedCount < totalRetailers) {
+    if (!totalRetailers || savedCount < totalRetailers) {
         showToast(`현황 저장이 완료되지 않았습니다. (${savedCount}/${totalRetailers})`, 'warning');
         return;
     }
 
     // 이상치 있는 리테일러 메모 체크
-    const noMemoRetailers = (reportData?.daily_reports || [])
+    const noMemoRetailers = reportOutputData.daily_reports
         .filter(r => r.anomaly_total > 0 && !r.memo?.trim());
     if (noMemoRetailers.length > 0) {
         const names = noMemoRetailers.map(r => r.retailer).join(', ');
@@ -721,31 +733,71 @@ async function closeReport() {
         return;
     }
 
-    const confirmed = await showConfirm(`${date} 날짜를 마감하시겠습니까?\n\n현황 저장: ${savedCount}/${totalRetailers}개\n파일용량 저장: ${fileSavedCount}/${totalRetailers}개\n\n마감 후 수정이 필요한 경우 마감 취소가 필요합니다.`, 'warning');
-    if (!confirmed) {
-        return;
-    }
-
+    const btn = document.getElementById('closeReportBtn');
+    reportClosing = true;
+    btn.disabled = true;
     try {
+        const confirmed = await showConfirm(`${date} 날짜를 마감하시겠습니까?\n\n현황 저장: ${savedCount}/${totalRetailers}개\n파일용량 저장: ${fileSavedCount}/${totalRetailers}개\n\n보고서를 자동 저장하고 링크를 복사합니다.\n마감 후 수정이 필요한 경우 마감 취소가 필요합니다.`, 'warning');
+        if (!confirmed) return;
+        btn.textContent = '마감 중...';
         const response = await fetch('/ds/layer4/api/close/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
             body: JSON.stringify({
                 crawl_date: date,
-                user_id: currentUserId
+                content: content
             })
         });
 
         const result = await response.json();
-        if (result.success) {
-            showToast('마감 완료');
-            loadReportList();
-        } else {
-            showToast(result.error || '마감 실패');
+        if (!result.success) {
+            showToast(result.error || '마감 실패', 'error');
+            return;
         }
+        isClosed = true;
+        document.getElementById('reportOutputOverlay').classList.remove('show');
+        const notice = document.getElementById('reportLinkNotice');
+        const link = new URL(result.document_url, window.location.origin).href;
+        document.getElementById('closedReportLink').value = link;
+        notice.dataset.date = date;
+        notice.classList.remove('hidden');
+        try {
+            await copyReportLink(link);
+            showToast('마감되었습니다. 보고서 링크가 복사되었습니다.', 'success');
+        } catch (error) {
+            showToast('마감되었습니다. 링크를 복사해주세요.', 'warning');
+        }
+        await loadReportList();
     } catch (error) {
         console.error('Close error:', error);
-        showToast('마감 중 오류 발생');
+        showToast('마감 결과를 확인하지 못했습니다. 새로 조회하여 마감 상태를 확인해주세요.', 'error');
+    } finally {
+        reportClosing = false;
+        btn.disabled = isClosed;
+        btn.textContent = isClosed ? '마감 완료' : '마감';
+    }
+}
+
+// 복사 실패를 성공으로 표시하지 않도록 execCommand의 반환값도 확인한다.
+async function copyReportLink(link) {
+    if (navigator.clipboard && window.isSecureContext) {
+        try {
+            await navigator.clipboard.writeText(link);
+            return;
+        } catch (error) { /* HTTP/권한 제한 환경에서는 선택 복사 시도 */ }
+    }
+    const input = document.getElementById('closedReportLink');
+    input.focus();
+    input.select();
+    if (!document.execCommand('copy')) throw new Error('Clipboard copy failed');
+}
+
+async function copyClosedReportLink() {
+    try {
+        await copyReportLink(document.getElementById('closedReportLink').value);
+        showToast('보고서 링크가 복사되었습니다.', 'success');
+    } catch (error) {
+        showToast('링크를 선택한 후 Ctrl+C로 복사해주세요.', 'warning');
     }
 }
 
@@ -833,26 +885,23 @@ function closeDetailModal(event) {
 
 // 보고서 출력 모달 열기
 async function openReportOutput() {
-    if (!reportData || reportData.daily_reports.length === 0) {
-        showToast('출력할 보고서가 없습니다.', 'warning');
-        return;
-    }
-
+    if (reportClosing) return;
     const date = document.getElementById('targetDate').value;
-
-    // 현황 모드에서는 anomalies가 없으므로, 상세 데이터 조회
-    if (!reportData.anomalies || reportData.anomalies.length === 0) {
-        try {
-            const response = await fetch(`/ds/layer4/api/report-list/?date=${date}&view=detail`);
-            if (response.ok) {
-                const detailData = await response.json();
-                if (detailData.success) {
-                    reportData.anomalies = detailData.anomalies || [];
-                }
-            }
-        } catch (e) {
-            console.error('이상치 데이터 조회 실패:', e);
+    reportOutputDate = null;
+    reportOutputData = null;
+    let detailData;
+    // 날짜 변경이나 파일 탭에서 열어도 전체 최신 현황으로 미리보기를 만든다.
+    try {
+        const response = await fetch(`/ds/layer4/api/report-list/?date=${date}&view=detail`);
+        detailData = await response.json();
+        if (!response.ok || !detailData.success) throw new Error('Report load failed');
+        if (!detailData.daily_reports.length) {
+            showToast('출력할 보고서가 없습니다.', 'warning');
+            return;
         }
+    } catch (e) {
+        showToast('보고서를 불러오지 못했습니다. 다시 시도해주세요.', 'error');
+        return;
     }
 
     // 파일 용량 7일 히스토리 조회
@@ -867,6 +916,12 @@ async function openReportOutput() {
     }
 
     // 표시용 HTML 생성
+    if (date !== document.getElementById('targetDate').value) return;
+    reportData = detailData;
+    isClosed = detailData.is_closed;
+    reportOutputDate = date;
+    reportOutputData = detailData;
+    updateCloseButton(detailData);
     const html = generateReportContent(fileSizeHistory);
     document.getElementById('reportOutputContent').innerHTML = html;
     document.getElementById('reportOutputOverlay').classList.add('show');
@@ -874,57 +929,8 @@ async function openReportOutput() {
 
 // 보고서 출력 모달 닫기
 function closeReportOutput() {
+    if (reportClosing) return;
     document.getElementById('reportOutputOverlay').classList.remove('show');
-}
-
-// 보고서를 DS 문서(검수 보고서 카테고리)에 저장
-function saveReportToDocument() {
-    if (isClosed) {
-        showToast('마감된 날짜입니다.', 'warning');
-        return;
-    }
-
-    const rawContent = document.getElementById('reportOutputContent').innerHTML;
-    if (!rawContent) {
-        showToast('저장할 보고서가 없습니다.', 'warning');
-        return;
-    }
-
-    const content = rawContent.replace(/<h2[^>]*>.*?<\/h2>/i, '').replace(/<h3 /g, '<br><h3 ');
-
-    const date = document.getElementById('targetDate').value;
-    const title = date + ' DS 검수 보고서';
-    const categoryId = '20260212-0001';
-
-    const btn = document.getElementById('saveReportBtn');
-    btn.disabled = true;
-
-    fetch('/api/ds/documents/create/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken()
-        },
-        body: JSON.stringify({
-            category_id: categoryId,
-            title: title,
-            content: content,
-            crawl_date: date
-        })
-    })
-    .then(r => r.json())
-    .then(res => {
-        btn.disabled = false;
-        if (res.success) {
-            showToast(res.message || '검수 보고서가 저장되었습니다.', 'success');
-        } else {
-            showToast(res.error || '보고서 저장에 실패했습니다.', 'info');
-        }
-    })
-    .catch(function() {
-        btn.disabled = false;
-        showToast('보고서 저장 중 오류가 발생했습니다.', 'error');
-    });
 }
 
 // 보고서 콘텐츠 생성 (HTML 템플릿)

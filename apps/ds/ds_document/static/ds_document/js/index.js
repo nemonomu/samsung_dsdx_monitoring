@@ -98,6 +98,8 @@ document.addEventListener('DOMContentLoaded', function() {
         updateNewDocLink();
         renderDocuments(currentCategoryId);
     }
+    const documentId = new URLSearchParams(window.location.search).get('document_id');
+    if (documentId) openReportPopup(documentId);
 });
 
 // 새 문서 버튼 링크 업데이트
@@ -208,16 +210,19 @@ function goToEdit(documentId) {
 // === 보고서 출력 팝업 ===
 var currentReportDocId = '';
 
-function openReportPopup() {
+function openReportPopup(documentId) {
     var appData = document.getElementById('app-data').dataset;
-    var checked = docTable.getTable().querySelectorAll('tbody .doc-checkbox:checked');
-    if (checked.length === 0) {
-        showToast('출력할 문서를 선택해주세요.', 'warning');
-        return;
+    var title = '문서';
+    if (typeof documentId !== 'string' || !documentId) {
+        var checked = docTable.getTable().querySelectorAll('tbody .doc-checkbox:checked');
+        if (checked.length === 0) {
+            showToast('출력할 문서를 선택해주세요.', 'warning');
+            return;
+        }
+        documentId = checked[0].value;
+        title = checked[0].getAttribute('data-title') || '문서';
     }
-    var documentId = checked[0].value;
     currentReportDocId = documentId;
-    var title = checked[0].getAttribute('data-title') || '문서';
 
     document.getElementById('reportPopupTitle').textContent = '문서 보기';
     var docTitleEl = document.getElementById('reportDocTitle');
@@ -230,6 +235,7 @@ function openReportPopup() {
         .then(function(r) { return r.json(); })
         .then(function(res) {
             if (res.success && res.document) {
+                docTitleEl.textContent = res.document.title || title;
                 var _tmp = document.createElement('div');
                 _tmp.innerHTML = res.document.content || '<p>내용이 없습니다.</p>';
                 _tmp.querySelectorAll('script,iframe,object,embed').forEach(function(el) { el.remove(); });

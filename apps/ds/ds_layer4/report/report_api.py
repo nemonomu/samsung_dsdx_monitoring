@@ -2,8 +2,10 @@
 DS Layer 4 Report API: 보고서 관리 HTTP 요청/응답 처리 컨트롤러
 """
 import json
+from urllib.parse import urlencode
 from datetime import datetime, timedelta, date
 from django.http import JsonResponse
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from apps.common.response import safe_error
 from . import report_services
@@ -48,8 +50,13 @@ def report_close(request):
         body = json.loads(request.body)
         result = report_services.close_report(
             crawl_date=body.get('crawl_date'),
-            user_id=body.get('user_id', 'system')
+            user_id=request.user.username,
+            content=body.get('content')
         )
+        if result.get('success'):
+            result['document_url'] = reverse('ds_document:index') + '?' + urlencode({
+                'category': result['category_id'], 'document_id': result['document_id'],
+            })
         return JsonResponse(result)
     except Exception as e:
         return safe_error(e, success=False)

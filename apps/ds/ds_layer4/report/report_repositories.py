@@ -4,6 +4,8 @@ DS Layer 4 Report Repository: 보고서 및 데이터베이스 SQL 처리 전담
 from datetime import datetime, timedelta, date
 from apps.common.db import ds_connection
 from apps.common.targets import load_monitoring_targets
+from apps.common.ds.id_generator import generate_ds_id
+from apps.ds.ds_document.document import document_repositories
 from apps.ds.cause_history import attach_cause_history, record_cause_application, fetch_cause_applications
 
 
@@ -104,21 +106,58 @@ def check_report_saved(cursor, crawl_date):
     return cursor.fetchone()[0] > 0
 
 
-def execute_close_report(crawl_date, user_id):
+REPORT_CATEGORY_ID = '20260212-0001'
+
+
+def execute_close_report(crawl_date, user_id, content):
+    """보고서 문서와 마감 이력을 같은 트랜잭션으로 저장한다."""
     with ds_connection() as (conn, cursor):
-        if check_close_status(cursor, crawl_date):
+        # 같은 날짜의 동시 마감 요청을 직렬화한다 (최초 마감도 포함).
+        cursor.execute("""
+            INSERT INTO ssd_crawl_db.ds_monitoring_report_close
+                (crawl_date, is_closed, closed_at, closed_id, created_at, updated_at)
+            VALUES (%s, 0, NOW(), %s, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE crawl_date = VALUES(crawl_date)
+        """, (crawl_date, user_id))
+        cursor.execute("""
+            SELECT is_closed FROM ssd_crawl_db.ds_monitoring_report_close
+            WHERE crawl_date = %s FOR UPDATE
+        """, (crawl_date,))
+        if cursor.fetchone()[0] == 1:
+            conn.rollback()
             return {'success': False, 'error': '이미 마감된 날짜입니다.'}
 
-        all_retailers_count = len(get_monitoring_targets())
-        saved_count = check_all_retailers_saved(cursor, crawl_date, all_retailers_count)
+        cursor.execute("""
+            SELECT retailer_id FROM ssd_crawl_db.ds_monitoring_targets WHERE is_active = TRUE
+        """)
+        target_ids = {row[0] for row in cursor.fetchall()}
+        cursor.execute("""
+            SELECT retailer_id, anomaly_total, memo
+            FROM ssd_crawl_db.ds_monitoring_report_daily
+            WHERE crawl_date = %s AND is_del = 0 FOR UPDATE
+        """, (crawl_date,))
+        daily_rows = cursor.fetchall()
+        saved_count = len(target_ids & {row[0] for row in daily_rows})
+        all_retailers_count = len(target_ids)
 
-        if saved_count < all_retailers_count:
+        if not target_ids or saved_count < all_retailers_count:
+            conn.rollback()
             return {'success': False, 'error': f'일괄 현황 저장이 먼저 필요합니다. (저장: {saved_count}/{all_retailers_count})'}
 
-        if not check_report_saved(cursor, crawl_date):
-            return {'success': False, 'error': '보고서 저장이 먼저 필요합니다.'}
+        if any((row[1] or 0) > 0 and not (row[2] or '').strip() for row in daily_rows):
+            conn.rollback()
+            return {'success': False, 'error': '이상치 있는 리테일러에 메모를 작성해주세요.'}
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        title = f'{crawl_date} DS 검수 보고서'
+        existing_doc = document_repositories.get_document_by_crawl_date(cursor, REPORT_CATEGORY_ID, crawl_date)
+        if existing_doc:
+            document_id = existing_doc[0]
+            document_repositories.update_document_record(cursor, document_id, title, content, user_id, now)
+        else:
+            document_id = generate_ds_id(cursor, 'ssd_crawl_db.ds_monitoring_documents', 'document_id')
+            document_repositories.insert_document_record(
+                cursor, document_id, REPORT_CATEGORY_ID, title, content, None, crawl_date, user_id, now)
 
         cursor.execute("""
             INSERT INTO ssd_crawl_db.ds_monitoring_report_close
@@ -135,7 +174,8 @@ def execute_close_report(crawl_date, user_id):
         """, (crawl_date, now, user_id))
 
         conn.commit()
-        return {'success': True, 'message': f'{crawl_date} 마감 완료'}
+        return {'success': True, 'message': f'{crawl_date} 마감 완료',
+                'document_id': document_id, 'category_id': REPORT_CATEGORY_ID}
 
 def execute_cancel_close_report(crawl_date, user_id, memo):
     with ds_connection() as (conn, cursor):

@@ -19,7 +19,6 @@
     <div id="reportControlsBar"></div>
     <div style="display:flex; align-items:center; gap:8px; margin-left:auto;">
         <button class="app-btn app-btn-md app-btn-cancel" id="saveFileInfoBtn" onclick="saveFileInfo()" style="color:#1a365d;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg><span id="saveFileInfoBtnText">파일용량 저장</span></button>
-        <button class="app-btn app-btn-md" id="closeBtn" onclick="closeReport()" style="background:#7e6b9b;color:#fff;border-color:#7e6b9b;min-width:100px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span id="closeBtnText">마감</span></button>
         <button class="app-btn app-btn-md" id="cancelCloseBtn" onclick="cancelClose()" style="display:none;background:#ef4444;color:#fff;border-color:#ef4444;min-width:120px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg><span>마감 취소</span></button>
     </div>
 </div>
@@ -30,6 +29,12 @@
         <polyline points="22 4 12 14.01 9 11.01"/>
     </svg>
     <span id="closedBannerText">이 날짜는 마감되었습니다.</span>
+</div>
+
+<div id="reportLinkNotice" class="closed-banner hidden" style="flex-wrap:wrap;" role="status">
+    <label for="closedReportLink">마감된 보고서 링크</label>
+    <input id="closedReportLink" type="text" readonly style="flex:1;min-width:180px;padding:8px;border:1px solid #d1d5db;border-radius:6px;" onclick="this.select()">
+    <button class="app-btn app-btn-sm" onclick="copyClosedReportLink()">링크 복사</button>
 </div>
 
 <div class="summary-grid">

@@ -29,10 +29,10 @@ assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20260923-4"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/index.js' %}?v=20260928-inline-detail"
+    "{% static 'ds_layer4/js/index.js' %}?v=20261002-report-close"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20260928-inline-detail"
+    "{% static 'ds_layer4/js/report.js' %}?v=20261002-report-close"
 ));
 
 function fakeClassList() {
