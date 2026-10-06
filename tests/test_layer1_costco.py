@@ -117,11 +117,27 @@ class CostcoTests(SimpleTestCase):
             self.assertNotIn('page_type', sql)
             self.assertIn('latest AS', sql)
             self.assertIn("AT TIME ZONE 'Asia/Seoul'", sql)
+            date_column = 'crawl_datetime' if product == 'TV' else 'crawl_strdatetime'
+            self.assertIn(costco.source_date_sql('source.' + date_column), sql)
+            self.assertNotIn('CAST(source.batch_id AS TEXT)', sql)
+            self.assertIn('source.batch_id IS NOT DISTINCT FROM latest.chosen_batch', sql)
             self.assertIn('product_url', fields)
             self.assertIn('savings', fields)
             if product == 'TV':
                 self.assertNotIn('sku', fields)
                 self.assertNotIn('tv_item_mst', sql)
+
+    def test_existing_sea_tv_keeps_batch_date_after_costco_query(self):
+        source = columns.select_source('SEA', 'TV', 'Costco')
+        retailer = next(r for r in source['retailers'] if r['name'] == 'Costco')
+        columns.query_spec(source, retailer, ['item'], date(2026, 10, 4), date(2026, 10, 6))
+        self.assertEqual('batch_id', source['date_column'])
+        for retailer in source['retailers']:
+            if retailer['name'] == 'Costco':
+                continue
+            sql, _ = columns.query_spec(source, retailer, ['item'], date(2026, 10, 4), date(2026, 10, 6))
+            self.assertIn("substring(CAST(source.batch_id AS TEXT) from '([0-9]{8})')", sql)
+            self.assertNotIn('::timestamptz', sql)
 
     def test_costco_column_history_requires_five_valid_prior_days(self):
         target = date(2026, 10, 10)

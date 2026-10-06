@@ -54,6 +54,9 @@ def query_spec(source, retailer, columns, start, end):
     is_costco = source['country'] == 'SEA' and retailer['name'] == 'Costco'
     col = 'source.' + source['date_column']
     if is_costco:
+        # SEA TV's shared report date is batch_id; Costco uses its UTC crawl time.
+        if source['key'] == 'sea_tv':
+            col = 'source.crawl_datetime'
         day = costco.source_date_sql(col)
         start = max(start, costco.FIRST_SOURCE_DATE)
     elif home_depot:
