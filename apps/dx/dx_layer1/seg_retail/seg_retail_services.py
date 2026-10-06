@@ -54,6 +54,9 @@ def get_layer1_stats(cursor, target_date, now=None):
             previous = [r for r in history if r['retailer'] == name.lower()]
             expected = get_seg_average([r['main_count'] for r in previous])
             actual = int(row.get('main_count') or 0)
+            # Assess received retailers independently of the SEG-wide window.
+            # Missing retailers keep the scheduled pending/collecting phase.
+            row_phase = 'complete' if actual > 0 and phase != 'pending' else phase
             # Until a deviation threshold is agreed, only completed zero
             # collection is critical; historical differences remain visible.
             status = (
@@ -74,6 +77,7 @@ def get_layer1_stats(cursor, target_date, now=None):
                 'history': previous,
                 'rate': actual * 100 // expected if expected else None,
                 'status': status,
+                'collection_phase': row_phase,
             })
             if status == 'CRITICAL':
                 failed_items.append({

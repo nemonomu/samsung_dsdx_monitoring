@@ -125,6 +125,20 @@ assert.equal(apply(sea),'OK');
 sea.summaries.ref.date='2026-09-30';assert.equal(apply(sea),'VERIFYING');
 
 // An incomplete sibling cannot hide a verified failure or make a parent normal.
+// SEG assesses received retailers before noon while Amazon REF remains collecting.
+const seg=fixture('SEG');
+seg.check.phase='collecting';seg.row.collection_phase='complete';seg.row.main_count=300;
+const segRef={...seg.cat,name:'REF',retailers:[{retailer:'Amazon',main_count:0,bsr_count:0,
+    raw_count:0,status:'COLLECTING',collection_phase:'collecting'}]};
+seg.check.categories.push(segRef);
+assert.equal(apply(seg),'OK');
+assert.equal(seg.cat.status,'OK');assert.equal(segRef.status,'COLLECTING');
+assert.equal(seg.check.status,'COLLECTING');
+seg.row.bsr_count=99;
+assert.equal(apply(seg),'VOLUME_LOW','received SEG rows still require BSR verification');
+seg.row.bsr_count=100;seg.payload=null;
+assert.equal(apply(seg),'VERIFYING','receipt alone does not prove normal');
+
 const siblings=fixture(); siblings.row.main_count=300;
 siblings.cat.retailers.push({...siblings.row,retailer:'Other',collection_phase:'collecting'});
 apply(siblings);assert.equal(siblings.check.status,'COLLECTING');
