@@ -84,7 +84,7 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         sea_services.load_latest_sea_rows(cursor, date(2026, 9, 22), 'sea_ref', from_date=date(2026, 9, 20))
         sql, params = cursor.calls[0]
         self.assertIn('America/New_York', sql)
-        self.assertIn("IN ('bestbuy', 'lowes', 'homedepot')", sql)
+        self.assertIn("IN ('bestbuy', 'lowes', 'homedepot', 'costco')", sql)
         self.assertIn("LOWER(TRIM(account_name)) = 'homedepot' OR", sql)
         self.assertIn('anchor.batch_id = source.batch_id', sql)
         self.assertIn('anchor.batch_rank = 1', sql)

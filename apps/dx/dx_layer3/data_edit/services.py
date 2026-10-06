@@ -14,7 +14,8 @@ from apps.common.seda_retail import (
     SEDA_SOURCE_CONFIG, get_seda_product_line, get_seda_crossfield_editable_columns,
 )
 from apps.dx.dx_layer2.seda_null_validation import _scope as seda_scope
-from apps.common.sea_dates import appliance_source_date_sql, appliance_page_scope_sql
+from apps.dx.dx_layer3.cross_field.sea_services import appliance_source_date_sql, appliance_page_scope_sql
+from apps.common import costco_layer2
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_TABLE_TO_PRODUCT_LINE,
@@ -57,6 +58,7 @@ except (ImportError, AttributeError):
 
 VALID_TABLES_UPDATE = {
     'tv_retail_com',
+    'public.tv_retail_com',
     'ref_retail_com', 'ldy_retail_com',
     'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
@@ -99,6 +101,8 @@ def _is_sem_table(table_name):
 
 
 def _get_sea_edit_context(table_name):
+    if table_name == 'public.tv_retail_com':
+        return SEA_RETAIL_SOURCES['tv']
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
     for product_key in ('ref', 'ldy'):
         source = SEA_RETAIL_SOURCES[product_key]
@@ -174,6 +178,18 @@ def _select_sea_record(
     )
     table_name = source['table_name']
     date_column = source['date_column']
+    if table_name == 'public.tv_retail_com':
+        day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco')
+        anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer='Costco')
+        cursor.execute(f"""SELECT {select_columns} FROM {table_name} source
+            WHERE source.id = %s AND LOWER(TRIM(source.account_name)) = 'costco'
+              AND {day} = %s
+              AND source.batch_id IS NOT DISTINCT FROM (
+                  SELECT anchor.batch_id FROM {table_name} anchor
+                  WHERE LOWER(TRIM(anchor.account_name)) = 'costco' AND {anchor_day} = %s
+                  ORDER BY anchor.id DESC LIMIT 1)
+            FOR UPDATE OF source""", (row_id, date_contract['source_date'], date_contract['source_date']))
+        return
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
@@ -451,6 +467,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     batch_id = row[1]
     retailer = row[2]
     item_value = str(row[3]) if row[3] else ''
+    if costco_layer2.is_costco(retailer) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
+        return {'error': 'Costco 크로스필드는 평가·가격 컬럼만 수정할 수 있습니다', 'status': 403}
 
     if table_name in SEDA_TABLES:
         editable_cols = get_seda_crossfield_editable_columns(product_line, retailer)
@@ -582,6 +600,8 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else None
+    if costco_layer2.is_costco(retailer) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
+        return {'error': 'Costco 크로스필드는 평가·가격 컬럼만 검수할 수 있습니다', 'status': 403}
 
     if table_name in SEDA_TABLES and column_name not in get_seda_crossfield_editable_columns(product_line, retailer):
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}

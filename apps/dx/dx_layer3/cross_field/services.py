@@ -25,6 +25,11 @@ def get_cross_field_rule_detail(
 
     for rule_result in crossfield_result['rule_results']:
         if str(rule_result['rule_id']) == str(rule_id):
+            if section == 'tv_retail' and rule_result.get('retailer') == 'Costco':
+                from . import sea_services
+                return sea_services.get_sea_cross_field_rule_detail(
+                    cursor, inspection_date or target_date + timedelta(days=1),
+                    'sea_tv', rule_id, days)
             table_name = crossfield_result.get('table_name', '')
             date_col = crossfield_result.get('date_col', '')
             validation_type = rule_result.get('validation_type', '')
@@ -232,6 +237,10 @@ def get_cross_field_rule_detail(
 def build_display_query(table_name, date_column, source_date, rule):
     """Raw three-day lookup for the SEA TV/HHP rule SQL button."""
     end = date.fromisoformat(str(source_date))
+    if rule.get('retailer') == 'Costco':
+        from . import sea_services
+        return sea_services.build_sea_display_query(end + timedelta(days=1), 'sea_tv',
+                                                    rule, days=3, retailer='Costco')
     literal = lambda value: "'" + str(value).replace("'", "''") + "'"
     groups = {}
     for row in rule.get('error_details') or []:
@@ -269,7 +278,8 @@ def get_cross_field_summary(
     rule_summary = []
     total_anomalies = 0
     for r in crossfield_result['rule_results']:
-        adjusted_count = max(0, r['error_count'] - normal_counts.get(r['rule_id'], 0))
+        adjusted_count = max(0, r['error_count'] - (
+            0 if r.get('retailer') == 'Costco' else normal_counts.get(r['rule_id'], 0)))
         rule_summary.append({
             'rule_id': r['rule_id'],
             'detail_code': r['detail_code'],

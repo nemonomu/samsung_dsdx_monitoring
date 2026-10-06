@@ -429,7 +429,7 @@ def execute_crossfield_query(rule, table_name, date_col, target_date, product_li
     query = query.replace('{product_line}', product_line)
     excluded_ids = ([entry['record_id'] for entry in page_exclusions]
                     if page_exclusions and table_name == 'tv_retail_com' else [])
-    query = apply_tv_validation_scope(query, table_name, exclude_record_ids=bool(excluded_ids))
+    query = apply_tv_validation_scope(query, table_name, exclude_record_ids=bool(excluded_ids), exclude_costco=True)
     if not validate_select_query(query):
         return 0, []
 
@@ -452,6 +452,9 @@ def execute_crossfield_query(rule, table_name, date_col, target_date, product_li
                 query_cursor.execute('RELEASE SAVEPOINT crossfield_rule')
 
         results = [dict(zip(columns, row)) for row in rows]
+        # Costco has no review body; its seven rules run on its latest batch below.
+        if table_name.split('.')[-1] == 'tv_retail_com':
+            results = [row for row in results if str(row.get('account_name') or '').strip().casefold() != 'costco']
 
         validation_type = rule.get('validation_type', '')
         if validation_type == 'cross_detail_mismatch':
@@ -483,6 +486,8 @@ def _validate_crossfield(cursor, target_date, section, rule_id):
 
     for rule in rules:
         if rule.get('section_code', '').lower() != section:
+            continue
+        if section == 'tv_retail' and str(rule.get('retailer') or '').strip().casefold() == 'costco':
             continue
         if rule_id is not None and str(rule.get('rule_id')) != str(rule_id):
             continue
@@ -520,6 +525,21 @@ def _validate_crossfield(cursor, target_date, section, rule_id):
     results['table_name'] = table_name
     results['date_col'] = date_col
     results['page_exclusions'] = page_exclusions or []
+    if section == 'tv_retail' and any(str(rule.get('retailer') or '').strip().casefold() == 'costco'
+                                    and rule.get('section_code') == section
+                                    and (rule_id is None or str(rule.get('rule_id')) == str(rule_id))
+                                    for rule in rules):
+        from apps.dx.dx_layer3.cross_field import sea_services
+        costco = sea_services.build_sea_crossfield_result(cursor, target_date + timedelta(days=1), 'sea_tv')
+        for rule in costco['rule_results']:
+            if rule_id is not None and str(rule['rule_id']) != str(rule_id):
+                continue
+            results['rule_results'].append({**rule, 'retailer': 'Costco'})
+            results['total_errors'] += rule['error_count']
+        results['costco_total_checked'] = costco['total_checked']
+        results['costco_page_exclusions'] = costco['page_exclusions']
+        results['table_name'] = 'tv_retail_com'
+        results['date_col'] = 'crawl_datetime'
 
     return results
 

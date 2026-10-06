@@ -1,4 +1,4 @@
-"""SEA REF/LDY cross-field validation.
+"""SEA REF/LDY and Costco TV cross-field validation.
 
 Database rows in ``monitoring_validation_rules`` enable and describe rules.
 Validation itself stays allow-listed here so a stored query cannot widen the
@@ -18,11 +18,35 @@ from apps.common.retail_columns import get_editable_columns
 from apps.common.sea_retail import get_sea_retail_source
 from apps.common.sea_collection import homedepot_source_enabled
 from apps.common.sea_dates import (
-    appliance_source_date_sql, appliance_source_date_value, appliance_page_scope_sql,
+    appliance_source_date_sql as legacy_date_sql,
+    appliance_source_date_value as legacy_date_value,
+    appliance_page_scope_sql as legacy_page_sql,
 )
+from apps.common import costco_layer2
+
+
+def appliance_source_date_sql(column, account_column='account_name'):
+    day = costco_layer2.costco.source_date_sql(column)
+    return (f"CASE WHEN LOWER(TRIM({account_column})) = 'costco' THEN "
+            f"CASE WHEN {day} >= '2026-10-04' THEN {day} END "
+            f"ELSE ({legacy_date_sql(column, account_column)}) END")
+
+
+def appliance_source_date_value(row, date_column='crawl_strdatetime'):
+    if costco_layer2.is_costco(row.get('account_name')):
+        if row.get('_source_date'):
+            return row['_source_date']
+        return costco_layer2.annotate_source_date(dict(row)).get('_source_date', '')
+    return legacy_date_value(row, date_column)
+
+
+def appliance_page_scope_sql(alias='', *, anchor=False):
+    prefix = alias + '.' if alias else ''
+    return f"(LOWER(TRIM({prefix}account_name)) = 'costco' OR ({legacy_page_sql(alias, anchor=anchor)}))"
 
 
 SEA_PRODUCT_KEYS = {
+    'sea_tv': 'tv',
     'sea_ref': 'ref',
     'sea_ldy': 'ldy',
 }
@@ -213,7 +237,7 @@ _DISPLAY_QUERY_COLUMNS = {
     'count_of_reviews', 'count_of_star_ratings', 'star_rating',
     'detailed_review_content', 'recommendation_intent',
     'final_sku_price', 'original_sku_price', 'savings',
-    'crawl_strdatetime', 'batch_id', 'product_url',
+    'crawl_strdatetime', 'crawl_datetime', 'batch_id', 'product_url',
 }
 
 
@@ -347,7 +371,7 @@ def evaluate_sea_row(row):
     """Return canonical SEA rule keys failed by one REF/LDY source row."""
     errors = set()
     retailer = _retailer_name(row.get('account_name'))
-    if retailer not in ('Bestbuy', 'Lowes', 'HomeDepot'):
+    if retailer not in ('Bestbuy', 'Lowes', 'HomeDepot', 'Costco'):
         return errors
 
     review_count = parse_sea_number(row.get('count_of_reviews'))
@@ -397,11 +421,11 @@ def evaluate_sea_row(row):
         # Lowes review/body combinations are review candidates, not anomalies.
         # They are evaluated separately by evaluate_lowes_review_body().
 
-        if retailer != 'HomeDepot' and not _recommendation_valid(
+        if retailer not in ('HomeDepot', 'Costco') and not _recommendation_valid(
                 retailer, review_count, row.get('recommendation_intent')):
             errors.add('recommendation_intent')
 
-    if retailer in ('Bestbuy', 'Lowes', 'HomeDepot'):
+    if retailer in ('Bestbuy', 'Lowes', 'HomeDepot', 'Costco'):
         if (
             final_price is not None
             and original_price is not None
@@ -422,7 +446,7 @@ def evaluate_sea_row(row):
         ):
             errors.add('savings_amount_match')
 
-    return errors & HOMEDEPOT_RULE_KEYS if retailer == 'HomeDepot' else errors
+    return errors & HOMEDEPOT_RULE_KEYS if retailer in ('HomeDepot', 'Costco') else errors
 
 
 def _rows_as_dicts(cursor):
@@ -449,7 +473,7 @@ def _resolve_rule_key(rule):
 
 
 def _retailer_supported(rule_key, retailer):
-    if _retailer_name(retailer) == 'HomeDepot':
+    if _retailer_name(retailer) in ('HomeDepot', 'Costco'):
         return rule_key in HOMEDEPOT_RULE_KEYS
     supported = SEA_RULE_SPECS[rule_key]['retailers']
     retailer_key = str(retailer or '').strip().casefold()
@@ -472,7 +496,7 @@ def load_active_sea_rules(cursor, product_line):
     """Load active SEA rule metadata; stored query text is never executed."""
     key = normalize_sea_product_line(product_line)
     source = _source_for_product_line(key)
-    section_code = f'{key}_retail'
+    section_code = 'tv_retail' if key == 'sea_tv' else f'{key}_retail'
     cursor.execute("""
         SELECT id, detail_code, detail_name, section_code, section_name,
                table_name, date_column, product_line, retailer,
@@ -502,6 +526,8 @@ def load_active_sea_rules(cursor, product_line):
 
         spec = SEA_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
+        if key == 'sea_tv' and not costco_layer2.is_costco(configured_retailer):
+            continue
         if (
             configured_retailer.upper() != 'ALL'
             and not _retailer_supported(rule_key, configured_retailer)
@@ -514,6 +540,8 @@ def load_active_sea_rules(cursor, product_line):
             if field.strip()
         ]
         display_fields = []
+        if costco_layer2.is_costco(configured_retailer):
+            configured_fields = list((*costco_layer2.METRICS, *costco_layer2.PRICES))
         for field_group in configured_fields + list(spec['display_fields']):
             for field in str(field_group or '').split('|'):
                 field = field.strip()
@@ -575,6 +603,23 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
     end_date = end_contract['source_date']
     table_name = source['table_name']
     date_column = source['date_column']
+    if normalize_sea_product_line(product_line) == 'sea_tv':
+        day = costco_layer2.source_date_sql(date_column, retailer='Costco')
+        source_day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco')
+        cursor.execute(f"""
+            WITH latest AS (
+                SELECT DISTINCT ON ({day}) {day} AS source_date, batch_id
+                FROM {table_name}
+                WHERE LOWER(TRIM(account_name)) = 'costco' AND {day} BETWEEN %s AND %s
+                ORDER BY {day}, id DESC
+            )
+            SELECT source.* FROM {table_name} source JOIN latest
+              ON {source_day} = latest.source_date
+             AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+            WHERE LOWER(TRIM(source.account_name)) = 'costco'
+            ORDER BY {source_day}, source.id
+        """, (start_date, end_date))
+        return _rows_as_dicts(cursor)
     cursor.execute(f"""
         WITH main_batches AS (
             SELECT
@@ -585,7 +630,7 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
             FROM {table_name}
             WHERE ({appliance_source_date_sql(date_column)})
                       BETWEEN %s AND %s
-              AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes', 'homedepot')
+              AND LOWER(TRIM(account_name)) IN ('bestbuy', 'lowes', 'homedepot', 'costco')
               AND {appliance_page_scope_sql(anchor=True)}
               AND NULLIF(TRIM(batch_id), '') IS NOT NULL
             GROUP BY ({appliance_source_date_sql(date_column)}),
@@ -729,7 +774,7 @@ def build_sea_crossfield_result(
             if rule['rule_key'] == 'review_body_count':
                 detail.update(_review_body_detail_fields(row))
             detail['validation_tag'] = (SEA_RULE_SPECS[rule['rule_key']]['error_message']
-                                        if retailer == 'HomeDepot' else rule['error_message'])
+                                        if retailer in ('HomeDepot', 'Costco') else rule['error_message'])
             detail['rule_key'] = rule['rule_key']
             detail['finding_level'] = 'anomaly'
             error_details.append(detail)
@@ -835,9 +880,9 @@ def build_sea_display_query(
     day_count = min(30, max(1, int(days)))
     date_column = source['date_column']
 
-    select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
+    select_columns = ['id', 'item', 'retailer_sku_name'] if key == 'sea_tv' else ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SEA_RULE_SPECS[rule['rule_key']]
-    for field_group in (*spec['display_fields'], date_column, 'product_url'):
+    for field_group in (*spec['display_fields'], *str(rule.get('select_fields') or '').split('|'), date_column, 'product_url'):
         for column in str(field_group or '').split('|'):
             column = column.strip()
             if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
@@ -917,6 +962,11 @@ def build_sea_display_query(
     end_date = date.fromisoformat(str(inspection_date)) - timedelta(days=1)
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
+    if retailer_values and all(costco_layer2.is_costco(value) for value in retailer_values):
+        day = costco_layer2.source_date_sql(date_column, retailer='Costco')
+        return (f"SELECT\n{select_sql}\nFROM {source['table_name']}\n"
+                f"WHERE {day} BETWEEN '{start_date}' AND '{end_date}'{scope_sql}\n"
+                f"ORDER BY item, {date_column};")
     return f"""SELECT
 {select_sql}
 FROM {source['table_name']}
@@ -1063,9 +1113,18 @@ def get_sea_cross_field_rule_detail(
     editable_columns = set()
     retailer_columns = {}
     for retailer in retailers:
-        columns = set(get_editable_columns(result['product_line'], retailer))
+        product = 'tv' if result['product_line'] == 'sea_tv' else result['product_line']
+        columns = (set((*costco_layer2.METRICS, *costco_layer2.PRICES))
+                   if costco_layer2.is_costco(retailer) else set(get_editable_columns(product, retailer)))
         editable_columns.update(columns)
         retailer_columns[retailer] = sorted(columns)
+    if 'Costco' in retailers:
+        selected = {**selected, 'select_fields': '|'.join(dict.fromkeys([
+            *str(selected.get('select_fields') or '').split('|'),
+            *costco_layer2.METRICS, *costco_layer2.PRICES]))}
+        for row in anomalies:
+            if costco_layer2.is_costco(row.get('account_name')):
+                costco_layer2.annotate_source_date(row, display_kst=True)
 
     selected_rule_ids = {
         str(source_rule_id)
