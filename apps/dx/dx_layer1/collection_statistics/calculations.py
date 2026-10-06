@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
+from apps.dx.dx_layer1.retail import costco
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE')
 OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0}
@@ -26,6 +27,8 @@ def normalize_check(check, country, inspection_date):
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
+                if country == 'SEA' and name == 'Costco' and not costco.enabled(source_day):
+                    continue
                 if country == 'SEA' and name == 'HomeDepot' and source_day < date(2026, 9, 20):
                     continue
                 items = {item['name']: int(item.get('count') or 0) for item in retailer.get('items', [])}
@@ -46,7 +49,8 @@ def normalize_check(check, country, inspection_date):
                     'verification_state': verification,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
-                    'active_from': '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None,
+                    'active_from': (str(costco.FIRST_SOURCE_DATE) if country == 'SEA' and name == 'Costco'
+                                    else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
     return sorted(rows, key=row_key)
 
@@ -80,7 +84,8 @@ def remember_observation(days, rows, source_date):
 def tiered_bsr(row, country):
     retailer = str(row['retailer']).strip().casefold()
     product = row['product']
-    return ((country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY'))
+    return ((country == 'SEA' and retailer == 'costco')
+            or (country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY'))
             or (retailer == 'amazon' and product in {
                 'SEA': ('TV',), 'SIEL': ('TV', 'REF', 'LDY'), 'SEG': ('TV', 'REF'),
             }.get(country, ())))

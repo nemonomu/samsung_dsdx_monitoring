@@ -371,4 +371,21 @@ assert.ok(layer2CommonSource.includes(
 assert.ok(layer2CommonSource.includes('Shift+클릭으로 범위 선택'));
 assert.ok(layer2CommonSource.includes('ensureProductUrlColumn'));
 
+// Costco keeps all rating and price values visible and editable in NULL detail.
+vm.runInContext(`modalState.tableParam = 'tv_retail'; modalState.tableName = 'SEA TV'; modalState.retailer = 'Costco'; modalState.days = 1;`, youtubeSandbox);
+const costcoFields = ['star_rating', 'count_of_star_ratings', 'count_of_reviews', 'final_sku_price', 'original_sku_price', 'savings'];
+youtubeSandbox.renderNullFieldDetailView('star_rating', {
+    results: [{id: 42, item: 'C1', crawl_datetime: '2026-10-05 01:00:00', _source_date: '2026-10-05',
+        ...Object.fromEntries(costcoFields.map(field => [field, null])), null_fields: costcoFields.slice(0, 3)}],
+    display_config: {star_rating: {select_columns: ['id', 'item', ...costcoFields]}},
+    editable_cols: costcoFields, actual_table: 'public.tv_retail_com',
+    date: '2026-10-06', inspection_date: '2026-10-06', source_date: '2026-10-05', date_column: 'crawl_datetime',
+    supports_null_auto_review: true, normal_reviews: {}, history_days: 1
+}, true);
+for (const field of costcoFields) {
+    assert(youtubeTableOptions.config.some(column => column.key === field));
+    assert(youtubeTableOptions.editableCols.includes(field));
+}
+assert.strictEqual(youtubeTableOptions.actualTable, 'public.tv_retail_com');
+assert.strictEqual(youtubeTableOptions.editableDate, '2026-10-05');
 console.log('Layer2 SEA NULL frontend tests passed.');

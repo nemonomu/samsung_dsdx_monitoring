@@ -14,6 +14,7 @@ from apps.common.sea_collection import homedepot_inspection_label
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 
 from . import retail_repositories as repo
+from . import costco
 
 
 OK_THRESHOLD = 200
@@ -32,8 +33,8 @@ ALLOWED_RANK_FIELDS = {'promotion_position'}
 def _get_layer1_source(value):
     source = get_sea_retail_source(value)
     if source['product_key'] in ('ref', 'ldy'):
-        return {**source, 'retailers': (*source['retailers'], HOMEDEPOT)}
-    return source
+        source = {**source, 'retailers': (*source['retailers'], HOMEDEPOT)}
+    return {**source, 'retailers': (*source['retailers'], 'Costco')}
 
 
 def _homedepot_collection_status(inspection_date, now=None, count=0):
@@ -110,7 +111,7 @@ def _slot_retailers(source, schedule_slots):
     return [
         {
             'name': name,
-            'expected_count': 0 if name == HOMEDEPOT else retailer_map.get(
+            'expected_count': 0 if name in (HOMEDEPOT, 'Costco') else retailer_map.get(
                 name.lower(),
                 {'expected_count': DEFAULT_EXPECTED_COUNT},
             )['expected_count'],
@@ -135,6 +136,10 @@ def _daily_schedule_status(schedule_slots):
 def _retailer_criteria(category, retailer):
     """Return the completed-collection rule for one SEA retailer."""
 
+    if retailer.lower() == 'costco':
+        # Receipt only here; the shared five-day observation/median policy
+        # evaluates volume through collection-statistics snapshots.
+        return {'total_min': 1}
     if category.upper() in ('REF', 'LDY') and retailer.lower() == 'homedepot':
         return None
 
@@ -255,7 +260,7 @@ def check_retailer_data(rows, category='TV', slot_retailers=None):
         retailer_details.append({
             'retailer': display_names.get(retailer, retailer.capitalize()),
             'count': count,
-            'expected': None if criteria is None else expected,
+            'expected': None if criteria is None or retailer == 'costco' else expected,
             'ok_threshold': (criteria or {}).get('total_min'),
             'criteria': criteria,
             'criteria_actual': _criteria_actual(data, criteria or {}),
@@ -300,6 +305,8 @@ def _build_category(cursor, source, inspection_date, now):
 
     schedule_slots = _matching_schedule_slots(source, source_date, now)
     slot_retailers = _slot_retailers(source, schedule_slots)
+    if not costco.enabled(source_date):
+        slot_retailers = [r for r in slot_retailers if r['name'] != 'Costco']
     rows = _source_rows(
         cursor, source, source_date, slot_start, slot_end, slot_retailers,
     )
@@ -308,6 +315,13 @@ def _build_category(cursor, source, inspection_date, now):
     )
 
     for retailer in retailer_details:
+        if retailer['retailer'] == 'Costco':
+            ready = costco.complete(source_date, now)
+            retailer['collection_phase'] = 'complete' if ready else 'collecting'
+            retailer['collection_window'] = {'start_kst': '13:00', 'end_kst': '15:00'}
+            if not ready:
+                retailer['status'] = 'COLLECTING'
+            continue
         if retailer['status'] == 'UNASSESSED':
             retailer['collection_phase'] = 'complete'
             retailer['collection_window'] = dict(HOMEDEPOT_COLLECTION_WINDOW)
@@ -570,11 +584,16 @@ def get_retail_summary(target_date, product_line):
 
     with dx_connection() as (_conn, cursor):
         for retailer in source['retailers']:
+            if retailer == 'Costco' and not costco.enabled(source_date):
+                continue
             check_columns = (
                 get_retailer_columns('tv', retailer)
-                if source['product_key'] == 'tv'
+                if source['product_key'] == 'tv' and retailer != 'Costco'
                 else []
             )
+            if retailer == 'Costco':
+                check_columns = [c for c in costco.COLUMNS[source['product_key']]
+                                 if c not in ('id', source['date_column'], 'main_rank', 'bsr_rank')]
             for column in check_columns:
                 if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
                     raise ValueError(f'허용되지 않은 컬럼명: {column}')
@@ -628,7 +647,7 @@ def get_retail_summary(target_date, product_line):
             count_row = repo.get_retail_summary_null_counts(
                 cursor,
                 source['table_name'],
-                'crawl_datetime::timestamp',
+                source['date_column'],
                 check_columns,
                 slot_start,
                 slot_end,
@@ -719,7 +738,16 @@ def get_retailer_raw_data(category, retailer, period, target_date):
         **_contract_fields(contract),
     }
     try:
-        if source['product_key'] == 'tv':
+        if retailer_name == 'Costco':
+            columns = list(costco.COLUMNS[source['product_key']])
+            with dx_connection() as (_conn, cursor):
+                batch_id = repo.get_latest_appliance_main_batch(
+                    cursor, source['table_name'], source['date_column'], source_date, retailer_name)
+                rows = repo.get_appliance_raw_data_list(
+                    cursor, source['table_name'], columns, retailer_name,
+                    source['date_column'], source_date) if batch_id is not None else []
+            results['batch_id'] = '' if batch_id is None else str(batch_id)
+        elif source['product_key'] == 'tv':
             db_columns = get_retailer_columns('tv', retailer_name)
             columns = ['id'] + [
                 column for column in db_columns if column != 'id'
@@ -776,13 +804,11 @@ def get_retailer_raw_data(category, retailer, period, target_date):
 
 
 def get_retailer_columns_info():
-    tv_columns = get_all_retailer_columns('tv')
-    all_tv_columns = sorted({
-        column for columns in tv_columns.values() for column in columns
-    })
-    return {
-        'tv': {
-            'columns': tv_columns,
-            'all_columns': all_tv_columns,
-        },
-    }
+    result = {}
+    for product, key in (('tv', 'tv'), ('ref', 'sea_ref'), ('ldy', 'sea_ldy')):
+        columns = {**get_all_retailer_columns(key), 'Costco': list(costco.COLUMNS[product])}
+        result[product] = {
+            'columns': columns,
+            'all_columns': sorted({c for fields in columns.values() for c in fields}),
+        }
+    return result

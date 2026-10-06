@@ -5,7 +5,8 @@ cursor + params 를 받아 plain dict 를 반환한다.
 
 import re
 from datetime import datetime
-from apps.common.sea_layer2 import source_date_sql, page_scope_sql
+from apps.common.costco_layer2 import source_date_sql, page_scope_sql, is_costco
+from apps.common import costco_layer2
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
@@ -98,6 +99,7 @@ except (ImportError, AttributeError):
 
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
+    'public.tv_retail_com',
     'ref_retail_com', 'ldy_retail_com',
     'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
@@ -118,6 +120,8 @@ def _get_sea_edit_context(table_name):
 
     if not resolve_monitoring_date:
         return None
+    if table_name == 'public.tv_retail_com':
+        return costco_layer2.tv_source(SEA_RETAIL_SOURCES)
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
     for product_key in ('ref', 'ldy'):
         source = SEA_RETAIL_SOURCES.get(product_key)
@@ -434,18 +438,26 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             crawl_date, 'SEA', sea_context['source_key']
         )
         date_column = sea_context['date_column']
+        # Resolve missing account_name from the current batch for Costco edits.
+        account = f"""COALESCE(NULLIF(TRIM(source.account_name), ''),
+            (SELECT peer.account_name FROM {table_name} peer
+             WHERE peer.batch_id = source.batch_id AND LOWER(TRIM(peer.account_name)) = 'costco'
+             LIMIT 1))"""
+        select_columns = f'source.{column_name}, {account}, source.item'
+        costco_only = f"AND LOWER(TRIM({account})) = 'costco'" if table_name == 'public.tv_retail_com' else ''
         cursor.execute(f"""
             SELECT {select_columns}
             FROM {table_name} source
             WHERE source.id = %s
-              AND {source_date_sql(date_column, 'source')} = %s
-              AND {page_scope_sql('source')}
+              AND {source_date_sql(date_column, 'source', account_column=account)} = %s
+              AND (LOWER(TRIM({account})) = 'costco' OR {page_scope_sql('source')})
+              {costco_only}
               AND source.batch_id = (
                   SELECT anchor.batch_id
                   FROM {table_name} anchor
                   WHERE {source_date_sql(date_column, 'anchor')} = %s
                     AND LOWER(TRIM(anchor.account_name)) =
-                        LOWER(TRIM(source.account_name))
+                        LOWER(TRIM({account}))
                     AND {page_scope_sql('anchor', anchor=True)}
                   ORDER BY anchor.id DESC
                   LIMIT 1
@@ -474,11 +486,15 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # editable 컬럼 확인
     editable_retailer = retailer
+    if is_costco(retailer) and correction_type_value != 'null_check':
+        return {'error': 'Costco는 NULL 검증 값만 수정할 수 있습니다', 'status': 403}
     if tse_context and not editable_retailer and column_name == 'account_name':
         editable_retailer = new_value
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
-    if seda_product_line:
+    if is_costco(retailer) and sea_context:
+        editable_cols = costco_layer2.NULL_COLUMNS[sea_context['product_key']]
+    elif seda_product_line:
         editable_cols = seda_columns(product_line, retailer)
     elif sem_context:
         editable_cols = get_sem_editable_columns(product_line, retailer)

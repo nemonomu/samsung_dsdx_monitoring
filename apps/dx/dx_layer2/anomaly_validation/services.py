@@ -7,8 +7,10 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from apps.common.sea_collection import homedepot_source_enabled, homedepot_inspection_label
 from apps.common.sea_layer2 import (
-    is_homedepot, layer2_sources, page_scope_sql, source_date_sql,
+    is_homedepot, layer2_sources,
 )
+from apps.common import costco_layer2
+from apps.common.costco_layer2 import page_scope_sql, source_date_sql, is_costco
 
 from apps.common.retail_columns import (
     get_editable_columns, get_duplicate_key_columns,
@@ -41,7 +43,7 @@ except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
 
-SEA_RETAIL_SOURCES = layer2_sources(SEA_RETAIL_SOURCES)
+SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
 
 try:
     from apps.common.siel_retail import (
@@ -142,6 +144,14 @@ for _sea_product_key, _sea_section_code in (
         'backup_table': _sea_source['backup_table'],
     }
 
+if SEA_RETAIL_SOURCES.get('tv'):
+    VALID_TABLES_ANOMALY.add('costco_tv_retail')
+    _DUP_TABLE_CONFIG['costco_tv_retail'] = {
+        'actual': 'public.tv_retail_com', 'dup_keys': 'item',
+        'date_col': 'crawl_datetime', 'use_period': False,
+        'retailer_col': 'account_name', 'sea_product_key': 'tv', 'costco_only': True,
+    }
+
 # 직접 상세조회·중복삭제 API도 중단 원본 테이블에 접근하지 못하게 한다.
 for _table_key, _table_config in tuple(_DUP_TABLE_CONFIG.items()):
     if _table_config['actual'] in DISABLED_SOURCE_TABLES:
@@ -151,6 +161,8 @@ for _table_key, _table_config in tuple(_DUP_TABLE_CONFIG.items()):
 
 def _sea_duplicate_product_key(table):
     value = str(table or '').strip().lower()
+    if value == 'costco_tv_retail':
+        return 'tv'
     if value in SEA_DUPLICATE_PRODUCT_BY_SECTION:
         return SEA_DUPLICATE_PRODUCT_BY_SECTION[value]
     for product_key, source in SEA_RETAIL_SOURCES.items():
@@ -179,6 +191,8 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
     """Fetch the latest SEA appliance batch using each retailer's date/page policy."""
     if is_homedepot(retailer_value) and not homedepot_source_enabled(source_date):
         return []
+    if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):
+        return []
     canonical_table = source['table_name']
     date_column = source['date_column']
     date_sql = source_date_sql(date_column, 'source', retailer_value)
@@ -187,6 +201,8 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
         'sku', 'retailer_sku_name', 'final_sku_price', date_column,
         'product_url',
     ]
+    if source['product_key'] == 'tv':
+        select_columns.remove('sku')
     # Keep the one-row anchor out of the per-product nested loop. Inlining it
     # made PostgreSQL repeat the same latest-batch scan hundreds of times.
     cursor.execute(f"""
@@ -238,12 +254,12 @@ def build_sea_duplicate_groups(rows, retailer=None):
     grouped = {}
     for row in rows:
         retailer_key = _duplicate_key(row.get('account_name') or retailer)
-        page_type_key = ('all' if is_homedepot(retailer_key)
+        page_type_key = ('all' if is_homedepot(retailer_key) or is_costco(retailer_key)
                          else _duplicate_key(row.get('page_type')))
         item_key = _duplicate_key(row.get('item'))
         if not page_type_key or not item_key:
             continue
-        grouped.setdefault((retailer_key, page_type_key, item_key), []).append(row)
+        grouped.setdefault((retailer_key, row.get('batch_id'), page_type_key, item_key), []).append(row)
 
     groups = []
     for duplicate_rows in grouped.values():
@@ -262,9 +278,9 @@ def build_sea_duplicate_groups(rows, retailer=None):
         duplicate_type = (
             '상품 매핑 충돌' if is_mapping_conflict else '완전 중복'
         )
-        home_depot = is_homedepot(first.get('account_name') or retailer)
+        home_depot = is_homedepot(first.get('account_name') or retailer) or is_costco(first.get('account_name') or retailer)
         page_type = '' if home_depot else _duplicate_text(first.get('page_type')).upper()
-        scope_label = 'HomeDepot' if home_depot else page_type
+        scope_label = (first.get('account_name') or retailer) if home_depot else page_type
         item = _duplicate_text(first.get('item'))
         groups.append({
             'duplicate_type': duplicate_type,
@@ -296,6 +312,8 @@ def build_sea_duplicate_groups(rows, retailer=None):
 def _get_sea_anomaly_detail(
         cursor, target_date, table, retailer, page, page_size):
     product_key = _sea_duplicate_product_key(table)
+    if table == 'tv_retail' and is_costco(retailer):
+        product_key = 'tv'
     source = SEA_RETAIL_SOURCES.get(product_key)
     retailer_value = (
         _resolve_sea_duplicate_retailer(source, retailer) if source else None
@@ -332,13 +350,14 @@ def _get_sea_anomaly_detail(
         'date_column': source['date_column'],
         'table': table,
         'retailer': retailer_value,
+        'cleanup_table': 'costco_tv_retail' if product_key == 'tv' and is_costco(retailer_value) else table,
         'select_cols': {
             'group': [
-                'duplicate_type', *([] if is_homedepot(retailer_value) else ['page_type']), 'item',
+                'duplicate_type', *([] if is_homedepot(retailer_value) or is_costco(retailer_value) else ['page_type']), 'item',
                 'retailer_sku_name', 'dup_count', 'reason',
             ],
             'record': [
-                'id', 'sku', 'retailer_sku_name', 'final_sku_price',
+                'id', *([] if product_key == 'tv' else ['sku']), 'retailer_sku_name', 'final_sku_price',
                 source['date_column'], 'product_url',
             ],
         },
@@ -363,7 +382,7 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
     cursor.execute(f'SAVEPOINT {savepoint}')
     total_issues = 0
     try:
-        for product_key, section_code in SEA_DUPLICATE_SECTION_BY_PRODUCT.items():
+        for product_key, section_code in (('tv', 'tv_retail'), *SEA_DUPLICATE_SECTION_BY_PRODUCT.items()):
             if category and category != section_code:
                 continue
             source = SEA_RETAIL_SOURCES.get(product_key)
@@ -377,6 +396,10 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
             table_records = 0
             table_issues = 0
             for retailer_value in source.get('retailers', ()):
+                if product_key == 'tv' and not is_costco(retailer_value):
+                    continue
+                if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):
+                    continue
                 rows = _fetch_sea_duplicate_rows(
                     cursor, source_date, source, retailer_value
                 )
@@ -385,12 +408,22 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                     'retailer': retailer_value,
                     'total': len(rows),
                     'duplicate_groups': duplicate_count,
-                    'duplicate_keys': ['item' if is_homedepot(retailer_value) else 'page_type + item'],
-                    'status': 'PENDING' if is_homedepot(retailer_value) and not rows else get_status(duplicate_count),
-                    'validation_label': homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else '',
+                    'duplicate_keys': ['item' if is_homedepot(retailer_value) or is_costco(retailer_value) else 'page_type + item'],
+                    'status': 'PENDING' if (is_homedepot(retailer_value) or is_costco(retailer_value)) and not rows else get_status(duplicate_count),
+                    'validation_label': ('미수집' if is_costco(retailer_value) and not rows else homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else ''),
                 })
                 table_records += len(rows)
                 table_issues += duplicate_count
+            if product_key == 'tv':
+                tv_table = next((t for t in validation['tables'] if t['table'] == 'tv_retail'), None)
+                if tv_table is not None:
+                    tv_table['retailers'].extend(retailer_rows)
+                    tv_table['total_records'] += table_records
+                    tv_table['total_issues'] += table_issues
+                    tv_table['duplicate_groups'] += table_issues
+                    tv_table['status'] = get_status(tv_table['total_issues'])
+                total_issues += table_issues
+                continue
             validation['tables'].append({
                 'table': section_code,
                 'table_name': f"SEA {source['category']}",
@@ -1016,7 +1049,7 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
         return sem_validation.duplicate_detail(
             cursor, target_date, table, page, page_size
         )
-    if _sea_duplicate_product_key(table):
+    if _sea_duplicate_product_key(table) or (table == 'tv_retail' and is_costco(retailer)):
         return _get_sea_anomaly_detail(
             cursor, target_date, table, retailer, page, page_size
         )
@@ -1521,6 +1554,8 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
     backup_table = 'monitoring_duplicate_deletes'
     sea_product_key = cfg.get('sea_product_key')
     sea_source = SEA_RETAIL_SOURCES.get(sea_product_key)
+    if cfg.get('costco_only'):
+        sea_source = costco_layer2.tv_source(SEA_RETAIL_SOURCES)
 
     now = datetime.now()
 
@@ -1576,7 +1611,7 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
              )
             WHERE t.id IN ({id_placeholders})
               AND {source_date_sql(date_column, 't', account_column='latest.retailer_key')} = %s
-              AND (latest.retailer_key = 'homedepot' OR {page_scope_sql('t')})
+              AND (latest.retailer_key IN ('homedepot', 'costco') OR {page_scope_sql('t')})
               AND (UPPER(TRIM(COALESCE(t.country, ''))) IN ('SEA', ''))
             ORDER BY t.id
         """, (
@@ -1621,7 +1656,7 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
             record_dict = record_data
 
         # 백업 (dup_group_key: 중복 판별 기준 컬럼명 + period 실제값)
-        if sea_source and is_homedepot(record_dict.get('account_name')):
+        if sea_source and (is_homedepot(record_dict.get('account_name')) or is_costco(record_dict.get('account_name'))):
             group_key_meta = 'item'
         elif use_period:
             date_val = str(record_dict.get(date_col, ''))
@@ -1810,6 +1845,7 @@ def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None)
         cursor.execute(
             f"SELECT COUNT(*) FROM tv_retail_com "
             f"WHERE DATE({tv_date_col}::timestamp) = %s "
+            f"AND LOWER(TRIM(COALESCE(account_name, ''))) <> 'costco' "
             f"AND {get_tv_validation_condition()}",
             (target_date,),
         )
@@ -1835,6 +1871,8 @@ def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None)
         tv_dup_retailers = []
         tv_dup_total = 0
         for retailer_name in retailer_list:
+            if is_costco(retailer_name):
+                continue
             dup_count = max(0, tv_dup_dict.get(retailer_name, 0) - tv_dup_normal.get(retailer_name, 0))
             tv_dup_retailers.append({
                 'retailer': retailer_name,

@@ -1,18 +1,25 @@
 from apps.common.db import dx_table
 from apps.common.sea_dates import appliance_source_date_sql
+from apps.dx.dx_layer1.retail import costco
 
 
 SOURCES = (
     ('Walmart', 'TV', 'tv_retail_com', 'crawl_datetime'),
     ('HomeDepot', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
     ('HomeDepot', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
+    ('Costco', 'TV', 'tv_retail_com', 'crawl_datetime'),
+    ('Costco', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
+    ('Costco', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
 )
 
 
 def fetch_collection(cursor, source, target_date):
     retailer, _product, table, column = source
     table = 'public.' + dx_table(table)
-    if retailer == 'HomeDepot':
+    if retailer == 'Costco':
+        day = costco.source_date_sql('source.' + column)
+        stamp = f"NULLIF(TRIM(CAST(source.{column} AS TEXT)), '')::timestamptz"
+    elif retailer == 'HomeDepot':
         day = appliance_source_date_sql('source.' + column, 'source.account_name')
         stamp = f"NULLIF(TRIM(CAST(source.{column} AS TEXT)), '')::timestamptz"
     else:

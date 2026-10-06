@@ -4,7 +4,7 @@ function ddayStatusBadge(status) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
         received: ['ok', '수집 확인'], partial: ['collecting', '일부 수집'],
-        error: ['warning', '조회 실패']
+        error: ['warning', '조회 실패'], uncollected: ['critical', '미수집']
     };
     const entry = styles[status] || styles.error;
     return '<span class="status-badge ' + entry[0] + '">' + entry[1] + '</span>';
@@ -15,6 +15,7 @@ function ddaySummary(rows) {
     const mainCount = rows.reduce((total, row) => total + (Number(row.main_count) || 0), 0);
     const bsrCount = rows.reduce((total, row) => total + (Number(row.bsr_count) || 0), 0);
     const status = rows.some(row => row.status === 'error') ? 'error'
+        : rows.some(row => row.status === 'uncollected') ? 'uncollected'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received') ? 'partial'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';

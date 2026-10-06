@@ -4,6 +4,8 @@ from datetime import timedelta
 from apps.common.db import dx_connection
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
+from apps.dx.dx_layer4.collection_status.email_registry import _retailer
+from apps.dx.dx_layer1.retail import costco
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
 )
@@ -26,11 +28,20 @@ def ordered_columns(columns):
 def catalog():
     return [{'country': s['country'], 'product': s['product'],
              'retailers': [r['name'] for r in s['retailers']]}
-            for s in EMAIL_REPORT_SOURCES]
+            for s in _sources()]
+
+
+def _sources():
+    # Layer 1 onboarding must not enable unrequested Layer 4 reports.
+    for source in EMAIL_REPORT_SOURCES:
+        if source['country'] == 'SEA':
+            yield {**source, 'retailers': (*source['retailers'], _retailer('Costco'))}
+        else:
+            yield source
 
 
 def select_source(country, product, retailer):
-    for source in EMAIL_REPORT_SOURCES:
+    for source in _sources():
         if source['country'] == country and source['product'] == product:
             if any(r['name'] == retailer for r in source['retailers']):
                 return source
@@ -40,8 +51,12 @@ def select_source(country, product, retailer):
 def query_spec(source, retailer, columns, start, end):
     """Only registry/configuration identifiers enter SQL; filter values are bound."""
     home_depot = source['key'] in ('sea_ref', 'sea_ldy') and retailer['name'] == 'HomeDepot'
+    is_costco = source['country'] == 'SEA' and retailer['name'] == 'Costco'
     col = 'source.' + source['date_column']
-    if home_depot:
+    if is_costco:
+        day = costco.source_date_sql(col)
+        start = max(start, costco.FIRST_SOURCE_DATE)
+    elif home_depot:
         day = appliance_source_date_sql(col)
     elif source['date_mode'] == 'batch':
         raw = f"substring(CAST({col} AS TEXT) from '([0-9]{{8}})')"
@@ -56,9 +71,9 @@ def query_spec(source, retailer, columns, start, end):
         clauses.append('COALESCE(source.redirect, FALSE) IS NOT TRUE')
     if home_depot:
         clauses.append(f"({day}) >= '2026-09-20'")
-    main_scope = source['has_page_type'] and source['collection_scope'] == 'main' and not home_depot
+    main_scope = source['has_page_type'] and source['collection_scope'] == 'main' and not (home_depot or is_costco)
     ctes = [f"scoped AS (SELECT source.*, ({day}) AS stats_day FROM {source['table_name']} source WHERE {' AND '.join(clauses)})"]
-    master_sku = source['key'] == 'sea_tv' and 'sku' in columns
+    master_sku = source['key'] == 'sea_tv' and 'sku' in columns and not is_costco
     if master_sku:
         # Uncorrelated membership subqueries can be hashed once. A correlated
         # EXISTS in the aggregate rescans the master for every collected row.
@@ -67,7 +82,7 @@ def query_spec(source, retailer, columns, start, end):
                     "FROM public.tv_item_mst WHERE sku IS NOT NULL "
                     "AND BTRIM(CAST(sku AS TEXT)) <> '')")
     join = ''
-    if source['latest_batch']:
+    if source['latest_batch'] or is_costco:
         anchor = _retailer_condition(source, retailer, include_unassigned=False)
         params += _retailer_params(retailer)
         if main_scope:
@@ -100,7 +115,10 @@ def daily_counts(country, product, retailer_name, end, days):
         cursor.execute("SET LOCAL statement_timeout = '20s'")
         # A selection must not fail because an unrelated retailer lacks settings.
         selected = {**source, 'retailers': tuple(r for r in source['retailers'] if r['name'] == retailer_name)}
-        retailers = _configured_retailers(cursor, selected)
+        retailers = ([{**selected['retailers'][0],
+                       'columns': costco.COLUMNS[product.lower()]}]
+                     if country == 'SEA' and retailer_name == 'Costco'
+                     else _configured_retailers(cursor, selected))
         if not retailers:
             raise ValueError('No configured collection fields')
         retailer = retailers[0]
@@ -117,4 +135,4 @@ def daily_counts(country, product, retailer_name, end, days):
     return {'country': country, 'product': product, 'retailer': retailer_name,
             'columns': columns, 'dates': dates,
             'daily': [{'date': day, **by_day.get(day, {'total': 0, 'counts': {c: 0 for c in columns}})} for day in dates],
-            'sku_from_master': source['key'] == 'sea_tv'}
+            'sku_from_master': source['key'] == 'sea_tv' and retailer_name != 'Costco'}

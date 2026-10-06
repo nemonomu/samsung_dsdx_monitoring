@@ -34,7 +34,11 @@
         if (country === 'SEDA' && accountName === 'Casas Bahia') {
             accountName = 'CasasBahia';
         }
-        return 'SELECT *\nFROM ' + config.table + '\nWHERE ' + config.dateColumn + ' >= ' + literal(day) +
+        var dateFilter = config.dateColumn + ' >= ' + literal(day);
+        if (country === 'SEA' && accountName === 'Costco') {
+            dateFilter = '(' + config.dateColumn + "::timestamptz AT TIME ZONE 'Asia/Seoul')::date = " + literal(day) + '::date';
+        }
+        return 'SELECT *\nFROM ' + config.table + '\nWHERE ' + dateFilter +
             '\n  AND account_name = ' + literal(accountName) +
             '\n  AND batch_id ' + batchFilter + '\nORDER BY item, ' + config.dateColumn + ';';
     }

@@ -2,6 +2,7 @@
 from datetime import date, datetime, timedelta, timezone
 from importlib import import_module
 from statistics import median
+from apps.dx.dx_layer1.retail import costco
 
 KST = timezone(timedelta(hours=9))
 BASELINE_DAYS = 28
@@ -14,6 +15,8 @@ def collection_complete(country, product, retailer, source_day, now=None):
     if source_day > now.date():
         return False
     if country == 'SEA':
+        if retailer == 'Costco':
+            return costco.complete(source_day, now)
         if retailer == 'HomeDepot':
             from apps.common.sea_collection import collection_schedule, homedepot_source_enabled
             return (homedepot_source_enabled(source_day)
@@ -47,7 +50,7 @@ def compare_columns(data, target, completed):
     rows = []
     for column in data['columns']:
         values = [day['counts'][column] for day in history if column in day['counts']]
-        baseline = median(values) if len(values) >= MINIMUM_DAYS else None
+        baseline = median(values) if len(values) >= minimum_days(data) else None
         count = current['counts'][column]
         ratio = count / baseline * 100 if baseline is not None and baseline > 0 else None
         delta = count - baseline if baseline is not None else None
@@ -70,11 +73,15 @@ def compare_columns(data, target, completed):
     return rows
 
 
+def minimum_days(data):
+    return costco.MINIMUM_DAYS if data.get('country') == 'SEA' and data.get('retailer') == 'Costco' else MINIMUM_DAYS
+
+
 def attach_comparisons(data, target, now=None):
     completed = {day['date']: collection_complete(
         data['country'], data['product'], data['retailer'], date.fromisoformat(day['date']), now)
         for day in data['daily']}
     return {**data, 'comparison_date': str(target), 'baseline_days': BASELINE_DAYS,
-            'minimum_history_days': MINIMUM_DAYS,
+            'minimum_history_days': minimum_days(data),
             'comparisons': compare_columns(data, target, completed),
             'completion': completed}

@@ -53,11 +53,15 @@ def _scope(check_type, product_line, source_date):
         params = (str(day), SIEL_BUSINESS_TIMEZONE,
                   str(day), SIEL_BUSINESS_TIMEZONE)
     elif check_type == 'retail' and source['product_key'] == 'tv':
-        condition = f'{column}::timestamp >= %s::timestamp AND {column}::timestamp < %s::timestamp'
+        from apps.dx.dx_layer1.retail.costco import source_date_sql
+        stamp = f"CASE WHEN {account} = 'costco' THEN ({source_date_sql(column)})::timestamp ELSE {column}::timestamp END"
+        condition = f'{stamp} >= %s::timestamp AND {stamp} < %s::timestamp'
         params = (str(day), str(day + timedelta(days=1)))
     elif check_type == 'retail':
         from apps.common.sea_dates import appliance_source_date_sql
-        condition = f'({appliance_source_date_sql(column)}) = %s'
+        from apps.dx.dx_layer1.retail.costco import source_date_sql
+        day_sql = f"CASE WHEN {account} = 'costco' THEN {source_date_sql(column)} ELSE {appliance_source_date_sql(column)} END"
+        condition = f'({day_sql}) = %s'
         params = (str(day),)
     else:
         condition = f'LEFT(BTRIM(CAST({column} AS TEXT)), 10) = %s'
@@ -127,9 +131,10 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
     if not key or len(key) > 200:
         raise ValueError('Invalid retailer')
     column = source.get('date_column', 'crawl_datetime')
-    all_batches = check_type == 'retail' and source['product_key'] == 'tv'
-    appliance = check_type == 'retail' and not all_batches
-    main_anchor = check_type in {'siel_retail', 'seg_retail', 'seda_retail'} or (appliance and key != 'homedepot')
+    is_costco = check_type == 'retail' and key == 'costco'
+    all_batches = check_type == 'retail' and source['product_key'] == 'tv' and not is_costco
+    appliance = check_type == 'retail' and source['product_key'] != 'tv'
+    main_anchor = check_type in {'siel_retail', 'seg_retail', 'seda_retail'} or (appliance and key not in ('homedepot', 'costco'))
     page = "LOWER(BTRIM(CAST(page_type AS TEXT)))"
     anchor = f"{page} = 'main'" if main_anchor else 'TRUE'
     page_scope = f"{page} IN ('main', 'bsr')" if main_anchor else 'TRUE'
@@ -146,7 +151,10 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
 
     time_value = f"NULLIF(BTRIM(CAST({column} AS TEXT)), '')"
     time_basis = '원본 기록 시각'
-    if check_type == 'siel_retail':
+    if is_costco:
+        time_value = f"TO_CHAR(NULLIF(BTRIM(CAST({column} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS')"
+        time_basis = 'KST'
+    elif check_type == 'siel_retail':
         time_value = f"TO_CHAR({column} AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS')"
         time_basis = 'KST'
     elif appliance and key == 'homedepot':
@@ -180,9 +188,13 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         batch_filter = 'batch_id IS NULL' if row['batch_id'] is None else 'batch_id = %s'
         if row['batch_id'] is not None:
             query_params.append(row['batch_id'])
+        copy_date_scope = f'{column} >= %s'
+        if is_costco:
+            from apps.dx.dx_layer1.retail.costco import source_date_sql
+            copy_date_scope = f'({source_date_sql(column)}) = %s'
         query = f"""SELECT *
 FROM {source['table_name']}
-WHERE {column} >= %s
+WHERE {copy_date_scope}
   AND account_name = %s
   AND {batch_filter}
 ORDER BY item, {column};"""

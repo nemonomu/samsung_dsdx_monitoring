@@ -47,6 +47,18 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.strictEqual(total.mainCount, 600);
     assert.strictEqual(total.bsrCount, 200);
     assert.strictEqual(total.count, 600);
+    const costco = {source_date: '2026-10-06', retailers: [
+        {retailer: 'Costco', product: 'TV', status: 'uncollected', count: 0, main_count: 0, bsr_count: 0},
+        {retailer: 'Costco', product: 'REF', status: 'received', count: 205, main_count: 205, bsr_count: 100},
+        {retailer: 'Costco', product: 'LDY', status: 'received', count: 304, main_count: 300, bsr_count: 100}
+    ]};
+    const costcoHtml = sandbox.renderDdayCollection(costco);
+    assert(costcoHtml.includes('SEA Costco TV'));
+    assert(costcoHtml.includes('미수집'));
+    assert.strictEqual(sandbox.ddaySummary(costco.retailers).count, 509);
+    assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'uncollected');
+    costco.retailers[0].status = 'error';
+    assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'error');
     respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);

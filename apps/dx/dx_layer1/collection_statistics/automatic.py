@@ -4,13 +4,16 @@ from datetime import timedelta
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS
 from .collector import refresh_country
+from apps.dx.dx_layer1.retail import costco
 
 
 def history_range(country, last_due):
     start, end = last_due - timedelta(days=111), last_due - timedelta(days=3)
     stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
         source_date__range=(start, end)).values_list('source_date', 'rows')
-        if not any(row.get('bsr') is None for row in rows)}
+        if not any(row.get('bsr') is None for row in rows)
+        and (country != 'SEA' or not costco.enabled(day)
+             or {r['product'] for r in rows if r['retailer'] == 'Costco'} == {'TV', 'REF', 'LDY'})}
     # Most recent missing history first, so the default page becomes useful early.
     day = end
     while day >= start and day in stored:

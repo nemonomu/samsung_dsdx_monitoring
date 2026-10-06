@@ -3,9 +3,9 @@
 // ============================================================
 
 var SEA_RETAIL_PRODUCTS = [
-    { key: 'tv', category: 'TV', retailers: ['Amazon', 'Bestbuy', 'Walmart'] },
-    { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes', 'HomeDepot'] },
-    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot'] }
+    { key: 'tv', category: 'TV', retailers: ['Amazon', 'Bestbuy', 'Walmart', 'Costco'] },
+    { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] },
+    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] }
 ];
 var seaRetailSummaryCache = {};
 var seaRetailSummaryDate = '';
@@ -483,10 +483,13 @@ var columnsData = null;
 var currentColumnsTab = 'tv';
 
 function openColumnsModal() {
+    currentColumnsTab = 'tv';
     AppModal.setTitle('columns', '수집 항목 정보');
     AppModal.setBody('columns',
         '<div class="columns-modal-tabs">' +
             '<button class="columns-tab active" onclick="switchColumnsTab(\'tv\')">TV</button>' +
+            '<button class="columns-tab" onclick="switchColumnsTab(\'ref\')">REF</button>' +
+            '<button class="columns-tab" onclick="switchColumnsTab(\'ldy\')">LDY</button>' +
         '</div>' +
         '<div class="columns-table-wrapper"><table class="columns-table" id="columnsTable"><thead id="columnsTableHead"></thead><tbody id="columnsTableBody"></tbody></table></div>'
     );

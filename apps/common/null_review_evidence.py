@@ -159,6 +159,9 @@ def _as_dict(row):
 
 
 def _auto_exclusion_reason(evidence):
+    if (_text(evidence.get('retailer')).casefold() == 'costco'
+            and evidence.get('column_name') in NON_TARGET_REQUIRED_METRICS):
+        return '금액·평가 지표는 수집마다 확인'
     if is_non_target_metric(evidence.get('column_name'), evidence.get('reason')):
         return '수집 대상과 무관하게 검증하는 필수 지표'
     missing_identity = []
@@ -553,6 +556,8 @@ def match_review(
         return None
     if manual_candidates:
         return _metadata(latest, automatic=False)
+    if _text(retailer).casefold() == 'costco' and column in NON_TARGET_REQUIRED_METRICS:
+        return None
     if (
         not subject
         or canonical_reason(latest.get('reason')) not in ELIGIBLE_REASONS

@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import date, datetime
 
 from apps.common import inspection_dates, sea_retail
+from apps.dx.dx_layer1.retail import costco
 from tests.unit.support import load_module, module_stub, package_stub
 
 
@@ -117,6 +118,7 @@ def load_service(repo_stub, schedule_loader=None):
             'apps.dx.dx_layer1.retail'
         ),
         'apps.dx.dx_layer1.retail.retail_repositories': repo_module,
+        'apps.dx.dx_layer1.retail.costco': costco,
     }
     return load_module(
         'apps/dx/dx_layer1/retail/retail_services.py',

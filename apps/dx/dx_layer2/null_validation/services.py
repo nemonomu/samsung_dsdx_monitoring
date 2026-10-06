@@ -6,8 +6,9 @@ import time
 from apps.common.sea_collection import homedepot_source_enabled, homedepot_inspection_label
 from apps.common.sea_layer2 import (
     is_homedepot, homedepot_null_columns, homedepot_format_columns,
-    source_date_sql, page_scope_sql, annotate_source_date,
 )
+from apps.common import costco_layer2
+from apps.common.costco_layer2 import source_date_sql, page_scope_sql, annotate_source_date, is_costco
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from apps.common.db import execute_dx_query, dx_table
@@ -40,7 +41,7 @@ try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
     from apps.common.sea_layer2 import layer2_sources
-    SEA_RETAIL_SOURCES = layer2_sources(SEA_RETAIL_SOURCES)
+    SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -179,6 +180,8 @@ def _load_current_null_reviews(cursor, table_name, target_date, columns,
 def _get_sea_null_source_for_table(table_name):
     """Return the fixed SEA REF/LDY source matching one physical table."""
     basename = _table_basename(table_name)
+    if table_name == 'public.tv_retail_com':
+        return costco_layer2.tv_source(SEA_RETAIL_SOURCES)
     for product in SEA_NULL_CATEGORY_BY_PRODUCT:
         source = SEA_RETAIL_SOURCES.get(product)
         if source and _table_basename(source.get('table_name')) == basename:
@@ -500,7 +503,7 @@ def _build_sea_latest_batch_record_query(source, column_name):
           ON resolved.batch_id IS NOT DISTINCT FROM source.batch_id
         WHERE source.id = %s
           AND {source_date_sql(date_column, 'source', account_column="COALESCE(NULLIF(TRIM(source.account_name), ''), resolved.account_name)")} = %s
-          AND (LOWER(TRIM(resolved.account_name)) = 'homedepot' OR {page_scope_sql('source')})
+          AND (LOWER(TRIM(resolved.account_name)) IN ('homedepot', 'costco') OR {page_scope_sql('source')})
           AND (LOWER(TRIM(source.account_name)) = LOWER(TRIM(resolved.account_name))
                OR source.account_name IS NULL OR TRIM(source.account_name) = '')
     """
@@ -658,11 +661,11 @@ def load_null_check_config():
                 )
                 if (
                     sea_retailer is None
-                    or check_column not in (homedepot_null_columns(product)
+                    or check_column not in (costco_layer2.NULL_COLUMNS[product] if is_costco(sea_retailer) else homedepot_null_columns(product)
                                             if is_homedepot(sea_retailer) else SEA_NULL_COLUMNS[product])
                 ):
                     continue
-                category = SEA_NULL_CATEGORY_BY_PRODUCT[product]
+                category = 'tv_retail' if product == 'tv' else SEA_NULL_CATEGORY_BY_PRODUCT[product]
                 table_name = sea_source['table_name']
             elif siel_source:
                 source_key = siel_source['source_key']
@@ -2339,6 +2342,11 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 continue
 
             retailer_name = check_info['display_name']
+            if category == 'tv_retail':
+                sea_source = (costco_layer2.tv_source(SEA_RETAIL_SOURCES)
+                              if is_costco(retailer_name) else SEA_RETAIL_SOURCES.get('tv'))
+            if is_costco(retailer_name) and sea_date and not costco_layer2.costco.enabled(sea_date['source_date']):
+                continue
             anchor_batch_id = None
 
             if siel_source and siel_date:
@@ -2490,6 +2498,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 if sea_source and is_homedepot(retailer_name) and total == 0:
                     retailer_stats.update(status='PENDING',
                         validation_label=homedepot_inspection_label(target_date))
+                if sea_source and is_costco(retailer_name) and total == 0:
+                    retailer_stats.update(status='PENDING', validation_label='미수집')
                 if monitoring_date:
                     retailer_stats.update({
                         'inspection_date': monitoring_date['inspection_date'],
@@ -2605,7 +2615,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     date_col = category_config.get('date_column', 'created_at')
     sea_source = _get_sea_null_source_for_table(actual_table)
     siel_source = _get_siel_null_source_for_table(actual_table)
-    if category == 'tv_retail':
+    if category == 'tv_retail' and not is_costco(retailer):
         sea_source = SEA_RETAIL_SOURCES.get('tv')
     if sea_source and sea_source.get('latest_main_batch'):
         actual_table = sea_source['table_name']
@@ -2642,6 +2652,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     # WHERE 조건: 해당 컬럼만
     check_type = col_config.get('check_type', 'both')
     where_cond = _build_null_sql_condition(column, check_type)
+    related_columns = (list(costco_layer2.METRICS)
+                       if is_costco(retailer) and column in costco_layer2.METRICS else [column])
+    if len(related_columns) > 1:
+        where_cond = '(' + ' OR '.join(_build_null_sql_condition(c, 'both') for c in related_columns) + ')'
 
     # 쿼리 생성 — 전체 컬럼 조회 (프론트 컬럼 선택 지원)
     if siel_source and siel_date and retailer:
@@ -2741,9 +2755,11 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         review_source and uses_new_policy(target_date, review_country)
     )
     if new_review_policy:
+        if len(related_columns) > 1:
+            normal_reviews = _load_current_null_reviews(cursor, actual_table, target_date, related_columns, retailer)
         normal_reviews, review_stats, _auto_logs = review_state(
             cursor, target_date,
-            [dict(zip(select_cols, row)) for row in rows], [column],
+            [dict(zip(select_cols, row)) for row in rows], related_columns,
             normal_reviews, table_name=actual_table, country=review_country,
             product_line=review_source['source_key'],
             retailer=retailer or category_config.get('display_name'),
@@ -2852,7 +2868,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
 
         # 확장 조회(days > 1)면 전체 이력 표시, 1일치면 NULL만 필터
         if not is_expanded:
-            if col_idx is not None and not _is_field_null(row[col_idx], check_type):
+            if not any(c in col_index and _is_field_null(row[col_index[c]], check_type) for c in related_columns):
                 continue
 
         record_data = {}
@@ -2860,16 +2876,18 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
             idx = col_index.get(col_name)
             if idx is not None:
                 val = row[idx]
-                if isinstance(val, datetime):
+                if isinstance(val, datetime) and is_costco(retailer):
+                    record_data[col_name] = val.isoformat()
+                elif isinstance(val, datetime):
                     record_data[col_name] = _format_detail_datetime(
                         val,
                         SIEL_BUSINESS_TIMEZONE if siel_source else None,
                     )
                 else:
                     record_data[col_name] = val
-        record_data['null_fields'] = [column] if (col_idx is not None and _is_field_null(row[col_idx], check_type)) else []
+        record_data['null_fields'] = [c for c in related_columns if c in col_index and _is_field_null(row[col_index[c]], check_type)]
         if sea_source and sea_source.get('latest_main_batch'):
-            annotate_source_date(record_data, retailer)
+            annotate_source_date(record_data, retailer, display_kst=is_costco(retailer))
         results.append(record_data)
 
     # display_config, query_config 생성
@@ -2877,6 +2895,9 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     query_config = {}
     display_cols = col_config.get('display_columns', [])
     query_cols = col_config.get('query_columns', [])
+    if is_costco(retailer) and sea_source:
+        display_cols = costco_layer2.display_columns(sea_source['product_key'], column)
+        query_cols = display_cols
     if display_cols:
         display_config[column] = {'select_columns': display_cols}
     if query_cols:
@@ -2895,6 +2916,8 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                 sea_source.get('product_line', sea_source['source_key']),
                 retailer,
             )
+            if is_costco(retailer):
+                editable_cols = list(dict.fromkeys((*costco_layer2.NULL_COLUMNS[sea_source['product_key']], *costco_layer2.PRICES)))
         else:
             product_line = 'tv' if category == 'tv_retail' else 'hhp'
             retail_cols_data = load_retail_columns()
@@ -2932,6 +2955,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
 # null_review 테이블 화이트리스트
 VALID_TABLES_UPDATE = ({
     'tv_retail_com',
+    'public.tv_retail_com',
     'public.ref_retail_com', 'public.ldy_retail_com',
     'youtube_country_collection_runs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
@@ -2978,7 +3002,7 @@ def _capture_null_review_record(cursor, table_name, record_id, column_name,
         date_where, date_params = _siel_date_bounds(source, str(source_day))
     else:
         date_column = source.get('date_column', 'crawl_datetime')
-        date_where = (f"{source_date_sql(date_column, retailer=retailer)} = %s" if country == 'SEA' and source.get('latest_main_batch')
+        date_where = (f"{source_date_sql(date_column, retailer=retailer)} = %s" if country == 'SEA' and (source.get('latest_main_batch') or is_costco(retailer))
                       else f"LEFT(TRIM(CAST({date_column} AS TEXT)), 10) = %s")
         date_params = [str(source_day)]
     # table_name and column_name have already passed the normal-review
@@ -3039,7 +3063,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             return {'error': '허용되지 않는 컬럼', 'status_code': 400}
     if (
         sea_source
-        and column_name not in set(SEA_NULL_COLUMNS[sea_source['product_key']]).union(
+        and column_name not in set(SEA_NULL_COLUMNS.get(sea_source['product_key'], ())).union(
+            costco_layer2.NULL_COLUMNS[sea_source['product_key']],
             homedepot_null_columns(sea_source['product_key']), homedepot_format_columns(sea_source['product_key']))
     ):
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
@@ -3180,7 +3205,9 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
     if sea_source:
-        allowed = (homedepot_format_columns(sea_source['product_key'])
+        if is_costco(retailer) and correction_type_value != 'null_check':
+            return {'error': 'Costco는 NULL 검수만 지원합니다', 'status_code': 400}
+        allowed = (costco_layer2.NULL_COLUMNS[sea_source['product_key']] if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
                    if is_homedepot(retailer) and correction_type_value == 'format_check'
                    else homedepot_null_columns(sea_source['product_key']) if is_homedepot(retailer)
                    else SEA_NULL_COLUMNS[sea_source['product_key']])

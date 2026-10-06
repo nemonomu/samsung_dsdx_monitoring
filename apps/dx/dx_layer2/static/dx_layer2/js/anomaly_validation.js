@@ -72,7 +72,7 @@ function _doDuplicateCleanup() {
 
     var ids = [];
     checked.forEach(function(cb) { ids.push(parseInt(cb.getAttribute('data-id'))); });
-    var table = modalState.tableParam;
+    var table = modalState.cleanupTable || modalState.tableParam;
     var date = getSelectedDate();
 
     showConfirm(ids.length + '건 삭제하시겠습니까?')
@@ -98,6 +98,7 @@ function _doDuplicateCleanup() {
 
 function renderDetailTable(type, data, tableParam) {
     const body = getDetailBody();
+    modalState.cleanupTable = data.cleanup_table || tableParam;
 
     let records;
     if (type === 'duplicate') {
@@ -128,6 +129,18 @@ function renderDetailTable(type, data, tableParam) {
         }
     } else {
         config = getColumnConfig(type, tableParam);
+    }
+    if (type === 'duplicate' && String(data.retailer || '').toLowerCase() === 'costco'
+        && data.select_cols && data.select_cols.group) {
+        var seaColumns = getColumnConfig('duplicate', 'sea_ref_retail');
+        var knownColumns = new Map(getAllColumns(seaColumns).map(function(col) { return [col.key, col]; }));
+        function costcoColumn(key) {
+            return knownColumns.get(key) || { key: key, label: key, width: 150 };
+        }
+        config = {
+            group: ['_no'].concat(data.select_cols.group).map(costcoColumn),
+            detail: data.select_cols.record.map(costcoColumn)
+        };
     }
 
     // 서버 사이드 페이징 (중복) — 서버에서 받은 데이터 그대로 표시

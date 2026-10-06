@@ -246,10 +246,10 @@ function categoryFromSummary(key) {
     assert.ok(!dashboardSource.includes("summary/?type=tv"));
 
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
-    assert.ok(!source.includes("switchColumnsTab(\\'ref\\')"));
-    assert.ok(!source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260930-review1"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20260930-review1"));
+    assert.ok(source.includes("switchColumnsTab(\\'ref\\')"));
+    assert.ok(source.includes("switchColumnsTab(\\'ldy\\')"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20261006-costco"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20261006-costco"));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260930-review1"));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20260930-review1"));
@@ -265,8 +265,8 @@ function categoryFromSummary(key) {
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
     assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
     assert(baseSource.includes("layer1-common.js' %}?v=20260930-verification"));
-    assert(baseSource.includes("collection-volume.js' %}?v=10-preserve-auto-status"));
-    assert(baseSource.includes("retail-status.js' %}?v=20260930-review1"));
+    assert(baseSource.includes("collection-volume.js' %}?v=13-main-review"));
+    assert(baseSource.includes("retail-status.js' %}?v=20261002-observation-label"));
     assert(context.getStatusBadge('VERIFYING').includes('검증 대기'));
     assert(!context.getStatusBadge('VERIFYING').includes('수집중'));
     assert(context.getStatusBadge('COLLECTING').includes('수집중'));
@@ -277,7 +277,7 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));
     assert(context.getStatusBadge('VOLUME_REVIEW').includes('확인 필요'));
     assert(context.getStatusBadge('VOLUME_REVIEW').includes('volume-review'));
-    assert(baseSource.includes("retail-query.js' %}?v=20260922-simple-sql"));
+    assert(baseSource.includes("retail-query.js' %}?v=20261006-costco"));
     assert.strictEqual(context.getStatusClass('UNASSESSED'), 'pending');
     assert.strictEqual(context.getRetailerStatusClass('UNASSESSED'), 'pending');
     for (const [product, total] of [['ref', 300], ['ldy', 265]]) {
@@ -311,6 +311,13 @@ function categoryFromSummary(key) {
     const fallback = context.buildSeaRetailFallbackCategories();
     assert(fallback[1].time_slots[0].retailers.some(r => r.retailer === 'HomeDepot' && r.status === 'UNASSESSED'));
     assert(!fallback[0].time_slots[0].retailers.some(r => r.retailer === 'HomeDepot'));
+    for (const product of ['TV', 'REF', 'LDY']) {
+        assert(context.SEA_RETAIL_PRODUCTS.find(p => p.category === product).retailers.includes('Costco'));
+        const query = context.L1.retailQuery.buildQuery('SEA', product, 'Costco', 'c-batch', '2026-10-06');
+        assert(query.includes("AT TIME ZONE 'Asia/Seoul'"));
+        assert(query.includes("account_name = 'Costco'"));
+        assert(query.includes("batch_id = 'c-batch'"));
+    }
     assert(fallbackHtml.includes('KST 13:00 시작 / 14:00 완료 예정'));
     console.log('Layer1 SEA retail and HomeDepot frontend tests passed');
 })().catch(function(error) {

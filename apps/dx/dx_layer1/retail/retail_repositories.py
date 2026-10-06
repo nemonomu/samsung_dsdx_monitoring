@@ -3,6 +3,7 @@
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.common.sea_collection import homedepot_source_enabled
+from apps.dx.dx_layer1.retail import costco
 
 
 def _timestamp_expression(date_field):
@@ -36,6 +37,8 @@ def _normalized_account(alias=''):
 
 
 def _appliance_date_condition(date_column, retailer):
+    if str(retailer or '').strip().lower() == 'costco':
+        return f"({costco.source_date_sql(date_column)}) = %s"
     if str(retailer or '').strip().lower() == 'homedepot':
         return f"({appliance_source_date_sql(date_column)}) = %s"
     return _text_date_condition(date_column)
@@ -48,7 +51,7 @@ def _normalized_page_type(alias=''):
 
 def _appliance_page_scope(retailer, *, anchor=False):
     # SEA HomeDepot stores MAIN/BSR ranks together, with no page_type.
-    if str(retailer or '').strip().lower() == 'homedepot':
+    if str(retailer or '').strip().lower() in ('homedepot', 'costco'):
         return 'TRUE'
     if anchor:
         return f"{_normalized_page_type()} = 'main'"
@@ -70,13 +73,22 @@ def query_retail_counts(cursor, table_name, date_field, extra_rank_field,
         WHERE {_timestamp_range(date_field)}
         GROUP BY account_name
     """, (slot_start, slot_end))
-    return cursor.fetchall()
+    rows = [row for row in cursor.fetchall() if str(row[0]).strip().lower() != 'costco']
+    if costco.enabled(slot_start):
+        main, bsr, extra, total, batch = query_appliance_counts_by_retailer(
+            cursor, table_name, 'crawl_datetime', str(slot_start)[:10], 'Costco')
+        rows.append(('Costco', total, main, bsr, extra, batch))
+    return rows
 
 
 def query_retail_counts_by_retailer(cursor, table_name, date_field,
                                     extra_rank_field, slot_start, slot_end,
                                     retailer):
     """Return inclusive SEA TV counts for one retailer and source date."""
+
+    if str(retailer).strip().lower() == 'costco':
+        return query_appliance_counts_by_retailer(
+            cursor, table_name, 'crawl_datetime', str(slot_start)[:10], retailer)
 
     cursor.execute(f"""
         SELECT
@@ -107,7 +119,11 @@ def get_tv_retail_detail_list(cursor, target_date):
         GROUP BY account_name
         ORDER BY account_name
     """, (str(target_date)[:10], str(target_date)[:10]))
-    return cursor.fetchall()
+    rows = [row for row in cursor.fetchall() if str(row[0]).strip().lower() != 'costco']
+    if costco.enabled(target_date):
+        rows.extend(get_appliance_retail_detail_list(
+            cursor, 'public.tv_retail_com', 'crawl_datetime', target_date, ('Costco',)))
+    return rows
 
 
 def get_hhp_retail_detail_list(cursor, target_date):
@@ -118,6 +134,18 @@ def get_retail_summary_null_counts(cursor, table_name, date_field,
                                    check_columns, slot_start, slot_end,
                                    retailer, is_daily):
     """Count TV populated fields under the established redirect scope."""
+
+    if str(retailer).strip().lower() == 'costco':
+        column = date_field.split('::')[0]
+        batch = get_latest_appliance_main_batch(cursor, table_name, column, str(slot_start)[:10], retailer)
+        if batch is None:
+            return tuple(0 for _ in check_columns)
+        counts = [f"COUNT(NULLIF(BTRIM(CAST({col} AS TEXT)), ''))" for col in check_columns]
+        cursor.execute(f"""SELECT {', '.join(counts)} FROM {table_name}
+            WHERE {_appliance_date_condition(column, retailer)}
+              AND {_normalized_account()} = LOWER(BTRIM(%s))
+              AND batch_id IS NOT DISTINCT FROM %s""", (str(slot_start)[:10], retailer, batch))
+        return cursor.fetchone()
 
     count_parts = [f"COUNT({col}) as {col}_cnt" for col in check_columns]
     query = f"""
@@ -135,6 +163,10 @@ def get_retailer_raw_data_list(cursor, table_name, columns, retailer,
                                date_column, start_time, end_time):
     """Return inclusive TV raw rows for the exact source-date range."""
 
+    if str(retailer).strip().lower() == 'costco':
+        return get_appliance_raw_data_list(
+            cursor, table_name, columns, retailer, date_column, str(start_time)[:10])
+
     query = f"""
         SELECT {', '.join(columns)}
         FROM {table_name}
@@ -150,6 +182,8 @@ def get_retailer_raw_data_list(cursor, table_name, columns, retailer,
 def get_latest_appliance_main_batch(cursor, table_name, date_column,
                                     target_date, retailer):
     """Return the latest daily batch; HomeDepot has no MAIN page marker."""
+    if str(retailer).strip().lower() == 'costco' and not costco.enabled(target_date):
+        return None
     if str(retailer).strip().lower() == 'homedepot' and not homedepot_source_enabled(target_date):
         return None
     cursor.execute(f"""

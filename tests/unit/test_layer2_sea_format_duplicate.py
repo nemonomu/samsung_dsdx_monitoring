@@ -426,7 +426,7 @@ class SEADuplicateValidationTests(unittest.TestCase):
             sql, params = cursor.calls[0]
             self.assertIn("AT TIME ZONE 'America/New_York'", sql)
             self.assertIn('homedepot', params)
-            self.assertIn("latest.retailer_key = 'homedepot'", sql)
+            self.assertIn("latest.retailer_key IN ('homedepot', 'costco')", sql)
             self.assertEqual('item', cursor.calls[2][1][3])
             audit = cursor.calls[3][1]
             self.assertEqual(f'public.{product}_retail_com', audit[3])

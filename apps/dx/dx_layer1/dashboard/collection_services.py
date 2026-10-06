@@ -5,6 +5,7 @@ from apps.common.sea_collection import (
     KST, collection_schedule, homedepot_source_enabled,
 )
 from .collection_repositories import SOURCES, fetch_collection
+from apps.dx.dx_layer1.retail import costco
 
 
 def get_collection_status(target_date, now=None):
@@ -13,6 +14,8 @@ def get_collection_status(target_date, now=None):
     rows = []
     for source in SOURCES:
         retailer, product, _table, _column = source
+        if retailer == 'Costco' and not costco.enabled(target_date):
+            continue
         scheduled = collection_schedule(target_date, retailer)
         row = {'retailer': retailer, 'product': product,
                'source_date': str(target_date), 'scheduled_at': scheduled.isoformat(),
@@ -28,6 +31,8 @@ def get_collection_status(target_date, now=None):
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
                 if row['count']:
                     row['status'] = 'received'
+                elif retailer == 'Costco' and costco.complete(target_date, current):
+                    row['status'] = 'uncollected'
             except Exception:
                 row.update(status='error', count=None, main_count=None, bsr_count=None)
         else:
