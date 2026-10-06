@@ -15,7 +15,7 @@ def main():
         ROOT / 'static/css/common.css', ROOT / 'static/css/table.css',
         base / 'css/layer1.css', base / 'css/event-master.css'])
     groups = [(name, code, 20, '2026-10-05') for code, name in COUNTRIES.items()]
-    check = build_check('2026-10-06', groups + [('NEW ZELAND', 'NZ', 1, '2026-10-06')], datetime(2026, 10, 6))
+    check = build_check('2026-10-06', groups + [('NEW ZELAND', 'US', 1, '2026-10-06')], datetime(2026, 10, 6))
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={'width': 1100, 'height': 800})
@@ -30,11 +30,11 @@ def main():
         expect(outer).not_to_have_attribute('open', '')
         expect(page.locator('.event-master-status')).to_contain_text('57 / 57')
         outer.locator(':scope > summary').click()
-        expect(page.get_by_text('국가명 오류:', exact=False)).to_be_visible()
+        expect(page.get_by_text('국가코드 불일치:', exact=False)).to_be_visible()
         normal = page.locator('details.event-master-normal')
         expect(normal).not_to_have_attribute('open', '')
         normal.locator(':scope > summary').click()
-        expect(normal.locator('tbody tr')).to_have_count(56)
+        expect(normal.locator('.event-master-countries li')).to_have_count(56)
         page.evaluate('document.getElementById("fixture").innerHTML=L1.renderers.event_master(window.check)')
         expect(page.locator('details.event-master')).to_have_attribute('open', '')
         expect(page.locator('details.event-master-normal')).to_have_attribute('open', '')

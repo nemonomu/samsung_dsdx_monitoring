@@ -46,8 +46,6 @@ def build_check(selected, groups, now=None):
             problems.append('대상 외 국가 또는 국가명 오류')
         else:
             row = rows[code]
-            if name != canonical:
-                problems.append(f'국가명 오류: {raw_name} → {canonical}')
             if prefix != code:
                 problems.append(f'국가코드 불일치: {raw_code or "(없음)"} (기준 {code})')
         row['count'] += int(count)

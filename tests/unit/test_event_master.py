@@ -45,10 +45,15 @@ class EventMasterTests(unittest.TestCase):
         check = self.check([('NEW ZEALAND', 'NZ_eStore', 18), ('NEW ZELAND', 'NZ', 1),
                             ('GERMANY', 'US_AMAZON', 2)])
         nz = next(r for r in check['countries'] if r['country_code'] == 'NZ')
-        self.assertEqual((19, 1, 'REVIEW'), (nz['count'], nz['issue_count'], nz['status']))
+        self.assertEqual((19, 0, 'OK'), (nz['count'], nz['issue_count'], nz['status']))
         self.assertEqual(2, check['actual'])
         de = next(r for r in check['countries'] if r['country_code'] == 'DE')
         self.assertEqual('REVIEW', de['status'])
+
+    def test_known_typo_does_not_flag_fully_received_month(self):
+        groups = [(name, code, 1) for code, name in svc.COUNTRIES.items()]
+        check = self.check(groups + [('NEW ZELAND', 'NZ', 1)])
+        self.assertEqual(('OK', 57, 0), (check['status'], check['actual'], check['review_count']))
 
     def test_extra_country_does_not_replace_missing(self):
         groups = [(name, code, 1) for code, name in svc.COUNTRIES.items() if code != 'DE']

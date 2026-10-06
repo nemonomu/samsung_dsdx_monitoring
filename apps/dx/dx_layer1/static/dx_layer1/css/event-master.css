@@ -1,15 +1,45 @@
-.event-master > summary { padding: 18px 20px; cursor: pointer; }
-.event-master-heading { display: inline-flex; width: calc(100% - 24px); align-items: center; justify-content: space-between; gap: 16px; vertical-align: middle; }
+.event-master > summary { padding: 24px; cursor: pointer; list-style: none; }
+.event-master summary::-webkit-details-marker { display: none; }
+.event-master summary:focus-visible { outline: 2px solid var(--layer-color); outline-offset: -3px; border-radius: 8px; }
+.event-master-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .event-master-status { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .event-master-expand, .event-master-note { color: var(--text-secondary); font-size: 12px; }
-.event-master-body { padding: 0 20px 20px; }
+.event-master-body { padding: 0 24px 24px; border-top: 1px solid var(--border-color); }
 .event-master-body h4 { margin: 16px 0 10px; }
 .event-master-table { overflow-x: auto; }
 .event-master-table table { width: 100%; }
 .event-master-table td { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }
-.event-master-normal { margin-top: 16px; }
-.event-master-normal > summary { cursor: pointer; padding: 12px 0; }
+.event-master-normal { margin-top: 20px; border-top: 1px solid var(--border-color); }
+.event-master-normal > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; padding: 18px 0; list-style: none; font-weight: 600; }
+.event-master-title { display: flex; align-items: center; gap: 16px; }
+.event-master-month { padding: 12px 10px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 10px; font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.event-master .check-name { font-size: 17px; }
+.event-master .check-description { margin-top: 5px; color: var(--text-secondary); }
+.event-master-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.event-master-count strong { font-size: 26px; font-weight: 650; }
+.event-master-count > span { color: var(--text-secondary); font-size: 13px; }
+.event-master-chevron { display: inline-block; width: 8px; height: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: 0 4px 4px 8px; }
+.event-master[open] > summary .event-master-chevron, .event-master-normal[open] > summary .event-master-chevron { transform: rotate(225deg); margin-bottom: 0; }
+.event-master-schedule { display: flex; flex-wrap: wrap; gap: 16px 48px; padding: 20px 0 4px; }
+.event-master-schedule > div { display: grid; gap: 6px; }
+.event-master-schedule span, .event-master-schedule small { color: var(--text-secondary); font-size: 12px; }
+.event-master-schedule strong { font-size: 13px; font-weight: 500; }
+.event-master-note { font-size: 13px; margin: 16px 0; }
+.event-master-success { color: var(--color-ok); }
+.event-master-section-title span { color: var(--text-secondary); font-weight: 400; margin-left: 6px; }
+.event-master-total { color: var(--color-ok); margin-left: 6px; }
+.event-master-list-action { font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+.event-master-countries { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0; margin: 0; list-style: none; }
+.event-master-countries li { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border-color); border-radius: 8px; }
+.event-master-country-code { color: var(--text-secondary); font-size: 12px; min-width: 24px; }
+.event-master-countries li > div { min-width: 0; }
+.event-master-countries strong { display: block; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.event-master-countries small { display: block; color: var(--text-secondary); font-size: 11px; margin-top: 5px; }
+.event-master-check { color: var(--color-ok); margin-left: auto; }
+@media (max-width: 900px) { .event-master-countries { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) {
-    .event-master-heading { flex-direction: column; align-items: flex-start; }
+    .event-master-heading { flex-direction: column; align-items: stretch; }
+    .event-master-status { justify-content: space-between; }
+    .event-master-countries { grid-template-columns: 1fr; }
     .event-master-table table { min-width: 480px; }
 }
