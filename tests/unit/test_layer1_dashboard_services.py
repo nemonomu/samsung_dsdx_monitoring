@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 from apps.dx.dx_layer1.common import retail_batches
+from apps.dx.dx_layer1.event_master import services as event_master_services
 
 from tests.unit.support import load_module, module_stub, package_stub
 
@@ -33,6 +34,8 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
     def setUpClass(cls):
         empty_service = module_stub('empty_layer1_service')
         stubs = {
+            'apps.dx.dx_layer1.event_master': package_stub('apps.dx.dx_layer1.event_master'),
+            'apps.dx.dx_layer1.event_master.services': event_master_services,
             'apps.dx.dx_layer1.common.retail_batches': retail_batches,
             'apps': package_stub('apps'),
             'apps.common': package_stub('apps.common'),
@@ -402,11 +405,11 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            ['retail'],
+            ['retail', 'event_master'],
             [check_type for check_type, _service in service_order],
         )
         self.assertEqual({'retail'}, daily_types)
-        self.assertEqual({'retail'}, target_types)
+        self.assertEqual({'retail', 'event_master'}, target_types)
 
     def test_seda_daily_schedule_activates_layer1_service(self):
         self.service.load_collection_schedules = lambda: [
@@ -419,11 +422,11 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            ['seda_retail'],
+            ['seda_retail', 'event_master'],
             [check_type for check_type, _service in service_order],
         )
         self.assertEqual({'seda_retail'}, daily_types)
-        self.assertEqual({'seda_retail'}, target_types)
+        self.assertEqual({'seda_retail', 'event_master'}, target_types)
 
     def test_primary_cards_are_sorted_without_reordering_other_checks(self):
         checks = [

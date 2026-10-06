@@ -13,6 +13,7 @@ from apps.dx.dx_layer1.common.retail_verification import apply_verification_stat
 from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
 from apps.dx.dx_layer1.youtube import youtube_services as youtube_svc
+from apps.dx.dx_layer1.event_master import services as event_master_svc
 from apps.dx.dx_layer1.siel_retail import siel_retail_services as siel_retail_svc
 from apps.dx.dx_layer1.sem_retail import sem_retail_services as sem_retail_svc
 from apps.dx.dx_layer1.seg_retail import seg_retail_services as seg_retail_svc
@@ -259,6 +260,11 @@ def _get_active_services(target_date=None):
         if target_date and check_target_date(s, target_date):
             target_date_types.add(ct)
 
+    # Monthly Event Master is versioned with its supplied country master;
+    # it does not require a production schedule-table write to become visible.
+    service_order.append(('event_master', event_master_svc))
+    if target_date and target_date >= event_master_svc.first_monday(target_date):
+        target_date_types.add('event_master')
     return service_order, daily_types, target_date_types
 
 
@@ -376,6 +382,8 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                             'timestamp': str(target_date),
                         })
                         continue
+                elif check_type == 'event_master':
+                    svc_result = svc.get_layer1_stats(cursor, target_date, datetime.now(_TSE_KST))
                 elif check_type == 'market_competitor_event':
                     svc_result = svc.get_layer1_stats(cursor, target_date, now, comp_batch_id=comp_batch_id)
                 else:

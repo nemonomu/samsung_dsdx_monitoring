@@ -1,0 +1,15 @@
+.event-master > summary { padding: 18px 20px; cursor: pointer; }
+.event-master-heading { display: inline-flex; width: calc(100% - 24px); align-items: center; justify-content: space-between; gap: 16px; vertical-align: middle; }
+.event-master-status { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.event-master-expand, .event-master-note { color: var(--text-secondary); font-size: 12px; }
+.event-master-body { padding: 0 20px 20px; }
+.event-master-body h4 { margin: 16px 0 10px; }
+.event-master-table { overflow-x: auto; }
+.event-master-table table { width: 100%; }
+.event-master-table td { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }
+.event-master-normal { margin-top: 16px; }
+.event-master-normal > summary { cursor: pointer; padding: 12px 0; }
+@media (max-width: 640px) {
+    .event-master-heading { flex-direction: column; align-items: flex-start; }
+    .event-master-table table { min-width: 480px; }
+}
