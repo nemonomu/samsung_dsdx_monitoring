@@ -4,8 +4,9 @@
 
 from apps.common.sea_layer2 import (
     is_homedepot, homedepot_format_columns,
-    source_date_sql, page_scope_sql, annotate_source_date,
 )
+from apps.common import costco_layer2
+from apps.common.costco_layer2 import source_date_sql, page_scope_sql, annotate_source_date, is_costco
 from datetime import date, datetime, timedelta
 from apps.common.sea_collection import (
     HOMEDEPOT_FIRST_SOURCE_DATE, homedepot_source_enabled, homedepot_inspection_label,
@@ -58,7 +59,7 @@ try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
     from apps.common.sea_layer2 import layer2_sources
-    SEA_RETAIL_SOURCES = layer2_sources(SEA_RETAIL_SOURCES)
+    SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -904,6 +905,8 @@ def _resolve_sea_format_retailer(source, retailer):
 
 
 def _get_sea_format_fields(product_key, retailer):
+    if is_costco(retailer):
+        return costco_layer2.FORMAT_COLUMNS[product_key]
     if is_homedepot(retailer):
         return homedepot_format_columns(product_key)
     return tuple(dict.fromkeys(
@@ -922,6 +925,10 @@ def _fetch_sea_format_rows(
         if not homedepot_source_enabled(end_date):
             return []
         start_date = max(str(start_date), HOMEDEPOT_FIRST_SOURCE_DATE.isoformat())
+    if is_costco(retailer_value):
+        if not costco_layer2.costco.enabled(end_date):
+            return []
+        start_date = max(str(start_date), str(costco_layer2.costco.FIRST_SOURCE_DATE))
     canonical_table = source['table_name']
     date_column = source['date_column']
     product_key = source['product_key']
@@ -932,8 +939,10 @@ def _fetch_sea_format_rows(
         date_column, 'product_url',
     )))
     date_expression = source_date_sql(date_column, 'source', retailer_value)
+    if is_costco(retailer_value) and product_key == 'tv':
+        select_columns = [c for c in select_columns if c not in ('sku', 'product', 'page_type')]
     # Country is a validated value for HomeDepot, not a source selector.
-    country_scope = 'TRUE' if is_homedepot(retailer_value) else """(
+    country_scope = 'TRUE' if is_homedepot(retailer_value) or is_costco(retailer_value) else """(
         UPPER(TRIM(COALESCE(source.country, ''))) = 'SEA'
         OR source.country IS NULL
         OR TRIM(CAST(source.country AS TEXT)) = ''
@@ -994,7 +1003,7 @@ def evaluate_sea_format_row(row, product_key, retailer):
 
 
 def _format_sea_record(row, product_key, retailer):
-    row = annotate_source_date(dict(row), retailer)
+    row = annotate_source_date(dict(row), retailer, display_kst=is_costco(retailer))
     record = {
         key: (str(value) if value is not None and key != 'id' else value)
         for key, value in row.items()
@@ -1036,6 +1045,8 @@ def _load_sea_format_normal_reviews(
 
 def _get_sea_format_detail(cursor, target_date, table, retailer, days):
     product_key = _sea_format_product_key(table)
+    if table == 'tv_retail' and is_costco(retailer):
+        product_key = 'tv'
     source = SEA_RETAIL_SOURCES.get(product_key)
     retailer_value = (
         _resolve_sea_format_retailer(source, retailer) if source else None
@@ -1105,6 +1116,10 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days):
     editable_columns = set(get_editable_columns(
         source['product_line'], retailer_value
     ))
+    if is_costco(retailer_value):
+        editable_columns = set(format_fields)
+        if product_key == 'tv':
+            column_names = [c for c in column_names if c not in ('sku', 'product', 'page_type')]
     return {
         'date': inspection_date,
         'inspection_date': inspection_date,
@@ -1137,7 +1152,7 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
     cursor.execute(f'SAVEPOINT {savepoint}')
     total_issues = 0
     try:
-        for product_key, section_code in SEA_FORMAT_SECTION_BY_PRODUCT.items():
+        for product_key, section_code in (('tv', 'tv_retail'), *SEA_FORMAT_SECTION_BY_PRODUCT.items()):
             if category and category != section_code:
                 continue
             source = SEA_RETAIL_SOURCES.get(product_key)
@@ -1151,6 +1166,10 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
             table_checked = 0
             table_issues = 0
             for retailer_value in source.get('retailers', ()):
+                if product_key == 'tv' and not is_costco(retailer_value):
+                    continue
+                if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):
+                    continue
                 rows = _fetch_sea_format_rows(
                     cursor, source_date, source_date, source, retailer_value
                 )
@@ -1169,12 +1188,21 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
                     'retailer': retailer_value,
                     'total': len(rows),
                     'issue_count': issue_count,
-                    'status': 'PENDING' if is_homedepot(retailer_value) and not rows else get_status(issue_count),
-                    'validation_label': homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else '',
+                    'status': 'PENDING' if (is_homedepot(retailer_value) or is_costco(retailer_value)) and not rows else get_status(issue_count),
+                    'validation_label': ('미수집' if is_costco(retailer_value) and not rows else homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else ''),
                 })
                 table_checked += len(rows)
                 table_issues += issue_count
 
+            if product_key == 'tv':
+                tv = next((t for t in validation['tables'] if t['table'] == 'tv_retail'), None)
+                if tv is not None:
+                    tv['retailers'].extend(retailer_rows)
+                    tv['total_checked'] += table_checked
+                    tv['total_issues'] += table_issues
+                    tv['status'] = get_status(tv['total_issues'])
+                total_issues += table_issues
+                continue
             validation['tables'].append({
                 'table': section_code,
                 'table_name': f"SEA {source['category']}",
@@ -2091,7 +2119,7 @@ def get_format_detail(cursor, target_date, table, retailer, days):
         return sem_validation.format_detail(
             cursor, target_date, table, days=days, retailer=retailer
         )
-    if _sea_format_product_key(table):
+    if _sea_format_product_key(table) or (table == 'tv_retail' and is_costco(retailer)):
         return _get_sea_format_detail(
             cursor, target_date, table, retailer, days
         )
@@ -2787,6 +2815,8 @@ def get_format_rules(cursor, table_name, retailer):
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
     sea_product_key = _sea_format_product_key(table_name)
+    if table_name == 'tv_retail_com' and is_costco(retailer):
+        sea_product_key = 'tv'
     if sea_product_key:
         fields = set(_get_sea_format_fields(sea_product_key, retailer))
         rows = [row for row in rows if row['column_name'] in fields]
@@ -3020,6 +3050,7 @@ def get_format_stats(cursor, target_date, category=None):
                 FROM tv_retail_com
                 WHERE DATE(crawl_datetime::timestamp) = %s
                   AND {get_tv_validation_condition()}
+                  AND LOWER(TRIM(COALESCE(account_name, ''))) <> 'costco'
                 ORDER BY id
                 LIMIT %s OFFSET %s
             """, (target_date, CHUNK_SIZE, tv_offset))

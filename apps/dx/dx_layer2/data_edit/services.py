@@ -486,14 +486,15 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     # editable 컬럼 확인
     editable_retailer = retailer
-    if is_costco(retailer) and correction_type_value != 'null_check':
-        return {'error': 'Costco는 NULL 검증 값만 수정할 수 있습니다', 'status': 403}
+    if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:
+        return {'error': 'Costco는 NULL·형식 검증 값만 수정할 수 있습니다', 'status': 403}
     if tse_context and not editable_retailer and column_name == 'account_name':
         editable_retailer = new_value
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
     if is_costco(retailer) and sea_context:
-        editable_cols = costco_layer2.NULL_COLUMNS[sea_context['product_key']]
+        editable_cols = (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
+                         else costco_layer2.NULL_COLUMNS)[sea_context['product_key']]
     elif seda_product_line:
         editable_cols = seda_columns(product_line, retailer)
     elif sem_context:

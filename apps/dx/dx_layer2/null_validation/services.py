@@ -3065,6 +3065,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         sea_source
         and column_name not in set(SEA_NULL_COLUMNS.get(sea_source['product_key'], ())).union(
             costco_layer2.NULL_COLUMNS[sea_source['product_key']],
+            costco_layer2.FORMAT_COLUMNS[sea_source['product_key']],
             homedepot_null_columns(sea_source['product_key']), homedepot_format_columns(sea_source['product_key']))
     ):
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
@@ -3205,9 +3206,9 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
     if sea_source:
-        if is_costco(retailer) and correction_type_value != 'null_check':
-            return {'error': 'Costco는 NULL 검수만 지원합니다', 'status_code': 400}
-        allowed = (costco_layer2.NULL_COLUMNS[sea_source['product_key']] if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
+        if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'Costco는 NULL·형식 검수만 지원합니다', 'status_code': 400}
+        allowed = ((costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check' else costco_layer2.NULL_COLUMNS)[sea_source['product_key']] if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
                    if is_homedepot(retailer) and correction_type_value == 'format_check'
                    else homedepot_null_columns(sea_source['product_key']) if is_homedepot(retailer)
                    else SEA_NULL_COLUMNS[sea_source['product_key']])

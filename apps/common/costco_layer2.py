@@ -1,4 +1,4 @@
-"""Costco NULL/duplicate policy; does not enroll format or cross-field checks."""
+"""Costco NULL, duplicate, and format validation policy."""
 from datetime import datetime, timezone
 from apps.common import sea_layer2
 from apps.dx.dx_layer1.retail import costco
@@ -10,6 +10,12 @@ COMMON = ('country', 'account_name', 'item', 'retailer_sku_name',
 NULL_COLUMNS = {'tv': (*COMMON, 'screen_size'),
                 'ref': (*COMMON, 'sku', 'ref_capacity'),
                 'ldy': (*COMMON, 'sku', 'ldy_capacity')}
+FORMAT_COMMON = ('account_name', 'country', 'calendar_week', *METRICS, *PRICES)
+FORMAT_COLUMNS = {
+    'tv': (*FORMAT_COMMON, 'screen_size'),
+    'ref': (*FORMAT_COMMON, 'product', 'ref_capacity', 'ref_refrigerator_type'),
+    'ldy': (*FORMAT_COMMON, 'product', 'ldy_capacity', 'ldy_loading_type'),
+}
 
 
 def is_costco(retailer):
