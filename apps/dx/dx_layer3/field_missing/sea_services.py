@@ -55,10 +55,14 @@ def is_sea_product_line(product_line):
     return str(product_line or '').strip().lower() in _PRODUCT_ALIASES
 
 
-def get_validation_columns(product_line):
+def get_validation_columns(product_line, retailer=None):
     if not is_sea_product_line(product_line):
         return []
-    return list(SEA_FIELD_MISSING_COLUMNS[normalize_product_line(product_line)])
+    columns = list(SEA_FIELD_MISSING_COLUMNS[normalize_product_line(product_line)])
+    if str(retailer or '').strip().casefold() == 'lowes':
+        columns = [column for column in columns
+                   if column not in {'ref_capacity', 'ldy_capacity'}]
+    return columns
 
 
 def get_default_related_columns(product_line, field):
@@ -301,7 +305,6 @@ def field_missing_detection(
         cursor, target_date, product_line, retailer, inspection_date=None):
     key = normalize_product_line(product_line)
     source = _source(key)
-    columns = get_validation_columns(key)
     result = _empty_summary(target_date, key, retailer)
     retailers = (
         get_retailers(key) if str(retailer).lower() == 'all' else [retailer]
@@ -311,6 +314,7 @@ def field_missing_detection(
     for current_retailer in retailers:
         if current_retailer not in source['retailers']:
             continue
+        columns = get_validation_columns(key, current_retailer)
         rows = _load_latest_rows(
             cursor, target_date - timedelta(days=2), target_date,
             key, current_retailer, columns,
@@ -377,7 +381,7 @@ def field_missing_detail_all(
         offset, limit):
     key = normalize_product_line(product_line)
     source = _source(key)
-    fields = _safe_columns(display_fields or get_validation_columns(key))
+    fields = _safe_columns(display_fields or get_validation_columns(key, retailer))
     rows = _load_latest_rows(
         cursor, target_date - timedelta(days=2), target_date,
         key, retailer, fields,
@@ -431,7 +435,7 @@ def field_missing_detail_problem(
     key = normalize_product_line(product_line)
     source = _source(key)
     columns = [
-        column for column in get_validation_columns(key)
+        column for column in get_validation_columns(key, retailer)
         if column in columns_to_check
     ]
     rows = _load_latest_rows(
@@ -509,7 +513,7 @@ def field_missing_detail_by_field(
         inspection_date=None):
     key = normalize_product_line(product_line)
     source = _source(key)
-    validation_columns = get_validation_columns(key)
+    validation_columns = get_validation_columns(key, retailer)
     if field not in validation_columns:
         return {
             'status': 'success',

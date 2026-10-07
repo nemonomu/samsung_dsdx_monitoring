@@ -163,6 +163,23 @@ class SeaFieldMissingDateTests(unittest.TestCase):
             services.get_field_missing_validation_columns('sea_ldy'),
         )
 
+    def test_lowes_capacity_is_excluded_from_summary_and_details(self):
+        for product, capacity in [('sea_ref', 'ref_capacity'), ('sea_ldy', 'ldy_capacity')]:
+            self.assertNotIn(capacity, sea_services.get_validation_columns(product, 'Lowes'))
+            self.assertIn(capacity, sea_services.get_validation_columns(product, 'Bestbuy'))
+            with patch.object(sea_services, '_load_latest_rows', return_value=[]) as load:
+                sea_services.field_missing_detection(
+                    ScriptedCursor([{'fetchall': []}]), date(2026, 9, 1), product, 'Lowes')
+                self.assertNotIn(capacity, load.call_args.args[-1])
+                result = sea_services.field_missing_detail_problem(
+                    None, date(2026, 9, 1), product, 'Lowes', [capacity], 0, 100)
+                self.assertEqual([], result['fields'])
+                self.assertEqual([], result['data'])
+            result = sea_services.field_missing_detail_by_field(
+                None, date(2026, 9, 1), product, 'Lowes', capacity,
+                3, [], [], [], [])
+            self.assertEqual(0, result['total_count'])
+
     def test_ref_detail_columns_keep_all_configured_columns(self):
         configured = [
             {'column_name': 'final_sku_price', 'related_columns': ''},
