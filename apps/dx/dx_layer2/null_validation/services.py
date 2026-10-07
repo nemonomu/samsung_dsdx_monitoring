@@ -138,6 +138,13 @@ SIEL_NULL_CATEGORY_BY_SOURCE_KEY = {
     'siel_ref': 'siel_ref_retail',
     'siel_ldy': 'siel_ldy_retail',
 }
+
+
+def _get_sea_null_columns(product, retailer):
+    columns = SEA_NULL_COLUMNS[product]
+    if product == 'ldy' and str(retailer or '').strip().lower() == 'lowes':
+        return (*columns, 'ldy_capacity')
+    return columns
 SIEL_NULL_SOURCE_KEY_BY_CATEGORY = {
     category: source_key
     for source_key, category in SIEL_NULL_CATEGORY_BY_SOURCE_KEY.items()
@@ -662,7 +669,7 @@ def load_null_check_config():
                 if (
                     sea_retailer is None
                     or check_column not in (costco_layer2.NULL_COLUMNS[product] if is_costco(sea_retailer) else homedepot_null_columns(product)
-                                            if is_homedepot(sea_retailer) else SEA_NULL_COLUMNS[product])
+                                            if is_homedepot(sea_retailer) else _get_sea_null_columns(product, sea_retailer))
                 ):
                     continue
                 category = 'tv_retail' if product == 'tv' else SEA_NULL_CATEGORY_BY_PRODUCT[product]
@@ -3211,7 +3218,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         allowed = ((costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check' else costco_layer2.NULL_COLUMNS)[sea_source['product_key']] if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
                    if is_homedepot(retailer) and correction_type_value == 'format_check'
                    else homedepot_null_columns(sea_source['product_key']) if is_homedepot(retailer)
-                   else SEA_NULL_COLUMNS[sea_source['product_key']])
+                   else _get_sea_null_columns(sea_source['product_key'], retailer))
         if column_name not in allowed:
             return {'error': '허용되지 않은 리테일러별 컬럼', 'status_code': 400}
     if seda_product_line:

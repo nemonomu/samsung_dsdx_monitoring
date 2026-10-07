@@ -62,7 +62,8 @@ def db_rows():
     rows = []
     for product, columns in NULL_COLUMNS.items():
         for retailer in ('Bestbuy', 'Lowes'):
-            for column in columns:
+            retailer_columns = (*columns, 'ldy_capacity') if product == 'ldy' and retailer == 'Lowes' else columns
+            for column in retailer_columns:
                 display_columns = [
                     'crawl_strdatetime', 'item', 'account_name', 'country',
                     'sku', 'retailer_sku_name', 'product_url',
@@ -169,9 +170,11 @@ class SEALayer2NullValidationTests(unittest.TestCase):
             config['sea_ref_retail']['checks']['bestbuy']['columns'],
         )
         self.assertEqual(
-            set(NULL_COLUMNS['ldy']),
+            set(NULL_COLUMNS['ldy']) | {'ldy_capacity'},
             set(config['sea_ldy_retail']['checks']['lowes']['columns']),
         )
+        self.assertIn('ref_capacity', config['sea_ref_retail']['checks']['lowes']['columns'])
+        self.assertNotIn('ldy_capacity', config['sea_ldy_retail']['checks']['bestbuy']['columns'])
         self.assertEqual(
             'public.ref_retail_com',
             config['sea_ref_retail']['checks']['bestbuy']['table_name'],
@@ -345,7 +348,7 @@ class SEALayer2NullValidationTests(unittest.TestCase):
             {'fetchall': []},
             {'fetchone': ('b_ldy',)}, {'fetchone': ldy_counts},
             {'fetchall': []},
-            {'fetchone': ('l_ldy',)}, {'fetchone': ldy_counts},
+            {'fetchone': ('l_ldy',)}, {'fetchone': ldy_counts + (0,)},
             {'fetchall': []},
         ])
 

@@ -153,8 +153,8 @@ class HomeDepotLayer2Tests(unittest.TestCase):
         self.assertEqual('2026-08-31', result['results'][0]['_source_date'])
         self.assertEqual({'ldy_capacity': 1}, result['field_counts'])
 
-    def test_capacity_review_allows_homedepot_but_preserves_lowes_allowlist(self):
-        for retailer, allowed in [('HomeDepot', True), ('Lowes', False)]:
+    def test_capacity_review_allows_homedepot_and_lowes_but_not_bestbuy(self):
+        for retailer, allowed in [('HomeDepot', True), ('Lowes', True), ('Bestbuy', False)]:
             cursor = ScriptedCursor([{'fetchone': (None, retailer, '123')}, {'fetchone': None}, {'rowcount': 1}])
             conn = Mock()
             result = self.null.save_null_review(cursor, conn, 'public.ldy_retail_com', 42, 'ldy_capacity',
