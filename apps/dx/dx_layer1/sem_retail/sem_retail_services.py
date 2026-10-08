@@ -190,7 +190,7 @@ def get_layer1_stats(cursor, target_date, now=None):
             'check_type': SEM_CHECK_TYPE,
             'status': _worst([category['status'] for category in categories]),
             'phase': phase,
-            'collection_window': 'KST 09:00~11:00',
+            'collection_window': 'KST 09:00~13:30',
             'expected': expected_total,
             'actual': actual_total,
             'total': actual_total,

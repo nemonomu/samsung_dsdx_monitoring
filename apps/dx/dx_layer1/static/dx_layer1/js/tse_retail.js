@@ -103,7 +103,7 @@ function renderTseRetailCheck(check, checkIdx) {
     var categories = check.categories || [];
     var actual = tseNumber(check.actual !== undefined ? check.actual : check.total);
     var defaultCollectionWindow = check.check_type === 'sem_retail'
-        ? 'KST 09:00~11:00'
+        ? 'KST 09:00~13:30'
         : 'KST 09:00~10:30';
     var categoriesHtml = categories.map(function(cat, catIdx) {
         return renderTseCategory(cat, checkIdx, catIdx,

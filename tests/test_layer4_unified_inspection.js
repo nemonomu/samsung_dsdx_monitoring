@@ -60,7 +60,7 @@ function layer1Data(targetDate = '2026-08-20', status = 'OK', counts = [644, 607
             check_type: 'tse_retail',
             status,
             phase: status === 'COLLECTING' ? 'collecting' : 'complete',
-            collection_window: 'KST 09:00~11:00',
+            collection_window: 'KST 09:00~13:30',
             actual: counts.reduce((sum, value) => sum + value, 0),
             expected: 1800,
             categories: products.map((product, index) => ({
@@ -169,7 +169,7 @@ async function main() {
     assert.strictEqual(elements['ui-tse-source-date'].textContent, '2026-08-20');
     assert.strictEqual(
         elements['ui-tse-status'].textContent,
-        '정상 · KST 09:00~11:00'
+        '정상 · KST 09:00~13:30'
     );
 
     const beforeZero = requests.length;
@@ -270,7 +270,7 @@ async function main() {
     assert.strictEqual(elements['ui-tse-source-date'].textContent, '2026-08-25');
     assert.strictEqual(
         elements['ui-tse-status'].textContent,
-        '정상 · KST 09:00~11:00'
+        '정상 · KST 09:00~13:30'
     );
     assert.ok(!elements['ui-tse-body'].innerHTML.includes('심각'));
 

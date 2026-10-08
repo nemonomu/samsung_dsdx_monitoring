@@ -407,7 +407,7 @@ function flattenCheckToDetails(sectionType, check) {
                             sectionType === 'siel_retail'
                                 ? 'KST 05:30~08:30'
                                 : sectionType === 'sem_retail'
-                                ? 'KST 09:00~11:00'
+                                ? 'KST 09:00~13:30'
                                 : sectionType === 'seg_retail'
                                 ? 'KST 07:00~12:00'
                                 : 'KST 09:00~10:30'

@@ -39,11 +39,11 @@ from tests.unit.test_validation_detail_defaults import common_stubs, FakeRequest
 
 
 class SemRetailConfigurationTests(unittest.TestCase):
-    def test_collection_uses_kst_0900_to_1100_window(self):
+    def test_collection_uses_kst_0900_to_1330_window(self):
         self.assertEqual('pending', get_sem_collection_phase(time(8, 59, 59)))
         self.assertEqual('collecting', get_sem_collection_phase(time(9, 0)))
-        self.assertEqual('collecting', get_sem_collection_phase(time(11, 0)))
-        self.assertEqual('complete', get_sem_collection_phase(time(11, 0, 1)))
+        self.assertEqual('collecting', get_sem_collection_phase(time(13, 30)))
+        self.assertEqual('complete', get_sem_collection_phase(time(13, 30, 1)))
 
     def test_product_lines_and_layer1_retailers_are_configured(self):
         self.assertEqual(
@@ -161,7 +161,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
             'SEM 멕시코 TV/REF/LDY 일일 수집 현황',
             result['check']['description'],
         )
-        self.assertEqual('KST 09:00~11:00', result['check']['collection_window'])
+        self.assertEqual('KST 09:00~13:30', result['check']['collection_window'])
 
     def test_layer1_adds_homedepot_and_coppel_to_ref_and_ldy_only(self):
         def current_counts(_cursor, product_line, retailer, _target_date):
@@ -183,7 +183,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
             return_value=[{'main_count': 300}],
         ):
             result = sem_retail_services.get_layer1_stats(
-                object(), date(2026, 9, 13), datetime(2026, 9, 13, 12, 0)
+                object(), date(2026, 9, 13), datetime(2026, 9, 13, 14, 0)
             )
 
         retailers = {
@@ -259,7 +259,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertEqual('COLLECTING', check['categories'][2]['status'])
         self.assertEqual('COLLECTING', check['status'])
 
-    def _count_stats(self, main_count, history, *, raw_count=None, hour=12):
+    def _count_stats(self, main_count, history, *, raw_count=None, hour=14):
         current = {
             'retailer': 'Liverpool', 'batch_id': 'batch',
             'actual_count': main_count if raw_count is None else raw_count,
@@ -349,7 +349,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertEqual([], result['failed_items'])
 
     def test_layer1_review_respects_collection_window(self):
-        for hour, status in ((8, 'PENDING'), (10, 'COLLECTING'), (12, 'REVIEW')):
+        for hour, status in ((8, 'PENDING'), (10, 'COLLECTING'), (12, 'COLLECTING'), (13, 'COLLECTING'), (14, 'REVIEW')):
             with self.subTest(hour=hour):
                 result = self._count_stats(314, [264], hour=hour)
                 self.assertEqual(status, result['check']['status'])
@@ -376,7 +376,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
             return_value=[{'main_count': 264}],
         ):
             result = sem_retail_services.get_layer1_stats(
-                object(), date(2026, 9, 13), datetime(2026, 9, 13, 12, 0),
+                object(), date(2026, 9, 13), datetime(2026, 9, 13, 14, 0),
             )
         self.assertEqual('CRITICAL', result['check']['status'])
         self.assertEqual(
