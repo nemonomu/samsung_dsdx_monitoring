@@ -276,6 +276,37 @@ class SemRetailConfigurationTests(unittest.TestCase):
                 object(), date(2026, 9, 13), datetime(2026, 9, 13, hour, 0),
             )
 
+    def test_received_retailer_is_ready_while_other_retailers_collect(self):
+        from apps.dx.dx_layer1.common.retail_verification import apply_verification_status
+
+        def counts(_cursor, product, retailer, _day):
+            if retailer != 'Coppel':
+                return None
+            return {'batch_id': product, 'actual_count': 275,
+                    'main_count': 275, 'bsr_count': 100}
+
+        with patch.object(sem_retail_services.repo, 'get_latest_batch_counts',
+                          side_effect=counts), patch.object(
+                sem_retail_services.repo, 'get_previous_main_counts',
+                return_value=[{'main_count': 275}]):
+            check = sem_retail_services.get_layer1_stats(
+                None, date(2026, 10, 8), datetime(2026, 10, 8, 10, 0)
+            )['check']
+        apply_verification_status(check)
+        self.assertEqual('COLLECTING', check['status'])
+        for category in check['categories']:
+            for row in category['retailers']:
+                received = row['retailer'] == 'Coppel'
+                self.assertEqual('complete' if received else 'collecting',
+                                 row['collection_phase'])
+                self.assertEqual('ready' if received else 'collecting',
+                                 row['verification_state'])
+
+    def test_received_rows_do_not_override_pending_schedule(self):
+        check = self._count_stats(300, [300], hour=8)['check']
+        self.assertTrue(all(row['collection_phase'] == 'pending'
+                            for cat in check['categories'] for row in cat['retailers']))
+
     def test_layer1_count_deviation_uses_fifty_count_review_boundary(self):
         for main_count, expected_status in (
             (300, 'OK'), (313, 'OK'), (314, 'REVIEW'),

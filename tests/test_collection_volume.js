@@ -31,6 +31,24 @@ function fixture(country='SIEL', product='TV', base='OK') {
 }
 function apply(f) {volume.decorate(f.data, f.payload, day, f.summaries); return f.row.status;}
 
+// SEM received batches are assessed without waiting for the other retailers.
+for (const product of ['REF', 'LDY']) {
+    const f = fixture('SEM', product);
+    f.check.phase = 'collecting';
+    f.row.collection_phase = 'complete';
+    f.row.main_count = 300;
+    f.cat.retailers.push({retailer:'Still collecting', main_count:0, bsr_count:0,
+        actual:0, raw_count:0, status:'COLLECTING', collection_phase:'collecting'});
+    assert.equal(apply(f), 'OK');
+    assert.equal(f.cat.retailers[1].status, 'COLLECTING');
+    assert.equal(f.cat.status, 'COLLECTING');
+    assert.equal(f.check.status, 'COLLECTING');
+    f.row.bsr_count = 99;
+    assert.equal(apply(f), 'VOLUME_LOW', 'SEM must still pass BSR validation');
+    f.payload.snapshots = [];
+    assert.equal(apply(f), 'VERIFYING', 'missing statistics cannot imply normal');
+}
+
 // The median survives a recollection or deletion; only CURRENT ranks determine the verdict.
 for (const country of Object.keys(types)) for (const product of ['TV','REF','LDY']) {
     const f = fixture(country, product);

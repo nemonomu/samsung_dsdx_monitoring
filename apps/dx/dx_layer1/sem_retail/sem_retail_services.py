@@ -58,6 +58,11 @@ def _retailer(cursor, product_line, retailer_name, source_date, phase):
         cursor, product_line, retailer_name, source_date, SEM_HISTORY_DAYS
     )
     history = [row['main_count'] for row in history_rows]
+    # Assess received batches independently of other retailers' collection window.
+    row_phase = (
+        'complete' if phase == 'collecting' and current['actual_count'] > 0
+        else phase
+    )
     if phase == 'pending':
         status, baseline = 'PENDING', None
     else:
@@ -83,6 +88,7 @@ def _retailer(cursor, product_line, retailer_name, source_date, phase):
             if baseline and baseline > 0 else None
         ),
         'status': status,
+        'collection_phase': row_phase,
         'status_basis': 'previous_main_average',
         'history_day_count': len(history),
         'allowed_deviation': SEM_REVIEW_DEVIATION,
