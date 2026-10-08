@@ -34,9 +34,13 @@
         const attention = countries.filter(row => row.status !== 'OK').concat(check.unexpected || []);
         const normal = countries.filter(row => row.status === 'OK');
         const key = 'event-master-' + check.inspection_date;
+        const scheduled = String(check.next_collection_date || check.scheduled_date || '');
+        const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(scheduled);
+        const nextCollection = parts ? '<div class="event-master-next">다음 수집 예정 <strong>' +
+            Number(parts[2]) + '월 ' + Number(parts[3]) + '일</strong></div>' : '';
         const summary = '<div class="event-master-heading"><div class="event-master-title"><span class="event-master-month">' +
             esc(String(check.execution_date).slice(0, 7).replace('-', '.')) + '</span><div><div class="check-name">Event Master</div>' +
-            '<div class="check-description">월간 이벤트 · 국가별 적재 현황</div></div></div><div class="event-master-status"><div class="event-master-count">' +
+            '<div class="check-description">월간 이벤트 · 국가별 적재 현황</div>' + nextCollection + '</div></div><div class="event-master-status"><div class="event-master-count">' +
             (check.actual == null ? '조회 실패' : '<strong>' + Number(check.actual) + '</strong><span> / ' + Number(check.expected) + '개국 수집</span>') +
             '</div>' + badge(check.status) + '<span class="event-master-chevron" aria-hidden="true"></span></div></div>';
         let body = '<div class="event-master-body">';

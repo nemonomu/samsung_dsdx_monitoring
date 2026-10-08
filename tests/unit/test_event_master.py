@@ -33,6 +33,7 @@ class EventMasterTests(unittest.TestCase):
         groups = [(name, code, 1) for code, name in svc.COUNTRIES.items()]
         check = self.check(groups, now=datetime(2026, 10, 5, 1))
         self.assertEqual(('OK', 57), (check['status'], check['actual']))
+        self.assertEqual('2026-11-02', check['next_collection_date'])
 
     def test_partial_receipt_and_missing_country(self):
         check = self.check([('GERMANY', 'DE', 30)], now=datetime(2026, 10, 5, 1))

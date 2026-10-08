@@ -68,6 +68,7 @@ def build_check(selected, groups, now=None):
             'execution_end_date': str(due + timedelta(days=1)),
             'query_end_date': str(min(selected, due + timedelta(days=1), now.date())),
             'before_start': pending, 'scheduled_date': str(scheduled),
+            'next_collection_date': str(next_due if received == len(countries) else scheduled),
             'description': '매월 첫 월요일 · 국가별 최종 결과 적재 확인',
             'expected': len(countries), 'actual': received, 'missing': missing,
             'review_count': review, 'unexpected_count': len(extras),
