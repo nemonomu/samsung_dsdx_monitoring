@@ -87,6 +87,18 @@
         if (!reviews.length || !['OK', ...reviewStatuses].includes(status)) return null;
         const pending = reviews.filter(item => !reviewed(item));
         const done = !pending.length && rows.every(item => (item.status === 'OK' || reviewed(item)) && Number(item.batch_count || 0) < 2);
+        // Confirmed reviews no longer mask siblings that are still collecting.
+        // Keep automatic verdicts intact for review identity and cancellation.
+        if (!pending.length && !done) {
+            const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2,
+                VERIFYING: 3, UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4,
+                VOLUME_REVIEW: 4, WARNING: 5, VOLUME_LOW: 6, CRITICAL: 6, ERROR: 7};
+            const remaining = rows.map(item => Number(item.batch_count || 0) >= 2
+                ? 'REVIEW' : reviewed(item) ? 'OK' : item.status);
+            const effective = remaining.reduce((worst, value) =>
+                (priority[value] || 0) > (priority[worst] || 0) ? value : worst, 'OK');
+            return getStatusBadge(effective);
+        }
         const title = reviews.map(item => `${item.retailer} · ${reviewed(item) ? '정상 확인' : '확인 필요'}\n${item._reviewReasons.join('\n')}`
             + (reviewed(item) ? '\n' + recordText(item._normalReview) : '')).join('\n\n');
         return `<span class="status-badge ${done ? 'ok' : 'volume-review'}" tabindex="0" title="${attr(title)}" aria-label="${attr(title)}">${done ? '✓ 정상 확인' : '<span class="status-dot"></span>확인 필요' + (pending.length ? ' · 미확인 ' + pending.length + '건' : '')}</span>`;

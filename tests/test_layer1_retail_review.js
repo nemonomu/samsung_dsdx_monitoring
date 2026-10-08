@@ -46,6 +46,21 @@ function record(item) {
     assert.strictEqual(row.status, 'REVIEW', 'automatic status must remain intact');
     assert(!sandbox.L1.retailStatus.render(check, 0, 'sem_retail').includes('60건 감소'));
     const confirmed = JSON.parse(JSON.stringify(row));
+    // Confirmed Coppel plus uncollected siblings must show collection progress,
+    // not a review warning with no outstanding reviews.
+    const collecting = {retailer: 'HomeDepot', status: 'COLLECTING', batch_count: 0};
+    cat.retailers.push(collecting); decorate();
+    assert(badge().includes('✓ 정상 확인'));
+    assert(badge(cat).includes('수집중'));
+    assert(badge(check).includes('수집중'));
+    assert(!badge(cat).includes('확인 필요'));
+    collecting.status = 'VERIFYING'; decorate();
+    assert(badge(cat).includes('검증 대기'));
+    collecting.status = 'OK'; decorate();
+    assert(badge(cat).includes('✓ 정상 확인'));
+    collecting.batch_count = 2; decorate();
+    assert(badge(cat).includes('확인 필요'));
+    cat.retailers.pop(); decorate();
     for (const [field, value] of [['batch_id', 'c2'], ['main_count', 159], ['expected_precise', 221], ['batch_count', 2]]) {
         row[field] = value; decorate();
         assert(!review.reviewed(row), field + ' change must reopen review');
