@@ -83,6 +83,28 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
             stubs,
         )
 
+    def test_seg_dryer_review_summary_preserves_confirmation_counts(self):
+        day = date(2026, 10, 11)
+        category = 'seg_ldy_dryer_retail'
+        self.assertTrue(self.service.supports_null_auto_detail('null', category, day))
+        self.assertFalse(self.service.supports_null_auto_detail('format', category, day))
+        validation = {'tables': [{'table': category, 'retailers': [{
+            'retailer': 'Expert', 'fields_detail': {'loading_type': 0},
+            'raw_fields_detail': {'loading_type': 14},
+            'manual_reviewed_fields_detail': {'loading_type': 14},
+            'raw_null_count': 14, 'reviewed_null_count': 14,
+            'manual_reviewed_count': 14, 'auto_reviewed_count': 0,
+            'total_null_count': 0, 'total': 300, 'supports_null_auto_review': True,
+        }]}]}
+        cursor = RecordingCursor()
+        with patch.object(self.service, 'get_null_stats', return_value=(validation, 0)) as stats:
+            result = self.service.get_retailer_detail(cursor, 'null', category, 'Expert', day)
+        stats.assert_called_once_with(cursor, day, include_youtube=False, category=category)
+        self.assertNotIn('error', result)
+        self.assertTrue(result['supports_null_auto_review'])
+        self.assertEqual(14, result['manual_reviewed_count'])
+        self.assertEqual(0, result['total'])
+
     def test_each_validation_receives_only_requested_country_product(self):
         for section, function in (
             ('null_validation', 'get_null_stats'),

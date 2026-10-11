@@ -155,6 +155,16 @@ class SEALayer2NullValidationTests(unittest.TestCase):
             common_stubs(),
         )
 
+    def test_dryer_display_name_resolves_without_database_display_config(self):
+        with patch.object(self.service, 'load_null_check_config', return_value={}), patch.object(
+                self.service, 'get_all_categories', return_value=['seg_ldy_dryer_retail', 'sea_ldy_dryer_retail']):
+            for region in ('SEG', 'SEA'):
+                expected = region.lower() + '_ldy_dryer_retail'
+                for value in (region + ' LDY_DRYER', region + ' LDY DRYER', expected):
+                    self.assertEqual(expected, self.service.resolve_stats_category(value))
+            with self.assertRaises(ValueError):
+                self.service.resolve_stats_category('SEG UNKNOWN')
+
     def test_db_settings_are_split_into_canonical_ref_and_ldy_categories(self):
         config = self.service.load_null_check_config()
 

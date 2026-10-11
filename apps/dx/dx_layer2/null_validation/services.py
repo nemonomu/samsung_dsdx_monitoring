@@ -834,6 +834,7 @@ def resolve_stats_category(value):
             category.casefold(),
             config.get(category, {}).get('display_name', '').casefold(),
             category.removesuffix('_retail').replace('_', ' ').casefold(),
+            category.removesuffix('_retail').replace('_', ' ', 1).casefold(),
         }
         if category == 'tv_retail':
             aliases.update(('sea tv', 'sea retail', 'tv retail'))
