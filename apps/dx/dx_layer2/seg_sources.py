@@ -1,4 +1,4 @@
-"""SEG NULL/duplicate onboarding; format and Layer 3 retain their own sources."""
+"""Layer 2 SEG sources and retailer-specific validation columns."""
 from apps.common import seg_retail as legacy
 from apps.dx.dx_layer1.seg_retail.sources import (
     SEG_SOURCE_CONFIG as LAYER1_SOURCES, EXPERT_COLUMNS, EXPERT_START_DATE,
@@ -6,13 +6,13 @@ from apps.dx.dx_layer1.seg_retail.sources import (
 )
 
 SEG_COUNTRY = legacy.SEG_COUNTRY
-SEG_FORMAT_SOURCE_CONFIG = legacy.SEG_SOURCE_CONFIG
 SEG_SOURCE_CONFIG = {
     key: {**source, 'section_code': f'{key}_retail',
           'display_name': f"SEG {source['category']}"}
     for key, source in LAYER1_SOURCES.items()
 }
 SEG_TABLE_TO_PRODUCT_LINE = {s['table_name']: k for k, s in SEG_SOURCE_CONFIG.items()}
+SEG_FORMAT_SOURCE_CONFIG = SEG_SOURCE_CONFIG
 EXPERT_NULL_COMMON = (
     'item', 'product_url', 'sku', 'retailer_sku_name', 'final_sku_price',
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
@@ -62,8 +62,12 @@ def get_seg_all_null_columns(product_line):
 
 
 def get_seg_format_columns(product_line, retailer=None):
+    from .seg_expert_format import columns
     if is_expert(retailer):
-        return ()
+        return columns(get_seg_product_line(product_line))
+    if retailer is None:
+        return tuple(dict.fromkeys((*legacy.get_seg_format_columns(product_line),
+                                    *columns(get_seg_product_line(product_line)))))
     return legacy.get_seg_format_columns(product_line, retailer)
 
 

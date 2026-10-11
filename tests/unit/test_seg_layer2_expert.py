@@ -23,10 +23,10 @@ class ExpertLayer2Tests(unittest.TestCase):
                   'seg_ldy': {'ldy_capacity', 'ldy_loading_type'}, DRYER: {'capacity', 'loading_type'}}
         for key, fields in extras.items():
             self.assertEqual(common | fields, set(config.get_seg_null_columns(key, 'expert')))
-            self.assertEqual((), config.get_seg_format_columns(key, 'Expert'))
+            self.assertIn('product_url', config.get_seg_format_columns(key, 'Expert'))
         self.assertNotIn(DRYER, seg_retail.SEG_SOURCE_CONFIG)
-        self.assertNotIn('Expert', seg.SEG_FORMAT_SOURCE_CONFIG['seg_tv']['retailers'])
-        self.assertNotIn('seg_ldy_dryer_retail', formats.VALID_TABLES_FORMAT)
+        self.assertIn('Expert', seg.SEG_FORMAT_SOURCE_CONFIG['seg_tv']['retailers'])
+        self.assertIn('seg_ldy_dryer_retail', formats.VALID_TABLES_FORMAT)
         self.assertIn(config.resolve_seg_table(DRYER), nulls.VALID_TABLES_UPDATE)
         self.assertIn(config.resolve_seg_table(DRYER), edits.VALID_TABLES_UPDATE)
 
@@ -112,7 +112,8 @@ class ExpertLayer2Tests(unittest.TestCase):
         self.assertEqual((None, 'expert', 'I1'), seg.fetch_review_record(cursor, DAY, DRYER, 1, 'capacity'))
         self.assertNotIn('page_type', cursor.calls[0][0])
         self.assertIn('AND FALSE', config.record_scope(config.get_seg_source(DRYER), '2026-10-10'))
-        self.assertEqual((), seg.get_review_allowed_columns(DRYER, 'expert', 'format_check'))
+        self.assertEqual(config.get_seg_format_columns(DRYER, 'expert'),
+                         seg.get_review_allowed_columns(DRYER, 'expert', 'format_check'))
 
     def test_dryer_evidence_and_history_keep_full_product_name(self):
         with patch.object(null_review_evidence, 'load_evidence', return_value=[]) as load:

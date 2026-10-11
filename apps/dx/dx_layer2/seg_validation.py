@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 import re
 from apps.common import seg_tv_format
+from . import seg_expert_format
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import uses_new_policy
@@ -214,6 +215,8 @@ def _missing(value):
 
 def evaluate_format_row(row, product_line, retailer):
     """Return SEG format errors for populated fields only."""
+    if is_expert(retailer):
+        return seg_expert_format.evaluate(row, get_seg_product_line(product_line))
     fields = set(get_seg_format_columns(product_line, retailer))
     retailer_key = str(retailer or '').strip().casefold()
     errors = seg_tv_format.evaluate(row, get_seg_product_line(product_line), retailer)
@@ -425,6 +428,8 @@ _FORMAT_RULE_DETAILS = {
 
 
 def get_format_rule_details(product_line, retailer):
+    if is_expert(retailer):
+        return seg_expert_format.rule_details(get_seg_product_line(product_line))
     text_rules = seg_tv_format.rule_details(get_seg_product_line(product_line), retailer)
     text_fields = {rule['field'] for rule in text_rules}
     rules = [
@@ -565,6 +570,9 @@ def append_null_stats(cursor, target_date, validation, category=None):
 def append_format_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEG_FORMAT_SOURCE_CONFIG.items():
+        retailers = active_retailers(source, target_date)
+        if not retailers:
+            continue
         if category and category != source['section_code']:
             continue
         retailer_rows = []
@@ -575,7 +583,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
             cursor, target_date, product_line, 'format_check'
         )
 
-        for retailer in source['retailers']:
+        for retailer in retailers:
             rows, mapping = _latest_rows(cursor, target_date, source, retailer)
             issue_count = sum(
                 1
@@ -682,7 +690,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
 def format_detail(cursor, target_date, table, retailer, days=3):
     product_line = product_line_for(table)
     source = SEG_FORMAT_SOURCE_CONFIG.get(product_line)
-    if not source or retailer not in source['retailers']:
+    if not source or retailer not in active_retailers(source, target_date):
         return {
             'results': [], 'column_names': [], 'editable_cols': [],
             'actual_table': '', 'field_counts': {},

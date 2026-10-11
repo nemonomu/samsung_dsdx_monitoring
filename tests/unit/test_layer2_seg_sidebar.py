@@ -69,7 +69,7 @@ class Layer2SegSidebarTests(unittest.TestCase):
                 for child in seg_parent['children']
             ],
         )
-        self.assertNotIn('seg_ldy_dryer_retail', [c['detail_code'] for c in groups[1]['items'][1]['children']])
+        self.assertIn('seg_ldy_dryer_retail', [c['detail_code'] for c in groups[1]['items'][1]['children']])
         self.assertEqual('seg_ldy_dryer_retail', groups[2]['items'][1]['children'][-1]['detail_code'])
 
 

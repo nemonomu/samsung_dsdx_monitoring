@@ -304,8 +304,6 @@ def build_sidebar_groups(section, focus=''):
         items = section_items[section_name]
         seg_children = []
         for child in SEG_RETAIL_SIDEBAR_CHILDREN:
-            if section_name == 'format_validation' and child['detail_code'] == 'seg_ldy_dryer_retail':
-                continue
             if child['detail_code'] not in active_categories:
                 continue
             child_item = dict(child)

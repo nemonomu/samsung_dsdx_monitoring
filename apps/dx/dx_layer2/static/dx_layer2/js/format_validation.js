@@ -52,7 +52,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
-    const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
         || isSeaRetail || isSielRetail || isSegRetail || isSedaRetail
@@ -180,7 +180,13 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     // Item/쿼리 섹션 (retail만)
     if (isRetail) {
         const items = [...new Set(filteredRecords.map(r => r.item).filter(Boolean))].sort();
-        if (isSedaRetail) {
+        if (isSegRetail && String(modalState.retailer || '').toLowerCase() === 'expert') {
+            const query = _buildNullRetailDisplayQuery(
+                fieldName, data, filteredRecords, date, currentDays,
+                modalState.retailer || '', false
+            );
+            itemQueryHtml += `<div class="query-box"><div class="item-copy-header"><span>${currentDays}일치 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div><pre class="query-content">${_escapeTseSqlHtml(query)}</pre></div>`;
+        } else if (isSedaRetail) {
             const query = (data.field_queries || {})[fieldName] || '';
             const escaped = query.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             itemQueryHtml += `<div class="query-box"><div class="item-copy-header"><span>${currentDays}일치 조회 SQL · 데이터일 ${data.source_date}</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div><pre class="query-content">${escaped}</pre></div>`;
