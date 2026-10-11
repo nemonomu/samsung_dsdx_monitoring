@@ -9,6 +9,9 @@
     }
 
     function source(country, product) {
+        if (country === 'SEG' && product === 'LDY_DRYER') {
+            return { table: 'dx_seg.dx_seg_ldy_dryer_retail', dateColumn: 'crawl_datetime' };
+        }
         if (!['SEA', 'SEDA', 'SIEL', 'SEG', 'TSE', 'SEM'].includes(country) ||
                 !['TV', 'REF', 'LDY'].includes(product)) return null;
         var key = product.toLowerCase();
@@ -30,6 +33,7 @@
         var batchFilter = batches.length === 1 ? '= ' + literal(batches[0])
             : 'IN (' + batches.map(literal).join(', ') + ')';
         var accountName = retailer;
+        if (country === 'SEG' && accountName === 'Expert') accountName = 'expert';
         // SEDA cards display "Casas Bahia"; the collected account is CasasBahia.
         if (country === 'SEDA' && accountName === 'Casas Bahia') {
             accountName = 'CasasBahia';

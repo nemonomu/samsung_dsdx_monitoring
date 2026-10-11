@@ -37,6 +37,12 @@ context.window = context;
 vm.runInNewContext(fs.readFileSync(base + 'retail-query.js', 'utf8'), context);
 vm.runInNewContext(fs.readFileSync(base + 'retail-status.js', 'utf8'), context);
 const query = context.L1.retailQuery;
+const dryerSql = query.buildQuery('SEG', 'LDY_DRYER', 'Expert', 'e20261011_105243', '2026-10-11');
+assert(dryerSql.includes('FROM dx_seg.dx_seg_ldy_dryer_retail\n'));
+assert(dryerSql.includes("account_name = 'expert'"));
+assert(dryerSql.includes("crawl_datetime >= '2026-10-11'"));
+assert(!dryerSql.includes('page_type'));
+assert.strictEqual(query.buildQuery('SEA', 'LDY_DRYER', 'Expert', 'e1', '2026-10-11'), '');
 assert.strictEqual(query.buildQuery('SEA', 'REF', 'Lowes', 'l_260921_184541', '2026-09-21'),
     "SELECT *\nFROM public.ref_retail_com\nWHERE crawl_strdatetime >= '2026-09-21'\n" +
     "  AND account_name = 'Lowes'\n  AND batch_id = 'l_260921_184541'\nORDER BY item, crawl_strdatetime;");

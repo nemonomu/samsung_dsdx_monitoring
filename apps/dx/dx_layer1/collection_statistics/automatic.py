@@ -5,6 +5,7 @@ from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS
 from .collector import refresh_country
 from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUMNS
 
 
 def history_range(country, last_due):
@@ -13,7 +14,9 @@ def history_range(country, last_due):
         source_date__range=(start, end)).values_list('source_date', 'rows')
         if not any(row.get('bsr') is None for row in rows)
         and (country != 'SEA' or not costco.enabled(day)
-             or {r['product'] for r in rows if r['retailer'] == 'Costco'} == {'TV', 'REF', 'LDY'})}
+             or {r['product'] for r in rows if r['retailer'] == 'Costco'} == {'TV', 'REF', 'LDY'})
+        and (country != 'SEG' or day < EXPERT_START_DATE
+             or {r['product'] for r in rows if r['retailer'] == 'Expert'} == set(EXPERT_COLUMNS))}
     # Most recent missing history first, so the default page becomes useful early.
     day = end
     while day >= start and day in stored:

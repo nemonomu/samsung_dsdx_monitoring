@@ -4,7 +4,8 @@ from datetime import timedelta
 from apps.common.db import dx_connection
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
-from apps.dx.dx_layer4.collection_status.email_registry import _retailer
+from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
+from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS, EXPERT_START_DATE
 from apps.dx.dx_layer1.retail import costco
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
@@ -36,6 +37,14 @@ def _sources():
     for source in EMAIL_REPORT_SOURCES:
         if source['country'] == 'SEA':
             yield {**source, 'retailers': (*source['retailers'], _retailer('Costco'))}
+        elif source['country'] == 'SEG':
+            yield {**source, 'retailers': (*source['retailers'], _retailer('Expert'))}
+            if source['product'] == 'LDY':
+                yield _source(
+                    'seg_ldy_dryer', 'SEG', 'LDY_DRYER',
+                    'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'text',
+                    (_retailer('Expert'),), has_page_type=False, collection_scope='all',
+                )
         else:
             yield source
 
@@ -52,6 +61,9 @@ def query_spec(source, retailer, columns, start, end):
     """Only registry/configuration identifiers enter SQL; filter values are bound."""
     home_depot = source['key'] in ('sea_ref', 'sea_ldy') and retailer['name'] == 'HomeDepot'
     is_costco = source['country'] == 'SEA' and retailer['name'] == 'Costco'
+    is_expert = source['country'] == 'SEG' and retailer['name'] == 'Expert'
+    if is_expert:
+        start = max(start, EXPERT_START_DATE)
     col = 'source.' + source['date_column']
     if is_costco:
         # SEA TV's shared report date is batch_id; Costco uses its UTC crawl time.
@@ -74,7 +86,7 @@ def query_spec(source, retailer, columns, start, end):
         clauses.append('COALESCE(source.redirect, FALSE) IS NOT TRUE')
     if home_depot:
         clauses.append(f"({day}) >= '2026-09-20'")
-    main_scope = source['has_page_type'] and source['collection_scope'] == 'main' and not (home_depot or is_costco)
+    main_scope = source['has_page_type'] and source['collection_scope'] == 'main' and not (home_depot or is_costco or is_expert)
     ctes = [f"scoped AS (SELECT source.*, ({day}) AS stats_day FROM {source['table_name']} source WHERE {' AND '.join(clauses)})"]
     master_sku = source['key'] == 'sea_tv' and 'sku' in columns and not is_costco
     if master_sku:
@@ -118,7 +130,9 @@ def daily_counts(country, product, retailer_name, end, days):
         cursor.execute("SET LOCAL statement_timeout = '20s'")
         # A selection must not fail because an unrelated retailer lacks settings.
         selected = {**source, 'retailers': tuple(r for r in source['retailers'] if r['name'] == retailer_name)}
-        retailers = ([{**selected['retailers'][0],
+        retailers = ([{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]
+                     if country == 'SEG' and retailer_name == 'Expert' else
+                     [{**selected['retailers'][0],
                        'columns': costco.COLUMNS[product.lower()]}]
                      if country == 'SEA' and retailer_name == 'Costco'
                      else _configured_retailers(cursor, selected))
@@ -136,6 +150,7 @@ def daily_counts(country, product, retailer_name, end, days):
                                 'counts': {c: int(v) for c, v in zip(columns, values[2:])}}
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
+            'active_from': str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert' else None,
             'columns': columns, 'dates': dates,
             'daily': [{'date': day, **by_day.get(day, {'total': 0, 'counts': {c: 0 for c in columns}})} for day in dates],
             'sku_from_master': source['key'] == 'sea_tv' and retailer_name != 'Costco'}

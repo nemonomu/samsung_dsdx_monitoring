@@ -40,3 +40,11 @@ assert(!html.includes('300.0'));
 assert(fs.readFileSync('apps/dx/dx_layer1/templates/dx_layer1_dashboard.html', 'utf8')
     .includes('dx_layer1/js/seg_retail.js'));
 console.log('Layer1 SEG renderer tests passed.');
+const expertHtml = render({name: 'SEG Retail', status: 'OK', categories:
+    ['TV', 'REF', 'LDY', 'LDY_DRYER'].map(category => ({category, status: 'OK',
+        retailers: [{retailer: 'Expert', batch_id: 'e20261011_105243',
+            main_count: 300, bsr_count: 100, raw_count: category === 'REF' ? 400 : 300, status: 'OK'}]}))
+}, 3);
+assert.strictEqual((expertHtml.match(/Expert/g) || []).length, 4);
+assert(expertHtml.indexOf('>LDY<') < expertHtml.indexOf('>LDY_DRYER<'));
+assert.strictEqual((expertHtml.match(/전체 조회 SQL/g) || []).length, 4);

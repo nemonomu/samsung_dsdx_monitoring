@@ -4,10 +4,11 @@ from datetime import date, datetime, timedelta, timezone
 
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seg_retail import (
-    SEG_CHECK_TYPE, SEG_HISTORY_DAYS, SEG_SOURCE_CONFIG,
+    SEG_CHECK_TYPE, SEG_HISTORY_DAYS,
     get_seg_average, get_seg_collection_phase,
 )
 from . import seg_retail_repositories as repo
+from .sources import SEG_SOURCE_CONFIG, active_retailers
 
 
 _KST = timezone(timedelta(hours=9))
@@ -38,6 +39,9 @@ def get_layer1_stats(cursor, target_date, now=None):
     )
     categories, failed_items = [], []
     for product_line, source in SEG_SOURCE_CONFIG.items():
+        names = active_retailers(source, selected)
+        if not names:
+            continue
         mapping = resolve_monitoring_date(selected, 'SEG', product_line)
         counts = {
             row['retailer'].strip().lower(): row
@@ -49,7 +53,7 @@ def get_layer1_stats(cursor, target_date, now=None):
             cursor, product_line, mapping['source_date'], SEG_HISTORY_DAYS,
         )
         retailers = []
-        for name in source['retailers']:
+        for name in names:
             row = counts.get(name.lower(), {})
             previous = [r for r in history if r['retailer'] == name.lower()]
             expected = get_seg_average([r['main_count'] for r in previous])
@@ -93,7 +97,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     return {
         'check': {
             'name': 'SEG Retail', 'check_type': SEG_CHECK_TYPE,
-            'description': 'SEG 독일 TV/REF/LDY 일일 수집 현황',
+            'description': 'SEG 독일 TV/REF/LDY/LDY_DRYER 일일 수집 현황',
             'phase': phase, 'collection_window': 'KST 07:00~12:00',
             'categories': categories, **_totals(categories),
             'inspection_date': str(selected), 'source_date': str(selected),

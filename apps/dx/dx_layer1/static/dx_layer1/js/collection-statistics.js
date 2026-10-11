@@ -4,7 +4,7 @@
     const safe = value => String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const number = value => value == null ? '—' : Number(value).toLocaleString('ko-KR', {maximumFractionDigits: 1});
     const countries = ['SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE'];
-    const products = ['TV', 'REF', 'LDY'];
+    const products = ['TV', 'REF', 'LDY', 'LDY_DRYER'];
     let data = null, controller = null, requestId = 0;
 
     function shiftDate(value, days) {

@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE')
 OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0}
@@ -21,12 +22,14 @@ def normalize_check(check, country, inspection_date):
     rows = []
     for category in check.get('categories', []):
         product = str(category.get('name') or category.get('category', '')).upper()
-        if product not in ('TV', 'REF', 'LDY'):
+        if product not in ('TV', 'REF', 'LDY') and not (country == 'SEG' and product == 'LDY_DRYER'):
             continue
         slots = category.get('time_slots') or [{'name': 'daily', 'retailers': category.get('retailers', [])}]
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
+                if country == 'SEG' and name == 'Expert' and source_day < EXPERT_START_DATE:
+                    continue
                 if country == 'SEA' and name == 'Costco' and not costco.enabled(source_day):
                     continue
                 if country == 'SEA' and name == 'HomeDepot' and source_day < date(2026, 9, 20):
@@ -49,7 +52,8 @@ def normalize_check(check, country, inspection_date):
                     'verification_state': verification,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
-                    'active_from': (str(costco.FIRST_SOURCE_DATE) if country == 'SEA' and name == 'Costco'
+                    'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                                    else str(costco.FIRST_SOURCE_DATE) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
     return sorted(rows, key=row_key)

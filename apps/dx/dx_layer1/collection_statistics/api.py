@@ -31,7 +31,7 @@ def weekly(request):
         country = request.GET.get('country', 'SEA')
         product = request.GET.get('product', 'ALL')
         retailer = request.GET.get('retailer', '')
-        if country not in (*COUNTRIES, 'ALL') or product not in ('ALL', 'TV', 'REF', 'LDY') or len(retailer) > 200:
+        if country not in (*COUNTRIES, 'ALL') or product not in ('ALL', 'TV', 'REF', 'LDY', 'LDY_DRYER') or len(retailer) > 200:
             raise ValueError('Invalid filter')
         weeks = int(request.GET.get('weeks', '8'))
         if not 1 <= weeks <= 12:

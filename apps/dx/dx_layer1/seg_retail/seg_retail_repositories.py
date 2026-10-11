@@ -3,14 +3,21 @@
 from collections.abc import Mapping
 from datetime import date
 
-from apps.common.seg_retail import get_seg_source
+from .sources import EXPERT_START_DATE, active_retailers, get_seg_source
 
 
 def latest_main_counts_query(product_line, source_date):
     source = get_seg_source(product_line)
     day = date.fromisoformat(str(source_date)).isoformat()
-    retailers = [name.lower() for name in source['retailers']]
+    retailers = [name.lower() for name in active_retailers(source, day)]
     placeholders = ', '.join(['%s'] * len(retailers))
+    has_page = source.get('has_page_type', True)
+    page_column = ', page_type' if has_page else ''
+    anchor = "LOWER(BTRIM(page_type)) = 'main'" if has_page else 'TRUE'
+    scope = "LOWER(BTRIM(rows.page_type)) IN ('main', 'bsr')" if has_page else 'TRUE'
+    if has_page and 'expert' in retailers:
+        anchor += " OR LOWER(BTRIM(account_name)) = 'expert'"
+        scope += " OR latest.retailer_key = 'expert'"
     redirect_column = ', redirect' if source['has_redirect'] else ''
     redirect_count = (
         "COUNT(*) FILTER (WHERE latest.retailer_key = 'amazon' "
@@ -19,17 +26,17 @@ def latest_main_counts_query(product_line, source_date):
     )
     query = f"""
         WITH dated_rows AS (
-            SELECT id, batch_id, account_name, page_type, main_rank, bsr_rank
+            SELECT id, batch_id, account_name{page_column}, main_rank, bsr_rank
                    {redirect_column}
             FROM {source['table_name']}
             WHERE LEFT(BTRIM({source['date_column']}), 10) = %s
-              AND LOWER(BTRIM(account_name)) IN ({placeholders})
+              AND LOWER(BTRIM(account_name)) IN ({placeholders or 'NULL'})
         ), latest_main_batches AS (
             SELECT DISTINCT ON (LOWER(BTRIM(account_name)))
                    LOWER(BTRIM(account_name)) AS retailer_key,
                    account_name, batch_id
             FROM dated_rows
-            WHERE LOWER(BTRIM(page_type)) = 'main'
+            WHERE {anchor}
             ORDER BY LOWER(BTRIM(account_name)), id DESC
         )
         SELECT latest.account_name AS retailer, latest.batch_id,
@@ -41,7 +48,7 @@ def latest_main_counts_query(product_line, source_date):
         JOIN dated_rows rows
           ON LOWER(BTRIM(rows.account_name)) = latest.retailer_key
          AND rows.batch_id IS NOT DISTINCT FROM latest.batch_id
-        WHERE LOWER(BTRIM(rows.page_type)) IN ('main', 'bsr')
+        WHERE {scope}
         GROUP BY latest.retailer_key, latest.account_name, latest.batch_id
         ORDER BY latest.retailer_key
     """
@@ -49,6 +56,8 @@ def latest_main_counts_query(product_line, source_date):
 
 
 def get_latest_main_batch_counts(cursor, product_line, source_date):
+    if not active_retailers(get_seg_source(product_line), source_date):
+        return []
     query, params = latest_main_counts_query(product_line, source_date)
     cursor.execute(query, params)
     fields = ('retailer', 'batch_id', 'actual_count', 'main_count',
@@ -65,23 +74,40 @@ def get_latest_main_batch_counts(cursor, product_line, source_date):
 def get_previous_main_counts(cursor, product_line, source_date, limit=7):
     source = get_seg_source(product_line)
     day = date.fromisoformat(str(source_date)).isoformat()
-    retailers = [name.lower() for name in source['retailers']]
+    retailers = [name.lower() for name in active_retailers(source, day)]
+    if not retailers:
+        return []
     placeholders = ', '.join(['%s'] * len(retailers))
+    date_column = source['date_column']
+    has_page = source.get('has_page_type', True)
+    page_column = "LOWER(BTRIM(page_type)) AS page_type," if has_page else ''
+    anchor = "page_type = 'main'" if has_page else 'TRUE'
+    scope = "page_type IN ('main', 'bsr')" if has_page else 'TRUE'
+    expert_date_scope = ''
+    if 'expert' in retailers:
+        if has_page:
+            anchor += " OR retailer = 'expert'"
+            scope += " OR retailer = 'expert'"
+        expert_date_scope = (
+            "AND (LOWER(BTRIM(account_name)) <> 'expert' OR "
+            f"LEFT(BTRIM({date_column}), 10) >= '{EXPERT_START_DATE.isoformat()}')"
+        )
     cursor.execute(f"""
         WITH dated_rows AS (
             SELECT id, batch_id, LOWER(BTRIM(account_name)) AS retailer,
-                   LOWER(BTRIM(page_type)) AS page_type, main_rank,
-                   LEFT(BTRIM(crawl_strdatetime), 10) AS source_date
+                   {page_column} main_rank,
+                   LEFT(BTRIM({date_column}), 10) AS source_date
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM(crawl_strdatetime), 10) < %s
-              AND LEFT(BTRIM(crawl_strdatetime), 10)
+            WHERE LEFT(BTRIM({date_column}), 10) < %s
+              AND LEFT(BTRIM({date_column}), 10)
                   ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
               AND LOWER(BTRIM(account_name)) IN ({placeholders})
+              {expert_date_scope}
         ), batch_counts AS (
             SELECT retailer, source_date, batch_id,
-                   MAX(id) FILTER (WHERE page_type = 'main') AS latest_main_id,
+                   MAX(id) FILTER (WHERE {anchor}) AS latest_main_id,
                    COUNT(main_rank) FILTER (
-                       WHERE page_type IN ('main', 'bsr')
+                       WHERE {scope}
                    ) AS main_count
             FROM dated_rows
             GROUP BY retailer, source_date, batch_id

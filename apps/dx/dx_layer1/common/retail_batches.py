@@ -22,7 +22,7 @@ def _source(check_type, product_line):
         from apps.common.siel_retail import get_siel_source
         return get_siel_source(product_line)
     if check_type == 'seg_retail':
-        from apps.common.seg_retail import get_seg_source
+        from apps.dx.dx_layer1.seg_retail.sources import get_seg_source
         return get_seg_source(product_line)
     if check_type == 'sem_retail':
         from apps.common.sem_retail import get_sem_source
@@ -135,6 +135,8 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
     all_batches = check_type == 'retail' and source['product_key'] == 'tv' and not is_costco
     appliance = check_type == 'retail' and source['product_key'] != 'tv'
     main_anchor = check_type in {'siel_retail', 'seg_retail', 'seda_retail'} or (appliance and key not in ('homedepot', 'costco'))
+    if check_type == 'seg_retail' and key == 'expert':
+        main_anchor = False
     page = "LOWER(BTRIM(CAST(page_type AS TEXT)))"
     anchor = f"{page} = 'main'" if main_anchor else 'TRUE'
     page_scope = f"{page} IN ('main', 'bsr')" if main_anchor else 'TRUE'
@@ -185,6 +187,8 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         # Copy-only raw lookup: keep values and date columns directly readable.
         query_params = [str(source_date),
                         'CasasBahia' if check_type == 'seda_retail' and retailer == 'Casas Bahia' else retailer]
+        if check_type == 'seg_retail' and key == 'expert':
+            query_params[1] = 'expert'
         batch_filter = 'batch_id IS NULL' if row['batch_id'] is None else 'batch_id = %s'
         if row['batch_id'] is not None:
             query_params.append(row['batch_id'])
