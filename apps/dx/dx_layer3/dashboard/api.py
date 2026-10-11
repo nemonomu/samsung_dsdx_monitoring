@@ -349,10 +349,10 @@ def layer_stats(request):
             # anchor batch와 같은 batch의 MAIN+BSR만 검증한다.
             if run_crossfield:
                 sea_product_lines = (
-                    ['sea_ref', 'sea_ldy']
+                    ['sea_ref', 'sea_ldy', 'sea_ldy_dryer']
                     if product_line == 'all'
                     else [product_line]
-                    if product_line in ('sea_ref', 'sea_ldy')
+                    if product_line in ('sea_ref', 'sea_ldy', 'sea_ldy_dryer')
                     else []
                 )
                 for sea_product_line in sea_product_lines:

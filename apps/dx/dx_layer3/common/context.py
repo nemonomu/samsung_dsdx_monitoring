@@ -54,6 +54,9 @@ def _get_sidebar_items():
         'sea_ldy_retail': {
             'name': 'SEA LDY', 'label': 'LDY', 'detail_code': 'sea_ldy',
         },
+        'sea_ldy_dryer_retail': {
+            'name': 'SEA LDY_DRYER', 'label': 'LDY_DRYER', 'detail_code': 'sea_ldy_dryer',
+        },
     }
     tse_section_codes = {
         source['section_code'] for source in TSE_SOURCE_CONFIG.values()

@@ -103,7 +103,7 @@ assert.ok(!html.includes('offset_days='));
 assert.ok(!html.includes('batch_id:'));
 assert.ok(html.includes("this.dataset.fields, 'sea_ldy_retail'"));
 
-assert.ok(nullSource.includes("/^sea_(ref|ldy)_retail$/.test(tableParam)"));
+assert.ok(nullSource.includes("/^sea_(ref|ldy|ldy_dryer)_retail$/.test(tableParam)"));
 assert.ok(!nullSource.includes('WITH latest_batches'));
 assert.ok(nullSource.includes('data.source_date || date'));
 assert.ok(nullSource.includes('data.actual_table'));

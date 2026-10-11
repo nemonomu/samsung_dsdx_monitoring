@@ -29,10 +29,10 @@ assert(nullValidation.includes('(isSeaRetail || isSielRetail || isSegRetail)'));
 assert(common.includes('var pageSize = detailViewState.pageSize || 100'));
 assert(common.includes('e.shiftKey && detailViewState.reviewAnchorCell'));
 assert(template.includes(
-    "dx_layer2/js/null_validation.js' %}?v=20261011-seg-expert-sql"
+    "dx_layer2/js/null_validation.js' %}?v=20261011-costco-dryer"
 ));
 assert(template.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20260921-seda-duplicate1"
+    "dx_layer2/js/dashboard.js' %}?v=20261011-costco-dryer"
 ));
 
 console.log('Layer2 SEG NULL frontend tests passed.');

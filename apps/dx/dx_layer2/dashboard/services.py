@@ -26,6 +26,7 @@ NULL_REVIEW_TABLES = {
     'tv_retail': 'tv_retail',
     'sea_ref_retail': 'sea_ref_retail',
     'sea_ldy_retail': 'sea_ldy_retail',
+    'sea_ldy_dryer_retail': 'sea_ldy_dryer_retail',
     **{
         f'{country}_{product}_retail': f'{country}_{product}_retail'
         for country in ('seda', 'sem', 'siel', 'tse', 'seg')

@@ -41,7 +41,7 @@ def cross_field_detail(request):
     is_sem = product_line_key in ('sem_tv', 'sem_ref', 'sem_ldy')
     is_siel = product_line_key in ('siel_tv', 'siel_ref', 'siel_ldy')
     is_seg = product_line_key in ('seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer')
-    is_sea = product_line_key in ('sea_ref', 'sea_ldy')
+    is_sea = product_line_key in ('sea_ref', 'sea_ldy', 'sea_ldy_dryer')
 
     # product_line을 section으로 변환
     section_map = {'tv': 'tv_retail', 'hhp': 'hhp_retail'}

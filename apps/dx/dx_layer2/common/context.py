@@ -60,6 +60,7 @@ SEA_RETAIL_SIDEBAR_CHILDREN = (
         'label': 'LDY',
         'detail_code': 'sea_ldy_retail',
     },
+    {'name': 'SEA LDY_DRYER', 'label': 'LDY_DRYER', 'detail_code': 'sea_ldy_dryer_retail'},
 )
 SEA_RETAIL_CATEGORIES = {
     child['detail_code'] for child in SEA_RETAIL_SIDEBAR_CHILDREN
@@ -107,6 +108,7 @@ DISPLAY_NAME_OVERRIDES = {
     'tv_retail': 'SEA TV',
     'sea_ref_retail': 'SEA REF',
     'sea_ldy_retail': 'SEA LDY',
+    'sea_ldy_dryer_retail': 'SEA LDY_DRYER',
     'siel_tv_retail': 'SIEL TV',
     'siel_ref_retail': 'SIEL REF',
     'siel_ldy_retail': 'SIEL LDY',
@@ -126,6 +128,7 @@ def _legacy_display_order(category):
         'tv_retail': 0,
         'sea_ref_retail': 1,
         'sea_ldy_retail': 2,
+        'sea_ldy_dryer_retail': 2.5,
         'siel_tv_retail': 3,
         'siel_ref_retail': 4,
         'siel_ldy_retail': 5,
@@ -154,7 +157,7 @@ def get_sidebar_items():
     ]
     return {
         'null': items,
-        'format': items,
+        'format': [item for item in items if item['key'] != 'sea_ldy_dryer_retail'],
         'anomaly': items,
     }
 
@@ -190,6 +193,8 @@ def build_sidebar_groups(section, focus=''):
                 sea_children = []
                 for child in SEA_RETAIL_SIDEBAR_CHILDREN:
                     detail_code = child['detail_code']
+                    if detail_code == 'sea_ldy_dryer_retail' and sec == 'format_validation':
+                        continue
                     child_info = config.get(detail_code)
                     if child_info is None:
                         continue

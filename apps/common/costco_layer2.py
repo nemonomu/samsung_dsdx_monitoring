@@ -9,7 +9,8 @@ COMMON = ('country', 'account_name', 'item', 'retailer_sku_name',
           'product_url', 'final_sku_price', *METRICS)
 NULL_COLUMNS = {'tv': (*COMMON, 'screen_size'),
                 'ref': (*COMMON, 'sku', 'ref_capacity'),
-                'ldy': (*COMMON, 'sku', 'ldy_capacity')}
+                'ldy': (*COMMON, 'sku', 'ldy_capacity'),
+                'ldy_dryer': (*COMMON, 'capacity')}
 FORMAT_COMMON = ('account_name', 'country', 'calendar_week', *METRICS, *PRICES)
 FORMAT_COLUMNS = {
     'tv': (*FORMAT_COMMON, 'screen_size'),
@@ -22,19 +23,26 @@ def is_costco(retailer):
     return str(retailer or '').strip().casefold() == 'costco'
 
 
-def sources(registry):
-    return {key: {**source, 'retailers': tuple(dict.fromkeys((*source['retailers'], 'Costco')))}
+def dryer_source():
+    return {**costco.DRYER_SOURCE, 'backup_table': None}
+
+
+def sources(registry, *, include_dryer=False):
+    result = {key: {**source, 'retailers': tuple(dict.fromkeys((*source['retailers'], 'Costco')))}
             for key, source in registry.items()}
+    if include_dryer:
+        result['ldy_dryer'] = dryer_source()
+    return result
 
 
 def tv_source(registry):
     return {**registry['tv'], 'retailers': ('Costco',), 'latest_main_batch': True}
 
 
-def source_date_sql(column, alias='', retailer=None, account_column=None):
+def source_date_sql(column, alias='', retailer=None, account_column=None, product=''):
     prefix = f'{alias}.' if alias else ''
     day = costco.source_date_sql(prefix + column)
-    day = f"CASE WHEN {day} >= '{costco.FIRST_SOURCE_DATE}' THEN {day} END"
+    day = f"CASE WHEN {day} >= '{costco.first_source_date(product)}' THEN {day} END"
     if is_costco(retailer):
         return f'({day})'
     legacy = sea_layer2.source_date_sql(column, alias, retailer, account_column)
@@ -70,7 +78,7 @@ def annotate_source_date(row, retailer=None, *, display_kst=False):
 
 
 def display_columns(product, column):
-    date_column = 'crawl_datetime' if product == 'tv' else 'crawl_strdatetime'
+    date_column = 'crawl_datetime' if product in ('tv', 'ldy_dryer') else 'crawl_strdatetime'
     # Always retain all three ratings and all three prices for a NULL review.
     return list(dict.fromkeys(('id', date_column, 'item', 'retailer_sku_name',
                                column, *METRICS, *PRICES, 'product_url')))

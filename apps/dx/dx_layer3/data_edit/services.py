@@ -61,6 +61,7 @@ VALID_TABLES_UPDATE = {
     'public.tv_retail_com',
     'ref_retail_com', 'ldy_retail_com',
     'public.ref_retail_com', 'public.ldy_retail_com',
+    'public.ldy_dryer_retail',
     'youtube_collection_logs', 'youtube_videos', 'youtube_comments',
     'market_trend', 'market_comp_product', 'market_comp_event', 'openai_forecast_results',
 } - DISABLED_SOURCE_TABLES
@@ -101,6 +102,8 @@ def _is_sem_table(table_name):
 
 
 def _get_sea_edit_context(table_name):
+    if table_name == 'public.ldy_dryer_retail':
+        return costco_layer2.dryer_source()
     if table_name == 'public.tv_retail_com':
         return SEA_RETAIL_SOURCES['tv']
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
@@ -178,9 +181,9 @@ def _select_sea_record(
     )
     table_name = source['table_name']
     date_column = source['date_column']
-    if table_name == 'public.tv_retail_com':
-        day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco')
-        anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer='Costco')
+    if table_name in ('public.tv_retail_com', 'public.ldy_dryer_retail'):
+        day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco', product=source['product_key'])
+        anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer='Costco', product=source['product_key'])
         cursor.execute(f"""SELECT {select_columns} FROM {table_name} source
             WHERE source.id = %s AND LOWER(TRIM(source.account_name)) = 'costco'
               AND {day} = %s

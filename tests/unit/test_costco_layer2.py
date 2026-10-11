@@ -12,13 +12,16 @@ from tests.unit import test_layer2_sea_data_edit as edit_tests
 from tests.unit import test_null_review_evidence as evidence_tests
 
 
+LEGACY_NULL_COLUMNS = {key: policy.NULL_COLUMNS[key] for key in ('tv', 'ref', 'ldy')}
+
+
 class CostcoLayer2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         stubs = common_stubs()
         rows = db_rows()
         sample = rows[0]
-        for product, fields in policy.NULL_COLUMNS.items():
+        for product, fields in LEGACY_NULL_COLUMNS.items():
             rows.extend(dict(sample, table_name=f'public.{product}_retail_com',
                              check_name=f'costco_{product}', group_display_name='Costco',
                              date_column='crawl_datetime' if product == 'tv' else 'crawl_strdatetime',
@@ -33,7 +36,7 @@ class CostcoLayer2Tests(unittest.TestCase):
 
     def test_exact_null_columns_and_all_prices_ratings_visible(self):
         config = self.null.load_null_check_config()
-        for product, fields in policy.NULL_COLUMNS.items():
+        for product, fields in LEGACY_NULL_COLUMNS.items():
             category = 'tv_retail' if product == 'tv' else f'sea_{product}_retail'
             self.assertEqual(set(fields), set(config[category]['checks']['costco']['columns']))
             self.assertEqual(10 if product == 'tv' else 11, len(fields))
@@ -52,7 +55,7 @@ class CostcoLayer2Tests(unittest.TestCase):
         self.assertIn("'2026-10-04'", sql)
 
     def test_latest_batch_null_scope_includes_unranked_rows(self):
-        for product in policy.NULL_COLUMNS:
+        for product in LEGACY_NULL_COLUMNS:
             source = self.null._get_sea_null_source_for_table(f'public.{product}_retail_com')
             cursor = ScriptedCursor([{'fetchone': ('batch-2',)}])
             self.assertEqual('batch-2', self.null._get_sea_null_anchor_batch(cursor, source, '2026-10-05', 'Costco'))
@@ -87,7 +90,7 @@ class CostcoLayer2Tests(unittest.TestCase):
     def test_all_null_fields_and_price_fields_can_be_edited_with_audit(self):
         registry = {key: dict(source, product_line='tv' if key == 'tv' else 'sea_' + key)
                     for key, source in self.null.SEA_RETAIL_SOURCES.items()}
-        for product, fields in policy.NULL_COLUMNS.items():
+        for product, fields in LEGACY_NULL_COLUMNS.items():
             for field in set((*fields, *policy.PRICES)):
                 cursor = ScriptedCursor([{'fetchone': (None, 'Costco', '123')}, {}, {}])
                 with patch.object(self.edit, 'SEA_RETAIL_SOURCES', registry), patch.object(
@@ -107,7 +110,7 @@ class CostcoLayer2Tests(unittest.TestCase):
         self.assertEqual(1, len(cursor.calls))
 
     def test_rating_detail_returns_all_three_null_fields_and_prices(self):
-        for product in policy.NULL_COLUMNS:
+        for product in LEGACY_NULL_COLUMNS:
             date_col = 'crawl_datetime' if product == 'tv' else 'crawl_strdatetime'
             record = dict(id=42, account_name='Costco', item='123', retailer_sku_name='Product',
                           batch_id='b', **{date_col: '2026-10-04T16:00:00+00:00'},

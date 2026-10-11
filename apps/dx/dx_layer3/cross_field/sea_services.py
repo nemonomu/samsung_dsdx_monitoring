@@ -49,6 +49,7 @@ SEA_PRODUCT_KEYS = {
     'sea_tv': 'tv',
     'sea_ref': 'ref',
     'sea_ldy': 'ldy',
+    'sea_ldy_dryer': 'ldy_dryer',
 }
 
 HOMEDEPOT_RULE_KEYS = frozenset({
@@ -250,6 +251,8 @@ def normalize_sea_product_line(value):
 
 def _source_for_product_line(product_line):
     key = normalize_sea_product_line(product_line)
+    if key == 'sea_ldy_dryer':
+        return costco_layer2.dryer_source()
     return get_sea_retail_source(SEA_PRODUCT_KEYS[key])
 
 
@@ -462,7 +465,7 @@ def _rows_as_dicts(cursor):
 def _resolve_rule_key(rule):
     for candidate in (rule.get('validation_type'), rule.get('detail_code')):
         key = str(candidate or '').strip().lower()
-        for prefix in ('sea_ref_', 'sea_ldy_', 'sea_'):
+        for prefix in ('sea_ldy_dryer_', 'sea_ref_', 'sea_ldy_', 'sea_'):
             if key.startswith(prefix):
                 key = key[len(prefix):]
                 break
@@ -526,7 +529,7 @@ def load_active_sea_rules(cursor, product_line):
 
         spec = SEA_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
-        if key == 'sea_tv' and not costco_layer2.is_costco(configured_retailer):
+        if key in ('sea_tv', 'sea_ldy_dryer') and not costco_layer2.is_costco(configured_retailer):
             continue
         if (
             configured_retailer.upper() != 'ALL'
@@ -545,6 +548,8 @@ def load_active_sea_rules(cursor, product_line):
         for field_group in configured_fields + list(spec['display_fields']):
             for field in str(field_group or '').split('|'):
                 field = field.strip()
+                if key == 'sea_ldy_dryer' and field not in costco_layer2.costco.COLUMNS['ldy_dryer']:
+                    continue
                 if field and field not in display_fields:
                     display_fields.append(field)
 
@@ -603,9 +608,9 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
     end_date = end_contract['source_date']
     table_name = source['table_name']
     date_column = source['date_column']
-    if normalize_sea_product_line(product_line) == 'sea_tv':
-        day = costco_layer2.source_date_sql(date_column, retailer='Costco')
-        source_day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco')
+    if normalize_sea_product_line(product_line) in ('sea_tv', 'sea_ldy_dryer'):
+        day = costco_layer2.source_date_sql(date_column, retailer='Costco', product=source['product_key'])
+        source_day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco', product=source['product_key'])
         cursor.execute(f"""
             WITH latest AS (
                 SELECT DISTINCT ON ({day}) {day} AS source_date, batch_id
@@ -703,7 +708,7 @@ def build_sea_crossfield_result(
     )
     rows, page_exclusions = exclude_page_absent_records(
         cursor, inspection_date, rows, table_name=source['table_name'],
-        country='SEA', product_line=key.rsplit('_', 1)[-1],
+        country='SEA', product_line=source['category'],
     )
     rule_ids = [
         rule_id
@@ -885,6 +890,8 @@ def build_sea_display_query(
     for field_group in (*spec['display_fields'], *str(rule.get('select_fields') or '').split('|'), date_column, 'product_url'):
         for column in str(field_group or '').split('|'):
             column = column.strip()
+            if key == 'sea_ldy_dryer' and column not in costco_layer2.costco.COLUMNS['ldy_dryer']:
+                continue
             if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
                 select_columns.append(column)
     select_sql = ',\n'.join(f'    {column}' for column in select_columns)
@@ -963,7 +970,7 @@ def build_sea_display_query(
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
     if retailer_values and all(costco_layer2.is_costco(value) for value in retailer_values):
-        day = costco_layer2.source_date_sql(date_column, retailer='Costco')
+        day = costco_layer2.source_date_sql(date_column, retailer='Costco', product=source['product_key'])
         return (f"SELECT\n{select_sql}\nFROM {source['table_name']}\n"
                 f"WHERE {day} BETWEEN '{start_date}' AND '{end_date}'{scope_sql}\n"
                 f"ORDER BY item, {date_column};")

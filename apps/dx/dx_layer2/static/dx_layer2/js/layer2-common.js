@@ -1946,6 +1946,8 @@ async function openRuleModal(tableName, retailer) {
         'sea_ref_retail': 'ref_retail_com',
         'SEA LDY': 'ldy_retail_com',
         'sea_ldy_retail': 'ldy_retail_com',
+        'SEA LDY_DRYER': 'public.ldy_dryer_retail',
+        'sea_ldy_dryer_retail': 'public.ldy_dryer_retail',
         'SIEL TV': 'siel_tv',
         'siel_tv_retail': 'siel_tv',
         'SIEL REF': 'siel_ref',

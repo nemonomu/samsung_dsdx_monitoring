@@ -16,6 +16,7 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
     'tv_retail',
     'sea_ref_retail',
     'sea_ldy_retail',
+    'sea_ldy_dryer_retail',
     'tse_tv_retail',
     'tse_ref_retail',
     'tse_ldy_retail',
@@ -221,9 +222,15 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
 
     const accountName = _retailSqlAccountName(data, records, retailer,
         /^dx_seda\./.test(tableName));
+    const isCostcoDryer = tableName === 'public.ldy_dryer_retail';
+    const dateExpression = isCostcoDryer
+        ? `TO_CHAR(NULLIF(BTRIM(CAST(${dateColumn} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`
+        : dateColumn;
+    const historyStart = _tseHistoryStartDate(sourceDate, days);
+    const startDate = isCostcoDryer && historyStart < '2026-10-09' ? '2026-10-09' : historyStart;
     const where = [
-        `${dateColumn} >= ${_tseSqlLiteral(_tseHistoryStartDate(sourceDate, days))}`,
-        `${dateColumn} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
+        `${dateExpression} >= ${_tseSqlLiteral(startDate)}`,
+        `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
         `account_name = ${_tseSqlLiteral(accountName)}`
     ];
     if (days === 1 && data.batch_id != null && data.batch_id !== '') {
@@ -256,6 +263,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEA TV' ? 'tv_retail' :
                        tableName === 'SEA REF' ? 'sea_ref_retail' :
                        tableName === 'SEA LDY' ? 'sea_ldy_retail' :
+                       tableName === 'SEA LDY_DRYER' ? 'sea_ldy_dryer_retail' :
                        tableName === 'SEDA TV' ? 'seda_tv_retail' :
                        tableName === 'SEDA REF' ? 'seda_ref_retail' :
                        tableName === 'SEDA LDY' ? 'seda_ldy_retail' :
@@ -488,7 +496,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const date = data.date || getSelectedDate();
     const supportsReview = data.supports_null_auto_review === true;
     const isSeaTv = tableParam === 'tv_retail';
-    const isSeaAppliance = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isSeaAppliance = /^sea_(ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSeaRetail = isSeaTv || isSeaAppliance;
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
@@ -627,7 +635,9 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     modalState.retailer || '', isSedaRetail);
                 const batchFilter = historyDays === 1 && data.batch_id != null && data.batch_id !== ''
                     ? `\n  AND batch_id = ${_tseSqlLiteral(data.batch_id)}` : '';
-                const query3Days = `SELECT *\nFROM ${tblName}\nWHERE ${dateColumn} >= '${historyStartDate}'\n  AND ${dateColumn} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(accountName)}${batchFilter}\n  AND item IN (${inClause})\nORDER BY item, ${dateColumn};`;
+                const query3Days = tblName === 'public.ldy_dryer_retail'
+                    ? _buildNullRetailDisplayQuery(fieldName, data, records, date, historyDays, retailerName, false)
+                    : `SELECT *\nFROM ${tblName}\nWHERE ${dateColumn} >= '${historyStartDate}'\n  AND ${dateColumn} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(accountName)}${batchFilter}\n  AND item IN (${inClause})\nORDER BY item, ${dateColumn};`;
                 const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;

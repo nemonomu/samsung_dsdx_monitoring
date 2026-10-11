@@ -43,7 +43,7 @@ except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
 
-SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
+SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES), include_dryer=True)
 
 try:
     from apps.common.siel_retail import (
@@ -58,6 +58,7 @@ except (ImportError, AttributeError):
 SEA_DUPLICATE_SECTION_BY_PRODUCT = {
     'ref': 'sea_ref_retail',
     'ldy': 'sea_ldy_retail',
+    'ldy_dryer': 'sea_ldy_dryer_retail',
 }
 SEA_DUPLICATE_PRODUCT_BY_SECTION = {
     section_code: product_key
@@ -136,7 +137,7 @@ for _sea_product_key, _sea_section_code in (
         continue
     _DUP_TABLE_CONFIG[_sea_section_code] = {
         'actual': _sea_source['table_name'],
-        'dup_keys': 'page_type, item',
+        'dup_keys': 'item' if _sea_product_key == 'ldy_dryer' else 'page_type, item',
         'date_col': _sea_source['date_column'],
         'use_period': False,
         'retailer_col': 'account_name',
@@ -191,11 +192,11 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
     """Fetch the latest SEA appliance batch using each retailer's date/page policy."""
     if is_homedepot(retailer_value) and not homedepot_source_enabled(source_date):
         return []
-    if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):
+    if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date, source['product_key']):
         return []
     canonical_table = source['table_name']
     date_column = source['date_column']
-    date_sql = source_date_sql(date_column, 'source', retailer_value)
+    date_sql = source_date_sql(date_column, 'source', retailer_value, product=source['product_key'])
     select_columns = [
         'id', 'batch_id', 'country', 'account_name', 'page_type', 'item',
         'sku', 'retailer_sku_name', 'final_sku_price', date_column,
@@ -203,6 +204,9 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
     ]
     if source['product_key'] == 'tv':
         select_columns.remove('sku')
+    if source['product_key'] == 'ldy_dryer':
+        select_columns.remove('page_type')
+    order_columns = 'source.item, source.id' if is_costco(retailer_value) else 'UPPER(TRIM(source.page_type)), source.item, source.id'
     # Keep the one-row anchor out of the per-product nested loop. Inlining it
     # made PostgreSQL repeat the same latest-batch scan hundreds of times.
     cursor.execute(f"""
@@ -231,7 +235,7 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
           )
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
           AND {page_scope_sql('source', retailer=retailer_value)}
-        ORDER BY UPPER(TRIM(source.page_type)), source.item, source.id
+        ORDER BY {order_columns}
     """, (
         str(source_date), retailer_value,
         str(source_date), retailer_value,
@@ -364,7 +368,7 @@ def _get_sea_anomaly_detail(
         'editable_cols': [],
         'actual_table': source['table_name'],
         'backup_table': source['backup_table'],
-        'readonly': False,
+        'readonly': product_key == 'ldy_dryer',
         'results': {
             'duplicates': groups[offset:offset + page_size],
             'total_groups': total_groups,
@@ -392,13 +396,15 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                 target_date, 'SEA', source['source_key']
             )
             source_date = date.fromisoformat(date_mapping['source_date'])
+            if product_key == 'ldy_dryer' and not costco_layer2.costco.enabled(source_date, product_key):
+                continue
             retailer_rows = []
             table_records = 0
             table_issues = 0
             for retailer_value in source.get('retailers', ()):
                 if product_key == 'tv' and not is_costco(retailer_value):
                     continue
-                if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):
+                if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date, source['product_key']):
                     continue
                 rows = _fetch_sea_duplicate_rows(
                     cursor, source_date, source, retailer_value
@@ -430,7 +436,7 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                 'total_records': table_records,
                 'total_issues': table_issues,
                 'duplicate_groups': table_issues,
-                'duplicate_keys': ['page_type + item'],
+                'duplicate_keys': ['item'] if product_key == 'ldy_dryer' else ['page_type + item'],
                 'status': get_status(table_issues),
                 'retailers': retailer_rows,
                 'inspection_date': date_mapping['inspection_date'],
@@ -1546,6 +1552,8 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
     import json as json_mod
     from datetime import datetime
 
+    if table == 'sea_ldy_dryer_retail':
+        return {'success': False, 'error': '건조기 중복 검증은 조회만 지원합니다.', 'status': 403}
     cfg = _DUP_TABLE_CONFIG[table]
     actual_table = cfg['actual']
     dup_keys = cfg['dup_keys'] or 'keyword_id'
