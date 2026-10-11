@@ -31,7 +31,7 @@ def get_collection_status(target_date, now=None):
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
                 if row['count']:
                     row['status'] = 'received'
-                    if retailer == 'Costco' and row['bsr_count'] != 100:
+                    if retailer == 'Costco' and product.upper() != 'TV' and row['bsr_count'] != 100:
                         row['status'] = 'abnormal' if costco.complete(target_date, current) else 'partial'
                 elif retailer == 'Costco' and costco.complete(target_date, current):
                     row['status'] = 'uncollected'

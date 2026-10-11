@@ -95,11 +95,14 @@ def tiered_bsr(row, country):
 
 
 def variable_bsr(row, country):
-    return tiered_bsr(row, country) or (
+    return (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
+            and str(row['product']).upper() == 'TV') or tiered_bsr(row, country) or (
         country == 'SEM' and str(row['retailer']).strip().casefold() in ('homedepot', 'coppel'))
 
 
 def exact_bsr(row, country):
+    if country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco' and str(row['product']).upper() == 'TV':
+        return False
     return (country, str(row['retailer']).strip().casefold()) in {
         ('SEA', 'costco'), ('SEG', 'expert')}
 

@@ -18,6 +18,25 @@ def connection():
 
 
 class DryerTests(unittest.TestCase):
+    def test_costco_tv_has_no_fixed_100_bsr_target(self):
+        for count in (50, 99, 100, 101):
+            self.assertTrue(svc._meets_retailer_criteria(
+                {'count': 300, 'main': 300, 'bsr': count}, svc._retailer_criteria('TV', 'Costco')))
+            row = dict(product='TV', retailer='Costco', slot='daily', main=300,
+                       bsr=count, total=300, complete=True, base_status='OK')
+            self.assertFalse(calc.exact_bsr(row, 'SEA'))
+            result = calc.compare_rows([row], [], 'SEA')[0]
+            self.assertFalse(any(a['metric'] == 'bsr' for a in result['alerts']))
+            self.assertNotEqual('fixed_100', calc.comparison_rules(result, 'SEA').get('bsr', {}).get('rule'))
+            with patch.object(dday, 'dx_connection', connection), patch.object(
+                    dday, 'fetch_collection', return_value=(300, None, 'batch', 300, count)):
+                rows = dday.get_collection_status(date(2026, 10, 11), datetime(2026, 10, 11, 16, tzinfo=KST))['retailers']
+            tv = next(r for r in rows if r['product'] == 'TV' and r['retailer'] == 'Costco')
+            self.assertEqual('received', tv['status'])
+        for product in ('REF', 'LDY', 'LDY_DRYER'):
+            self.assertEqual(100, svc._retailer_criteria(product, 'Costco')['bsr_exact'])
+        self.assertTrue(calc.exact_bsr({'product': 'TV', 'retailer': 'Expert'}, 'SEG'))
+
     def test_source_scope_counts_start_and_date(self):
         self.assertNotIn('ldy_dryer', SEA_RETAIL_SOURCES)
         source = svc._get_layer1_source('LDY_DRYER')

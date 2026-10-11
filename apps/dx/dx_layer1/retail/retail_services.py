@@ -142,7 +142,7 @@ def _retailer_criteria(category, retailer):
     if retailer.lower() == 'costco':
         # Receipt only here; the shared five-day observation/median policy
         # evaluates volume through collection-statistics snapshots.
-        return {'total_min': 1, 'bsr_exact': 100}
+        return {'total_min': 1} if category.upper() == 'TV' else {'total_min': 1, 'bsr_exact': 100}
     if category.upper() in ('REF', 'LDY') and retailer.lower() == 'homedepot':
         return None
 
