@@ -266,7 +266,7 @@ const LAYER3_CROSSFIELD_SIDEBAR_REGIONS = [
     { name: 'SEA Retail', detailCodes: ['tv', 'sea_ref', 'sea_ldy'] },
     { name: 'SEDA Retail', detailCodes: ['seda_tv', 'seda_ref', 'seda_ldy'] },
     { name: 'SIEL Retail', detailCodes: ['siel_tv', 'siel_ref', 'siel_ldy'] },
-    { name: 'SEG Retail', detailCodes: ['seg_tv', 'seg_ref', 'seg_ldy'] },
+    { name: 'SEG Retail', detailCodes: ['seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer'] },
     { name: 'SEM Retail', detailCodes: ['sem_tv', 'sem_ref', 'sem_ldy'] },
     { name: 'TSE Retail', detailCodes: ['tse_tv', 'tse_ref', 'tse_ldy'] }
 ];
@@ -636,7 +636,7 @@ function renderData(data) {
                 || /^SEA (REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^SEDA (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^SIEL (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
-                || /^SEG (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
+                || /^SEG (TV|REF|LDY|LDY_DRYER) 논리적 일관성$/.test(check.name || '')
                 || /^SEM (TV|REF|LDY) 논리적 일관성$/.test(check.name || '')
                 || /^TSE (TV|REF|LDY) 논리적 일관성$/.test(check.name || '');
             const rulesBtn = hasRules ? `<button class="btn-rules" onclick="event.stopPropagation(); showRulesModal('${escJs(check.name)}')">검증 규칙</button>` : '';
@@ -697,7 +697,7 @@ function renderData(data) {
                     regionGroups.seda.push(check);
                 } else if (/^siel_(tv|ref|ldy)$/.test(detailCode)) {
                     regionGroups.siel.push(check);
-                } else if (/^seg_(tv|ref|ldy)$/.test(detailCode)) {
+                } else if (/^seg_(tv|ref|ldy|ldy_dryer)$/.test(detailCode)) {
                     regionGroups.seg.push(check);
                 } else if (/^sem_(tv|ref|ldy)$/.test(detailCode)) {
                     regionGroups.sem.push(check);
@@ -767,7 +767,7 @@ function renderData(data) {
                         <div class="crossfield-region-children" id="${groupId}">
                             ${groupChecks.map(check => {
                                 const detailCode = String(check.detail_code || '').toLowerCase();
-                                const label = detailCode === 'tv' || detailCode === 'seda_tv' || detailCode === 'siel_tv' || detailCode === 'seg_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'
+                                const label = detailCode === 'seg_ldy_dryer' ? 'LDY_DRYER' : detailCode === 'tv' || detailCode === 'seda_tv' || detailCode === 'siel_tv' || detailCode === 'seg_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'
                                     ? 'TV'
                                     : (detailCode === 'sea_ref' || detailCode === 'seda_ref' || detailCode === 'siel_ref' || detailCode === 'seg_ref' || detailCode === 'sem_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
                                 return renderCheckItem(check, label);
@@ -885,6 +885,7 @@ async function showDetail(category, checkName, detailCode) {
             else if (detailCode === 'siel_ldy' || checkName.includes('SIEL LDY')) type = 'siel_ldy';
             else if (detailCode === 'seg_tv' || checkName.includes('SEG TV')) type = 'seg_tv';
             else if (detailCode === 'seg_ref' || checkName.includes('SEG REF')) type = 'seg_ref';
+            else if (detailCode === 'seg_ldy_dryer' || checkName.includes('SEG LDY_DRYER')) type = 'seg_ldy_dryer';
             else if (detailCode === 'seg_ldy' || checkName.includes('SEG LDY')) type = 'seg_ldy';
             else if (detailCode === 'sem_tv' || checkName.includes('SEM TV')) type = 'sem_tv';
             else if (detailCode === 'sem_ref' || checkName.includes('SEM REF')) type = 'sem_ref';
@@ -1572,7 +1573,7 @@ async function showRulesModal(checkName) {
     const crossfieldChecks = ['TV 논리적 일관성', 'HHP 논리적 일관성', 'TV Sentiment↔리뷰 일관성', 'HHP Sentiment↔리뷰 일관성'];
     const isSeaCrossfield = /^SEA (REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isSielCrossfield = /^SIEL (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
-    const isSegCrossfield = /^SEG (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
+    const isSegCrossfield = /^SEG (TV|REF|LDY|LDY_DRYER) 논리적 일관성$/.test(checkName || '');
     const isSedaCrossfield = /^SEDA (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isSemCrossfield = /^SEM (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
@@ -1601,6 +1602,8 @@ async function showRulesModal(checkName) {
             category = 'seg_tv_retail';
         } else if (checkName.includes('SEG REF')) {
             category = 'seg_ref_retail';
+        } else if (checkName.includes('SEG LDY_DRYER')) {
+            category = 'seg_ldy_dryer_retail';
         } else if (checkName.includes('SEG LDY')) {
             category = 'seg_ldy_retail';
         } else if (checkName.includes('SEM TV')) {

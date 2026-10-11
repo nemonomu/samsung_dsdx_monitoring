@@ -11,6 +11,10 @@ const cases = [
     ['seg_tv_retail', 'SEG', 'dx_seg.tv_retail_com', 'crawl_datetime', 'OTTO'],
     ['sem_tv_retail', 'SEM', 'dx_sem.tv_retail_com', 'crawl_datetime', 'HomeDepot'],
     ['tse_tv_retail', 'TSE', 'dx_tse.tv_retail_com', 'crawl_datetime', 'Homepro'],
+    ['seg_tv_retail', 'SEG', 'dx_seg.dx_seg_tv_retail_com', 'crawl_strdatetime', 'expert'],
+    ['seg_ref_retail', 'SEG', 'dx_seg.dx_seg_ref_retail_com', 'crawl_strdatetime', 'expert'],
+    ['seg_ldy_retail', 'SEG', 'dx_seg.dx_seg_ldy_retail_com', 'crawl_strdatetime', 'expert'],
+    ['seg_ldy_dryer_retail', 'SEG', 'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'expert'],
 ];
 
 function setup(tableParam, country, table, dateColumn, retailer) {

@@ -10,7 +10,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.siel_retail import SIEL_SOURCE_CONFIG
-from apps.common.seg_retail import SEG_SOURCE_CONFIG
+from apps.dx.dx_layer3.cross_field.seg_sources import SEG_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG

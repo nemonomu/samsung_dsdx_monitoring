@@ -89,8 +89,8 @@ class Layer3TseSidebarContextTests(unittest.TestCase):
                     'apps.common.siel_retail',
                     SIEL_SOURCE_CONFIG=SIEL_SOURCE_CONFIG,
                 ),
-                'apps.common.seg_retail': module_stub(
-                    'apps.common.seg_retail',
+                'apps.dx.dx_layer3.cross_field.seg_sources': module_stub(
+                    'apps.dx.dx_layer3.cross_field.seg_sources',
                     SEG_SOURCE_CONFIG=SEG_SOURCE_CONFIG,
                 ),
                 'apps.common.sem_retail': module_stub(

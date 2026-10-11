@@ -7,20 +7,21 @@ the exact SEG inspection-day/latest-MAIN-batch scope.
 
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 import re
 
 from apps.common.crossfield_history import build_detail_history
 from apps.common import amazon_review_history
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
-from apps.common.seg_retail import (
+from apps.common.seg_retail import get_seg_collection_phase
+from .seg_sources import (
     SEG_RETAILERS,
     display_seg_retailer,
     get_seg_crossfield_editable_columns,
-    get_seg_collection_phase,
     get_seg_source,
     normalize_seg_product_line,
+    EXPERT_START_DATE, record_scope,
 )
 
 
@@ -39,7 +40,7 @@ SEG_RULE_SPECS = OrderedDict((
     ('rating_count_presence', {
         'guide_description': (
             '별점이 0보다 큰데 별점 수를 숫자로 읽을 수 없거나, 두 값이 숫자일 때 한쪽만 0이면 이상입니다. '
-            'Mediamarkt·OTTO는 별점과 리뷰 수의 0 여부도 비교합니다.'
+            'Mediamarkt·OTTO·Expert는 별점과 리뷰 수의 0 여부도 비교합니다.'
         ),
         'detail_name': '별점과 별점 수 존재 일치',
         'field1': 'star_rating',
@@ -99,7 +100,7 @@ SEG_RULE_SPECS = OrderedDict((
         'guide_description': (
             '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다. Amazon은 원가가 0보다 크고 계산 할인율이 '
             '0.5% 이상일 때만 누락으로 판정합니다. 표시된 할인율과 계산값의 일치는 검사하지 않습니다. Mediamarkt는 원가가 0보다 크고 할인율이 '
-            '10% 이하이면 제외합니다.'
+            '10% 이하이면 제외합니다. Expert는 두 가격이 숫자인데 savings가 없으면 할인 폭과 관계없이 검수합니다.'
         ),
         'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
@@ -109,7 +110,7 @@ SEG_RULE_SPECS = OrderedDict((
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            '할인 가격인데 savings가 없습니다. Amazon은 계산 할인율 0.5% 이상, Mediamarkt는 10% 초과일 때 검사합니다.'
+            '할인 가격인데 savings가 없습니다. Amazon은 계산 할인율 0.5% 이상, Mediamarkt는 10% 초과일 때 검사합니다. Expert는 두 가격이 있으면 할인율 누락을 검사합니다.'
         ),
     }),
     ('original_missing', {
@@ -145,6 +146,14 @@ SEG_RULE_SPECS = OrderedDict((
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
         'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'star_rating'),
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
+    }),
+    ('savings_rate_match', {
+        'detail_name': 'Expert 계산 할인율과 표시 할인율 일치',
+        'guide_description': '원가가 0보다 클 때 (원가-판매가)/원가×100의 소수점 버림값과 표시 할인율을 비교합니다. 값이 없거나 숫자로 해석할 수 없으면 이 비교에서 제외합니다.',
+        'field1': 'savings', 'field2': 'final_sku_price|original_sku_price',
+        'retailers': ('Expert',),
+        'display_fields': ('final_sku_price', 'original_sku_price', 'savings'),
+        'error_message': '표시 할인율이 가격으로 계산한 할인율의 정수 버림값과 다릅니다.',
     }),
     ('review_body_count', {
         'guide_description': (
@@ -191,7 +200,7 @@ _DISPLAY_QUERY_COLUMNS = {
     'sku', 'retailer_sku_name', 'main_rank', 'bsr_rank',
     'count_of_reviews', 'count_of_star_ratings', 'star_rating',
     'final_sku_price', 'original_sku_price', 'savings',
-    'crawl_strdatetime', 'batch_id', 'product_url',
+    'crawl_strdatetime', 'crawl_datetime', 'batch_id', 'product_url',
     'detailed_review_content',
 }
 
@@ -251,7 +260,7 @@ def evaluate_seg_row(row):
                 errors.add('rating_count_presence')
         elif (rating == 0) != (star_count == 0):
             errors.add('rating_count_presence')
-        if retailer in SEG_EQUAL_REVIEW_RETAILERS and review_count is not None:
+        if retailer in (*SEG_EQUAL_REVIEW_RETAILERS, 'Expert') and review_count is not None:
             if (rating == 0) != (review_count == 0):
                 errors.add('rating_count_presence')
         if retailer == 'Amazon' and (rating < 0 or rating > 5):
@@ -259,7 +268,7 @@ def evaluate_seg_row(row):
     elif retailer == 'Amazon' and _has_value(row.get('star_rating')) and not allowed_no_review:
         errors.add('rating_range')
 
-    if retailer in SEG_EQUAL_REVIEW_RETAILERS:
+    if retailer in (*SEG_EQUAL_REVIEW_RETAILERS, 'Expert'):
         if review_count is not None and star_count is not None and review_count != star_count:
             errors.add('review_count_match')
 
@@ -284,6 +293,16 @@ def evaluate_seg_row(row):
     original_price = parse_seg_money(row.get('original_sku_price'))
 
     if final_price is not None and original_price is not None:
+        if retailer == 'Expert':
+            if not savings_present:
+                errors.add('savings_missing')
+            elif original_price > 0:
+                text = str(row.get('savings')).strip()
+                if re.fullmatch(r'[+-]?\d+(?:[.,]\d+)?\s*%', text):
+                    displayed = Decimal(text.rstrip('%').strip().replace(',', '.'))
+                    expected = ((original_price - final_price) * 100 / original_price).quantize(Decimal('1'), rounding=ROUND_FLOOR)
+                    if displayed != expected:
+                        errors.add('savings_rate_match')
         if final_price >= original_price:
             errors.add('final_original_price')
         if original_price > final_price and not savings_present:
@@ -427,7 +446,7 @@ def _rows_as_dicts(cursor):
 def _resolve_rule_key(rule):
     for candidate in (rule.get('validation_type'), rule.get('detail_code')):
         key = str(candidate or '').strip().lower()
-        for prefix in ('seg_tv_', 'seg_ref_', 'seg_ldy_', 'seg_'):
+        for prefix in ('seg_ldy_dryer_', 'seg_tv_', 'seg_ref_', 'seg_ldy_', 'seg_'):
             if key.startswith(prefix):
                 key = key[len(prefix):]
                 break
@@ -438,6 +457,11 @@ def _resolve_rule_key(rule):
 
 
 def _retailer_supported(rule_key, retailer):
+    if display_seg_retailer(retailer) == 'Expert':
+        return rule_key in {
+            'rating_count_presence', 'review_count_match', 'final_original_price',
+            'savings_missing', 'original_missing', 'final_missing', 'savings_rate_match',
+        }
     supported = SEG_RULE_SPECS[rule_key]['retailers']
     retailer_key = str(retailer or '').strip().casefold()
     return retailer_key in {value.casefold() for value in supported}
@@ -565,6 +589,8 @@ def load_latest_seg_rows(
     start_contract = _date_contract(from_date or inspection_date, source)
     start_date = start_contract['source_date']
     end_date = end_contract['source_date']
+    if key == 'seg_ldy_dryer' and end_date < str(EXPERT_START_DATE):
+        return []
     table_name = source['table_name']
     date_column = source['date_column']
     source_date_sql = (
@@ -613,6 +639,10 @@ def load_latest_seg_rows(
         "OR source.redirect IS NOT TRUE)"
         if source.get('has_redirect') and review_items is None else ''
     )
+    expert_start_scope = (
+        "AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))) <> 'expert' "
+        f"OR {source_date_sql} >= '{EXPERT_START_DATE}')"
+    )
     cursor.execute(f"""
         WITH main_batches AS (
             SELECT
@@ -626,7 +656,8 @@ def load_latest_seg_rows(
               AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
               AND LOWER(BTRIM(CAST(source.account_name AS TEXT)))
                   IN ({retailers_sql})
-              AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'
+              {record_scope(source, end_date, anchor=True)}
+              {expert_start_scope}
               {redirect_scope}
             GROUP BY {source_date_sql}, source.account_name, source.batch_id
         ), ranked_batches AS (
@@ -649,7 +680,8 @@ def load_latest_seg_rows(
         WHERE {source_date_sql} >= %s
           AND {source_date_sql} <= %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
-          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {record_scope(source, end_date)}
+          {expert_start_scope}
           {redirect_scope}
           {item_scope}
         ORDER BY {order_sql}
@@ -719,7 +751,7 @@ def build_seg_crossfield_result(
             if str(start_day) <= _detail_row_source_date(row, source['date_column']) <= str(inspection_date)]
     rows, page_exclusions = exclude_page_absent_records(
         cursor, inspection_date, rows, table_name=source['table_name'],
-        country='SEG', product_line=key.rsplit('_', 1)[-1],
+        country='SEG', product_line=source['category'],
     )
     comparison_data = load_seg_review_history(cursor, start_day, key, rows) if needs_previous else []
     previous_rows = _previous_body_rows(comparison_data + rows, source['date_column']) if needs_previous else {}
@@ -946,7 +978,7 @@ def build_seg_display_query(
 
     pair_values = sorted({
         (
-            str(pair[0]).strip(),
+            'expert' if str(pair[0]).strip().casefold() == 'expert' else str(pair[0]).strip(),
             None if pair[1] is None or str(pair[1]) == '' else str(pair[1]),
         )
         for pair in (retailer_item_pairs or [])
@@ -958,7 +990,7 @@ def build_seg_display_query(
     )
     retailer_values.extend(pair[0] for pair in pair_values)
     retailer_values = sorted({
-        str(value).strip() for value in retailer_values
+        'expert' if str(value).strip().casefold() == 'expert' else str(value).strip() for value in retailer_values
         if str(value or '').strip()
     })
 

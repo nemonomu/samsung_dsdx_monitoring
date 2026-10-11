@@ -102,7 +102,7 @@ function _cfUsesEqualReviewCounts(productLine, retailer) {
     const account = String(retailer || '').trim().toLowerCase();
     return ((product === 'TV' || product.startsWith('SEA_')) && account === 'bestbuy')
         || (/^SEA_(REF|LDY)$/.test(product) && account === 'lowes')
-        || (product.startsWith('SEG_') && ['mediamarkt', 'otto'].includes(account))
+        || (product.startsWith('SEG_') && ['mediamarkt', 'otto', 'expert'].includes(account))
         || (product.startsWith('SEDA_') && account.replace(/\s/g, '') === 'casasbahia')
         || (product.startsWith('TSE_') && account === 'homepro')
         || (product.startsWith('SEM_') && ['liverpool', 'homedepot'].includes(account));
