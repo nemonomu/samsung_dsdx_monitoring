@@ -39,6 +39,8 @@ SOURCE_PRODUCT_BY_KEY = {
 # Layer 1-only source: do not add it to the shared all-layer source catalog.
 SOURCE_COUNTRY_BY_KEY['seg_ldy_dryer'] = 'SEG'
 SOURCE_PRODUCT_BY_KEY['seg_ldy_dryer'] = 'LDY_DRYER'
+SOURCE_COUNTRY_BY_KEY['sea_ldy_dryer'] = 'SEA'
+SOURCE_PRODUCT_BY_KEY['sea_ldy_dryer'] = 'LDY_DRYER'
 
 _ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 

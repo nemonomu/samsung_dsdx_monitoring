@@ -5,7 +5,8 @@
 var SEA_RETAIL_PRODUCTS = [
     { key: 'tv', category: 'TV', retailers: ['Amazon', 'Bestbuy', 'Walmart', 'Costco'] },
     { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] },
-    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] }
+    { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] },
+    { key: 'ldy_dryer', category: 'LDY_DRYER', retailers: ['Costco'] }
 ];
 var seaRetailSummaryCache = {};
 var seaRetailSummaryDate = '';
@@ -490,6 +491,7 @@ function openColumnsModal() {
             '<button class="columns-tab active" onclick="switchColumnsTab(\'tv\')">TV</button>' +
             '<button class="columns-tab" onclick="switchColumnsTab(\'ref\')">REF</button>' +
             '<button class="columns-tab" onclick="switchColumnsTab(\'ldy\')">LDY</button>' +
+            '<button class="columns-tab" onclick="switchColumnsTab(\'ldy_dryer\')">LDY_DRYER</button>' +
         '</div>' +
         '<div class="columns-table-wrapper"><table class="columns-table" id="columnsTable"><thead id="columnsTableHead"></thead><tbody id="columnsTableBody"></tbody></table></div>'
     );
@@ -596,7 +598,9 @@ async function loadSeaRetailSummaries(inspectionDate) {
     currentRetailSummary = null;
     currentNullData = null;
 
-    var results = await Promise.all(SEA_RETAIL_PRODUCTS.map(async function(product) {
+    var results = await Promise.all(SEA_RETAIL_PRODUCTS.filter(product =>
+        product.key !== 'ldy_dryer' || selectedInspectionDate >= '2026-10-10'
+    ).map(async function(product) {
         var url = '/dx/layer1/retail/api/summary/?type=' + encodeURIComponent(product.key) +
             '&date=' + encodeURIComponent(selectedInspectionDate);
         try {

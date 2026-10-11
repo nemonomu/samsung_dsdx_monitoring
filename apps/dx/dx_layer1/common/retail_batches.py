@@ -13,8 +13,8 @@ RETAIL_CHECK_TYPES = frozenset({
 def _source(check_type, product_line):
     # Resolve identifiers through the existing fixed source registries.
     if check_type == 'retail':
-        from apps.common.sea_retail import get_sea_retail_source
-        return get_sea_retail_source(product_line)
+        from apps.dx.dx_layer1.retail.retail_services import _get_layer1_source
+        return _get_layer1_source(product_line)
     if check_type == 'seda_retail':
         from apps.common.seda_retail import get_seda_source
         return get_seda_source(product_line)

@@ -9,6 +9,9 @@
     }
 
     function source(country, product) {
+        if (country === 'SEA' && product === 'LDY_DRYER') {
+            return { table: 'public.ldy_dryer_retail', dateColumn: 'crawl_datetime' };
+        }
         if (country === 'SEG' && product === 'LDY_DRYER') {
             return { table: 'dx_seg.dx_seg_ldy_dryer_retail', dateColumn: 'crawl_datetime' };
         }
@@ -25,6 +28,7 @@
     }
 
     function buildQuery(country, product, retailer, batch, day) {
+        if (country === 'SEA' && product === 'LDY_DRYER' && retailer !== 'Costco') return '';
         var config = source(country, product);
         if (!config || !retailer || !batch || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return '';
         // SEA summaries join multiple collected batch IDs with a comma.

@@ -23,9 +23,10 @@
     }
 
     function bsrAlerts(retailer) {
-        if (isMissing(retailer) || ['observing', 'unknown'].includes(retailer.observation_state)) return [];
+        if (isMissing(retailer)) return [];
         return (retailer.volume_alerts || []).filter(function(alert) {
-            return alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status);
+            return alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status)
+                && (alert.exact || !['observing', 'unknown'].includes(retailer.observation_state));
         });
     }
 
@@ -73,7 +74,7 @@
         var items = [];
         (check.categories || []).forEach(function(cat, catIdx) {
             var product = String(cat.name || cat.category || cat.product_line || '').toUpperCase();
-            if (!['TV', 'REF', 'LDY'].includes(product)) return;
+            if (!['TV', 'REF', 'LDY', 'LDY_DRYER'].includes(product)) return;
             var retailers = (cat.retailers || []).slice();
             (cat.time_slots || []).forEach(function(slot) {
                 retailers = retailers.concat(slot.retailers || []);

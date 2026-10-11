@@ -4,7 +4,8 @@ function ddayStatusBadge(status) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
         received: ['ok', '수집 확인'], partial: ['collecting', '일부 수집'],
-        error: ['warning', '조회 실패'], uncollected: ['critical', '미수집']
+        error: ['warning', '조회 실패'], uncollected: ['critical', '미수집'],
+        abnormal: ['critical', 'BSR 이상']
     };
     const entry = styles[status] || styles.error;
     return '<span class="status-badge ' + entry[0] + '">' + entry[1] + '</span>';
@@ -16,6 +17,7 @@ function ddaySummary(rows) {
     const bsrCount = rows.reduce((total, row) => total + (Number(row.bsr_count) || 0), 0);
     const status = rows.some(row => row.status === 'error') ? 'error'
         : rows.some(row => row.status === 'uncollected') ? 'uncollected'
+        : rows.some(row => row.status === 'abnormal') ? 'abnormal'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received') ? 'partial'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';
@@ -24,7 +26,7 @@ function ddaySummary(rows) {
 
 function renderDdayCollection(data) {
     const overall = ddaySummary(data.retailers);
-    const categories = ['TV', 'REF', 'LDY'].map(function(product) {
+    const categories = ['TV', 'REF', 'LDY', 'LDY_DRYER'].map(function(product) {
         const rows = data.retailers.filter(row => row.product === product);
         if (!rows.length) return '';
         const summary = ddaySummary(rows);

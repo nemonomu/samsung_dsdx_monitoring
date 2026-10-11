@@ -14,7 +14,8 @@ def history_range(country, last_due):
         source_date__range=(start, end)).values_list('source_date', 'rows')
         if not any(row.get('bsr') is None for row in rows)
         and (country != 'SEA' or not costco.enabled(day)
-             or {r['product'] for r in rows if r['retailer'] == 'Costco'} == {'TV', 'REF', 'LDY'})
+             or {r['product'] for r in rows if r['retailer'] == 'Costco'} ==
+                ({'TV', 'REF', 'LDY', 'LDY_DRYER'} if costco.enabled(day, 'ldy_dryer') else {'TV', 'REF', 'LDY'}))
         and (country != 'SEG' or day < EXPERT_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'Expert'} == set(EXPERT_COLUMNS))}
     # Most recent missing history first, so the default page becomes useful early.

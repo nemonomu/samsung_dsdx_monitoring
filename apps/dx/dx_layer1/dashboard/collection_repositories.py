@@ -10,6 +10,7 @@ SOURCES = (
     ('Costco', 'TV', 'tv_retail_com', 'crawl_datetime'),
     ('Costco', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
     ('Costco', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
+    ('Costco', 'LDY_DRYER', 'ldy_dryer_retail', 'crawl_datetime'),
 )
 
 

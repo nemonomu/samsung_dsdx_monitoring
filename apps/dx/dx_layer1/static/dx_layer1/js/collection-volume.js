@@ -46,9 +46,9 @@
         if (!fixed && (rule.rule !== 'median_28d' || !Number.isFinite(rule.days) || rule.days < 5 || !Number.isFinite(rule.low_percent))) return null;
         const baseline = rule.baseline, change = (current - baseline) * 100;
         let status, reason;
-        if (fixed ? current < baseline : change <= -baseline * rule.low_percent) {
+        if (fixed ? (rule.exact ? current !== baseline : current < baseline) : change <= -baseline * rule.low_percent) {
             status = 'VOLUME_LOW';
-            reason = fixed ? `BSR 기준 100개 / 수집 ${current}개 / ${100 - current}개 부족`
+            reason = fixed ? `BSR 기준 100개 / 수집 ${current}개 / 기준 불일치`
                 : `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.low_percent}% 이상 감소`;
         } else if (rule.review_percent != null && change <= -baseline * rule.review_percent) {
             status = 'VOLUME_REVIEW';
@@ -58,6 +58,7 @@
             reason = `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.high_percent}% 이상 증가 / 확인 필요`;
         }
         return {status: status || 'OK', alert: status ? {metric, baseline, actual: current,
+            exact: !!rule.exact,
             percent: Math.round(change / baseline * 10) / 10, status, rule: rule.rule, reason} : null};
     }
     function decorate(data, payload, selectedDate, seaSummaries) {
@@ -108,7 +109,11 @@
                             row.verification_state = 'ready';
                             return;
                         }
-                        const decisions = ['main', 'bsr'].map(metric => compare(metric, counts[metric], saved && saved.observation_state === 'ready' && saved.rules && saved.rules[metric]));
+                        const exactBsr = (country === 'SEA' && row.retailer === 'Costco')
+                            || (country === 'SEG' && row.retailer === 'Expert');
+                        const decisions = ['main', 'bsr'].map(metric => compare(metric, counts[metric],
+                            metric === 'bsr' && exactBsr ? {rule: 'fixed_100', baseline: 100, exact: true}
+                            : saved && saved.observation_state === 'ready' && saved.rules && saved.rules[metric]));
                         row.volume_alerts = decisions.filter(Boolean).map(decision => decision.alert).filter(Boolean);
                         const ready = decisions.every(Boolean);
                         row.volume_comparison_state = ready ? 'ready' : saved ? saved.observation_state === 'observing' ? 'observing' : 'insufficient' : 'unavailable';

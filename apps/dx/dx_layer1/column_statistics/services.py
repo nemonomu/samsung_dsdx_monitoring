@@ -37,6 +37,10 @@ def _sources():
     for source in EMAIL_REPORT_SOURCES:
         if source['country'] == 'SEA':
             yield {**source, 'retailers': (*source['retailers'], _retailer('Costco'))}
+            if source['product'] == 'LDY':
+                yield _source('sea_ldy_dryer', 'SEA', 'LDY_DRYER',
+                              'public.ldy_dryer_retail', 'crawl_datetime', 'text',
+                              (_retailer('Costco'),), has_page_type=False, collection_scope='all')
         elif source['country'] == 'SEG':
             yield {**source, 'retailers': (*source['retailers'], _retailer('Expert'))}
             if source['product'] == 'LDY':
@@ -70,7 +74,7 @@ def query_spec(source, retailer, columns, start, end):
         if source['key'] == 'sea_tv':
             col = 'source.crawl_datetime'
         day = costco.source_date_sql(col)
-        start = max(start, costco.FIRST_SOURCE_DATE)
+        start = max(start, costco.first_source_date(source['product']))
     elif home_depot:
         day = appliance_source_date_sql(col)
     elif source['date_mode'] == 'batch':
@@ -150,7 +154,8 @@ def daily_counts(country, product, retailer_name, end, days):
                                 'counts': {c: int(v) for c, v in zip(columns, values[2:])}}
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
-            'active_from': str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert' else None,
+            'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
+                            else str(costco.first_source_date(product)) if country == 'SEA' and retailer_name == 'Costco' else None),
             'columns': columns, 'dates': dates,
             'daily': [{'date': day, **by_day.get(day, {'total': 0, 'counts': {c: 0 for c in columns}})} for day in dates],
             'sku_from_master': source['key'] == 'sea_tv' and retailer_name != 'Costco'}

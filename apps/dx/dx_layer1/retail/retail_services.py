@@ -26,11 +26,14 @@ LDY_LOWES_MAIN_MIN = 150
 ALLOWED_TABLES = {
     source['table_name'] for source in SEA_RETAIL_SOURCES.values()
 }
+ALLOWED_TABLES.add(costco.DRYER_SOURCE['table_name'])
 ALLOWED_DATE_FIELDS = {'crawl_datetime::timestamp', 'crawl_strdatetime'}
 ALLOWED_RANK_FIELDS = {'promotion_position'}
 
 
 def _get_layer1_source(value):
+    if str(value).lower() in ('ldy_dryer', 'sea_ldy_dryer'):
+        return costco.DRYER_SOURCE
     source = get_sea_retail_source(value)
     if source['product_key'] in ('ref', 'ldy'):
         source = {**source, 'retailers': (*source['retailers'], HOMEDEPOT)}
@@ -139,7 +142,7 @@ def _retailer_criteria(category, retailer):
     if retailer.lower() == 'costco':
         # Receipt only here; the shared five-day observation/median policy
         # evaluates volume through collection-statistics snapshots.
-        return {'total_min': 1}
+        return {'total_min': 1, 'bsr_exact': 100}
     if category.upper() in ('REF', 'LDY') and retailer.lower() == 'homedepot':
         return None
 
@@ -154,6 +157,8 @@ def _retailer_criteria(category, retailer):
 
 
 def _meets_retailer_criteria(data, criteria):
+    if 'bsr_exact' in criteria and data['bsr'] != criteria['bsr_exact']:
+        return False
     if data['count'] == 0:
         return False
     if 'main_min' in criteria or 'bsr_min' in criteria:
@@ -165,6 +170,8 @@ def _meets_retailer_criteria(data, criteria):
 
 
 def _criteria_expected(criteria):
+    if 'bsr_exact' in criteria:
+        return f"BSR = {criteria['bsr_exact']}"
     if 'main_min' in criteria or 'bsr_min' in criteria:
         return (
             f"MAIN >= {criteria.get('main_min', 0)} / "
@@ -175,6 +182,8 @@ def _criteria_expected(criteria):
 
 
 def _criteria_actual(data, criteria):
+    if 'bsr_exact' in criteria:
+        return {'main': data['main'], 'bsr': data['bsr']}
     if 'main_min' in criteria or 'bsr_min' in criteria:
         return {'main': data['main'], 'bsr': data['bsr']}
     return {'total': data['count']}
@@ -305,7 +314,7 @@ def _build_category(cursor, source, inspection_date, now):
 
     schedule_slots = _matching_schedule_slots(source, source_date, now)
     slot_retailers = _slot_retailers(source, schedule_slots)
-    if not costco.enabled(source_date):
+    if not costco.enabled(source_date, source['product_key']):
         slot_retailers = [r for r in slot_retailers if r['name'] != 'Costco']
     rows = _source_rows(
         cursor, source, source_date, slot_start, slot_end, slot_retailers,
@@ -402,7 +411,10 @@ def get_layer1_stats(cursor, target_date, now=None):
     categories = []
     failed_items = []
     contracts = []
-    for product_key in ('tv', 'ref', 'ldy'):
+    for product_key in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+        if product_key == 'ldy_dryer' and not costco.enabled(
+                _inspection_value(target_date) - timedelta(days=1), product_key):
+            continue
         category, category_failures, contract = _build_category(
             cursor,
             _get_layer1_source(product_key),
@@ -466,7 +478,7 @@ def get_layer1_stats(cursor, target_date, now=None):
 
     check = {
         'name': SECTION_TITLES['retail'],
-        'description': 'SEA 미국 TV/REF/LDY 일일 수집 현황',
+        'description': 'SEA 미국 TV/REF/LDY/LDY_DRYER 일일 수집 현황',
         'actual': total_count,
         'expected': total_expected,
         'expected_min': total_expected,
@@ -584,7 +596,7 @@ def get_retail_summary(target_date, product_line):
 
     with dx_connection() as (_conn, cursor):
         for retailer in source['retailers']:
-            if retailer == 'Costco' and not costco.enabled(source_date):
+            if retailer == 'Costco' and not costco.enabled(source_date, source['product_key']):
                 continue
             check_columns = (
                 get_retailer_columns('tv', retailer)
@@ -811,4 +823,6 @@ def get_retailer_columns_info():
             'columns': columns,
             'all_columns': sorted({c for fields in columns.values() for c in fields}),
         }
+    result['ldy_dryer'] = {'columns': {'Costco': list(costco.COLUMNS['ldy_dryer'])},
+                           'all_columns': list(costco.COLUMNS['ldy_dryer'])}
     return result

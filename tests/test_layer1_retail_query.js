@@ -43,6 +43,10 @@ assert(dryerSql.includes("account_name = 'expert'"));
 assert(dryerSql.includes("crawl_datetime >= '2026-10-11'"));
 assert(!dryerSql.includes('page_type'));
 assert.strictEqual(query.buildQuery('SEA', 'LDY_DRYER', 'Expert', 'e1', '2026-10-11'), '');
+const costcoDryerSql = query.buildQuery('SEA', 'LDY_DRYER', 'Costco', 'c11', '2026-10-11');
+assert(costcoDryerSql.includes('FROM public.ldy_dryer_retail'));
+assert(costcoDryerSql.includes("AT TIME ZONE 'Asia/Seoul'"));
+assert(!costcoDryerSql.includes('page_type'));
 assert.strictEqual(query.buildQuery('SEA', 'REF', 'Lowes', 'l_260921_184541', '2026-09-21'),
     "SELECT *\nFROM public.ref_retail_com\nWHERE crawl_strdatetime >= '2026-09-21'\n" +
     "  AND account_name = 'Lowes'\n  AND batch_id = 'l_260921_184541'\nORDER BY item, crawl_strdatetime;");

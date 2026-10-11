@@ -80,7 +80,8 @@
         if (total === 0 && (main || 0) === 0 && (bsr || 0) === 0 && !sum('collected_count')) {
             return annotate({total, main, bsr, label: '미수집', kind: 'low'});
         }
-        const alerts = active.flatMap(day => ['observing', 'unknown'].includes(day.observation_state) ? [] : day.alerts || []);
+        const alerts = active.flatMap(day => (day.alerts || []).filter(alert =>
+            alert.exact || !['observing', 'unknown'].includes(day.observation_state)));
         const bsrAlerts = alerts.filter(alert => alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status));
         const bsrLow = bsrAlerts.some(alert => alert.status === 'VOLUME_LOW');
         const bsrInfo = {

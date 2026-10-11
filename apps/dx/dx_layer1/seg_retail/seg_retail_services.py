@@ -69,6 +69,9 @@ def get_layer1_stats(cursor, target_date, now=None):
                 else 'COLLECTING' if phase == 'collecting'
                 else 'CRITICAL'
             )
+            bsr_invalid = name == 'Expert' and int(row.get('bsr_count') or 0) != 100
+            if bsr_invalid and row_phase == 'complete':
+                status = 'CRITICAL'
             retailers.append({
                 'retailer': name, 'batch_id': row.get('batch_id') or '',
                 'actual': actual, 'count': actual, 'main_count': actual,
@@ -86,8 +89,10 @@ def get_layer1_stats(cursor, target_date, now=None):
             if status == 'CRITICAL':
                 failed_items.append({
                     'source': f"SEG {source['category']} ({name})",
-                    'error_type': '수집 건수 없음', 'expected': expected,
-                    'actual': actual, 'timestamp': mapping['source_date'],
+                    'error_type': 'BSR 100건 불일치' if bsr_invalid else '수집 건수 없음',
+                    'expected': 100 if bsr_invalid else expected,
+                    'actual': int(row.get('bsr_count') or 0) if bsr_invalid else actual,
+                    'timestamp': mapping['source_date'],
                 })
         categories.append({
             'name': source['category'], 'category': source['category'],

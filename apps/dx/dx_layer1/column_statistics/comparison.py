@@ -20,7 +20,7 @@ def collection_complete(country, product, retailer, source_day, now=None):
         return False
     if country == 'SEA':
         if retailer == 'Costco':
-            return costco.complete(source_day, now)
+            return costco.enabled(source_day, product) and costco.complete(source_day, now)
         if retailer == 'HomeDepot':
             from apps.common.sea_collection import collection_schedule, homedepot_source_enabled
             return (homedepot_source_enabled(source_day)

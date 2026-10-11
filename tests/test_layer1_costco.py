@@ -55,7 +55,7 @@ class CostcoTests(SimpleTestCase):
     def test_dday_zero_received_and_error_are_distinct(self):
         for hour, minute, count, expected in [(12, 59, 0, 'scheduled'), (13, 0, 0, 'waiting'),
                                               (14, 59, 0, 'waiting'), (15, 0, 0, 'uncollected'),
-                                              (15, 1, 91, 'received')]:
+                                              (15, 1, 91, 'abnormal'), (15, 1, 100, 'received')]:
             with patch.object(dday, 'dx_connection', connection), patch.object(
                     dday, 'fetch_collection', return_value=(count, '2026-10-06 13:03:13', 'c6', count, count)):
                 result = dday.get_collection_status(date(2026, 10, 6), datetime(2026, 10, 6, hour, minute, tzinfo=KST))
@@ -158,11 +158,11 @@ class CostcoTests(SimpleTestCase):
                    for i, n in zip(range(5, 10), [90, 90, 100, 100, 900])]
         observing = calc.compare_rows([current], history[:4], 'SEA')[0]
         self.assertEqual(observing['observation_state'], 'observing')
-        self.assertEqual(observing['alerts'], [])
+        self.assertEqual([a['metric'] for a in observing['alerts']], ['bsr'])
         ready = calc.compare_rows([current], history, 'SEA')[0]
         self.assertEqual(ready['baselines']['main']['value'], 100)
-        self.assertEqual(ready['baselines']['bsr']['value'], 89)
-        self.assertEqual({a['status'] for a in ready['alerts']}, {'VOLUME_REVIEW'})
+        self.assertEqual(ready['baselines']['bsr']['value'], 100)
+        self.assertEqual({a['status'] for a in ready['alerts']}, {'VOLUME_REVIEW', 'VOLUME_LOW'})
         self.assertEqual(set(calc.comparison_rules(ready, 'SEA')), {'main', 'bsr'})
 
     def test_original_detail_uses_all_requested_columns_and_latest_batch(self):

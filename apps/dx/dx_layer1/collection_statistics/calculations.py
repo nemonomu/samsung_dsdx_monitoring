@@ -22,7 +22,7 @@ def normalize_check(check, country, inspection_date):
     rows = []
     for category in check.get('categories', []):
         product = str(category.get('name') or category.get('category', '')).upper()
-        if product not in ('TV', 'REF', 'LDY') and not (country == 'SEG' and product == 'LDY_DRYER'):
+        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG') and product == 'LDY_DRYER'):
             continue
         slots = category.get('time_slots') or [{'name': 'daily', 'retailers': category.get('retailers', [])}]
         for slot in slots:
@@ -30,7 +30,7 @@ def normalize_check(check, country, inspection_date):
                 name = retailer['retailer']
                 if country == 'SEG' and name == 'Expert' and source_day < EXPERT_START_DATE:
                     continue
-                if country == 'SEA' and name == 'Costco' and not costco.enabled(source_day):
+                if country == 'SEA' and name == 'Costco' and not costco.enabled(source_day, product):
                     continue
                 if country == 'SEA' and name == 'HomeDepot' and source_day < date(2026, 9, 20):
                     continue
@@ -53,13 +53,13 @@ def normalize_check(check, country, inspection_date):
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
                     'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
-                                    else str(costco.FIRST_SOURCE_DATE) if country == 'SEA' and name == 'Costco'
+                                    else str(costco.first_source_date(product)) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 3
+BSR_POLICY_VERSION = 4
 MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
 MAIN_REVIEW_PERCENT = 15
@@ -88,8 +88,7 @@ def remember_observation(days, rows, source_date):
 def tiered_bsr(row, country):
     retailer = str(row['retailer']).strip().casefold()
     product = row['product']
-    return ((country == 'SEA' and retailer == 'costco')
-            or (country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY'))
+    return ((country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY'))
             or (retailer == 'amazon' and product in {
                 'SEA': ('TV',), 'SIEL': ('TV', 'REF', 'LDY'), 'SEG': ('TV', 'REF'),
             }.get(country, ())))
@@ -100,6 +99,11 @@ def variable_bsr(row, country):
         country == 'SEM' and str(row['retailer']).strip().casefold() in ('homedepot', 'coppel'))
 
 
+def exact_bsr(row, country):
+    return (country, str(row['retailer']).strip().casefold()) in {
+        ('SEA', 'costco'), ('SEG', 'expert')}
+
+
 def _compare_bsr(row, history, country, *, saved_basis=None):
     """After observation, compare fixed targets or five good days of history."""
     variable = variable_bsr(row, country)
@@ -108,7 +112,7 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
         return rule, 'pending', None, None
     if all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
         return rule, 'missing', None, None
-    if row.get('observation_state') in ('observing', 'unknown'):
+    if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
         return rule, row['observation_state'], None, None
     current = row.get('bsr')
     if current is None:
@@ -136,16 +140,17 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
         baseline = 100
         basis = {'value': baseline, 'days': 0, 'rule': rule}
     threshold = 15 if tiered_bsr(row, country) else 30
-    low = ((baseline - current) * 100 >= baseline * threshold
+    low = (current != 100 if exact_bsr(row, country) else (baseline - current) * 100 >= baseline * threshold
            if variable else current < baseline)
     alert = None
     if low:
         review = tiered_bsr(row, country) and (baseline - current) * 100 < baseline * 20
         threshold = 15 if review else 20 if tiered_bsr(row, country) else 30
         alert = {'metric': 'bsr', 'baseline': baseline, 'actual': current,
+                 'exact': exact_bsr(row, country),
                  'percent': round((current - baseline) * 100 / baseline, 1),
                  'status': 'VOLUME_REVIEW' if review else 'VOLUME_LOW', 'rule': rule,
-                 'reason': (f'BSR 기준 100개 / 수집 {current}개 / {100-current}개 부족'
+                 'reason': (f'BSR 기준 100개 / 수집 {current}개 / 기준 불일치' if exact_bsr(row, country) else f'BSR 기준 100개 / 수집 {current}개 / {100-current}개 부족'
                             if not variable else
                             f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / {threshold}% 이상 감소'
                             + (' / 확인 필요' if review else ''))}
@@ -199,7 +204,7 @@ def _main_alert(current, basis):
 def comparison_rules(row, country):
     """Supply historical bases and current policy for evaluating live counts."""
     if row.get('observation_state') != 'ready':
-        return {}
+        return {'bsr': {'baseline': 100, 'days': 0, 'rule': 'fixed_100', 'exact': True}} if exact_bsr(row, country) else {}
     rules = {}
     for metric in ('main', 'bsr'):
         variable = metric == 'main' or variable_bsr(row, country)
@@ -212,6 +217,7 @@ def comparison_rules(row, country):
         else:
             basis = {'value': 100, 'days': 0, 'rule': 'fixed_100'}
         rules[metric] = {
+            'exact': metric == 'bsr' and exact_bsr(row, country),
             'baseline': basis['value'], 'days': basis['days'],
             'rule': 'median_28d' if variable else 'fixed_100',
             'low_percent': (20 if tiered_bsr(row, country) else 30) if metric == 'bsr' else MAIN_CHANGE_PERCENT,
@@ -233,6 +239,10 @@ def current_volume_decision(row, country):
         row = {**row, 'observation_state': 'ready' if proven else 'unknown'}
     result = current_bsr_decision(row, country)
     if row['observation_state'] != 'ready':
+        if exact_bsr(row, country):
+            return {**result, 'alerts': [a for a in result['alerts'] if a.get('metric') == 'bsr'],
+                    'baselines': {k: v for k, v in result['baselines'].items() if k == 'bsr'},
+                    'comparison_state': row['observation_state']}
         return {**result, 'alerts': [], 'baselines': {},
                 'comparison_state': row['observation_state']}
     alerts = [a for a in result.get('alerts', []) if a.get('metric') == 'bsr']
