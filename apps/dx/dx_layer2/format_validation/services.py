@@ -201,7 +201,7 @@ VALID_TABLES_FORMAT = {
     source['section_code'] for source in TSE_SOURCE_CONFIG.values()
 } | {
     source['section_code']
-    for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
+    for source in getattr(seg_validation, 'SEG_FORMAT_SOURCE_CONFIG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})).values()
 } | {
     source['section_code']
     for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
@@ -213,7 +213,7 @@ VALID_TABLES_RULES = {
 } | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG) | set(
     getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})
 ) | set(
-    getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})
+    getattr(seg_validation, 'SEG_FORMAT_SOURCE_CONFIG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}))
 )
 VALID_TABLES_FORMAT |= {source['section_code'] for source in seda_format_validation.SEDA_SOURCE_CONFIG.values()}
 VALID_TABLES_RULES |= set(seda_format_validation.SEDA_SOURCE_CONFIG)

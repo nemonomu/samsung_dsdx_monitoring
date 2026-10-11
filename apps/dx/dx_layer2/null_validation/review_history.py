@@ -12,7 +12,7 @@ from time import monotonic
 
 from apps.common.null_review_evidence import KOREA, POLICY_START
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
-from apps.common.seg_retail import SEG_SOURCE_CONFIG
+from apps.dx.dx_layer2.seg_sources import SEG_SOURCE_CONFIG
 from apps.common.siel_retail import SIEL_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
@@ -21,7 +21,7 @@ from apps.common.tse_retail import TSE_SOURCE_CONFIG
 
 PAGE_SIZE = 50
 COUNTRIES = ('SEA', 'SEG', 'SIEL', 'SEDA', 'SEM', 'TSE')
-PRODUCTS = ('TV', 'REF', 'LDY')
+PRODUCTS = ('TV', 'REF', 'LDY', 'LDY_DRYER')
 _HISTORY_CACHE = OrderedDict()
 _CACHE_LOCK = Lock()
 _CACHE_TTL = 60
@@ -39,8 +39,9 @@ def _sources():
         for key, source in sources.items():
             result[_table_key(source['table_name'])] = {
                 **source, 'country': country,
-                'product_line': key.rsplit('_', 1)[-1].upper(),
+                'product_line': 'LDY_DRYER' if key == 'seg_ldy_dryer' else key.rsplit('_', 1)[-1].upper(),
                 'history_category': ('tv_retail' if country == 'SEA' and key == 'tv'
+                                     else 'seg_ldy_dryer_retail' if key == 'seg_ldy_dryer'
                                      else f'{country.lower()}_{key.rsplit("_", 1)[-1]}_retail'),
             }
     return result

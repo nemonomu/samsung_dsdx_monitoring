@@ -14,6 +14,7 @@ class Layer2SegSidebarTests(unittest.TestCase):
         categories = [
             *config,
             'seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail',
+            'seg_ldy_dryer_retail',
         ]
         stubs = {
             'apps': package_stub('apps'),
@@ -61,12 +62,15 @@ class Layer2SegSidebarTests(unittest.TestCase):
                 ('TV', 'seg_tv_retail', False),
                 ('REF', 'seg_ref_retail', True),
                 ('LDY', 'seg_ldy_retail', False),
+                ('LDY_DRYER', 'seg_ldy_dryer_retail', False),
             ],
             [
                 (child['label'], child['detail_code'], child['active'])
                 for child in seg_parent['children']
             ],
         )
+        self.assertNotIn('seg_ldy_dryer_retail', [c['detail_code'] for c in groups[1]['items'][1]['children']])
+        self.assertEqual('seg_ldy_dryer_retail', groups[2]['items'][1]['children'][-1]['detail_code'])
 
 
 if __name__ == '__main__':

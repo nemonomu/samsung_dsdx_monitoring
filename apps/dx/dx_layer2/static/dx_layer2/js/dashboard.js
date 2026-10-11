@@ -12,6 +12,7 @@ const LAYER2_TABLE_DISPLAY_NAMES = {
     seg_tv_retail: 'SEG TV',
     seg_ref_retail: 'SEG REF',
     seg_ldy_retail: 'SEG LDY',
+    seg_ldy_dryer_retail: 'SEG LDY_DRYER',
     sem_tv_retail: 'SEM TV',
     sem_ref_retail: 'SEM REF',
     sem_ldy_retail: 'SEM LDY'
@@ -30,6 +31,7 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     seg_tv_retail: 6,
     seg_ref_retail: 7,
     seg_ldy_retail: 8,
+    seg_ldy_dryer_retail: 8.1,
     sem_tv_retail: 9,
     sem_ref_retail: 10,
     sem_ldy_retail: 11,
@@ -61,8 +63,8 @@ const LAYER2_NULL_TABLE_GROUPS = [
     {
         key: 'seg',
         name: 'SEG Retail',
-        description: 'SEG TV/REF/LDY NULL 검증',
-        tableCodes: ['seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail']
+        description: 'SEG TV/REF/LDY/LDY_DRYER NULL 검증',
+        tableCodes: ['seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail', 'seg_ldy_dryer_retail']
     },
     {
         key: 'sem',
@@ -829,7 +831,7 @@ function renderDXTableDetail(vType, table) {
         const isMarket = table.table === 'market';
         const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(table.table || '');
         const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(table.table || '');
-        const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(table.table || '');
+        const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
         const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(table.table || '');
         const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;

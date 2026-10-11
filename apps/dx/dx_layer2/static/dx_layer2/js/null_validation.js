@@ -24,7 +24,8 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
     'sem_ldy_retail',
     'seg_tv_retail',
     'seg_ref_retail',
-    'seg_ldy_retail'
+    'seg_ldy_retail',
+    'seg_ldy_dryer_retail'
 ]);
 const SIEL_NULL_HISTORY_TABLES = new Set([
     'siel_tv_retail',
@@ -264,6 +265,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEG TV' ? 'seg_tv_retail' :
                        tableName === 'SEG REF' ? 'seg_ref_retail' :
                        tableName === 'SEG LDY' ? 'seg_ldy_retail' :
+                       tableName === 'SEG LDY_DRYER' ? 'seg_ldy_dryer_retail' :
                        tableName === 'SEM TV' ? 'sem_tv_retail' :
                        tableName === 'SEM REF' ? 'sem_ref_retail' :
                        tableName === 'SEM LDY' ? 'sem_ldy_retail' :
@@ -490,7 +492,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSeaRetail = isSeaTv || isSeaAppliance;
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
-    const isSegRetail = /^seg_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || isSedaRetail || tableParam === 'youtube';

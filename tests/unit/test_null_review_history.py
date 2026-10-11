@@ -123,7 +123,7 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual('SEA', rows[0]['country'])
 
     def test_all_six_countries_three_products_have_allowlisted_sources(self):
-        self.assertEqual({(c, p) for c in history.COUNTRIES for p in history.PRODUCTS},
+        self.assertEqual({(c, p) for c in history.COUNTRIES for p in ('TV', 'REF', 'LDY')} | {('SEG', 'LDY_DRYER')},
                          {(s['country'], s['product_line']) for s in history._sources().values()})
 
     def test_pagination_and_search_reuse_snapshot_but_query_refreshes(self):

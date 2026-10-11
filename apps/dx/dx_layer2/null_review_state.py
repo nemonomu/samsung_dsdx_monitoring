@@ -10,7 +10,8 @@ def review_state(cursor, inspection_date, records, columns, manual_reviews,
     History rows are intentionally not passed here: an approval for today's
     source batch must not change the status of a comparison row.
     """
-    product_line = str(product_line or '').rsplit('_', 1)[-1].upper()
+    product_line = ('LDY_DRYER' if str(product_line).lower() in {'seg_ldy_dryer', 'ldy_dryer'}
+                    else str(product_line or '').rsplit('_', 1)[-1].upper())
     context = dict(table_name=table_name, country=country,
                    product_line=product_line, retailer=retailer)
     reviews = dict(manual_reviews)

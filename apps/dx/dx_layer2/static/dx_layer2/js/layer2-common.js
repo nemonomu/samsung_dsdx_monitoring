@@ -237,7 +237,14 @@ function getColumnConfig(type, tableParam) {
                     { key: 'batch_id', label: '배치 ID', width: 200 }],
             };
         }
-        if (/^seg_(tv|ref|ldy)_retail$/.test(tableParam)) {
+        if (tableParam === 'seg_ldy_dryer_retail') {
+            return {
+                group: DETAIL_COLUMNS.dup_sea_retail.group.filter(col => col.key !== 'page_type'),
+                detail: DETAIL_COLUMNS.dup_sea_retail.detail.map(col => col.key === 'crawl_strdatetime'
+                    ? {...col, key: 'crawl_datetime', label: 'crawl_datetime'} : col)
+            };
+        }
+        if (/^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_sea_retail;
         }
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
@@ -264,7 +271,7 @@ function isReadOnlyDuplicateTable(tableParam) {
         || /^sem_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^seda_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
-        || /^seg_(tv|ref|ldy)_retail$/.test(String(tableParam || ''));
+        || /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(String(tableParam || ''));
 }
 
 function getAllColumns(config) {
@@ -1949,6 +1956,8 @@ async function openRuleModal(tableName, retailer) {
         'seg_tv_retail': 'seg_tv',
         'SEG REF': 'seg_ref',
         'seg_ref_retail': 'seg_ref',
+        'SEG LDY_DRYER': 'seg_ldy_dryer',
+        'seg_ldy_dryer_retail': 'seg_ldy_dryer',
         'SEG LDY': 'seg_ldy',
         'seg_ldy_retail': 'seg_ldy',
         'SEM TV': 'sem_tv',

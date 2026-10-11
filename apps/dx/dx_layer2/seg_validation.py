@@ -8,7 +8,7 @@ from apps.common import seg_tv_format
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import uses_new_policy
 from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
-from apps.common.seg_retail import (
+from apps.dx.dx_layer2.seg_sources import (
     SEG_COUNTRY,
     SEG_SOURCE_CONFIG,
     get_seg_all_null_columns,
@@ -16,6 +16,8 @@ from apps.common.seg_retail import (
     get_seg_null_columns,
     get_seg_product_line,
     get_seg_table_columns,
+    SEG_FORMAT_SOURCE_CONFIG, EXPERT_START_DATE, active_retailers,
+    is_expert, page_scope, record_scope,
 )
 
 
@@ -108,6 +110,8 @@ def _latest_rows(cursor, target_date, source, retailer):
     table_name = source['table_name']
     date_column = source['date_column']
     source_date = mapping['source_date']
+    if is_expert(retailer) and source_date < str(EXPERT_START_DATE):
+        return [], {**mapping, 'batch_id': None}
     anchor_redirect = _redirect_scope(source, retailer, 'anchor')
     row_redirect = _redirect_scope(source, retailer, 'source')
 
@@ -117,7 +121,7 @@ def _latest_rows(cursor, target_date, source, retailer):
         WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
           AND UPPER(BTRIM(CAST(anchor.country AS TEXT))) = %s
           AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) = LOWER(%s)
-          AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+          {page_scope(source, retailer, 'anchor', anchor=True)}
           {anchor_redirect}
         ORDER BY anchor.id DESC
         LIMIT 1
@@ -134,7 +138,7 @@ def _latest_rows(cursor, target_date, source, retailer):
         WHERE LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
           AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(%s)
-          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {page_scope(source, retailer)}
           AND source.batch_id IS NOT DISTINCT FROM %s
           {row_redirect}
         ORDER BY source.id
@@ -145,6 +149,10 @@ def _latest_rows(cursor, target_date, source, retailer):
 
 def _history_rows(cursor, source, retailer, start_date, end_date, items,
                   include_missing_item=False):
+    if is_expert(retailer):
+        start_date = max(str(start_date), str(EXPERT_START_DATE))
+        if str(end_date) < start_date:
+            return []
     conditions = []
     item_params = []
     if items:
@@ -177,7 +185,7 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items,
               AND LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) <= %s
               AND UPPER(BTRIM(CAST(anchor.country AS TEXT))) = %s
               AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) = LOWER(%s)
-              AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+              {page_scope(source, retailer, 'anchor', anchor=True)}
               {anchor_redirect}
             ORDER BY source_date, anchor.id DESC
         )
@@ -188,7 +196,7 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items,
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
         WHERE UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
           AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(%s)
-          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {page_scope(source, retailer)}
           AND ({' OR '.join(conditions)})
           {row_redirect}
         ORDER BY source.item, {date_expression}, source.id
@@ -442,9 +450,9 @@ def get_format_rule_details(product_line, retailer):
     return rules
 
 
-def _null_detail_columns(column):
+def _null_detail_columns(column, date_column='crawl_strdatetime'):
     columns = [
-        'id', 'crawl_strdatetime', 'item', 'sku', 'retailer_sku_name',
+        'id', date_column, 'item', 'sku', 'retailer_sku_name',
     ]
     columns.extend(_REVIEW_COLUMNS if column in _REVIEW_COLUMNS else (column,))
     columns.append('product_url')
@@ -491,13 +499,16 @@ def append_null_stats(cursor, target_date, validation, category=None):
     for product_line, source in SEG_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
             continue
+        retailers = active_retailers(source, target_date)
+        if not retailers:
+            continue
         table_retailers = []
         table_fields = []
         table_records = 0
         table_issues = 0
         table_mapping = _mapping(target_date, source)
 
-        for retailer in source['retailers']:
+        for retailer in retailers:
             rows, mapping = _latest_rows(cursor, target_date, source, retailer)
             normal_reviews = _load_normal_reviews(
                 cursor, target_date, product_line, 'null_check'
@@ -553,7 +564,7 @@ def append_null_stats(cursor, target_date, validation, category=None):
 
 def append_format_stats(cursor, target_date, validation, category=None):
     total_issues = 0
-    for product_line, source in SEG_SOURCE_CONFIG.items():
+    for product_line, source in SEG_FORMAT_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
             continue
         retailer_rows = []
@@ -599,7 +610,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     product_line = product_line_for(table)
     source = SEG_SOURCE_CONFIG.get(product_line)
     allowed = get_seg_null_columns(product_line, retailer)
-    if not source or retailer not in source['retailers'] or column not in allowed:
+    if not source or retailer not in active_retailers(source, target_date) or column not in allowed:
         return {'results': [], 'display_config': {}, 'query_config': {}}
 
     rows, mapping = _latest_rows(cursor, target_date, source, retailer)
@@ -648,7 +659,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
                 for row in history_rows
             ]
 
-    display = _null_detail_columns(column)
+    display = _null_detail_columns(column, source['date_column'])
     return {
         'date': mapping['inspection_date'],
         'results': results,
@@ -670,7 +681,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
 
 def format_detail(cursor, target_date, table, retailer, days=3):
     product_line = product_line_for(table)
-    source = SEG_SOURCE_CONFIG.get(product_line)
+    source = SEG_FORMAT_SOURCE_CONFIG.get(product_line)
     if not source or retailer not in source['retailers']:
         return {
             'results': [], 'column_names': [], 'editable_cols': [],
@@ -763,12 +774,13 @@ def _serialize_duplicate_row(row):
 def build_duplicate_groups(rows, retailer=None):
     """Group by page_type/item, keeping OTTO option SKUs separate."""
     is_otto = _duplicate_key(retailer) == 'otto'
+    expert = is_expert(retailer)
     grouped = defaultdict(list)
     for row in rows:
         page_type_key = _duplicate_key(row.get('page_type'))
         item_key = _duplicate_key(row.get('item'))
-        if page_type_key and item_key:
-            key = (page_type_key, item_key)
+        if item_key and (expert or page_type_key):
+            key = (item_key,) if expert else (page_type_key, item_key)
             if is_otto:
                 key += (_duplicate_key(row.get('sku')),)
             grouped[key].append(row)
@@ -786,7 +798,8 @@ def build_duplicate_groups(rows, retailer=None):
             for row in duplicate_rows
         }
         mapping_conflict = len(sku_values) > 1 or len(name_values) > 1
-        page_type = _duplicate_text(first.get('page_type')).upper()
+        page_type = '' if expert else _duplicate_text(first.get('page_type')).upper()
+        scope_label = '최신 배치' if expert else page_type
         item = _duplicate_text(first.get('item'))
         identity = 'item + SKU' if is_otto else 'item'
         conflict_fields = '상품명' if is_otto else 'SKU/상품명'
@@ -803,10 +816,10 @@ def build_duplicate_groups(rows, retailer=None):
             })),
             'dup_count': len(duplicate_rows),
             'reason': (
-                f'{page_type}의 동일 {identity}에 서로 다른 {conflict_fields}이 '
+                f'{scope_label}의 동일 {identity}에 서로 다른 {conflict_fields}이 '
                 f'{len(duplicate_rows)}건 연결됨'
                 if mapping_conflict else
-                f'{page_type}의 동일 {identity} 조합이 최신 배치에 '
+                f'{scope_label}의 동일 {identity} 조합이 최신 배치에 '
                 f'{len(duplicate_rows)}건 수집됨'
             ),
             'records': [
@@ -824,12 +837,15 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
     for _product_line, source in SEG_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
             continue
+        retailers = active_retailers(source, target_date)
+        if not retailers:
+            continue
         retailer_rows = []
         table_records = 0
         table_issues = 0
         table_mapping = _mapping(target_date, source)
 
-        for retailer in source['retailers']:
+        for retailer in retailers:
             rows, mapping = _latest_rows(
                 cursor, target_date, source, retailer
             )
@@ -840,7 +856,8 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
                 'total': len(rows),
                 'duplicate_groups': issue_count,
                 'duplicate_keys': [
-                    'page_type + item + sku' if _duplicate_key(retailer) == 'otto'
+                    'item' if is_expert(retailer)
+                    else 'page_type + item + sku' if _duplicate_key(retailer) == 'otto'
                     else 'page_type + item'
                 ],
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
@@ -855,7 +872,9 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
             'total_records': table_records,
             'total_issues': table_issues,
             'duplicate_groups': table_issues,
-            'duplicate_keys': ['page_type + item (OTTO: page_type + item + sku)'],
+            'duplicate_keys': list(dict.fromkeys(
+                key for row in retailer_rows for key in row['duplicate_keys']
+            )),
             'status': 'OK' if table_issues == 0 else 'CRITICAL',
             'retailers': retailer_rows,
             **table_mapping,
@@ -868,7 +887,7 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
                      page_size=50):
     product_line = product_line_for(table)
     source = SEG_SOURCE_CONFIG.get(product_line)
-    if not source or retailer not in source['retailers']:
+    if not source or retailer not in active_retailers(source, target_date):
         return {
             'results': {
                 'duplicates': [], 'total_groups': 0, 'total_pages': 0,
@@ -889,7 +908,7 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
         'retailer': retailer,
         'select_cols': {
             'group': [
-                'duplicate_type', 'page_type', 'item',
+                'duplicate_type', *([] if is_expert(retailer) else ['page_type']), 'item',
                 'retailer_sku_name', 'dup_count', 'reason',
             ],
             'record': [
@@ -938,7 +957,7 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column,
         WHERE source.id = %s
           AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
-          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {record_scope(source, mapping['source_date'])}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
@@ -946,7 +965,7 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column,
               WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
                 AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
                     LOWER(BTRIM(CAST(source.account_name AS TEXT)))
-                AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+                {record_scope(source, mapping['source_date'], 'anchor', anchor=True)}
                 {redirect_scope.replace('source.', 'anchor.')}
               ORDER BY anchor.id DESC
               LIMIT 1

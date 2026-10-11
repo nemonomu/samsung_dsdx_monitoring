@@ -90,6 +90,7 @@ SEG_RETAIL_SIDEBAR_CHILDREN = (
     {'name': 'SEG TV', 'label': 'TV', 'detail_code': 'seg_tv_retail'},
     {'name': 'SEG REF', 'label': 'REF', 'detail_code': 'seg_ref_retail'},
     {'name': 'SEG LDY', 'label': 'LDY', 'detail_code': 'seg_ldy_retail'},
+    {'name': 'SEG LDY_DRYER', 'label': 'LDY_DRYER', 'detail_code': 'seg_ldy_dryer_retail'},
 )
 
 SEM_RETAIL_SIDEBAR_CHILDREN = (
@@ -303,6 +304,8 @@ def build_sidebar_groups(section, focus=''):
         items = section_items[section_name]
         seg_children = []
         for child in SEG_RETAIL_SIDEBAR_CHILDREN:
+            if section_name == 'format_validation' and child['detail_code'] == 'seg_ldy_dryer_retail':
+                continue
             if child['detail_code'] not in active_categories:
                 continue
             child_item = dict(child)

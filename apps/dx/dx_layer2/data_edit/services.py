@@ -76,7 +76,7 @@ except (ImportError, AttributeError):
     resolve_sem_table = None
 
 try:
-    from apps.common.seg_retail import (
+    from apps.dx.dx_layer2.seg_sources import (
         SEG_COUNTRY,
         SEG_TABLE_TO_PRODUCT_LINE,
         get_seg_all_null_columns,
@@ -298,6 +298,7 @@ def _select_sem_edit_record(
 
 def _select_seg_edit_record(
         cursor, context, select_columns, row_id, inspection_date):
+    from apps.dx.dx_layer2.seg_sources import record_scope
     source = context['source']
     mapping = resolve_monitoring_date(
         inspection_date, SEG_COUNTRY, source['source_key']
@@ -316,7 +317,7 @@ def _select_seg_edit_record(
         WHERE source.id = %s
           AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
-          AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) IN ('main', 'bsr')
+          {record_scope(source, source_date)}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
@@ -324,7 +325,7 @@ def _select_seg_edit_record(
               WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
                 AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
                     LOWER(BTRIM(CAST(source.account_name AS TEXT)))
-                AND LOWER(BTRIM(CAST(anchor.page_type AS TEXT))) = 'main'
+                {record_scope(source, source_date, 'anchor', anchor=True)}
                 {redirect_scope.replace('source.', 'anchor.')}
               ORDER BY anchor.id DESC
               LIMIT 1

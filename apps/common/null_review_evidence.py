@@ -22,7 +22,7 @@ NON_TARGET_REQUIRED_METRICS = frozenset({
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 })
 COUNTRIES = frozenset({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'})
-PRODUCT_LINES = frozenset({'TV', 'REF', 'LDY'})
+PRODUCT_LINES = frozenset({'TV', 'REF', 'LDY', 'LDY_DRYER'})
 KOREA = ZoneInfo('Asia/Seoul')
 EVIDENCE_TABLE = 'public.monitoring_null_review_evidence'
 ELIGIBLE_REASONS = frozenset({

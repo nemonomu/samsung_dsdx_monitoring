@@ -16,10 +16,10 @@ const nullValidation = fs.readFileSync(
     'utf8'
 );
 
-assert(common.includes('/^seg_(tv|ref|ldy)_retail$/.test(tableParam)'));
+assert(common.includes('/^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam)'));
 assert(common.includes("return DETAIL_COLUMNS.dup_sea_retail;"));
-assert(common.includes("/^seg_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))"));
-assert(dashboard.includes("const isSegRetail = /^seg_(tv|ref|ldy)_retail$/"));
+assert(common.includes("/^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(String(tableParam || ''))"));
+assert(dashboard.includes("const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/"));
 assert(dashboard.includes('isSeaRetail || isSegRetail'));
 assert(nullValidation.includes("tableName === 'SEG TV' ? 'seg_tv_retail'"));
 

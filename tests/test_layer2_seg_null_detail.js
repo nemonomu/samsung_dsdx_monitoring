@@ -15,7 +15,7 @@ const template = read('apps/dx/dx_layer2/templates/layer2_null_validation.html')
 
 assert(dashboard.includes("name: 'SEG Retail'"));
 assert(dashboard.includes(
-    "tableCodes: ['seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail']"
+    "tableCodes: ['seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail', 'seg_ldy_dryer_retail']"
 ));
 assert(dashboard.indexOf("key: 'siel'") < dashboard.indexOf("key: 'seg'"));
 assert(dashboard.indexOf("key: 'seg'") < dashboard.indexOf("key: 'sem'"));
