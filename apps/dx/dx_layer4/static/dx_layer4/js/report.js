@@ -265,7 +265,7 @@
         if (!tableGroups || Object.keys(tableGroups).length === 0) return;
         var corrected = (typeSummaryData && typeSummaryData.corrected) || 0;
         var normal = (typeSummaryData && typeSummaryData.normal) || 0;
-        var total = corrected + normal;
+        var total = corrected + normal + ((typeSummaryData && typeSummaryData.error) || 0);
 
         var section = createDiv('report-section');
         section.appendChild(createDiv('report-section-title',
@@ -286,6 +286,9 @@
                 if (d.status === 'normal') {
                     action = d.reason || '확인';
                     groupKey = 'normal|' + (d.column_name || '') + '|' + action;
+                } else if (d.status === 'error') {
+                    action = (d.column_name || '') + ' 오류 확정: ' + (d.reason || '수집값 오류');
+                    groupKey = 'error|' + (d.column_name || '') + '|' + action;
                 } else {
                     action = (d.column_name || '') + ' 수정';
                     groupKey = 'corrected|' + (d.column_name || '');
@@ -382,7 +385,7 @@
         if (!tableGroups || Object.keys(tableGroups).length === 0) return;
         var corrected = (typeSummaryData && typeSummaryData.corrected) || 0;
         var normal = (typeSummaryData && typeSummaryData.normal) || 0;
-        var total = corrected + normal;
+        var total = corrected + normal + ((typeSummaryData && typeSummaryData.error) || 0);
 
         var section = createDiv('report-section');
         section.appendChild(createDiv('report-section-title',
@@ -435,7 +438,7 @@
         if (!tableGroups || Object.keys(tableGroups).length === 0) return;
         var corrected = (typeSummaryData && typeSummaryData.corrected) || 0;
         var normal = (typeSummaryData && typeSummaryData.normal) || 0;
-        var total = corrected + normal;
+        var total = corrected + normal + ((typeSummaryData && typeSummaryData.error) || 0);
 
         var section = createDiv('report-section');
         section.appendChild(createDiv('report-section-title',
@@ -549,15 +552,16 @@
         var groupedDetails = filterMonitoringDetails(data.grouped_details || {});
         var typeSummary = summarizeMonitoringDetails(groupedDetails);
 
-        var totalCorrected = 0, totalNormal = 0;
+        var totalCorrected = 0, totalNormal = 0, totalErrors = 0;
         Object.keys(typeSummary).forEach(function(ct) {
             totalCorrected += (typeSummary[ct].corrected || 0);
             totalNormal += (typeSummary[ct].normal || 0);
+            totalErrors += (typeSummary[ct].error || 0);
         });
 
         var hasCollection = collectionStatus.length > 0;
         var hasIssues = collectionIssues.length > 0;
-        var hasCorrections = totalCorrected > 0 || totalNormal > 0;
+        var hasCorrections = totalCorrected > 0 || totalNormal > 0 || totalErrors > 0;
 
         if (!hasCollection && !hasIssues && !hasCorrections) {
             detailEl.innerHTML = '<div class="l4-empty-state"><p>해당 날짜에 검수 기록이 없습니다.</p></div>';
@@ -592,7 +596,7 @@
 
         TYPES_ORDER.forEach(function(ct) {
             var c = typeSummary[ct] || {};
-            var total = (c.corrected || 0) + (c.normal || 0);
+            var total = (c.corrected || 0) + (c.normal || 0) + (c.error || 0);
             var remarks = '';
             if (total === 0) {
                 remarks = '특이사항 없음';
@@ -611,9 +615,10 @@
                         var sName = isRetailTable
                             ? reportRetailerName(tn, d.retailer, tn)
                             : (TABLE_SECTION[tn] || tn);
-                        if (!sectionStats[sName]) sectionStats[sName] = { corrected: 0, normal: 0 };
+                        if (!sectionStats[sName]) sectionStats[sName] = { corrected: 0, normal: 0, error: 0 };
                         if (d.status === 'corrected') sectionStats[sName].corrected++;
                         else if (d.status === 'normal') sectionStats[sName].normal++;
+                        else if (d.status === 'error') sectionStats[sName].error++;
                     });
                 });
                 var parts = [];
@@ -622,6 +627,7 @@
                     var sub = [];
                     if (s.corrected > 0) sub.push('수정 ' + s.corrected + '건');
                     if (s.normal > 0) sub.push('확인 ' + s.normal + '건');
+                    if (s.error > 0) sub.push('오류 확정 ' + s.error + '건');
                     parts.push(sName + ' ' + sub.join(', '));
                 });
                 remarks = parts.join(' / ');
@@ -742,7 +748,7 @@
             } else {
                 var emptySection = createDiv('report-section');
                 var c = typeSummary[ct] || {};
-                var total = (c.corrected || 0) + (c.normal || 0);
+                var total = (c.corrected || 0) + (c.normal || 0) + (c.error || 0);
                 emptySection.appendChild(createDiv('report-section-title',
                     '■ ' + sectionNo + '. ' + L4.TYPE_NAMES[ct] + ' (' + total + '건)'));
                 emptySection.appendChild(createDiv('report-item', '- 특이사항 없음'));

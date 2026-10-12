@@ -75,13 +75,13 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20260923-price2"
+    "dx_layer2/js/layer2-common.js' %}?v=20261011-costco-dryer"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20261011-seg-expert-format"
+    "dx_layer2/js/format_validation.js' %}?v=20261012-format-review"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20260921-seda-duplicate1"
+    "dx_layer2/js/dashboard.js' %}?v=20261012-format-review"
 ));
 
 console.log('Layer 2 SIEL format/duplicate UI tests passed.');

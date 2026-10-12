@@ -137,6 +137,11 @@ for (const type of ['null_check', 'format_check', 'duplicate_check', 'cross_fiel
     }
 }
 
+reportData.grouped_details.format_check['public.ref_retail_com'] = [
+    ...(reportData.grouped_details.format_check['public.ref_retail_com'] || []),
+    {retailer:'Lowes',status:'error',column_name:'pick_up_availability',item:'ERROR-1',reason:'HTML 수집 오류'}
+];
+
 const sandbox = {
     console,
     document: {
@@ -176,6 +181,8 @@ sandbox.L4._sectionHandler.report();
 
 setImmediate(() => {
     const html = renderedRows.join('\n');
+    assert(html.includes('SEA LOWES REF 오류 확정 1건'));
+    assert(html.includes('pick_up_availability 오류 확정: HTML 수집 오류'));
     for (const type of ['NULL 검증', '형식 검증', '중복 검증', '크로스필드 검증']) {
         const summary = renderedRows.find(row => row.includes(type));
         for (const product of ['REF', 'LDY']) {
@@ -226,6 +233,6 @@ setImmediate(() => {
     assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=10"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=20261012-format-review"));
     console.log('Layer 4 retail report label tests passed');
 });

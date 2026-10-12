@@ -819,6 +819,7 @@ function renderDXTableDetail(vType, table) {
                     </div>
                     <div class="retailer-actions">
                         <button class="btn-rule" onclick="event.stopPropagation(); openRuleModal('${tableCode}', '${retailer.retailer}')">검증규칙</button>
+                        ${typeof window !== 'undefined' && window.FormatReview && FormatReview.supports(table.table) ? FormatReview.button(table.table, retailer.retailer) : ''}
                         ${hasIssue ? `<button class="btn-detail" onclick="event.stopPropagation(); openDetailModal('format', '${tableName}', '${retailer.retailer}', ${issueCount})">상세보기</button>` : ''}
                     </div>
                 </div>

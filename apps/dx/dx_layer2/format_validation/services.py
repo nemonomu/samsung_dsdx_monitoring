@@ -1043,7 +1043,7 @@ def _load_sea_format_normal_reviews(
     return reviews
 
 
-def _get_sea_format_detail(cursor, target_date, table, retailer, days):
+def _get_sea_format_detail(cursor, target_date, table, retailer, days, include_normal=False):
     product_key = _sea_format_product_key(table)
     if table == 'tv_retail' and is_costco(retailer):
         product_key = 'tv'
@@ -1078,7 +1078,7 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days):
             field for field in record['error_fields']
             if f"{record['id']}_{field}" not in normal_reviews
         ]
-        if record['error_fields']:
+        if include_normal or record['error_fields']:
             target_records.append(record)
 
     history_days = min(max(int(days or 1), 1), 30)
@@ -1135,6 +1135,8 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days):
         ],
         'actual_table': source['table_name'],
         'normal_reviews': normal_reviews,
+        'validation_fields': list(format_fields),
+        'target_ids': [r['id'] for r in target_records],
         'results': results,
         'field_counts': field_counts,
         'total_format_count': sum(field_counts.values()),
@@ -1319,7 +1321,7 @@ def _format_tse_record(row, product_line=None, retailer=None):
     return record
 
 
-def _get_tse_format_detail(cursor, target_date, table, retailer, days):
+def _get_tse_format_detail(cursor, target_date, table, retailer, days, include_normal=False):
     product_line = _tse_format_product_line(table)
     source = TSE_SOURCE_CONFIG.get(product_line)
     resolved = (
@@ -1351,7 +1353,7 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
             field for field in record['error_fields']
             if f"{record['id']}_{field}" not in normal_reviews
         ]
-        if record['error_fields']:
+        if include_normal or record['error_fields']:
             target_records.append(record)
 
     history_days = min(max(int(days or 1), 1), 30)
@@ -1403,6 +1405,8 @@ def _get_tse_format_detail(cursor, target_date, table, retailer, days):
         ),
         'actual_table': source['table_name'],
         'normal_reviews': normal_reviews,
+        'validation_fields': list(format_fields),
+        'target_ids': [r['id'] for r in target_records],
         'results': results,
         'field_counts': field_counts,
         'total_format_count': sum(field_counts.values()),
@@ -1934,7 +1938,7 @@ def _load_siel_format_normal_reviews(
     return reviews
 
 
-def _get_siel_format_detail(cursor, target_date, table, retailer, days):
+def _get_siel_format_detail(cursor, target_date, table, retailer, days, include_normal=False):
     source_key = _siel_format_source_key(table)
     source = SIEL_SOURCE_CONFIG.get(source_key)
     retailer_value = (
@@ -1967,7 +1971,7 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days):
             field for field in record['error_fields']
             if f"{record['id']}_{field}" not in normal_reviews
         ]
-        if record['error_fields']:
+        if include_normal or record['error_fields']:
             target_records.append(record)
 
     history_days = min(max(int(days or 1), 1), 30)
@@ -2018,6 +2022,8 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days):
         ),
         'actual_table': source['table_name'],
         'normal_reviews': normal_reviews,
+        'validation_fields': list(format_fields),
+        'target_ids': [r['id'] for r in target_records],
         'results': results,
         'field_counts': field_counts,
         'total_format_count': sum(field_counts.values()),
@@ -2104,37 +2110,44 @@ def validate_hhp_field(field_name, value, account_name='Amazon'):
 
 # ── 형식 오류 상세 조회 ───────────────────────────────────
 
-def get_format_detail(cursor, target_date, table, retailer, days):
+def _get_format_detail_raw(cursor, target_date, table, retailer, days, include_normal=False):
     """
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
     if seda_format_validation.product_line_for(table):
-        return seda_format_validation.format_detail(cursor, target_date, table, retailer, days)
+        return seda_format_validation.format_detail(cursor, target_date, table, retailer, days, **({"include_normal": True} if include_normal else {}))
     if seg_validation.product_line_for(table):
         return seg_validation.format_detail(
-            cursor, target_date, table, retailer, days=days
+            cursor, target_date, table, retailer, days=days,
+            **({"include_normal": True} if include_normal else {})
         )
     if sem_validation.product_line_for(table):
         return sem_validation.format_detail(
-            cursor, target_date, table, days=days, retailer=retailer
+            cursor, target_date, table, days=days, retailer=retailer,
+            **({"include_normal": True} if include_normal else {})
         )
     if _sea_format_product_key(table) or (table == 'tv_retail' and is_costco(retailer)):
         return _get_sea_format_detail(
-            cursor, target_date, table, retailer, days
+            cursor, target_date, table, retailer, days,
+            **({"include_normal": True} if include_normal else {})
         )
     if _siel_format_source_key(table):
         return _get_siel_format_detail(
-            cursor, target_date, table, retailer, days
+            cursor, target_date, table, retailer, days,
+            **({"include_normal": True} if include_normal else {})
         )
     if _tse_format_product_line(table):
         return _get_tse_format_detail(
-            cursor, target_date, table, retailer, days
+            cursor, target_date, table, retailer, days,
+            **({"include_normal": True} if include_normal else {})
         )
 
     results = []
     select_cols = []
     column_names = []
+    review_fields = []
+    tv_valid_items = set()
     next_date = target_date + timedelta(days=1)
     if table == 'hhp_retail':
         return {
@@ -2150,6 +2163,12 @@ def get_format_detail(cursor, target_date, table, retailer, days):
 
     # TV Retail 형식 오류 상세 조회 - SQL 조건으로 오류 행 직접 필터링
     if table == 'tv_retail':
+        if include_normal:
+            # Collector master data is shared; dx_table is for monitoring metadata.
+            cursor.execute('SELECT DISTINCT item FROM tv_item_mst')
+            tv_valid_items = {str(row[0]) for row in cursor.fetchall()}
+            review_fields = [rule['field'] for rule in build_per_field_error_sql(
+                'tv_retail_com', 'TV', retailer)]
         select_cols = ['id', 'item', 'crawl_datetime', 'product_url']
         all_fields = [
             'item', 'page_type', 'product_url', 'main_rank', 'bsr_rank',
@@ -2178,7 +2197,8 @@ def get_format_detail(cursor, target_date, table, retailer, days):
         if retailer:
             query += " AND account_name = %s"
             params.append(retailer)
-        query += f" AND ({error_where})"
+        if not include_normal:
+            query += f" AND ({error_where})"
         query += " ORDER BY account_name, crawl_datetime"
 
         cursor.execute(query, params)
@@ -2204,7 +2224,7 @@ def get_format_detail(cursor, target_date, table, retailer, days):
                         'reason': error.split(':', 1)[1].strip() if ':' in error else error
                     }
 
-            if error_fields:
+            if include_normal or error_fields:
                 record['error_fields'] = error_fields
                 record['error_details'] = error_details
                 results.append(record)
@@ -2479,6 +2499,8 @@ def get_format_detail(cursor, target_date, table, retailer, days):
                 record['error_details'] = error_details
                 results.append(record)
 
+    # Capture only the selected collection before adding comparison history.
+    target_ids = [record['id'] for record in results]
     # retail + days > 1: 오류 item으로 N일치 확장 재조회
     if days > 1 and table in ('tv_retail', 'hhp_retail') and results:
         error_items = list(set(r['item'] for r in results if r.get('item')))
@@ -2622,6 +2644,18 @@ def get_format_detail(cursor, target_date, table, retailer, days):
         if actual_table in DISABLED_SOURCE_TABLES:
             actual_table = ''
 
+    if table == 'tv_retail' and include_normal:
+        review_fields = [field for field in review_fields if field in all_fields]
+        for record in results:
+            item = record.get('item')
+            if item and item not in tv_valid_items:
+                field = 'item (참조 무결성)'
+                record[field] = item
+                record['error_fields'].append(field)
+                record['error_details'][field] = {
+                    'rule': '참조 무결성', 'reason': '마스터 테이블에 등록되지 않은 item',
+                }
+
     # 형식 검증 정상 처리 건 조회
     normal_reviews = {}
     if actual_table:
@@ -2666,6 +2700,10 @@ def get_format_detail(cursor, target_date, table, retailer, days):
         'editable_cols': editable_cols,
         'actual_table': actual_table,
         'normal_reviews': normal_reviews,
+        'validation_fields': review_fields,
+        'target_ids': target_ids,
+        **({'date_column': 'crawl_datetime', 'field_display_columns': {'item (참조 무결성)': ['item']}}
+           if table == 'tv_retail' else {}),
         'results': results,
         'field_counts': field_counts,
         'total_format_count': total_format_count,
@@ -2997,7 +3035,7 @@ def get_hhp_format_errors(cursor, table_name, date_field, target_date, retailer)
     return errors
 
 
-def get_format_stats(cursor, target_date, category=None):
+def _get_format_stats_raw(cursor, target_date, category=None):
     """형식 검증 통계 — 대시보드용"""
 
     total_format_issues = 0
@@ -3310,3 +3348,37 @@ def get_format_stats(cursor, target_date, category=None):
     format_validation['status'] = get_status(total_format_issues)
 
     return format_validation, total_format_issues
+
+
+def get_format_detail(cursor, target_date, table, retailer, days):
+    from . import review_service as reviews
+    scopes = reviews.load_scopes()
+    if not reviews.has_scope(scopes, table, retailer, target_date):
+        return _get_format_detail_raw(cursor, target_date, table, retailer, days)
+    data = _get_format_detail_raw(cursor, target_date, table, retailer, days, include_normal=True)
+    return reviews.apply_detail(data, scopes, errors_only=True)
+
+
+def get_format_stats(cursor, target_date, category=None):
+    validation, total = _get_format_stats_raw(cursor, target_date, category)
+    from . import review_service as reviews
+    scopes = reviews.load_scopes()
+    for table in validation['tables']:
+        changed = False
+        for retailer in table.get('retailers', []):
+            if not reviews.has_scope(scopes, table['table'], retailer['retailer'], target_date):
+                continue
+            data = _get_format_detail_raw(cursor, target_date, table['table'], retailer['retailer'], 1, include_normal=True)
+            data = reviews.apply_detail(data, scopes, errors_only=True)
+            retailer['issue_count'] = data['total_format_count']
+            retailer['fields_detail'] = data['field_counts']
+            retailer['status'] = get_status(retailer['issue_count']) if retailer.get('total') else retailer.get('status', 'PENDING')
+            retailer['format_review_counts'] = data['review_counts']
+            changed = True
+        if changed:
+            table['total_issues'] = sum(r.get('issue_count', 0) for r in table['retailers'])
+            table['status'] = get_status(table['total_issues'])
+            table.pop('sample_errors', None)
+    total = sum(t.get('total_issues', 0) for t in validation['tables'])
+    validation.update(total_issues=total, status=get_status(total))
+    return validation, total

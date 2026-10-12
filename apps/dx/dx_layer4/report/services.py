@@ -287,6 +287,9 @@ def get_report_data(target_date):
 
         _fill_sea_retailer_names(cursor, details)
 
+        from apps.dx.dx_layer2.format_validation.review_service import merge_report
+        merge_report(cursor, target_date, type_summary, reason_summary, table_summary, details)
+
         auto_null_reviews = _load_auto_null_reviews(cursor, target_date)
         _merge_auto_null_reviews(
             auto_null_reviews,

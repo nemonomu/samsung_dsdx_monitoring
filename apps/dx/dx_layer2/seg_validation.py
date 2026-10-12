@@ -687,7 +687,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     }
 
 
-def format_detail(cursor, target_date, table, retailer, days=3):
+def format_detail(cursor, target_date, table, retailer, days=3, include_normal=False):
     product_line = product_line_for(table)
     source = SEG_FORMAT_SOURCE_CONFIG.get(product_line)
     if not source or retailer not in active_retailers(source, target_date):
@@ -708,7 +708,7 @@ def format_detail(cursor, target_date, table, retailer, days=3):
             field for field in record['error_fields']
             if f"{record.get('id')}_{field}" not in normal_reviews
         ]
-        if record['error_fields']:
+        if include_normal or record['error_fields']:
             target_records.append(record)
 
     history_days = min(max(int(days or 3), 1), 30)
@@ -751,6 +751,8 @@ def format_detail(cursor, target_date, table, retailer, days=3):
         'select_cols': list(get_seg_table_columns(product_line)),
         'editable_cols': format_fields,
         'actual_table': source['table_name'],
+        'validation_fields': format_fields,
+        'target_ids': [r['id'] for r in target_records],
         'normal_reviews': normal_reviews,
         'results': results,
         'field_counts': dict(field_counts),

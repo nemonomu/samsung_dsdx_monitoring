@@ -12,6 +12,10 @@ function renderFormatFieldSummary(data, tableParam) {
 
     let html = '';
 
+    if (typeof window !== 'undefined' && window.FormatReview && FormatReview.supports(tableParam)) {
+        html += '<div class="modal-toolbar"><button class="btn-detail" id="format-review-open">값별 일괄 검토 / 기존 정상 재확인</button></div>';
+    }
+
     if (!isInlineMode()) {
         html += `<div class="modal-toolbar">
             <div class="modal-date-picker">
@@ -40,6 +44,8 @@ function renderFormatFieldSummary(data, tableParam) {
     }
 
     body.innerHTML = html;
+    const reviewButton = document.getElementById('format-review-open');
+    if (reviewButton) reviewButton.onclick = () => FormatReview.open(tableParam, modalState.retailer, date);
 }
 
 function showFormatFieldDetail(fieldName, pushStack = true) {
@@ -140,6 +146,9 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
 
     // Item 목록 HTML
     var itemQueryHtml = '';
+    if (typeof window !== 'undefined' && window.FormatReview && FormatReview.supports(tableParam)) {
+        itemQueryHtml += '<div class="modal-toolbar">' + FormatReview.button(tableParam, modalState.retailer, fieldName) + '</div>';
+    }
     if (!isInlineMode()) {
         itemQueryHtml += `<div class="modal-toolbar">
             <button class="btn-back" onclick="backToFormatFieldSummary()">← 뒤로가기</button>

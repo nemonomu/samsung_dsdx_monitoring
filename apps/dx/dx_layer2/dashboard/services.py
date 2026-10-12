@@ -234,6 +234,17 @@ def get_retailer_detail(cursor, validation_type, table_name, retailer, target_da
         results['total'] = cursor.fetchone()[0]
 
     elif validation_type == 'format':
+        from apps.dx.dx_layer2.format_validation import review_service, services as format_service
+        if table_name == 'TV Retail' and review_service.has_scope(
+                review_service.load_scopes(), 'tv_retail', retailer, target_date):
+            detail = format_service.get_format_detail(cursor, target_date, 'tv_retail', retailer, 1)
+            results['records'] = [dict(row, collected_at=row.get('crawl_datetime'),
+                errors=[{'field': field, 'value': row.get(field),
+                         'error': row.get('error_details', {}).get(field, {}).get('reason', '')}
+                        for field in row['error_fields']]) for row in detail['results']]
+            results['total'] = len(results['records'])
+            results['field_counts'] = detail['field_counts']
+            return results
         # 형식 검증 상세 - TV와 HHP에 맞는 형식 오류 조회
         if table_name == 'TV Retail':
             format_errors = get_tv_format_errors(cursor, db_table, date_field, target_date, retailer)

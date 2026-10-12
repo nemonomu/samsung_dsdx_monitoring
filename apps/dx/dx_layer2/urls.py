@@ -4,6 +4,7 @@ from apps.dx.dx_layer2.null_validation import views as null_views, api as null_a
 from apps.dx.dx_layer2.format_validation import views as format_views, api as format_api
 from apps.dx.dx_layer2.anomaly_validation import views as anomaly_views, api as anomaly_api
 from apps.dx.dx_layer2.data_edit import api as data_edit_api
+from apps.dx.dx_layer2.format_validation import review_api
 
 app_name = 'layer2'
 
@@ -22,6 +23,7 @@ urlpatterns = [
     path('api/null-review-logs/', null_api.null_review_logs, name='api_null_review_logs'),
     path('api/format-detail/', format_api.format_detail, name='api_format_detail'),
     path('api/format-rules/', format_api.format_rules, name='api_format_rules'),
+    path('api/format-review/', review_api.reviews, name='api_format_review'),
     path('api/anomaly-detail/', anomaly_api.anomaly_detail, name='api_anomaly_detail'),
     path('api/duplicate-cleanup/', anomaly_api.duplicate_cleanup, name='api_duplicate_cleanup'),
     path('api/update-cell/', data_edit_api.update_cell, name='api_update_cell'),

@@ -617,7 +617,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
     return total_issues
 
 
-def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER):
+def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, include_normal=False):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
     if not source:
@@ -628,7 +628,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER):
         cursor, target_date, product_line, 'format_check'
     )
     target_records = [_serialize(row, product_line, retailer) for row in rows]
-    target_records = [row for row in target_records if row['error_fields']]
+    target_records = [row for row in target_records if include_normal or row['error_fields']]
     field_counts = defaultdict(int)
     for row in target_records:
         for field in row['error_fields']:
@@ -672,6 +672,8 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER):
         'select_cols': list(get_sem_table_columns(product_line)),
         'editable_cols': editable,
         'actual_table': source['table_name'],
+        'validation_fields': [r['field'] for r in get_format_rule_details(product_line, retailer)],
+        'target_ids': [r['id'] for r in target_records],
         'normal_reviews': normal_reviews,
         'results': records,
         'field_counts': dict(field_counts),

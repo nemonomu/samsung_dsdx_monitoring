@@ -90,7 +90,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
     return total
 
 
-def format_detail(cursor, target_date, table, retailer, days=3):
+def format_detail(cursor, target_date, table, retailer, days=3, include_normal=False):
     product = product_line_for(table)
     source = SEDA_SOURCE_CONFIG.get(product)
     retailer = display_seda_retailer(retailer)
@@ -100,7 +100,8 @@ def format_detail(cursor, target_date, table, retailer, days=3):
     source_day = date.fromisoformat(mapping['source_date'])
     reviews = normal_reviews(cursor, target_date, source)
     rows = load_rows(cursor, source, source_day, source_day, retailer)
-    targets = [record for row in rows if (record := annotate(row, product, retailer, reviews))['error_fields']]
+    targets = [annotate(row, product, retailer, reviews) for row in rows]
+    targets = [record for record in targets if include_normal or record['error_fields']]
     counts = Counter(field for record in targets for field in record['error_fields'])
     days = min(30, max(1, int(days or 3)))
     history = []
@@ -135,7 +136,8 @@ def format_detail(cursor, target_date, table, retailer, days=3):
     return {'date': mapping['inspection_date'], 'table': source['section_code'], 'retailer': retailer,
             'column_names': list(select_columns(product)), 'select_cols': list(select_columns(product)),
             'editable_cols': list(rules.columns(product, retailer)), 'actual_table': source['table_name'],
-            'normal_reviews': reviews, 'results': results, 'field_counts': dict(counts),
+            'validation_fields': list(rules.columns(product, retailer)),
+            'target_ids': [r['id'] for r in targets], 'normal_reviews': reviews, 'results': results, 'field_counts': dict(counts),
             'total_format_count': sum(counts.values()), 'supports_day_history': True, 'history_days': days,
             'date_column': source['date_column'], 'editable_date': mapping['source_date'],
             'field_display_columns': display, 'field_queries': queries, 'readonly': False, **mapping}
