@@ -182,14 +182,16 @@ def _select_sea_record(
     table_name = source['table_name']
     date_column = source['date_column']
     if table_name in ('public.tv_retail_com', 'public.ldy_dryer_retail'):
-        day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco', product=source['product_key'])
-        anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer='Costco', product=source['product_key'])
+        retailer = None if source['product_key'] == 'ldy_dryer' else 'Costco'
+        accounts = "('bestbuy', 'costco')" if source['product_key'] == 'ldy_dryer' else "('costco')"
+        day = costco_layer2.source_date_sql(date_column, 'source', retailer=retailer, product=source['product_key'])
+        anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer=retailer, product=source['product_key'])
         cursor.execute(f"""SELECT {select_columns} FROM {table_name} source
-            WHERE source.id = %s AND LOWER(TRIM(source.account_name)) = 'costco'
+            WHERE source.id = %s AND LOWER(TRIM(source.account_name)) IN {accounts}
               AND {day} = %s
               AND source.batch_id IS NOT DISTINCT FROM (
                   SELECT anchor.batch_id FROM {table_name} anchor
-                  WHERE LOWER(TRIM(anchor.account_name)) = 'costco' AND {anchor_day} = %s
+                  WHERE LOWER(TRIM(anchor.account_name)) = LOWER(TRIM(source.account_name)) AND {anchor_day} = %s
                   ORDER BY anchor.id DESC LIMIT 1)
             FOR UPDATE OF source""", (row_id, date_contract['source_date'], date_contract['source_date']))
         return
@@ -470,10 +472,12 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     batch_id = row[1]
     retailer = row[2]
     item_value = str(row[3]) if row[3] else ''
-    if costco_layer2.is_costco(retailer) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
-        return {'error': 'Costco 크로스필드는 평가·가격 컬럼만 수정할 수 있습니다', 'status': 403}
+    if (table_name == 'public.ldy_dryer_retail' or costco_layer2.is_costco(retailer)) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
+        return {'error': '이 크로스필드는 평가·가격 컬럼만 수정할 수 있습니다', 'status': 403}
 
-    if table_name in SEDA_TABLES:
+    if table_name == 'public.ldy_dryer_retail' and correction_type == 'cross_field':
+        editable_cols = (*costco_layer2.METRICS, *costco_layer2.PRICES)
+    elif table_name in SEDA_TABLES:
         editable_cols = get_seda_crossfield_editable_columns(product_line, retailer)
     elif sem_context:
         editable_cols = get_sem_editable_columns(product_line, retailer)
@@ -603,8 +607,8 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else None
-    if costco_layer2.is_costco(retailer) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
-        return {'error': 'Costco 크로스필드는 평가·가격 컬럼만 검수할 수 있습니다', 'status': 403}
+    if (table_name == 'public.ldy_dryer_retail' or costco_layer2.is_costco(retailer)) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
+        return {'error': '이 크로스필드는 평가·가격 컬럼만 검수할 수 있습니다', 'status': 403}
 
     if table_name in SEDA_TABLES and column_name not in get_seda_crossfield_editable_columns(product_line, retailer):
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}

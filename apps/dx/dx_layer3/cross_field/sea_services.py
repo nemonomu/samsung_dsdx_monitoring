@@ -22,7 +22,7 @@ from apps.common.sea_dates import (
     appliance_source_date_value as legacy_date_value,
     appliance_page_scope_sql as legacy_page_sql,
 )
-from apps.common import costco_layer2
+from apps.common import costco_layer2, bestbuy_dryer_crossfield
 
 
 def appliance_source_date_sql(column, account_column='account_name'):
@@ -370,8 +370,10 @@ def _recommendation_valid(retailer, review_count, value):
     return bool(match and 0 <= int(match.group(1)) <= 100)
 
 
-def evaluate_sea_row(row):
+def evaluate_sea_row(row, product_line=None):
     """Return canonical SEA rule keys failed by one REF/LDY source row."""
+    if costco_layer2.bestbuy_dryer.matches(product_line, row.get('account_name')):
+        return bestbuy_dryer_crossfield.evaluate(row)
     errors = set()
     retailer = _retailer_name(row.get('account_name'))
     if retailer not in ('Bestbuy', 'Lowes', 'HomeDepot', 'Costco'):
@@ -529,7 +531,9 @@ def load_active_sea_rules(cursor, product_line):
 
         spec = SEA_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
-        if key in ('sea_tv', 'sea_ldy_dryer') and not costco_layer2.is_costco(configured_retailer):
+        if key == 'sea_tv' and not costco_layer2.is_costco(configured_retailer):
+            continue
+        if key == 'sea_ldy_dryer' and (configured_retailer.casefold() not in ('bestbuy', 'costco') or rule_key not in HOMEDEPOT_RULE_KEYS):
             continue
         if (
             configured_retailer.upper() != 'ALL'
@@ -543,7 +547,7 @@ def load_active_sea_rules(cursor, product_line):
             if field.strip()
         ]
         display_fields = []
-        if costco_layer2.is_costco(configured_retailer):
+        if key == 'sea_ldy_dryer' or costco_layer2.is_costco(configured_retailer):
             configured_fields = list((*costco_layer2.METRICS, *costco_layer2.PRICES))
         for field_group in configured_fields + list(spec['display_fields']):
             for field in str(field_group or '').split('|'):
@@ -568,9 +572,13 @@ def load_active_sea_rules(cursor, product_line):
                 else [configured_retailer]
             ),
         })
-        existing = rules_by_key.get(rule_key)
+        if costco_layer2.bestbuy_dryer.matches(key, configured_retailer):
+            row['error_message'] = bestbuy_dryer_crossfield.RULES[rule_key]
+            row['guide_description'] = bestbuy_dryer_crossfield.RULES[rule_key]
+        merge_key = (rule_key, configured_retailer.casefold()) if key == 'sea_ldy_dryer' else rule_key
+        existing = rules_by_key.get(merge_key)
         if existing is None:
-            rules_by_key[rule_key] = row
+            rules_by_key[merge_key] = row
             continue
 
         if row['rule_id'] not in existing['_source_rule_ids']:
@@ -609,19 +617,23 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
     table_name = source['table_name']
     date_column = source['date_column']
     if normalize_sea_product_line(product_line) in ('sea_tv', 'sea_ldy_dryer'):
-        day = costco_layer2.source_date_sql(date_column, retailer='Costco', product=source['product_key'])
-        source_day = costco_layer2.source_date_sql(date_column, 'source', retailer='Costco', product=source['product_key'])
+        dryer = source['product_key'] == 'ldy_dryer'
+        retailer = None if dryer else 'Costco'
+        accounts = "('bestbuy', 'costco')" if dryer else "('costco')"
+        day = costco_layer2.source_date_sql(date_column, retailer=retailer, product=source['product_key'])
+        source_day = costco_layer2.source_date_sql(date_column, 'source', retailer=retailer, product=source['product_key'])
         cursor.execute(f"""
             WITH latest AS (
-                SELECT DISTINCT ON ({day}) {day} AS source_date, batch_id
+                SELECT DISTINCT ON (LOWER(TRIM(account_name)), {day}) LOWER(TRIM(account_name)) AS retailer_key, {day} AS source_date, batch_id
                 FROM {table_name}
-                WHERE LOWER(TRIM(account_name)) = 'costco' AND {day} BETWEEN %s AND %s
-                ORDER BY {day}, id DESC
+                WHERE LOWER(TRIM(account_name)) IN {accounts} AND {day} BETWEEN %s AND %s
+                ORDER BY LOWER(TRIM(account_name)), {day}, id DESC
             )
             SELECT source.* FROM {table_name} source JOIN latest
               ON {source_day} = latest.source_date
+             AND LOWER(TRIM(source.account_name)) = latest.retailer_key
              AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-            WHERE LOWER(TRIM(source.account_name)) = 'costco'
+            WHERE LOWER(TRIM(source.account_name)) IN {accounts}
             ORDER BY {source_day}, source.id
         """, (start_date, end_date))
         return _rows_as_dicts(cursor)
@@ -723,7 +735,7 @@ def build_sea_crossfield_result(
         for correction in corrections
     }
     evaluations = {
-        str(row.get('id')): evaluate_sea_row(row)
+        str(row.get('id')): evaluate_sea_row(row, key)
         for row in rows
     }
     lowes_review_evaluations = {
@@ -969,8 +981,9 @@ def build_sea_display_query(
     end_date = date.fromisoformat(str(inspection_date)) - timedelta(days=1)
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
-    if retailer_values and all(costco_layer2.is_costco(value) for value in retailer_values):
-        day = costco_layer2.source_date_sql(date_column, retailer='Costco', product=source['product_key'])
+    if key == 'sea_ldy_dryer' or (retailer_values and all(costco_layer2.is_costco(value) for value in retailer_values)):
+        query_retailer = retailer_values[0] if len(retailer_values) == 1 else None
+        day = costco_layer2.source_date_sql(date_column, retailer=query_retailer, product=source['product_key'])
         return (f"SELECT\n{select_sql}\nFROM {source['table_name']}\n"
                 f"WHERE {day} BETWEEN '{start_date}' AND '{end_date}'{scope_sql}\n"
                 f"ORDER BY item, {date_column};")
@@ -1035,7 +1048,7 @@ def get_sea_cross_field_summary(cursor, inspection_date, product_line):
             'retailers': applicable_retailers,
             'guide_name': spec['detail_name'],
             'guide_descriptions': spec.get('guide_descriptions', {}),
-            'guide_description': spec.get('guide_description', spec['error_message']),
+            'guide_description': rule.get('guide_description') or spec.get('guide_description', spec['error_message']),
             'error_message': error_message,
             'error_count': rule['error_count'],
             'review_count': rule['review_count'],
@@ -1122,7 +1135,7 @@ def get_sea_cross_field_rule_detail(
     for retailer in retailers:
         product = 'tv' if result['product_line'] == 'sea_tv' else result['product_line']
         columns = (set((*costco_layer2.METRICS, *costco_layer2.PRICES))
-                   if costco_layer2.is_costco(retailer) else set(get_editable_columns(product, retailer)))
+                   if result['product_line'] == 'sea_ldy_dryer' or costco_layer2.is_costco(retailer) else set(get_editable_columns(product, retailer)))
         editable_columns.update(columns)
         retailer_columns[retailer] = sorted(columns)
     if 'Costco' in retailers:
