@@ -11,6 +11,7 @@ from django.views.decorators.http import require_GET
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 from apps.dx.dx_layer1.common.context import build_context
 from .calculations import COUNTRIES, MINIMUM_DAYS, MAIN_POLICY_VERSION, comparison_rules, current_volume_decision, week_start
+from .comparison_service import live_comparison_rows
 
 
 def page(request):
@@ -79,6 +80,7 @@ def alerts(request):
         return JsonResponse({'error': '날짜를 확인해주세요.'}, status=400)
     try:
         snapshots = list(Daily.objects.filter(inspection_date=day, country__in=COUNTRIES))
+        rows_by_country = live_comparison_rows(snapshots)
     except DatabaseError:
         return JsonResponse({'error': '수집량 비교 결과를 불러올 수 없습니다.'}, status=503)
     now = timezone.now()
@@ -92,5 +94,5 @@ def alerts(request):
                    'verification_state',
                    'observation_state', 'observation_days', 'observation_prior_days')},
                   'rules': comparison_rules(row, snapshot.country)}
-                 for saved in snapshot.rows for row in [current_volume_decision(saved, snapshot.country)]],
+                 for row in rows_by_country[snapshot.country]],
     } for snapshot in snapshots]})

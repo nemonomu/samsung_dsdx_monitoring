@@ -44,6 +44,21 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_seg_amazon_missing_or_pending_keeps_history_for_later_live_batch(self):
+        history = [sample(290, retailer='Amazon', source_date=f'2026-10-{n:02}')
+                   for n in range(1, 6)]
+        for extra, state in [({'main': 0, 'bsr': 0, 'total': 0}, 'missing'),
+                             ({'complete': False}, 'pending'),
+                             ({'base_status': 'ERROR'}, 'pending')]:
+            with self.subTest(state=state, extra=extra):
+                saved = calc.compare_rows([sample(retailer='Amazon', **extra)], history, 'SEG')[0]
+                projected = calc.current_volume_decision(saved, 'SEG')
+                self.assertEqual(state, projected['bsr_comparison_state'])
+                self.assertFalse(any(a['metric'] == 'bsr' for a in projected['alerts']))
+                rules = calc.comparison_rules(projected, 'SEG')
+                self.assertEqual((290, 100), (rules['main']['baseline'], rules['bsr']['baseline']))
+                self.assertEqual('median_28d', rules['bsr']['rule'])
+
     def test_history_eligibility_does_not_override_automatic_normal_status(self):
         for country in calc.COUNTRIES:
             check = check_for(250, bsr_count=60)
@@ -388,6 +403,60 @@ class CalculationTests(SimpleTestCase):
 
 
 class StoreTests(TestCase):
+    def test_legacy_missing_seg_amazon_recovers_live_rules_without_writes_or_source_queries(self):
+        self.refresh(self.end - timedelta(days=5), self.end - timedelta(days=1), country='SEG',
+                     loader=lambda *_: check_for(290, retailer='Amazon'))
+        self.refresh(country='SEG', loader=lambda *_: check_for(0, retailer='Amazon', bsr_count=0))
+        snapshot = Daily.objects.get(country='SEG', source_date=self.end)
+        snapshot.rows[0]['baselines'].pop('bsr')  # Previous code discarded this on missing data.
+        snapshot.save(update_fields=['rows'])
+        before = snapshot.rows
+        with patch.object(collector, 'load_check', side_effect=AssertionError('no source queries')):
+            with self.assertNumQueries(2):
+                response = api.alerts(self.factory.get('/', {'date': str(self.end)}))
+        row = json.loads(response.content)['snapshots'][0]['rows'][0]
+        self.assertEqual((0, 0, 0), (row['main'], row['bsr'], row['total']))
+        self.assertEqual((290, 100), (row['rules']['main']['baseline'], row['rules']['bsr']['baseline']))
+        self.assertEqual('missing', row['bsr_comparison_state'])
+        snapshot.refresh_from_db()
+        self.assertEqual(before, snapshot.rows)
+
+        # A later offline refresh updates statistics, while the live rules were
+        # already available before that refresh.
+        self.refresh(country='SEG', loader=lambda *_: check_for(290, retailer='Amazon',
+                                                              count=322, batch_id='retry'))
+        payload = json.loads(api.weekly(self.factory.get('/', {
+            'date': str(self.end), 'country': 'SEG', 'weeks': 1,
+        })).content)
+        day = next(day for row in payload['weeks'][0]['rows'] for day in row['daily']
+                   if day['date'] == str(self.end))
+        self.assertEqual((290, 100, 322, 'retry'),
+                         (day['main'], day['bsr'], day['total'], day['batch_id']))
+        self.assertEqual([], day['alerts'])
+
+    def test_live_rule_recovery_requires_five_eligible_prior_days_in_same_scope(self):
+        self.refresh(self.end - timedelta(days=5), self.end - timedelta(days=1), country='SEG',
+                     loader=lambda *_: check_for(290, retailer='Amazon'))
+        self.refresh(country='SEG', loader=lambda *_: check_for(0, retailer='Amazon', bsr_count=0))
+        snapshot = Daily.objects.get(country='SEG', source_date=self.end)
+        snapshot.rows[0]['baselines'].pop('bsr')
+        snapshot.save(update_fields=['rows'])
+        oldest = self.end - timedelta(days=5)
+        for change in [dict(country='SEA'), dict(source_date=oldest - timedelta(days=28)),
+                       dict(refresh_error=True),
+                       dict(rows=[sample(retailer='Amazon', product='TV')]),
+                       dict(rows=[sample(retailer='Other')]),
+                       dict(rows=[sample(retailer='Amazon', slot='other')]),
+                       dict(rows=[sample(retailer='Amazon', complete=False)]),
+                       dict(rows=[sample(retailer='Amazon', alerts=[{'metric': 'bsr', 'status': 'VOLUME_LOW'}])])]:
+            old = Daily.objects.get(country='SEG', source_date=oldest)
+            original = {key: getattr(old, key) for key in change}
+            Daily.objects.filter(pk=old.pk).update(**change)
+            with self.subTest(change=change):
+                row = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end)})).content)['snapshots'][0]['rows'][0]
+                self.assertNotIn('bsr', row['rules'])
+            Daily.objects.filter(pk=old.pk).update(**original)
+
     def test_window_end_rechecks_same_batch_and_counts_without_early_normal(self):
         self.refresh(self.end - timedelta(days=5), self.end - timedelta(days=1), country='SEM',
                      loader=lambda *_: check_for(300, retailer='Coppel', bsr_count=80))
