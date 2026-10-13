@@ -116,17 +116,20 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
     """After observation, compare fixed targets or five good days of history."""
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
-    deferred_state = None
     if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
-        deferred_state = 'pending'
-    elif all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
-        deferred_state = 'missing'
+        return rule, 'pending', None, None
+    if all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
+        return rule, 'missing', None, None
     if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
-        return rule, deferred_state or row['observation_state'], None, None
+        return rule, row['observation_state'], None, None
+    current = row.get('bsr')
+    if current is None:
+        # Older snapshots can contain NULL; never invent zero collected rows.
+        return rule, 'insufficient', None, None
     if variable and saved_basis is not None:
         if (saved_basis.get('rule') != rule or saved_basis.get('days', 0) < MINIMUM_DAYS
                 or saved_basis.get('value', 0) <= 0):
-            return rule, deferred_state or 'insufficient', None, None
+            return rule, 'insufficient', None, None
         basis = dict(saved_basis)
         baseline = basis['value']
     elif variable:
@@ -138,19 +141,12 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
                                 for a in old.get('alerts', []))):
                 days[old.get('source_date', index)] = old['bsr']
         if len(days) < MINIMUM_DAYS:
-            return rule, deferred_state or 'insufficient', None, None
+            return rule, 'insufficient', None, None
         baseline = median(days.values())
         basis = {'value': baseline, 'days': len(days), 'rule': rule}
     else:
         baseline = 100
         basis = {'value': baseline, 'days': 0, 'rule': rule}
-    # The historical basis remains useful when a later live batch arrives.
-    # Missing/incomplete snapshots still must not produce a BSR alert.
-    if deferred_state:
-        return rule, deferred_state, basis, None
-    current = row.get('bsr')
-    if current is None:
-        return rule, 'insufficient', basis, None
     threshold = 15 if tiered_bsr(row, country) else 30
     low = (current != 100 if exact_bsr(row, country) else (baseline - current) * 100 >= baseline * threshold
            if variable else current < baseline)

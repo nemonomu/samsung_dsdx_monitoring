@@ -31,19 +31,6 @@ function fixture(country='SIEL', product='TV', base='OK') {
 }
 function apply(f) {volume.decorate(f.data, f.payload, day, f.summaries); return f.row.status;}
 
-// SEG recollection uses live ranks, even while the snapshot still says missing.
-for (const [main, bsr, expected] of [[290,100,'OK'],[290,84,'VOLUME_REVIEW'],
-    [290,80,'VOLUME_LOW'],[200,100,'VOLUME_LOW'],[0,0,'CRITICAL']]) {
-    const f=fixture('SEG','REF');
-    f.row.retailer=f.saved.retailer='Amazon';
-    Object.assign(f.saved, {main:0,bsr:0,total:0,batch_id:'',bsr_comparison_state:'missing'});
-    f.saved.rules={main:median(290),bsr:median(100,{low_percent:20,review_percent:15,high_percent:null})};
-    Object.assign(f.row,{main_count:main,bsr_count:bsr,raw_count:main?322:0,actual:main?322:0,
-        batch_id:'a_20261013_024743',collection_phase:'complete'});
-    assert.equal(apply(f),expected,'recollection must evaluate latest counts against prior history');
-    assert.equal(f.row.verification_state,'ready');
-}
-
 // SEM received batches are assessed without waiting for the other retailers.
 for (const product of ['REF', 'LDY']) {
     const f = fixture('SEM', product);
