@@ -30,6 +30,11 @@ class DeploymentTests(unittest.TestCase):
             migration = next(i for i, args in enumerate(calls) if 'migrate' in args)
             restart = calls.index(['sudo', '-n', 'systemctl', 'restart', 'gunicorn'])
             self.assertLess(migration, restart)
+            review_migration = calls.index([str(root / 'venv/bin/python'), str(root / 'manage.py'),
+                                           'migrate', 'dx_layer2', '--noinput'])
+            static_collection = next(i for i, args in enumerate(calls) if 'collectstatic' in args)
+            self.assertLess(review_migration, static_collection)
+            self.assertLess(review_migration, restart)
             self.assertEqual(2, len(installed))
             self.assertIn('--automatic', installed['/etc/systemd/system/samsung-dsdx-collection-statistics.service'])
             self.assertIn('OnCalendar=*:0/15', installed['/etc/systemd/system/samsung-dsdx-collection-statistics.timer'])
