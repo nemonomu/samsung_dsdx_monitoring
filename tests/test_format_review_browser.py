@@ -25,6 +25,7 @@ call_command('migrate', 'dx_layer2', verbosity=0)
 raw = sample()
 js = (ROOT/'apps/dx/dx_layer2/static/dx_layer2/js/format-review.js').read_text(encoding='utf-8')
 css = (ROOT/'apps/dx/dx_layer2/static/dx_layer2/css/format-review.css').read_text(encoding='utf-8')
+css = (ROOT/'static/css/common.css').read_text(encoding='utf-8') + css
 html = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font:14px system-ui,sans-serif}'+css+'</style><button data-format-review-table="sea_ref_retail" data-format-review-retailer="Lowes">검토 열기</button><input type="hidden" name="csrfmiddlewaretoken" value="fixture"><script>function getSelectedDate(){return "2026-10-11";}</script><script>'+js+'</script>'
 
 
@@ -49,6 +50,13 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     page.goto('https://monitoring.test/')
     page.get_by_text('검토 열기',exact=True).click()
     expect(page.locator('.format-review')).to_be_visible()
+    def assert_centered():
+        box = page.locator('.format-review').bounding_box()
+        viewport = page.viewport_size
+        assert abs(box['x'] + box['width']/2 - viewport['width']/2) <= 1, box
+        assert abs(box['y'] + box['height']/2 - viewport['height']/2) <= 1, box
+        assert box['x'] > 0 and box['y'] > 0, box
+    assert_centered()
     group=page.locator('.fr-group').filter(has=page.locator('.fr-value',has_text='Pickup Ready by 9am Tomorrow'))
     expect(group).to_have_count(1)
     assert group.locator('.fr-links a').count()==3
@@ -85,6 +93,7 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     output.mkdir(parents=True,exist_ok=True)
     page.screenshot(path=str(output/'desktop.png'),full_page=True)
     page.set_viewport_size({'width':390,'height':844})
+    assert_centered()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(output/'mobile.png'),full_page=True)
     assert not errors,errors
