@@ -1,5 +1,7 @@
 """Isolated metadata DB tests; no collector database connections."""
 import copy
+import base64
+import io
 import json
 import sys
 from contextlib import contextmanager, ExitStack
@@ -50,6 +52,13 @@ def connection_stub():
 
 
 class FormatReviewTests(TestCase):
+    def capture_payload(self):
+        from PIL import Image
+        buffer = io.BytesIO()
+        Image.new('RGB', (8, 8), 'blue').save(buffer, format='PNG')
+        return {'checked_urls': ['https://www.lowes.com/pd/1'],
+                'captures': [{'name': '확인.png', 'data': base64.b64encode(buffer.getvalue()).decode()}]}
+
     def setUp(self):
         self.raw = sample()
         self.loader = patch.object(services, '_get_format_detail_raw', side_effect=lambda *a, **k: copy.deepcopy(self.raw))
@@ -77,6 +86,78 @@ class FormatReviewTests(TestCase):
         self.assertEqual(5,data['record_count'])
         self.assertEqual(5,data['counts']['baseline_normal'])
         self.assertEqual(1,data['counts']['legacy_normal'])
+
+    def test_baseline_exclusions_do_not_change_validation_or_inventory(self):
+        data = self.inventory()
+        self.assertIn('final_sku_price', data['baseline_excluded_fields'])
+        self.assertIn('count_of_star_ratings', data['baseline_excluded_fields'])
+        self.assertNotIn('sku_popularity', data['baseline_excluded_fields'])
+        prices = [g for g in data['groups'] if g['field']=='final_sku_price']
+        self.assertEqual({'issues', 'baseline'}, {g['tab'] for g in prices})
+        result = service.apply_detail(self.raw, repo.scopes(), errors_only=True)
+        self.assertEqual(1, result['field_counts']['final_sku_price'])
+
+    def test_evidence_saved_atomically_and_preserved_after_undo(self):
+        from apps.dx.dx_layer2.models import FormatReviewCapture
+        data = self.inventory()
+        key = service.group_key('pick_up_availability', 'Pickup Ready by 9am Tomorrow')
+        evidence = self.capture_payload()
+        preview = service.preview(data, [key], 'normal', '실제 페이지 확인', evidence)
+        tampered = copy.deepcopy(evidence)
+        tampered['captures'][0]['name'] = '다른근거.png'
+        with self.assertRaises(repo.ReviewConflict):
+            service.commit(data, preview['token'], 'reviewer', tampered)
+        self.assertEqual(0, FormatReviewEvent.objects.count())
+        self.assertEqual(0, FormatReviewCapture.objects.count())
+        event_id = service.commit(data, preview['token'], 'reviewer', evidence)
+        detail = repo.evidence_detail(data['fingerprint'], event_id)
+        self.assertEqual(evidence['checked_urls'], detail['checked_urls'])
+        self.assertEqual('reviewer', detail['actor'])
+        self.assertEqual('확인.png', detail['captures'][0]['name'])
+        self.assertEqual(3, detail['targets'][0]['count'])
+        self.assertEqual(1, self.inventory()['history'][0]['capture_count'])
+        with self.assertRaises(ValueError): repo.evidence_detail('other-scope', event_id)
+        repo.undo(data['fingerprint'], 1, event_id, 'other-reviewer', '취소 사유')
+        self.assertTrue(repo.evidence_detail(data['fingerprint'], event_id)['is_del'])
+        self.assertEqual(1, FormatReviewCapture.objects.count())
+
+    def test_existing_policies_still_apply_before_evidence_migration(self):
+        self.apply()
+        with patch.object(repo, 'ready', side_effect=lambda evidence=False: not evidence):
+            data = self.inventory()
+            self.assertFalse(data['available'])
+            self.assertEqual([], data['history'])
+            self.assertEqual('registered', next(g for g in data['groups'] if g['value']=='Pickup Ready by 9am Tomorrow')['tab'])
+
+    def test_invalid_evidence_and_capture_access(self):
+        from apps.dx.dx_layer2.models import FormatReviewCapture
+        data = self.inventory()
+        key = service.group_key('pick_up_availability', 'Pickup Ready by 9am Tomorrow')
+        valid = self.capture_payload()
+        cases = [
+            {'checked_urls': ['https://unrelated.test']},
+            {'checked_urls': ['javascript:alert(1)']},
+            {'captures': valid['captures']*4},
+            {'captures': [{'name':'x.png', 'data':'invalid base64!'}]},
+            {'captures': [{'name':'x.png', 'data':base64.b64encode(b'<svg></svg>').decode()}]},
+            {'captures': [{'name':'x.png', 'data':'A'*600000}]},
+        ]
+        for evidence in cases:
+            with self.subTest(evidence=str(evidence)[:90]), self.assertRaises(ValueError):
+                service.preview(data, [key], 'normal', '확인', evidence)
+        preview = service.preview(data, [key], 'normal', '확인', valid)
+        service.commit(data, preview['token'], 'reviewer', valid)
+        capture = FormatReviewCapture.objects.get()
+        request = RequestFactory().get('/capture/')
+        request.user = SimpleNamespace(is_authenticated=False)
+        self.assertEqual(401, review_api.capture(request, capture.pk).status_code)
+        request.user.is_authenticated = True
+        response = review_api.capture(request, capture.pk)
+        self.assertEqual(200, response.status_code)
+        self.assertEqual('image/png', response['Content-Type'])
+        self.assertEqual('private, no-store', response['Cache-Control'])
+        with self.settings(DEBUG=True):
+            self.assertEqual(404, review_api.capture(request, capture.pk).status_code)
 
     def test_batch_normal_future_and_other_field_preserved(self):
         preview = self.apply()

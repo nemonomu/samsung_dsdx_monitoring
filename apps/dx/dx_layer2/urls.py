@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/format-detail/', format_api.format_detail, name='api_format_detail'),
     path('api/format-rules/', format_api.format_rules, name='api_format_rules'),
     path('api/format-review/', review_api.reviews, name='api_format_review'),
+    path('api/format-review/capture/<int:capture_id>/', review_api.capture, name='api_format_review_capture'),
     path('api/anomaly-detail/', anomaly_api.anomaly_detail, name='api_anomaly_detail'),
     path('api/duplicate-cleanup/', anomaly_api.duplicate_cleanup, name='api_duplicate_cleanup'),
     path('api/update-cell/', data_edit_api.update_cell, name='api_update_cell'),

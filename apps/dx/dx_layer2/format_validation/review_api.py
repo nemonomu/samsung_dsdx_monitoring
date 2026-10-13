@@ -1,6 +1,7 @@
 import json
 from datetime import date
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
+from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from apps.common.db import dx_connection
@@ -25,15 +26,19 @@ def reviews(request):
         with dx_connection() as (_conn, cursor):
             data = service.inventory(cursor, day, table, retailer)
         if request.method == 'GET':
+            if body.get('event_id'):
+                response = JsonResponse(repository.evidence_detail(data['fingerprint'], int(body['event_id'])))
+                response['Cache-Control'] = 'private, no-store'
+                return response
             return JsonResponse(data)
         action = body.get('action')
         if action == 'preview':
-            return JsonResponse(service.preview(data, body.get('keys'), body.get('decision'), body.get('reason')))
+            return JsonResponse(service.preview(data, body.get('keys'), body.get('decision'), body.get('reason'), body.get('evidence')))
         if action == 'apply':
             token = body.get('token')
             if not isinstance(token, str) or len(token) > 100000:
                 raise ValueError('미리보기 정보가 올바르지 않습니다.')
-            event_id = service.commit(data, token, request.user.get_username())
+            event_id = service.commit(data, token, request.user.get_username(), body.get('evidence'))
             return JsonResponse({'success': True, 'event_id': event_id})
         if action == 'undo':
             revision, event_id = body.get('revision'), body.get('event_id')
@@ -49,3 +54,21 @@ def reviews(request):
         return JsonResponse({'error': str(exc)}, status=400)
     except Exception as exc:
         return safe_error(exc)
+
+
+@require_http_methods(['GET'])
+def capture(request, capture_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': '로그인이 필요합니다.'}, status=401)
+    environment = 'test' if settings.DEBUG else 'production'
+    if not repository.ready(evidence=True):
+        return JsonResponse({'error': '캡처 저장소가 준비되지 않았습니다.'}, status=503)
+    image = repository.capture(capture_id, environment)
+    if not image:
+        return JsonResponse({'error': '캡처를 찾을 수 없습니다.'}, status=404)
+    response = HttpResponse(bytes(image.content), content_type=image.content_type)
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+    response['Content-Disposition'] = 'inline; filename="review-capture"'
+    return response

@@ -9,6 +9,15 @@ import re
 from django.conf import settings
 from django.core import signing
 from . import review_repository as repository
+from . import review_evidence
+
+
+# Presentation scope only: these fields still participate in format validation.
+BASELINE_EXCLUDED_FIELDS = frozenset({
+    'item', 'product_url', 'url', 'sku', 'account_name', 'country', 'product', 'page_type',
+    'star_rating', 'count_of_star_ratings', 'detailed_review_content', 'summarized_review_content',
+    'count_of_reviews', 'final_sku_price', 'original_sku_price',
+})
 
 
 def digest(value):
@@ -164,8 +173,9 @@ def inventory(cursor, day, table, retailer, scopes=None):
         'source_date': data.get('source_date', str(day)), 'retailer': data['retailer'],
         'revision': scope.revision if scope else 0, 'groups': list(groups.values()),
         'counts': data['review_counts'], 'registrations': registrations,
-        'history': repository.history(scope), 'available': repository.ready(),
+        'history': repository.history(scope), 'available': repository.ready(evidence=True),
         'record_count': len(data['target_ids']),
+        'baseline_excluded_fields': sorted(BASELINE_EXCLUDED_FIELDS),
     }
 
 
@@ -191,26 +201,29 @@ def selected_targets(data, keys, action):
     return [groups[key] for key in sorted(keys)]
 
 
-def preview(data, keys, action, reason):
+def preview(data, keys, action, reason, evidence=None):
     if not data['available']:
         raise ValueError('검토 저장소가 준비되지 않았습니다. dx_layer2 마이그레이션이 필요합니다.')
     if action not in ('normal', 'error', 'revoke'):
         raise ValueError('지원하지 않는 처리입니다.')
     reason = validate_reason(reason)
     targets = selected_targets(data, keys, action)
+    evidence = review_evidence.validate(evidence, targets)
     stamp = {
         'fingerprint': data['fingerprint'], 'revision': data['revision'], 'date': data['date'],
         'keys': sorted(keys), 'action': action, 'reason': reason, 'snapshot': digest(targets),
+        'evidence': digest(review_evidence.signature(evidence)),
     }
     return {
         'token': signing.dumps(stamp, salt='format-review-v1', compress=True),
         'count': sum(g['count'] for g in targets), 'groups': len(targets),
         'targets': [{'field': g['field'], 'value': g['value'], 'count': g['count']} for g in targets],
         'scope': data['context'], 'source_date': data['source_date'], 'action': action,
+        'capture_count': len(evidence['captures']), 'checked_urls': evidence['checked_urls'],
     }
 
 
-def commit(data, token, actor):
+def commit(data, token, actor, evidence=None):
     try:
         stamp = signing.loads(token, salt='format-review-v1', max_age=600)
     except signing.BadSignature as exc:
@@ -220,8 +233,11 @@ def commit(data, token, actor):
     targets = selected_targets(data, stamp['keys'], stamp['action'])
     if digest(targets) != stamp['snapshot']:
         raise repository.ReviewConflict('미리보기 이후 수집 값 또는 대상이 변경됐습니다. 다시 확인하세요.')
+    evidence = review_evidence.validate(evidence, targets)
+    if stamp.get('evidence') != digest(review_evidence.signature(evidence)):
+        raise repository.ReviewConflict('확인 근거가 변경됐습니다. 다시 미리보기 하세요.')
     return repository.save(data['context'], data['fingerprint'], data['revision'], stamp['action'],
-                           targets, stamp['reason'], actor, date.fromisoformat(data['date']))
+                           targets, stamp['reason'], actor, date.fromisoformat(data['date']), evidence)
 
 
 def merge_report(cursor, day, type_summary, reason_summary, table_summary, details):

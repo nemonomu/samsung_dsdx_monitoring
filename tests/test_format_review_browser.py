@@ -1,5 +1,6 @@
 """Exercise the real review JS and API against an isolated in-memory review DB."""
 import json
+import io
 import os
 import sys
 from pathlib import Path
@@ -37,6 +38,10 @@ def serve(route):
     factory = RequestFactory()
     request = factory.post('/reviews/', data=req.post_data, content_type='application/json') if req.method=='POST' else factory.get('/reviews/', {k:v[0] for k,v in parse_qs(urlsplit(req.url).query).items()})
     request.user=SimpleNamespace(is_authenticated=True,get_username=lambda:'browser-reviewer')
+    if '/capture/' in req.url:
+        response=review_api.capture(request, int(urlsplit(req.url).path.rstrip('/').split('/')[-1]))
+        route.fulfill(status=response.status_code,headers=dict(response.items()),body=response.content)
+        return
     response=review_api.reviews(request)
     route.fulfill(status=response.status_code,content_type='application/json',body=response.content.decode())
 
@@ -46,7 +51,7 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     page=browser.new_page(viewport={'width':1440,'height':1000})
     errors=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
-    page.route('https://monitoring.test/**',serve)
+    page.context.route('https://monitoring.test/**',serve)
     page.goto('https://monitoring.test/')
     page.get_by_text('검토 열기',exact=True).click()
     expect(page.locator('.format-review')).to_be_visible()
@@ -57,6 +62,12 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
         assert abs(box['y'] + box['height']/2 - viewport['height']/2) <= 1, box
         assert box['x'] > 0 and box['y'] > 0, box
     assert_centered()
+    # Price fields disappear only from baseline review, including its dropdown.
+    page.locator('[data-tab="baseline"]').click()
+    expect(page.locator('#fr-groups')).not_to_contain_text('final_sku_price')
+    expect(page.locator('#fr-field option[value="final_sku_price"]')).to_have_count(0)
+    page.locator('[data-tab="issues"]').click()
+    expect(page.locator('#fr-groups')).to_contain_text('final_sku_price')
     group=page.locator('.fr-group').filter(has=page.locator('.fr-value',has_text='Pickup Ready by 9am Tomorrow'))
     expect(group).to_have_count(1)
     assert group.locator('.fr-links a').count()==3
@@ -88,21 +99,59 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     group.locator('.fr-value').click()
     expect(checkbox).to_be_checked()
     page.locator('#fr-reason').fill('실제 상품 페이지 확인')
+    page.locator('#fr-evidence-input summary').click()
+    page.locator('[data-checked-url]').first.check()
+    from PIL import Image
+    capture=io.BytesIO()
+    Image.new('RGB',(240,100),'#168777').save(capture,format='PNG')
+    page.locator('#fr-files').set_input_files({'name':'상품 확인.png','mimeType':'image/png','buffer':capture.getvalue()})
+    expect(page.locator('#fr-captures img')).to_have_count(1)
+    # Exercise actual clipboard image handling too, without relying on OS clipboard.
+    page.evaluate('''async () => {
+        const image = document.querySelector('#fr-captures img');
+        const blob = await (await fetch(image.src)).blob();
+        const clipboardData = new DataTransfer();
+        clipboardData.items.add(new File([blob], '붙여넣기.png', {type:blob.type}));
+        document.querySelector('#fr-reason').dispatchEvent(new ClipboardEvent('paste', {clipboardData, bubbles:true, cancelable:true}));
+    }''')
+    expect(page.locator('#fr-captures img')).to_have_count(2)
     page.locator('[data-fr="preview"][data-decision="normal"]').click()
     expect(page.locator('#fr-preview')).to_contain_text('3건 / 1개 값')
+    expect(page.locator('#fr-preview')).to_contain_text('확인 URL 1개 · 캡처 2장')
     # A changed source after preview must be rejected, even though group IDs match.
     raw['results'][0]['product_url']='https://www.lowes.com/pd/changed'
     page.locator('[data-fr="apply"]').click()
     expect(page.locator('#fr-message')).to_contain_text('수집 값 또는 대상이 변경')
+    # Refresh the selected URL to match the latest source after the rejected preview.
+    raw['results'][0]['product_url']='https://www.lowes.com/pd/1'
     page.locator('[data-fr="preview"][data-decision="normal"]').click()
     page.locator('[data-fr="apply"]').click()
     expect(page.locator('#fr-message')).to_contain_text('처리 결과를 반영')
     page.locator('[data-tab="registered"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('Pickup Ready by 9am Tomorrow')
+    page.locator('[data-fr="evidence"]').click()
+    expect(page.locator('#fr-groups')).to_contain_text('실제 상품 페이지 확인')
+    expect(page.locator('.fr-evidence-images img')).to_have_count(2)
+    page.wait_for_function('Array.from(document.querySelectorAll(".fr-evidence-images img")).every(i => i.complete && i.naturalWidth > 0)')
+    with page.expect_popup() as capture_popup:
+        page.locator('.fr-evidence-images a').first.click()
+    capture_popup.value.wait_for_load_state()
+    capture_popup.value.wait_for_function('document.querySelector("img")?.naturalWidth > 0')
+    capture_popup.value.close()
+    page.locator('#fr-groups summary').click()
+    expect(page.locator('#fr-groups')).to_contain_text('확인한 URL')
+    output=ROOT/'output/format-review-qa'
+    output.mkdir(parents=True,exist_ok=True)
+    page.screenshot(path=str(output/'evidence-desktop.png'),full_page=True)
+    page.locator('[data-fr="evidence-back"]').click()
     page.locator('#fr-reason').fill('잘못 등록하여 취소')
     page.locator('[data-fr="revoke"]').click()
     page.locator('[data-fr="apply"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('등록한 정상 값이 없습니다')
+    page.locator('[data-tab="history"]').click()
+    expect(page.locator('#fr-groups')).to_contain_text('잘못 등록하여 취소')
+    expect(page.locator('#fr-groups')).to_contain_text('캡처 2장')
+    page.screenshot(path=str(output/'history-desktop.png'),full_page=True)
     page.locator('[data-tab="baseline"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('기존 기준 통과')
     baseline=page.locator('.fr-group').filter(has=page.locator('.fr-value',has_text='Pickup Ready Today'))

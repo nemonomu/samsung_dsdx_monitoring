@@ -20,3 +20,11 @@ class FormatReviewEvent(models.Model):
     previous = models.JSONField(default=dict)
     created_at = models.DateTimeField()
     is_del = models.BooleanField(default=False)
+    checked_urls = models.JSONField(default=list)
+
+
+class FormatReviewCapture(models.Model):
+    event = models.ForeignKey(FormatReviewEvent, on_delete=models.PROTECT, related_name='captures')
+    name = models.CharField(max_length=150)
+    content_type = models.CharField(max_length=30)
+    content = models.BinaryField()
