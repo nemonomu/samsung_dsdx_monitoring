@@ -50,9 +50,15 @@
             return observing || sameBasis ? {...alert, status:'VOLUME_REVIEW', reason:alert.reason + ' / 확인 필요'} : alert;
         });
         if (row.volume_alerts.some(a => a.status === 'VOLUME_LOW')) return;
-        if (observing && !reviewStatuses.includes(row.status)) row.volume_alerts.push({metric:'observation', status:'VOLUME_REVIEW',
+        const requiresReview = row.volume_alerts.some(a => a.status === 'VOLUME_REVIEW');
+        if (observing && requiresReview && !reviewStatuses.includes(row.status)) row.volume_alerts.push({metric:'observation', status:'VOLUME_REVIEW',
             reason:'신규 수집 · 관찰 중 (' + row.observation_days + '/5일) / 실제 수집 결과 확인 필요'});
-        if (!reviewStatuses.includes(row.status) && (observing || row.volume_alerts.some(a => a.status === 'VOLUME_REVIEW'))) row.status = 'VOLUME_REVIEW';
+        if (!reviewStatuses.includes(row.status) && requiresReview) row.status = 'VOLUME_REVIEW';
+        // An exact-target retailer with an already normal 300/100 collection needs no manual observation review.
+        const exactTarget = (country === 'SEG' && row.retailer === 'Expert')
+            || (country === 'SEA' && row.retailer === 'Costco' && product !== 'TV');
+        if (observing && exactTarget && row.status === 'VERIFYING' && row._volumeBaseStatus === 'OK'
+            && counts.main === 300 && counts.bsr === 100 && !row.volume_alerts.length) row.status = 'OK';
     }
 
     function aggregate(rows, fallback) {

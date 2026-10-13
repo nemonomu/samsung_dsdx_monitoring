@@ -166,6 +166,25 @@ def main():
                 renderSeaRetailSection(currentStatsData);
             };
         }''')
+        page.evaluate("showCostco('2026-10-13','observing',100)")
+        expect(page.locator('.l1-review-badge')).to_have_count(0)
+        expect(page.locator('.l1-review-count')).to_have_count(0)
+        page.add_script_tag(content=(BASE/'js/seg_retail.js').read_text(encoding='utf-8'))
+        page.evaluate('''() => {
+            const categories=['TV','REF','LDY'].map(name=>({name,source_date:'2026-10-12',total:300,
+                retailers:[{retailer:'Expert',status:'OK',main_count:300,bsr_count:100,raw_count:300,
+                    actual:300,batch_id:'e-normal-'+name,batch_count:1}]}));
+            currentStatsData={checks:[{name:'SEG Retail',description:'검증 예시',check_type:'seg_retail',phase:'complete',categories}]};
+            L1.collectionVolume.decorate(currentStatsData,{policy_version:4,inspection_date:selectedDate,snapshots:[{
+                country:'SEG',source_date:'2026-10-12',available:true,
+                rows:categories.map(cat=>({product:cat.name,retailer:'Expert',slot:'daily',observation_state:'observing',observation_prior_days:2}))
+            }]},selectedDate);
+            renderLayer1Stats(currentStatsData);
+        }''')
+        expect(page.locator('.l1-review-badge')).to_have_count(0)
+        expect(page.locator('.l1-review-count')).to_have_count(0)
+        expect(page.locator('#app')).not_to_contain_text('확인 필요')
+        page.screenshot(path=str(output/'layer1-expert-normal-no-review.png'))
         page.evaluate("showCostco('2026-10-13')")
         expect(page.locator('.l1-review-badge')).to_have_text('확인 필요')
         page.locator('.l1-review-count').click()

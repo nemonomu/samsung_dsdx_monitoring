@@ -9,14 +9,14 @@ for (const name of ['layer1-common','collection-volume','retail-review','retail-
     vm.runInContext(fs.readFileSync(`apps/dx/dx_layer1/static/dx_layer1/js/${name}.js`, 'utf8'),context);
 }
 const review = context.L1.retailReview;
-function fixture(bsr=99, observation='observing', status='OK', retailer='Costco') {
+function fixture(bsr=99, observation='observing', status='OK', retailer='Costco', country='SEA', product='LDY_DRYER') {
     const source = day==='2026-10-13'?'2026-10-12':'2026-10-13';
     const row = {retailer,status,batch_id:'batch-'+day,batch_count:1,main_count:300,bsr_count:bsr,count:300};
-    const cat = {name:'LDY_DRYER',source_date:source,time_slots:[{name:'일일',retailers:[row]}]};
-    const check = {check_type:'retail',is_target_date:true,source_date:source,categories:[cat],phase:'complete'};
+    const cat = {name:product,source_date:source,time_slots:[{name:'일일',retailers:[row]}]};
+    const check = {check_type:country==='SEG'?'seg_retail':'retail',is_target_date:true,source_date:source,categories:[cat],phase:'complete'};
     const data = {checks:[check],summary:{failed:1}};
-    const payload = {policy_version:4,inspection_date:day,snapshots:[{country:'SEA',available:true,source_date:source,
-        rows:[{product:'LDY_DRYER',retailer,slot:'일일',observation_state:observation,observation_prior_days:3,
+    const payload = {policy_version:4,inspection_date:day,snapshots:[{country,available:true,source_date:source,
+        rows:[{product,retailer,slot:'일일',observation_state:observation,observation_prior_days:3,
             rules:{main:{rule:'median_28d',baseline:300,days:5,low_percent:30}}}]}]};
     context.L1.collectionVolume.decorate(data,payload,day);
     review.decorate(data,day);
@@ -24,6 +24,17 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
 }
 (async()=>{
     await review.load(day);
+    for (const [country,retailer,product] of [['SEG','Expert','TV'],['SEG','Expert','REF'],['SEG','Expert','LDY'],['SEA','Costco','LDY_DRYER']]) {
+        const normal=fixture(100,'observing','OK',retailer,country,product);
+        assert.strictEqual(normal.row.status,'OK',`${country} ${retailer} ${product} 300/100 needs no manual review`);
+        assert(!normal.row._reviewContext);
+        assert.strictEqual(normal.check.status,'OK');
+        assert(!context.L1.retailStatus.bsrCell(normal.row,100).includes('l1-review-count'));
+        assert.strictEqual(fixture(99,'observing','OK',retailer,country,product).row.status,'VOLUME_REVIEW');
+    }
+    const otherNew=fixture(100,'observing','OK','Other');
+    assert(!otherNew.row._reviewContext,'observation alone must not create review work');
+    assert(!otherNew.row.volume_alerts.length);
     let f=fixture();
     assert.strictEqual(f.row.status,'VOLUME_REVIEW');
     assert.strictEqual(f.row._reviewContext.product,'LDY_DRYER');
