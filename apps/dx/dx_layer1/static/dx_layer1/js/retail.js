@@ -653,6 +653,7 @@ async function loadSectionData() {
         render();
     }).catch(function() {});
     const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
+    if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
     try {
         const response = await fetch('/dx/layer1/api/stats/?date=' + selectedDate + '&check_type=retail');
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -670,6 +671,7 @@ async function loadSectionData() {
 }
 
 function renderSeaRetailSection(data) {
+    if (L1.retailReview) L1.retailReview.decorate(data, getSelectedDate());
     var check = data.checks ? data.checks.find(function(c) { return c.check_type === 'retail'; }) : null;
     var checkIdx = check ? data.checks.indexOf(check) : 0;
     if (!check) check = { name: 'SEA Retail', description: '데이터 없음', check_type: 'retail', status: 'PENDING', categories: [] };

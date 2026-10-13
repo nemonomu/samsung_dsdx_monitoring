@@ -18,3 +18,8 @@
 .l1-review-actions button {padding:8px 15px;border:1px solid #cbd5e1;border-radius:7px;background:white;color:#173052;cursor:pointer}
 .l1-review-actions button[type=submit] {background:#2563eb;color:white;border-color:#2563eb}
 .l1-review-actions button:disabled {opacity:.5;cursor:wait}
+.l1-review-count{border:0;background:transparent;color:inherit;font:inherit;text-decoration:underline;cursor:pointer;padding:6px 10px}
+.l1-review-count:focus-visible{outline:2px solid #2563eb}
+.l1-review-actions button[data-reject]{background:#fff;color:#b91c1c;border-color:#f3b9b9}
+.l1-review-actions button[data-primary]{order:2}
+.l1-previous-review{border:1px solid #bfdbfe;border-radius:8px;padding:12px;background:#f8fbff}

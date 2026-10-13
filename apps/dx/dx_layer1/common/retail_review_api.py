@@ -23,7 +23,7 @@ def validate_context(value):
         raise ValueError('검토 대상 정보가 올바르지 않습니다.')
     if value['version'] != 1 or value['country'] not in ('SEA', 'SEDA', 'SEM', 'SIEL', 'SEG', 'TSE'):
         raise ValueError('지원하지 않는 검토 대상입니다.')
-    if value['product'] not in ('TV', 'REF', 'LDY') or value['status'] not in ('REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH'):
+    if value['product'] not in ('TV', 'REF', 'LDY', 'LDY_DRYER') or value['status'] not in ('REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH'):
         raise ValueError('확인 필요 항목만 정상 확인할 수 있습니다.')
     for key in ('date', 'source_date'):
         if not isinstance(value[key], str) or date.fromisoformat(value[key]).isoformat() != value[key]:
@@ -63,7 +63,17 @@ def reviews(request):
         if request.method == 'GET':
             day = date.fromisoformat(request.GET.get('date', ''))
             records = RetailNormalReview.objects.filter(inspection_date=day).order_by('id')
-            return JsonResponse({'date': day.isoformat(), 'reviews': [serialize(r) for r in records]})
+            previous = {}
+            for record in RetailNormalReview.objects.filter(active=True, inspection_date__lt=day).order_by('-inspection_date', '-id').iterator():
+                context = record.context
+                # Keep the most recent confirmation for each scope and collected BSR count.
+                key = tuple(context.get(k) for k in ('country', 'product', 'retailer', 'slot')) + (context['counts'][1],)
+                if key not in previous:
+                    previous[key] = serialize(record)
+            response = JsonResponse({'date': day.isoformat(), 'reviews': [serialize(r) for r in records],
+                                     'previous_reviews': list(previous.values())})
+            response['Cache-Control'] = 'private, no-store'
+            return response
         data = json.loads(request.body)
         if not isinstance(data, dict):
             raise ValueError('요청이 올바르지 않습니다.')
@@ -72,7 +82,7 @@ def reviews(request):
         action = data.get('action')
         memo = data.get('memo', '')
         revision = data.get('revision', 0)
-        if action not in ('confirm', 'cancel') or type(revision) is not int or revision < 0:
+        if action not in ('confirm', 'reject', 'cancel') or type(revision) is not int or revision < 0:
             raise ValueError('검토 동작이 올바르지 않습니다.')
         if not isinstance(memo, str) or not memo.strip() or len(memo) > 1000:
             raise ValueError('확인 근거 또는 취소 사유를 1~1,000자로 입력하세요.')
@@ -83,7 +93,8 @@ def reviews(request):
                 fingerprint=fingerprint,
                 defaults={'inspection_date': context['date'], 'context': context},
             )
-            if record.revision != revision or record.active == (action == 'confirm'):
+            current_action = 'confirm' if record.active else (record.history[-1]['action'] if record.history else None)
+            if record.revision != revision or current_action == action or (action == 'cancel' and current_action not in ('confirm', 'reject')):
                 return JsonResponse({'error': '다른 검토 결과가 저장되었습니다. 새로고침 후 다시 확인하세요.'}, status=409)
             history = record.history + [{
                 'action': action, 'memo': memo.strip(), 'username': request.user.get_username(),

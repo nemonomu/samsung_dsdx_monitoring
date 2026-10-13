@@ -1,20 +1,21 @@
-// Manual review never changes the automatic status or collection counts.
+// Keep automatic verdicts for audit; review decisions never change collected counts.
 (function () {
     const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE'};
     const reviewStatuses = ['REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH'];
-    let records = [], loadedDate = '', loadError = '', generation = 0, targets = [];
+    let records = [], previousRecords = [], loadedDate = '', loadError = '', generation = 0, targets = [];
     const attr = value => esc(String(value)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const stable = value => JSON.stringify(value, function (_, item) {
         return item && !Array.isArray(item) && typeof item === 'object'
             ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item;
     });
     const reviewed = row => Boolean(row._normalReview && row._normalReview.active);
+    const rejected = row => Boolean(row._normalReview && !row._normalReview.active && row._normalReview.history.at(-1)?.action === 'reject');
     const number = value => Number(value).toLocaleString('ko-KR', {maximumFractionDigits: 2});
 
     function reasons(row) {
         const result = (row.volume_alerts || []).filter(alert => reviewStatuses.includes(alert.status)).map(alert =>
             alert.reason || `${String(alert.metric || '수집량').toUpperCase()} 기준 ${number(alert.baseline)}건 / 수집 ${number(alert.actual)}건 / ${number(alert.percent)}% 변동`);
-        if (row.status === 'REVIEW' || (!row.volume_comparison_state && row._volumeBaseStatus === 'REVIEW')) {
+        if (row.status === 'REVIEW' || (!row.volume_comparison_state && (row._volumeBaseStatus === 'REVIEW' || row._reviewAutomatic?.status === 'REVIEW'))) {
             const baseline = row.expected_precise == null ? row.expected : row.expected_precise;
             const actual = row.main_count == null ? row.actual : row.main_count;
             result.unshift(Number(actual) === 0 ? 'MAIN 수집 0건 · MAIN 데이터가 없어 확인이 필요합니다.' : baseline == null
@@ -22,6 +23,42 @@
                 : `MAIN 과거 ${row.history_day_count || ''}일 평균 ${number(baseline)}건 / 수집 ${number(actual)}건 / ${number(Math.abs(actual - baseline))}건 ${actual < baseline ? '감소' : '증가'}\n판정 기준: 평균 대비 ${number(row.allowed_deviation == null ? 50 : row.allowed_deviation)}건 이상 차이`);
         }
         return [...new Set(result)].sort();
+    }
+
+    function prepareReview(row, country, product, slot, day, sourceDate) {
+        if (row._reviewAutomatic && row._reviewPreparedSignature === stable({status:row.status, volume_alerts:row.volume_alerts})) Object.assign(row, row._reviewAutomatic);
+        row._reviewAutomatic = {status: row.status, volume_alerts: row.volume_alerts};
+        row._previousReview = null;
+        const counts = L1.collectionVolume.metrics(row, country);
+        if (['ERROR','CRITICAL','WARNING','COLLECTING','PENDING','ANALYZING','UNASSESSED'].includes(row.status)
+            || counts.main <= 0 || counts.total <= 0) return;
+        const previous = previousRecords.find(record => {
+            const c = record.context;
+            return record.active && c.date < day && c.source_date < sourceDate && c.country === country
+                && c.product === product && c.retailer === row.retailer && c.slot === slot && c.counts[1] === counts.bsr;
+        });
+        row._previousReview = previous;
+        const observing = row.observation_state === 'observing';
+        row.volume_alerts = (row.volume_alerts || []).map(alert => {
+            if (alert.status !== 'VOLUME_LOW' || alert.metric !== 'bsr' || !alert.exact) return alert;
+            let sameBasis = false;
+            if (previous) {
+                try { sameBasis = (JSON.parse(previous.context.basis).alerts || []).some(old =>
+                    old.metric === alert.metric && old.actual === alert.actual && old.baseline === alert.baseline
+                    && old.rule === alert.rule && old.exact === alert.exact); } catch (_) {}
+            }
+            return observing || sameBasis ? {...alert, status:'VOLUME_REVIEW', reason:alert.reason + ' / 확인 필요'} : alert;
+        });
+        if (row.volume_alerts.some(a => a.status === 'VOLUME_LOW')) return;
+        if (observing && !reviewStatuses.includes(row.status)) row.volume_alerts.push({metric:'observation', status:'VOLUME_REVIEW',
+            reason:'신규 수집 · 관찰 중 (' + row.observation_days + '/5일) / 실제 수집 결과 확인 필요'});
+        if (!reviewStatuses.includes(row.status) && (observing || row.volume_alerts.some(a => a.status === 'VOLUME_REVIEW'))) row.status = 'VOLUME_REVIEW';
+    }
+
+    function aggregate(rows, fallback) {
+        const priority = {OK:0,PENDING:1,COLLECTING:2,ANALYZING:2,VERIFYING:3,UNASSESSED:3,
+            REVIEW:4,VOLUME_HIGH:4,VOLUME_REVIEW:4,WARNING:5,VOLUME_LOW:6,CRITICAL:6,ERROR:7};
+        return rows.reduce((status,row) => (priority[row.status] || 0) > (priority[status] || 0) ? row.status : status, rows.length ? 'OK' : fallback);
     }
 
     function decorate(data, day) {
@@ -36,6 +73,9 @@
                 slots.forEach(slot => {
                     const rows = slot.retailers || [];
                     rows.forEach(row => {
+                        prepareReview(row, country, String(cat.name || cat.category || '').toUpperCase(),
+                            slot.name || 'daily', day, cat.source_date || check.source_date || day);
+                        row._reviewPreparedSignature = stable({status:row.status, volume_alerts:row.volume_alerts});
                         delete row._reviewContext;
                         delete row._normalReview;
                         row._reviewReasons = reasons(row);
@@ -60,13 +100,21 @@
                         row._reviewTarget = targets.push(row) - 1;
                     });
                     slot._reviewRows = rows;
+                    slot.status = aggregate(rows, slot.status);
                     catRows.push(...rows);
                 });
                 cat._reviewRows = catRows;
+                cat.status = aggregate(catRows, cat.status);
                 checkRows.push(...catRows);
             });
             check._reviewRows = checkRows;
+            check.status = aggregate(checkRows, check.status);
         });
+        if (data.summary && !data.error) {
+            const checked = (data.checks || []).filter(c=>c.is_target_date);
+            data.summary.failed = checked.filter(c=> ['CRITICAL','VOLUME_LOW','ERROR'].includes(c.status)
+                || (c._reviewRows || []).some(rejected)).length;
+        }
     }
 
     function recordText(record) {
@@ -78,13 +126,15 @@
     function badge(row, status) {
         if (row._reviewContext && reviewStatuses.includes(status)) {
             const done = reviewed(row);
+            const bad = rejected(row);
             const title = (done ? '정상 확인\n' + recordText(row._normalReview) + '\n\n최초 사유\n' : '확인 필요\n')
                 + row._reviewReasons.join('\n\n') + '\n\n클릭하여 ' + (done ? '확인 이력 보기 · 확인 취소' : '검토');
-            return `<button type="button" class="status-badge ${done ? 'ok' : 'volume-review'} l1-review-badge" title="${attr(title)}" aria-label="${attr(title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${done ? '✓ 정상 확인' : '<span class="status-dot"></span>확인 필요'}</button>`;
+            return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+recordText(row._normalReview)+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>확인 필요'}</button>`;
         }
         const rows = row._reviewRows || [];
         const reviews = rows.filter(item => item._reviewContext);
         if (!reviews.length || !['OK', ...reviewStatuses].includes(status)) return null;
+        if (reviews.some(rejected)) return '<span class="status-badge critical">이상 확정</span>';
         const pending = reviews.filter(item => !reviewed(item));
         const done = !pending.length && rows.every(item => (item.status === 'OK' || reviewed(item)) && Number(item.batch_count || 0) < 2);
         // Confirmed reviews no longer mask siblings that are still collecting.
@@ -106,7 +156,7 @@
 
     async function load(day) {
         const current = ++generation;
-        loadedDate = ''; loadError = ''; records = [];
+        loadedDate = ''; loadError = ''; records = []; previousRecords = [];
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 8000);
         try {
@@ -115,7 +165,7 @@
             const payload = await response.json();
             if (current !== generation) return;
             if (payload.date !== day || !Array.isArray(payload.reviews)) throw new Error('검토 기록의 날짜가 일치하지 않습니다.');
-            records = payload.reviews; loadedDate = day;
+            records = payload.reviews; previousRecords = payload.previous_reviews || []; loadedDate = day;
         } catch (error) {
             if (current === generation) loadError = '검토 기록을 불러오지 못했습니다. 새로고침 후 다시 시도하세요.';
         } finally { clearTimeout(timer); }
@@ -124,7 +174,8 @@
     function repaint() {
         if (!currentStatsData) return;
         const expanded = Array.from(document.querySelectorAll('[id].show')).map(element => element.id);
-        renderLayer1Stats(currentStatsData);
+        if (document.getElementById('section-content') && typeof renderSeaRetailSection === 'function') renderSeaRetailSection(currentStatsData);
+        else renderLayer1Stats(currentStatsData);
         expanded.forEach(id => {
             const element = document.getElementById(id);
             if (!element) return;
@@ -141,21 +192,24 @@
         const key = stable(context);
         const record = row._normalReview;
         const done = reviewed(row);
+        const bad = rejected(row), decided = done || bad;
         const unavailable = loadedDate !== context.date;
         const dialog = document.createElement('dialog');
         dialog.className = 'l1-review-dialog';
         dialog.setAttribute('aria-labelledby', 'l1-review-title');
         dialog.innerHTML = `<form>
-            <h2 id="l1-review-title">${done ? '정상 확인 이력' : '수집 결과 확인'}</h2>
+            <h2 id="l1-review-title">${bad ? '이상 확정 이력' : done ? '정상 확인 이력' : '수집 결과 확인'}</h2>
             <p class="l1-review-target">${esc(context.country)} · ${esc(context.product)} · ${esc(context.retailer)}<br>검수일 ${esc(context.date)} · 데이터일 ${esc(context.source_date)}<br>배치 ${esc(context.batch_id || '정보 없음')}</p>
             <div class="l1-review-reasons"><strong>${done ? '최초 확인 필요 사유' : '확인 필요 사유'}</strong><p>${esc(context.reasons.join('\n\n'))}</p></div>
+            <p>현재 수집: MAIN ${number(context.counts[0])}건 · BSR ${number(context.counts[1])}건 · 총 ${number(context.counts[2])}건</p>
+            ${row._previousReview ? '<details class="l1-previous-review"><summary>같은 BSR 수량의 이전 정상 확인 · '+esc(row._previousReview.context.date)+'</summary><p>'+esc(recordText(row._previousReview))+'</p><p>이전 배치 '+esc(row._previousReview.context.batch_id)+' · BSR '+number(row._previousReview.context.counts[1])+'건</p><p>이전 확인은 참고 이력입니다. 이번 수집은 별도로 확인하세요.</p></details>' : ''}
             ${done ? '<p class="l1-review-confirmed">✓ 정상 확인<br>' + esc(recordText(record)) + '</p>' : ''}
-            ${(record && record.history.length) ? '<details><summary>확인·취소 이력</summary>' + record.history.map(event => '<p>' + esc((event.action === 'confirm' ? '정상 확인' : '확인 취소') + ' · ' + event.username + ' · ' + new Date(event.at).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'}) + ' (KST)\n' + event.memo) + '</p>').join('') + '</details>' : ''}
-            <label for="l1-review-memo">${done ? '취소 사유' : '정상으로 확인한 근거'}</label>
-            <textarea id="l1-review-memo" required maxlength="1000" rows="3" placeholder="${done ? '확인을 취소하는 이유를 입력하세요.' : '예: 원본 사이트 상품 수와 일치함'}"></textarea>
+            ${(record && record.history.length) ? '<details><summary>확인·취소 이력</summary>' + record.history.map(event => '<p>' + esc((event.action === 'confirm' ? '정상 확인' : event.action === 'reject' ? '이상 확정' : '확인 취소') + ' · ' + event.username + ' · ' + new Date(event.at).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'}) + ' (KST)\n' + event.memo) + '</p>').join('') + '</details>' : ''}
+            <label for="l1-review-memo">${decided ? '취소 사유' : '수집 결과 확인 근거'}</label>
+            <textarea id="l1-review-memo" required maxlength="1000" rows="3" placeholder="${decided ? '확인을 취소하는 이유를 입력하세요.' : '예: 원본 사이트 상품 수와 일치함'}"></textarea>
             <p class="l1-review-help">이 확인은 해당 날짜·배치·수집 수치·판정 사유에만 적용됩니다.</p>
             <p class="l1-review-error" role="alert">${unavailable ? esc(loadError || '검토 기록을 불러오는 중입니다. 잠시 후 다시 열어 주세요.') : !context.batch_id ? '배치 정보가 없어 정상 확인할 수 없습니다.' : ''}</p>
-            <div class="l1-review-actions"><button type="button" data-close>닫기</button><button type="submit" ${unavailable || !context.batch_id ? 'disabled' : ''}>${done ? '확인 취소' : '정상 확인'}</button></div>
+            <div class="l1-review-actions"><button type="button" data-close>닫기</button><button type="submit" data-primary ${unavailable || !context.batch_id ? 'disabled' : ''}>${decided ? '확인 취소' : '정상 확인'}</button>${!decided ? '<button type="submit" data-reject '+(unavailable || !context.batch_id ? 'disabled' : '')+'>이상 확정</button>' : ''}</div>
         </form>`;
         document.body.appendChild(dialog);
         dialog.querySelector('[data-close]').onclick = () => dialog.close();
@@ -168,12 +222,12 @@
                 error.textContent = '수집 결과가 변경되었습니다. 창을 닫고 현재 항목을 다시 확인하세요.';
                 return;
             }
-            const submit = dialog.querySelector('[type="submit"]');
-            submit.disabled = true;
+            const action = decided ? 'cancel' : event.submitter?.hasAttribute('data-reject') ? 'reject' : 'confirm';
+            dialog.querySelectorAll('[type="submit"]').forEach(b=>b.disabled=true);
             try {
                 const response = await fetch('/dx/layer1/api/retail-reviews/', {
                     method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
-                    body: JSON.stringify({context, action: done ? 'cancel' : 'confirm',
+                    body: JSON.stringify({context, action,
                         memo: dialog.querySelector('textarea').value, revision: record ? record.revision : 0}),
                 });
                 const payload = await response.json();
@@ -185,10 +239,10 @@
                 dialog.close();
             } catch (failure) {
                 error.textContent = failure.message;
-                submit.disabled = false;
+                dialog.querySelectorAll('[type="submit"]').forEach(b=>b.disabled=false);
             }
         };
         dialog.showModal();
     }
-    L1.retailReview = {load, decorate, badge, open, reviewed, reasons};
+    L1.retailReview = {load, decorate, badge, open, reviewed, rejected, reasons};
 })();

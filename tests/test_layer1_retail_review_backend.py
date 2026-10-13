@@ -72,6 +72,28 @@ class ReviewTests(TestCase):
         self.assertTrue(RetailNormalReview.objects.get().active)
         self.assertEqual(1, len(RetailNormalReview.objects.get().history))
 
+    def test_dryer_previous_confirmation_does_not_confirm_next_day(self):
+        context = {**sample(), 'country':'SEA', 'product':'LDY_DRYER', 'retailer':'Costco', 'counts':[300,99,300,1]}
+        self.assertEqual(200, self.request('confirm', context=context)[0])
+        request = RequestFactory().get('/reviews/', {'date':'2026-10-01'})
+        request.user = SimpleNamespace(is_authenticated=True)
+        payload = json.loads(reviews(request).content)
+        self.assertEqual([], payload['reviews'])
+        self.assertEqual(1, len(payload['previous_reviews']))
+        self.assertEqual(99, payload['previous_reviews'][0]['context']['counts'][1])
+        self.request('cancel', context=context, revision=1)
+        self.assertEqual([], json.loads(reviews(request).content)['previous_reviews'])
+
+    def test_reject_and_cancel_preserve_audit(self):
+        code, payload = self.request('reject', memo='실제 수집 누락 확인')
+        self.assertEqual(200, code)
+        self.assertFalse(payload['review']['active'])
+        self.assertEqual('reject', payload['review']['history'][-1]['action'])
+        self.assertEqual(409, self.request('reject', revision=1)[0])
+        self.assertEqual(200, self.request('cancel', revision=1)[0])
+        self.assertEqual(200, self.request('confirm', revision=2)[0])
+        self.assertEqual(['reject','cancel','confirm'], [e['action'] for e in RetailNormalReview.objects.get().history])
+
     def test_reject_bad_inputs_and_unauthenticated_requests(self):
         self.assertEqual(401, self.request('confirm', user='')[0])
         self.assertEqual(401, self.request(user='')[0])

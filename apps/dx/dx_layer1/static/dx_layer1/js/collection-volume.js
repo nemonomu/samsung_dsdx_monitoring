@@ -11,6 +11,7 @@
             total: Number((['SEM', 'TSE'].includes(country) || row.bsr_applicable === false) && row.actual != null ? row.actual : totalKey ? row[totalKey] : 0)};
     }
     function restore(item) {
+        delete item._reviewAutomatic;
         if (!Object.prototype.hasOwnProperty.call(item, '_volumeBaseStatus')) item._volumeBaseStatus = item.status;
         item.status = item._volumeBaseStatus;
         delete item._volumeCounts;

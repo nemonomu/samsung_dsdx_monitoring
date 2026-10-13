@@ -40,10 +40,12 @@
     function bsrCell(retailer, value) {
         var alerts = bsrAlerts(retailer || {});
         var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer || {});
+        var rejected = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer || {});
         var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
-        var low = alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; });
+        var low = rejected || alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; });
+        var count = retailer._reviewContext ? '<button type="button" class="l1-review-count" onclick="event.stopPropagation();L1.retailReview.open(' + retailer._reviewTarget + ')" aria-label="BSR ' + esc(value) + '건 수집 결과 확인">' + esc(value) + '</button>' : esc(value);
         return '<td' + (alerts.length ? ' class="' + (low ? 'cs-bsr-low' : normalReviewed ? 'cs-bsr-confirmed' : 'cs-bsr-review') + '" title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '') + '>'
-            + esc(value) + (alerts.length ? '<small style="display:block">' + (low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요') + '</small>' : '') + '</td>';
+            + count + (alerts.length ? '<small style="display:block">' + (rejected ? '이상 확정' : low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요') + '</small>' : '') + '</td>';
     }
 
     function rowBadge(retailer) {
@@ -88,16 +90,17 @@
                 var bsr = bsrAlerts(retailer);
                 var bsrLow = bsr.filter(function(alert) { return alert.status === 'VOLUME_LOW'; });
                 var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer);
-                var legacyReview = retailer.status === 'REVIEW' && !normalReviewed;
-                var bsrReview = normalReviewed ? [] : bsr.filter(function(alert) { return alert.status === 'VOLUME_REVIEW'; });
-                var mainReview = !missing && !normalReviewed ? (retailer.volume_alerts || []).filter(function(alert) {
+                var errorReviewed = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer);
+                var legacyReview = retailer.status === 'REVIEW' && !normalReviewed && !errorReviewed;
+                var bsrReview = normalReviewed || errorReviewed ? [] : bsr.filter(function(alert) { return alert.status === 'VOLUME_REVIEW'; });
+                var mainReview = !missing && !normalReviewed && !errorReviewed ? (retailer.volume_alerts || []).filter(function(alert) {
                     return alert.metric === 'main' && alert.status === 'VOLUME_REVIEW';
                 }) : [];
                 var volumeLow = !missing && (retailer.status === 'VOLUME_LOW' || bsrLow.length > 0) &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
-                var volumeHigh = !missing && !normalReviewed && retailer.status === 'VOLUME_HIGH' &&
+                var volumeHigh = !missing && !normalReviewed && !errorReviewed && retailer.status === 'VOLUME_HIGH' &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
-                if (!name || (!observing && !failed && !missing && !multiple && !volumeLow && !volumeHigh && !legacyReview && !bsrReview.length && !mainReview.length)) return;
+                if (!name || (!errorReviewed && !observing && !failed && !missing && !multiple && !volumeLow && !volumeHigh && !legacyReview && !bsrReview.length && !mainReview.length)) return;
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
                 if (checkType === 'retail') {
@@ -107,6 +110,7 @@
                     onclick = 'event.stopPropagation()';
                 }
                 var link = '<a href="' + esc(href) + '" onclick="' + onclick + '">' + esc(name) + '</a> ';
+                if (errorReviewed) items.push('<span class="retail-missing-item">' + link + esc(product) + ' 수집 결과 이상 확정</span>');
                 if (observing) {
                     items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' ' + esc(observationLabel(retailer)) + '</span>');
                 }

@@ -1,6 +1,7 @@
 """Headless review interaction test with synthetic API responses, no production DB."""
 import argparse
 from pathlib import Path
+from urllib.parse import urlsplit, parse_qs
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +59,9 @@ def main():
             if '/api/retail-reviews/' not in route.request.url:
                 return route.fulfill(content_type='text/html', body=html)
             if route.request.method == 'GET':
-                return route.fulfill(json={'date': '2026-09-30', 'reviews': records})
+                day = parse_qs(urlsplit(route.request.url).query)['date'][0]
+                return route.fulfill(json={'date':day, 'reviews':[r for r in records if r['context']['date']==day],
+                    'previous_reviews':[r for r in records if r['context']['date']<day and r['active']]})
             request = route.request.post_data_json
             posts.append(request)
             if fail:
@@ -89,7 +92,7 @@ def main():
         output = ROOT / 'output/diagnostics'
         output.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(output / 'layer1-review-dialog.png'))
-        page.locator('dialog button[type=submit]').click()
+        page.locator('dialog button[data-primary]').click()
         expect(page.locator('dialog')).to_have_count(0)
         expect(buttons.nth(0)).to_have_text('✓ 정상 확인')
         expect(page.locator('.check-item').first.locator('.check-stats')).to_contain_text('✓ 정상 확인')
@@ -100,14 +103,14 @@ def main():
         buttons.nth(0).click()
         expect(page.locator('.l1-review-confirmed')).to_contain_text('원본 사이트 상품 수와 일치')
         page.locator('textarea').fill('원본 재확인 필요')
-        page.locator('dialog button[type=submit]').click()
+        page.locator('dialog button[data-primary]').click()
         expect(page.locator('dialog')).to_have_count(0)
         expect(buttons.nth(0)).to_have_text('확인 필요')
         assert [event['action'] for event in records[0]['history']] == ['confirm', 'cancel']
         buttons.nth(0).click()
         page.locator('textarea').fill('원본과 일치함')
         fail = True
-        page.locator('dialog button[type=submit]').click()
+        page.locator('dialog button[data-primary]').click()
         expect(page.locator('.l1-review-error')).to_contain_text('저장 실패 테스트')
         assert not records[0]['active']
         page.locator('dialog [data-close]').click()
@@ -117,7 +120,7 @@ def main():
         page.locator('textarea').fill('변경 이전 검토')
         page.evaluate("currentStatsData.checks[0].categories[0].retailers[0].batch_id='new-batch';renderLayer1Stats(currentStatsData)")
         count = len(posts)
-        page.locator('dialog button[type=submit]').click()
+        page.locator('dialog button[data-primary]').click()
         expect(page.locator('.l1-review-error')).to_contain_text('수집 결과가 변경되었습니다')
         assert count == len(posts)
         page.keyboard.press('Escape')
@@ -126,7 +129,12 @@ def main():
             const check = currentStatsData.checks[1], cat = check.categories[0], row = cat.retailers[0];
             check.status = cat.status = row.status = 'OK';
             check.phase = 'complete';
-            L1.collectionVolume.decorate(currentStatsData, null, selectedDate);
+            L1.collectionVolume.decorate(currentStatsData, {policy_version:4, inspection_date:selectedDate,
+                snapshots:[{country:'SEM',available:true,source_date:selectedDate,rows:[{
+                    product:'REF',retailer:'Coppel',slot:'daily',observation_state:'ready',
+                    rules:{main:{rule:'median_28d',baseline:160,days:5,low_percent:30},
+                           bsr:{rule:'median_28d',baseline:100,days:5,low_percent:30}}
+                }]}]}, selectedDate);
             renderLayer1Stats(currentStatsData);
         }""")
         group = page.locator('.check-item').nth(1)
@@ -137,6 +145,50 @@ def main():
         assert '정상 확인' not in group.inner_text()
         assert '검증 대기' not in group.inner_text()
         assert '수집중' not in group.inner_text()
+        # Real SEA renderer: new dryer BSR99 -> confirm -> next day99 -> pending.
+        page.add_script_tag(content='RawDataView=function(){};L1.initLayer1Page=()=>{};' + (BASE/'js/retail.js').read_text(encoding='utf-8'))
+        page.evaluate('''() => {
+            addCheckBadges=()=>{};
+            expandSectionContent=()=>document.querySelectorAll('.time-slots-container,.sentiment-two-column').forEach(e=>e.classList.add('show'));
+            window.showCostco=async(day,observation='observing',bsr=99)=>{
+                selectedDate=day;
+                const source=day==='2026-10-13'?'2026-10-12':'2026-10-13';
+                const row={retailer:'Costco',status:'OK',count:300,main_count:300,bsr_count:bsr,batch_count:1,
+                    batch_id:'c'+day,items:[{name:'Main Rank',count:300},{name:'BSR Rank',count:bsr}]};
+                currentStatsData={checks:[{name:'SEA Retail',check_type:'retail',phase:'complete',status:'OK',
+                    categories:[{name:'LDY_DRYER',total:300,source_date:source,time_slots:[{name:'일일',retailers:[row]}]}]}]};
+                await L1.retailReview.load(day);
+                L1.collectionVolume.decorate(currentStatsData,{policy_version:4,inspection_date:day,snapshots:[{
+                    country:'SEA',source_date:source,available:true,rows:[{product:'LDY_DRYER',retailer:'Costco',slot:'일일',
+                        observation_state:observation,observation_prior_days:3,
+                        rules:{main:{rule:'median_28d',baseline:300,days:5,low_percent:30}}}]}]},day);
+                document.getElementById('app').innerHTML='<div id="section-content"></div>';
+                renderSeaRetailSection(currentStatsData);
+            };
+        }''')
+        page.evaluate("showCostco('2026-10-13')")
+        expect(page.locator('.l1-review-badge')).to_have_text('확인 필요')
+        page.locator('.l1-review-count').click()
+        expect(page.locator('dialog')).to_contain_text('BSR 99건')
+        page.locator('textarea').fill('실제 사이트 BSR 99건과 일치')
+        page.locator('dialog [data-primary]').click()
+        expect(page.locator('.l1-review-badge')).to_have_text('✓ 정상 확인')
+        page.evaluate("showCostco('2026-10-13')")
+        expect(page.locator('.l1-review-badge')).to_have_text('✓ 정상 확인')
+        page.evaluate("showCostco('2026-10-14','ready')")
+        expect(page.locator('.l1-review-badge')).to_have_text('확인 필요')
+        page.locator('.l1-review-count').click()
+        page.locator('.l1-previous-review summary').click()
+        expect(page.locator('.l1-previous-review')).to_contain_text('실제 사이트 BSR 99건과 일치')
+        expect(page.locator('.l1-previous-review')).to_contain_text('2026-10-13')
+        page.screenshot(path=str(output/'layer1-costco-next-day-review.png'))
+        page.locator('textarea').fill('이번 배치는 원본과 불일치')
+        page.locator('dialog [data-reject]').click()
+        expect(page.locator('.l1-review-badge')).to_have_text('이상 확정')
+        page.locator('.l1-review-badge').click()
+        page.locator('textarea').fill('다시 확인 필요')
+        page.locator('dialog [data-primary]').click()
+        expect(page.locator('.l1-review-badge')).to_have_text('확인 필요')
         assert not errors, errors
         browser.close()
     print('Browser: unified colors, reasons, confirm/reload/cancel, failure and stale modal passed.')
