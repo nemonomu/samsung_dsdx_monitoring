@@ -62,7 +62,31 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     assert group.locator('.fr-links a').count()==3
     assert group.locator('.fr-links a').first.get_attribute('href')=='https://www.lowes.com/pd/1'
     assert group.locator('.fr-links a').first.get_attribute('rel')=='noopener noreferrer'
-    group.locator('input[type=checkbox]').check()
+    checkbox=group.locator('input[type=checkbox]')
+    blank={'x':group.bounding_box()['width']-35,'y':60}
+    group.click(position=blank)
+    expect(checkbox).to_be_checked()
+    expect(group).to_have_class('fr-group selected')
+    expect(page.locator('#fr-selected')).to_contain_text('3건 / 1개 값 선택')
+    group.click(position=blank)
+    expect(checkbox).not_to_be_checked()
+    group.locator('label b').click()
+    expect(checkbox).to_be_checked()
+    group.locator('summary').click()
+    expect(group.locator('details')).to_have_attribute('open','')
+    expect(checkbox).to_be_checked()
+    group.locator('td').first.click()
+    expect(checkbox).to_be_checked()
+    page.context.route('https://www.lowes.com/**',lambda route:route.fulfill(body='Product fixture'))
+    with page.expect_popup() as popup:
+        group.locator('.fr-links a').first.click()
+    popup.value.close()
+    expect(checkbox).to_be_checked()
+    group.locator('summary').click()
+    checkbox.uncheck()
+    expect(group).to_have_class('fr-group')
+    group.locator('.fr-value').click()
+    expect(checkbox).to_be_checked()
     page.locator('#fr-reason').fill('실제 상품 페이지 확인')
     page.locator('[data-fr="preview"][data-decision="normal"]').click()
     expect(page.locator('#fr-preview')).to_contain_text('3건 / 1개 값')

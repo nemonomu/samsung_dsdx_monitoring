@@ -5,7 +5,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'dx_layer2/css/layer2.css' %}?v=20260922-null-sql">
-<link rel="stylesheet" href="{% static 'dx_layer2/css/format-review.css' %}?v=20261013-centered">
+<link rel="stylesheet" href="{% static 'dx_layer2/css/format-review.css' %}?v=20261013-card-select">
 <style>
     :root { --layer-color: {{ layer.color|escapejs }}; --page-color: {{ layer.color|escapejs }}; }
 </style>
@@ -107,6 +107,6 @@
     AppModal.create('l2-rule', { style: 'wide', closeOnOverlay: true });
 </script>
 <script src="{% static 'js/retail-review-columns.js' %}?v=20260923-price2"></script>
-<script src="{% static 'dx_layer2/js/format-review.js' %}?v=20261012-format-review"></script>
+<script src="{% static 'dx_layer2/js/format-review.js' %}?v=20261013-card-select"></script>
 {% block layer2_js %}{% endblock %}
 {% endblock %}

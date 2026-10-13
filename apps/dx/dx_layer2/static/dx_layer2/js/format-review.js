@@ -108,7 +108,9 @@
     function onChange(event) {
         if (event.target.dataset.group) {
             const key = event.target.dataset.group;
+            if (state.busy) { event.target.checked=state.selected.has(key); return; }
             event.target.checked ? state.selected.add(key) : state.selected.delete(key);
+            event.target.closest('.fr-group').classList.toggle('selected', event.target.checked);
             invalidatePreview(); renderSelection();
         }
         if (event.target.id==='fr-field') { state.field=event.target.value; state.selected.clear(); renderGroups(); }
@@ -143,8 +145,15 @@
         el('preview').innerHTML=`<h3>${escape(actionLabels[decision])} 미리보기</h3><p><b>${preview.count}건 / ${preview.groups}개 값</b> · 수집일 ${escape(preview.source_date)}</p><p>${escape(preview.scope.country)} / ${escape(state.retailer)} / ${escape(preview.scope.product)}</p>${preview.targets.map(t=>`<p><b>${escape(t.field)}</b> · ${escape(t.value)} · ${t.count}건</p>`).join('')}<p>${decision==='normal'?'같은 범위의 동일 값은 다음 수집에도 정상으로 인정합니다.':decision==='error'?'같은 오류 값은 다음 수집에서 재검증하며, 값이 바뀌면 기존 검증 기준으로 판단합니다.':'등록 기준을 취소하고 다시 검증합니다.'}</p><button data-fr="apply">${preview.count}건에 적용</button><button data-fr="cancel-preview">닫기</button>`;
     }
     async function onClick(event) {
+        if (state?.busy) return;
+        const card = event.target.closest('.fr-group');
+        if (card && !event.target.closest('a, button, input, label, select, textarea, details')) {
+            const checkbox = card.querySelector('input[data-group]');
+            if (checkbox && window.getSelection()?.isCollapsed !== false) checkbox.click();
+            return;
+        }
         const b=event.target.closest('[data-fr]');
-        if (!b || state?.busy) return;
+        if (!b) return;
         const action=b.dataset.fr;
         try {
             if(action==='close')close();
