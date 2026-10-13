@@ -14,7 +14,7 @@ from apps.common.sea_collection import homedepot_inspection_label
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 
 from . import retail_repositories as repo
-from . import costco
+from . import costco, bestbuy_dryer
 
 
 OK_THRESHOLD = 200
@@ -33,7 +33,7 @@ ALLOWED_RANK_FIELDS = {'promotion_position'}
 
 def _get_layer1_source(value):
     if str(value).lower() in ('ldy_dryer', 'sea_ldy_dryer'):
-        return costco.DRYER_SOURCE
+        return {**costco.DRYER_SOURCE, 'retailers': ('Bestbuy', 'Costco')}
     source = get_sea_retail_source(value)
     if source['product_key'] in ('ref', 'ldy'):
         source = {**source, 'retailers': (*source['retailers'], HOMEDEPOT)}
@@ -139,6 +139,8 @@ def _daily_schedule_status(schedule_slots):
 def _retailer_criteria(category, retailer):
     """Return the completed-collection rule for one SEA retailer."""
 
+    if bestbuy_dryer.matches(category, retailer):
+        return {'total_min': OK_THRESHOLD, 'bsr_exact': 100}
     if retailer.lower() == 'costco':
         # Receipt only here; the shared five-day observation/median policy
         # evaluates volume through collection-statistics snapshots.
@@ -314,6 +316,8 @@ def _build_category(cursor, source, inspection_date, now):
 
     schedule_slots = _matching_schedule_slots(source, source_date, now)
     slot_retailers = _slot_retailers(source, schedule_slots)
+    if source['product_key'] == 'ldy_dryer' and not bestbuy_dryer.enabled(source_date):
+        slot_retailers = [r for r in slot_retailers if r['name'] != 'Bestbuy']
     if not costco.enabled(source_date, source['product_key']):
         slot_retailers = [r for r in slot_retailers if r['name'] != 'Costco']
     rows = _source_rows(
@@ -324,6 +328,12 @@ def _build_category(cursor, source, inspection_date, now):
     )
 
     for retailer in retailer_details:
+        if bestbuy_dryer.matches(source['product_key'], retailer['retailer']):
+            ready = bestbuy_dryer.complete(source_date, now)
+            retailer['collection_phase'] = 'complete' if ready else 'collecting'
+            if not ready:
+                retailer['status'] = 'COLLECTING'
+            continue
         if retailer['retailer'] == 'Costco':
             ready = costco.complete(source_date, now)
             retailer['collection_phase'] = 'complete' if ready else 'collecting'
@@ -596,6 +606,8 @@ def get_retail_summary(target_date, product_line):
 
     with dx_connection() as (_conn, cursor):
         for retailer in source['retailers']:
+            if bestbuy_dryer.matches(source['product_key'], retailer) and not bestbuy_dryer.enabled(source_date):
+                continue
             if retailer == 'Costco' and not costco.enabled(source_date, source['product_key']):
                 continue
             check_columns = (
@@ -603,7 +615,7 @@ def get_retail_summary(target_date, product_line):
                 if source['product_key'] == 'tv' and retailer != 'Costco'
                 else []
             )
-            if retailer == 'Costco':
+            if retailer == 'Costco' or bestbuy_dryer.matches(source['product_key'], retailer):
                 check_columns = [c for c in costco.COLUMNS[source['product_key']]
                                  if c not in ('id', source['date_column'], 'main_rank', 'bsr_rank')]
             for column in check_columns:
@@ -750,7 +762,7 @@ def get_retailer_raw_data(category, retailer, period, target_date):
         **_contract_fields(contract),
     }
     try:
-        if retailer_name == 'Costco':
+        if retailer_name == 'Costco' or bestbuy_dryer.matches(source['product_key'], retailer_name):
             columns = list(costco.COLUMNS[source['product_key']])
             with dx_connection() as (_conn, cursor):
                 batch_id = repo.get_latest_appliance_main_batch(
@@ -823,6 +835,6 @@ def get_retailer_columns_info():
             'columns': columns,
             'all_columns': sorted({c for fields in columns.values() for c in fields}),
         }
-    result['ldy_dryer'] = {'columns': {'Costco': list(costco.COLUMNS['ldy_dryer'])},
+    result['ldy_dryer'] = {'columns': {r: list(costco.COLUMNS['ldy_dryer']) for r in ('Bestbuy', 'Costco')},
                            'all_columns': list(costco.COLUMNS['ldy_dryer'])}
     return result

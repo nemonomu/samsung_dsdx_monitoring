@@ -222,7 +222,7 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
 
     const accountName = _retailSqlAccountName(data, records, retailer,
         /^dx_seda\./.test(tableName));
-    const isCostcoDryer = tableName === 'public.ldy_dryer_retail';
+    const isCostcoDryer = tableName === 'public.ldy_dryer_retail' && accountName.toLowerCase() === 'costco';
     const dateExpression = isCostcoDryer
         ? `TO_CHAR(NULLIF(BTRIM(CAST(${dateColumn} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`
         : dateColumn;

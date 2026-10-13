@@ -169,6 +169,29 @@ def main():
         page.evaluate("showCostco('2026-10-13','observing',100)")
         expect(page.locator('.l1-review-badge')).to_have_count(0)
         expect(page.locator('.l1-review-count')).to_have_count(0)
+        page.evaluate('''() => {
+            const category=currentStatsData.checks[0].categories[0];
+            const costco=category.time_slots[0].retailers[0];
+            const bestbuy={retailer:'Bestbuy',status:'OK',count:306,main_count:300,bsr_count:100,
+                batch_id:'b_20261012_190628',items:[{name:'Main Rank',count:300},{name:'BSR Rank',count:100}]};
+            category.time_slots[0].retailers.unshift(bestbuy);
+            category.total=category.time_slots[0].total=606;
+            category.inspection_date='2026-10-13';
+            category.offset_days=-1;
+            currentStatsData.checks[0].description='미국 리테일 건조기 수집 현황';
+            currentStatsData.checks[0].actual=606;
+            L1.collectionVolume.decorate(currentStatsData,{policy_version:4,inspection_date:selectedDate,snapshots:[{
+                country:'SEA',source_date:'2026-10-12',available:true,
+                rows:['Bestbuy','Costco'].map(retailer=>({product:'LDY_DRYER',retailer,slot:'일일',observation_state:'observing',observation_prior_days:0}))
+            }]},selectedDate);
+            renderSeaRetailSection(currentStatsData);
+        }''')
+        text = page.locator('#section-content').inner_text()
+        assert text.index('Bestbuy') < text.index('Costco')
+        expect(page.locator('#section-content')).to_contain_text('306')
+        expect(page.locator('.l1-review-count')).to_have_count(0)
+        expect(page.locator('#section-content')).not_to_contain_text('검증 대기')
+        page.screenshot(path=str(output/'layer1-bestbuy-dryer.png'))
         page.add_script_tag(content=(BASE/'js/seg_retail.js').read_text(encoding='utf-8'))
         page.evaluate('''() => {
             const categories=['TV','REF','LDY'].map(name=>({name,source_date:'2026-10-12',total:300,

@@ -110,7 +110,7 @@
                             row.verification_state = 'ready';
                             return;
                         }
-                        const exactBsr = (country === 'SEA' && row.retailer === 'Costco' && product !== 'TV')
+                        const exactBsr = (country === 'SEA' && ((row.retailer === 'Costco' && product !== 'TV') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')))
                             || (country === 'SEG' && row.retailer === 'Expert');
                         const decisions = ['main', 'bsr'].map(metric => compare(metric, counts[metric],
                             metric === 'bsr' && exactBsr ? {rule: 'fixed_100', baseline: 100, exact: true}

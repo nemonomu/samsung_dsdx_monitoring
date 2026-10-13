@@ -4,7 +4,7 @@ from datetime import timedelta
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS
 from .collector import refresh_country
-from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUMNS
 
 
@@ -13,6 +13,8 @@ def history_range(country, last_due):
     stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
         source_date__range=(start, end)).values_list('source_date', 'rows')
         if not any(row.get('bsr') is None for row in rows)
+        and (country != 'SEA' or not bestbuy_dryer.enabled(day)
+             or any(bestbuy_dryer.matches(r['product'], r['retailer']) for r in rows))
         and (country != 'SEA' or not costco.enabled(day)
              or {r['product'] for r in rows if r['retailer'] == 'Costco'} ==
                 ({'TV', 'REF', 'LDY', 'LDY_DRYER'} if costco.enabled(day, 'ldy_dryer') else {'TV', 'REF', 'LDY'}))

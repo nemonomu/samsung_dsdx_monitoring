@@ -190,6 +190,8 @@ def _resolve_sea_duplicate_retailer(source, retailer):
 
 def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
     """Fetch the latest SEA appliance batch using each retailer's date/page policy."""
+    if costco_layer2.bestbuy_dryer.matches(source['product_key'], retailer_value) and not costco_layer2.bestbuy_dryer.enabled(source_date):
+        return []
     if is_homedepot(retailer_value) and not homedepot_source_enabled(source_date):
         return []
     if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date, source['product_key']):
@@ -206,7 +208,7 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
         select_columns.remove('sku')
     if source['product_key'] == 'ldy_dryer':
         select_columns.remove('page_type')
-    order_columns = 'source.item, source.id' if is_costco(retailer_value) else 'UPPER(TRIM(source.page_type)), source.item, source.id'
+    order_columns = 'source.item, source.id' if source['product_key'] == 'ldy_dryer' or is_costco(retailer_value) else 'UPPER(TRIM(source.page_type)), source.item, source.id'
     # Keep the one-row anchor out of the per-product nested loop. Inlining it
     # made PostgreSQL repeat the same latest-batch scan hundreds of times.
     cursor.execute(f"""
@@ -215,7 +217,7 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
             FROM {canonical_table} source
             WHERE {date_sql} = %s
               AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
-              AND {page_scope_sql('source', anchor=True, retailer=retailer_value)}
+              AND {page_scope_sql('source', anchor=True, retailer=retailer_value, product=source['product_key'])}
             ORDER BY source.id DESC
             LIMIT 1
         )
@@ -234,7 +236,7 @@ def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
               OR TRIM(CAST(source.country AS TEXT)) = ''
           )
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
-          AND {page_scope_sql('source', retailer=retailer_value)}
+          AND {page_scope_sql('source', retailer=retailer_value, product=source['product_key'])}
         ORDER BY {order_columns}
     """, (
         str(source_date), retailer_value,
@@ -253,12 +255,12 @@ def _serialize_sea_duplicate_row(row):
     }
 
 
-def build_sea_duplicate_groups(rows, retailer=None):
-    """HomeDepot uses item; other retailers use page_type+item."""
+def build_sea_duplicate_groups(rows, retailer=None, product=None):
+    """Combined-rank sources use item; legacy sources use page_type+item."""
     grouped = {}
     for row in rows:
         retailer_key = _duplicate_key(row.get('account_name') or retailer)
-        page_type_key = ('all' if is_homedepot(retailer_key) or is_costco(retailer_key)
+        page_type_key = ('all' if product == 'ldy_dryer' or is_homedepot(retailer_key) or is_costco(retailer_key)
                          else _duplicate_key(row.get('page_type')))
         item_key = _duplicate_key(row.get('item'))
         if not page_type_key or not item_key:
@@ -282,7 +284,7 @@ def build_sea_duplicate_groups(rows, retailer=None):
         duplicate_type = (
             '상품 매핑 충돌' if is_mapping_conflict else '완전 중복'
         )
-        home_depot = is_homedepot(first.get('account_name') or retailer) or is_costco(first.get('account_name') or retailer)
+        home_depot = product == 'ldy_dryer' or is_homedepot(first.get('account_name') or retailer) or is_costco(first.get('account_name') or retailer)
         page_type = '' if home_depot else _duplicate_text(first.get('page_type')).upper()
         scope_label = (first.get('account_name') or retailer) if home_depot else page_type
         item = _duplicate_text(first.get('item'))
@@ -340,7 +342,7 @@ def _get_sea_anomaly_detail(
     rows = _fetch_sea_duplicate_rows(
         cursor, source_date, source, retailer_value
     )
-    groups = build_sea_duplicate_groups(rows, retailer_value)
+    groups = build_sea_duplicate_groups(rows, retailer_value, product_key)
     total_groups = len(groups)
     total_pages = (
         (total_groups + page_size - 1) // page_size if total_groups else 0
@@ -357,7 +359,7 @@ def _get_sea_anomaly_detail(
         'cleanup_table': 'costco_tv_retail' if product_key == 'tv' and is_costco(retailer_value) else table,
         'select_cols': {
             'group': [
-                'duplicate_type', *([] if is_homedepot(retailer_value) or is_costco(retailer_value) else ['page_type']), 'item',
+                'duplicate_type', *([] if product_key == 'ldy_dryer' or is_homedepot(retailer_value) or is_costco(retailer_value) else ['page_type']), 'item',
                 'retailer_sku_name', 'dup_count', 'reason',
             ],
             'record': [
@@ -406,17 +408,19 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                     continue
                 if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date, source['product_key']):
                     continue
+                if costco_layer2.bestbuy_dryer.matches(product_key, retailer_value) and not costco_layer2.bestbuy_dryer.enabled(source_date):
+                    continue
                 rows = _fetch_sea_duplicate_rows(
                     cursor, source_date, source, retailer_value
                 )
-                duplicate_count = len(build_sea_duplicate_groups(rows, retailer_value))
+                duplicate_count = len(build_sea_duplicate_groups(rows, retailer_value, product_key))
                 retailer_rows.append({
                     'retailer': retailer_value,
                     'total': len(rows),
                     'duplicate_groups': duplicate_count,
-                    'duplicate_keys': ['item' if is_homedepot(retailer_value) or is_costco(retailer_value) else 'page_type + item'],
-                    'status': 'PENDING' if (is_homedepot(retailer_value) or is_costco(retailer_value)) and not rows else get_status(duplicate_count),
-                    'validation_label': ('미수집' if is_costco(retailer_value) and not rows else homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else ''),
+                    'duplicate_keys': ['item' if product_key == 'ldy_dryer' or is_homedepot(retailer_value) or is_costco(retailer_value) else 'page_type + item'],
+                    'status': 'PENDING' if (product_key == 'ldy_dryer' or is_homedepot(retailer_value) or is_costco(retailer_value)) and not rows else get_status(duplicate_count),
+                    'validation_label': ('미수집' if (product_key == 'ldy_dryer' or is_costco(retailer_value)) and not rows else homedepot_inspection_label(target_date) if is_homedepot(retailer_value) and not rows else ''),
                 })
                 table_records += len(rows)
                 table_issues += duplicate_count

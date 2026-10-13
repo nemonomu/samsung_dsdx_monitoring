@@ -1,7 +1,7 @@
 """Costco NULL, duplicate, and format validation policy."""
 from datetime import datetime, timezone
 from apps.common import sea_layer2
-from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer
 
 METRICS = ('star_rating', 'count_of_star_ratings', 'count_of_reviews')
 PRICES = ('final_sku_price', 'original_sku_price', 'savings')
@@ -24,7 +24,7 @@ def is_costco(retailer):
 
 
 def dryer_source():
-    return {**costco.DRYER_SOURCE, 'backup_table': None}
+    return {**costco.DRYER_SOURCE, 'retailers': ('Bestbuy', 'Costco'), 'backup_table': None}
 
 
 def sources(registry, *, include_dryer=False):
@@ -41,6 +41,8 @@ def tv_source(registry):
 
 def source_date_sql(column, alias='', retailer=None, account_column=None, product=''):
     prefix = f'{alias}.' if alias else ''
+    if bestbuy_dryer.matches(product, retailer):
+        return bestbuy_dryer.source_date_sql(prefix + column)
     day = costco.source_date_sql(prefix + column)
     day = f"CASE WHEN {day} >= '{costco.first_source_date(product)}' THEN {day} END"
     if is_costco(retailer):
@@ -49,11 +51,13 @@ def source_date_sql(column, alias='', retailer=None, account_column=None, produc
     if retailer is not None:
         return legacy
     account = account_column or prefix + 'account_name'
+    if product == 'ldy_dryer':
+        legacy = bestbuy_dryer.source_date_sql(prefix + column)
     return f"(CASE WHEN LOWER(TRIM({account})) = 'costco' THEN {day} ELSE {legacy} END)"
 
 
-def page_scope_sql(alias='', *, anchor=False, retailer=None):
-    if is_costco(retailer):
+def page_scope_sql(alias='', *, anchor=False, retailer=None, product=''):
+    if product == 'ldy_dryer' or is_costco(retailer):
         return 'TRUE'
     legacy = sea_layer2.page_scope_sql(alias, anchor=anchor, retailer=retailer)
     if retailer is not None:

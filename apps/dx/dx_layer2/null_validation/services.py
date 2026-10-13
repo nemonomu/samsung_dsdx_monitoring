@@ -142,6 +142,8 @@ SIEL_NULL_CATEGORY_BY_SOURCE_KEY = {
 
 
 def _get_sea_null_columns(product, retailer):
+    if costco_layer2.bestbuy_dryer.matches(product, retailer):
+        return (*costco_layer2.NULL_COLUMNS['ldy_dryer'], 'sku')
     columns = SEA_NULL_COLUMNS[product]
     if product == 'ldy' and str(retailer or '').strip().lower() == 'lowes':
         return (*columns, 'ldy_capacity')
@@ -452,6 +454,8 @@ def _resolve_youtube_null_date(target_date):
 
 def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
     """Use only the newest MAIN row on the exact SEA source date."""
+    if costco_layer2.bestbuy_dryer.matches(source['product_key'], retailer) and not costco_layer2.bestbuy_dryer.enabled(source_date):
+        return None
     if is_costco(retailer) and not costco_layer2.costco.enabled(source_date, source['product_key']):
         return None
     if is_homedepot(retailer) and not homedepot_source_enabled(source_date):
@@ -463,7 +467,7 @@ def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
         FROM {table_name} anchor
         WHERE {source_date_sql(date_column, 'anchor', retailer, product=source['product_key'])} = %s
           AND LOWER(TRIM(anchor.account_name)) = LOWER(TRIM(%s))
-          AND {page_scope_sql('anchor', anchor=True, retailer=retailer)}
+          AND {page_scope_sql('anchor', anchor=True, retailer=retailer, product=source['product_key'])}
         ORDER BY anchor.id DESC
         LIMIT 1
     """, (source_date, retailer))
@@ -481,7 +485,7 @@ def _build_sea_null_scope(source, source_date, retailer, batch_id):
                 OR TRIM(CAST(account_name AS TEXT)) = ''
             )
             AND batch_id = %s
-            AND {page_scope_sql(retailer=retailer)}
+            AND {page_scope_sql(retailer=retailer, product=source['product_key'])}
         """,
         [source_date, retailer, batch_id],
     )
@@ -495,7 +499,7 @@ def _build_sea_latest_batch_record_query(source, column_name):
     retailer_placeholders = ', '.join(['%s'] * len(retailers))
     table_name = source['table_name']
     date_column = source['date_column']
-    only_costco = 'Costco' if source['product_key'] == 'ldy_dryer' else None
+    only_costco = None
     query = f"""
         SELECT source.{column_name}, resolved.account_name, source.item
         FROM {table_name} source
@@ -508,13 +512,13 @@ def _build_sea_latest_batch_record_query(source, column_name):
               AND LOWER(TRIM(anchor.account_name)) IN (
                   {retailer_placeholders}
               )
-              AND {page_scope_sql('anchor', anchor=True, retailer=only_costco)}
+              AND {page_scope_sql('anchor', anchor=True, product=source['product_key'])}
             ORDER BY LOWER(TRIM(anchor.account_name)), anchor.id DESC
         ) resolved
           ON resolved.batch_id IS NOT DISTINCT FROM source.batch_id
         WHERE source.id = %s
           AND {source_date_sql(date_column, 'source', only_costco, product=source['product_key'], account_column="COALESCE(NULLIF(TRIM(source.account_name), ''), resolved.account_name)")} = %s
-          AND (LOWER(TRIM(resolved.account_name)) IN ('homedepot', 'costco') OR {page_scope_sql('source', retailer=only_costco)})
+          AND (LOWER(TRIM(resolved.account_name)) IN ('homedepot', 'costco') OR {page_scope_sql('source', product=source['product_key'])})
           AND (LOWER(TRIM(source.account_name)) = LOWER(TRIM(resolved.account_name))
                OR source.account_name IS NULL OR TRIM(source.account_name) = '')
     """
@@ -2354,6 +2358,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 continue
 
             retailer_name = check_info['display_name']
+            if sea_source and sea_date and costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.bestbuy_dryer.enabled(sea_date['source_date']):
+                continue
             if category == 'tv_retail':
                 sea_source = (costco_layer2.tv_source(SEA_RETAIL_SOURCES)
                               if is_costco(retailer_name) else SEA_RETAIL_SOURCES.get('tv'))
@@ -2510,7 +2516,7 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 if sea_source and is_homedepot(retailer_name) and total == 0:
                     retailer_stats.update(status='PENDING',
                         validation_label=homedepot_inspection_label(target_date))
-                if sea_source and is_costco(retailer_name) and total == 0:
+                if sea_source and (is_costco(retailer_name) or sea_source['product_key'] == 'ldy_dryer') and total == 0:
                     retailer_stats.update(status='PENDING', validation_label='미수집')
                 if monitoring_date:
                     retailer_stats.update({
@@ -2825,7 +2831,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                             WHERE {date_text} >= %s
                               AND {date_text} <= %s
                               AND LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
-                              AND {page_scope_sql(anchor=True, retailer=retailer)}
+                              AND {page_scope_sql(anchor=True, retailer=retailer, product=sea_source['product_key'])}
                             ORDER BY {date_text}, id DESC
                         )
                         SELECT source.*
@@ -2839,7 +2845,7 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
                                 OR source.account_name IS NULL
                                 OR TRIM(CAST(source.account_name AS TEXT)) = ''
                               )
-                          AND {page_scope_sql('source', retailer=retailer)}
+                          AND {page_scope_sql('source', retailer=retailer, product=sea_source['product_key'])}
                           AND source.item IN ({placeholders})
                         ORDER BY source.item, source.{date_col}, source.id
                     """
@@ -2907,8 +2913,10 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
     query_config = {}
     display_cols = col_config.get('display_columns', [])
     query_cols = col_config.get('query_columns', [])
-    if is_costco(retailer) and sea_source:
+    if sea_source and (is_costco(retailer) or sea_source['product_key'] == 'ldy_dryer'):
         display_cols = costco_layer2.display_columns(sea_source['product_key'], column)
+        if sea_source['product_key'] == 'ldy_dryer':
+            display_cols = list(dict.fromkeys((*display_cols[:3], 'sku', *display_cols[3:])))
         query_cols = display_cols
     if display_cols:
         display_config[column] = {'select_columns': display_cols}
@@ -3078,6 +3086,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         sea_source
         and column_name not in set(SEA_NULL_COLUMNS.get(sea_source['product_key'], ())).union(
             costco_layer2.NULL_COLUMNS[sea_source['product_key']],
+            _get_sea_null_columns('ldy_dryer', 'Bestbuy') if sea_source['product_key'] == 'ldy_dryer' else (),
             costco_layer2.FORMAT_COLUMNS.get(sea_source['product_key'], ()),
             homedepot_null_columns(sea_source['product_key']), homedepot_format_columns(sea_source['product_key']))
     ):
@@ -3219,6 +3228,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
     if sea_source:
+        if costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
+            return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
         if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:
             return {'error': 'Costco는 NULL·형식 검수만 지원합니다', 'status_code': 400}
         allowed = ((costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check' else costco_layer2.NULL_COLUMNS).get(sea_source['product_key'], ()) if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])

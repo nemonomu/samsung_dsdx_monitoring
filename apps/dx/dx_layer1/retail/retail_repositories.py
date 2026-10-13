@@ -3,7 +3,7 @@
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.common.sea_collection import homedepot_source_enabled
-from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer
 
 
 def _timestamp_expression(date_field):
@@ -49,9 +49,9 @@ def _normalized_page_type(alias=''):
     return f"LOWER(BTRIM(CAST({prefix}page_type AS TEXT)))"
 
 
-def _appliance_page_scope(retailer, *, anchor=False):
+def _appliance_page_scope(retailer, *, anchor=False, table_name=''):
     # SEA HomeDepot stores MAIN/BSR ranks together, with no page_type.
-    if str(retailer or '').strip().lower() in ('homedepot', 'costco'):
+    if 'ldy_dryer' in table_name or str(retailer or '').strip().lower() in ('homedepot', 'costco'):
         return 'TRUE'
     if anchor:
         return f"{_normalized_page_type()} = 'main'"
@@ -135,7 +135,7 @@ def get_retail_summary_null_counts(cursor, table_name, date_field,
                                    retailer, is_daily):
     """Count TV populated fields under the established redirect scope."""
 
-    if str(retailer).strip().lower() == 'costco':
+    if str(retailer).strip().lower() == 'costco' or bestbuy_dryer.matches(table_name, retailer):
         column = date_field.split('::')[0]
         batch = get_latest_appliance_main_batch(cursor, table_name, column, str(slot_start)[:10], retailer)
         if batch is None:
@@ -182,6 +182,8 @@ def get_retailer_raw_data_list(cursor, table_name, columns, retailer,
 def get_latest_appliance_main_batch(cursor, table_name, date_column,
                                     target_date, retailer):
     """Return the latest daily batch; HomeDepot has no MAIN page marker."""
+    if bestbuy_dryer.matches(table_name, retailer) and not bestbuy_dryer.enabled(target_date):
+        return None
     if str(retailer).strip().lower() == 'costco' and not costco.enabled(target_date, table_name):
         return None
     if str(retailer).strip().lower() == 'homedepot' and not homedepot_source_enabled(target_date):
@@ -191,7 +193,7 @@ def get_latest_appliance_main_batch(cursor, table_name, date_column,
         FROM {table_name}
         WHERE {_appliance_date_condition(date_column, retailer)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
-          AND {_appliance_page_scope(retailer, anchor=True)}
+          AND {_appliance_page_scope(retailer, anchor=True, table_name=table_name)}
         ORDER BY id DESC
         LIMIT 1
     """, (str(target_date)[:10], retailer))
@@ -219,7 +221,7 @@ def query_appliance_counts_by_retailer(cursor, table_name, date_column,
         WHERE {_appliance_date_condition(date_column, retailer)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND batch_id IS NOT DISTINCT FROM %s
-          AND {_appliance_page_scope(retailer)}
+          AND {_appliance_page_scope(retailer, table_name=table_name)}
     """, (str(target_date)[:10], retailer, batch_id))
     row = cursor.fetchone() or (0, 0, 0, 0)
     return (
@@ -267,7 +269,7 @@ def get_appliance_retail_detail_list(cursor, table_name, date_column,
             WHERE {_appliance_date_condition(date_column, retailer)}
               AND {_normalized_account()} = LOWER(BTRIM(%s))
               AND batch_id IS NOT DISTINCT FROM %s
-              AND {_appliance_page_scope(retailer)}
+              AND {_appliance_page_scope(retailer, table_name=table_name)}
         """, (str(target_date)[:10], retailer, batch_id))
         row = cursor.fetchone() or (0, 0, 0, 0)
         results.append((
@@ -292,7 +294,7 @@ def get_appliance_raw_data_list(cursor, table_name, columns, retailer,
         WHERE {_appliance_date_condition(date_column, retailer)}
           AND {_normalized_account()} = LOWER(BTRIM(%s))
           AND batch_id IS NOT DISTINCT FROM %s
-          AND {_appliance_page_scope(retailer)}
+          AND {_appliance_page_scope(retailer, table_name=table_name)}
         ORDER BY id DESC
         LIMIT 500
     """, (str(target_date)[:10], retailer, batch_id))

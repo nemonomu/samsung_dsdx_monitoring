@@ -63,7 +63,7 @@ class CostcoDryerValidationTests(unittest.TestCase):
         self.assertNotIn('ldy_dryer', policy.FORMAT_COLUMNS)
         self.assertNotIn('ldy_dryer', sea_retail.SEA_RETAIL_SOURCES)
         self.assertNotIn('ldy_dryer', policy.sources(sea_retail.SEA_RETAIL_SOURCES))
-        self.assertEqual(('Costco',), self.null.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
+        self.assertEqual(('Bestbuy', 'Costco'), self.null.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
 
     def test_null_anchor_edit_and_confirmation_use_real_schema_and_launch_date(self):
         source = policy.dryer_source()
@@ -79,7 +79,7 @@ class CostcoDryerValidationTests(unittest.TestCase):
         query, retailers = self.null._build_sea_latest_batch_record_query(source, 'capacity')
         self.assertNotIn('page_type', query)
         self.assertNotIn('crawl_strdatetime', query)
-        self.assertEqual(['costco'], retailers)
+        self.assertEqual(['bestbuy', 'costco'], retailers)
         self.assertIn(TABLE, self.null.VALID_TABLES_UPDATE)
         self.assertEqual(('SEA', 'LDY_DRYER'), self.null._null_evidence_save_source(TABLE)[:2])
         for field in (*policy.NULL_COLUMNS['ldy_dryer'], *policy.PRICES):

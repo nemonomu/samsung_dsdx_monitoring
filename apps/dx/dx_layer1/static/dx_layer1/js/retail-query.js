@@ -28,7 +28,7 @@
     }
 
     function buildQuery(country, product, retailer, batch, day) {
-        if (country === 'SEA' && product === 'LDY_DRYER' && retailer !== 'Costco') return '';
+        if (country === 'SEA' && product === 'LDY_DRYER' && !['Bestbuy', 'Costco'].includes(retailer)) return '';
         var config = source(country, product);
         if (!config || !retailer || !batch || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return '';
         // SEA summaries join multiple collected batch IDs with a comma.
@@ -45,6 +45,8 @@
         var dateFilter = config.dateColumn + ' >= ' + literal(day);
         if (country === 'SEA' && accountName === 'Costco') {
             dateFilter = '(' + config.dateColumn + "::timestamptz AT TIME ZONE 'Asia/Seoul')::date = " + literal(day) + '::date';
+        } else if (country === 'SEA' && product === 'LDY_DRYER' && accountName === 'Bestbuy') {
+            dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
         }
         return 'SELECT *\nFROM ' + config.table + '\nWHERE ' + dateFilter +
             '\n  AND account_name = ' + literal(accountName) +

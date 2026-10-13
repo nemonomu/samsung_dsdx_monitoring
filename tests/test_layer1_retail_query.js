@@ -47,6 +47,13 @@ const costcoDryerSql = query.buildQuery('SEA', 'LDY_DRYER', 'Costco', 'c11', '20
 assert(costcoDryerSql.includes('FROM public.ldy_dryer_retail'));
 assert(costcoDryerSql.includes("AT TIME ZONE 'Asia/Seoul'"));
 assert(!costcoDryerSql.includes('page_type'));
+const bestbuyDryerSql = query.buildQuery('SEA', 'LDY_DRYER', 'Bestbuy', 'b_20261012_190628', '2026-10-12');
+assert(bestbuyDryerSql.includes('FROM public.ldy_dryer_retail'));
+assert(bestbuyDryerSql.includes("LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) = '2026-10-12'"));
+assert(bestbuyDryerSql.includes("account_name = 'Bestbuy'"));
+assert(bestbuyDryerSql.includes("batch_id = 'b_20261012_190628'"));
+assert(!bestbuyDryerSql.includes('page_type'));
+assert(!bestbuyDryerSql.includes('Asia/Seoul'));
 assert.strictEqual(query.buildQuery('SEA', 'REF', 'Lowes', 'l_260921_184541', '2026-09-21'),
     "SELECT *\nFROM public.ref_retail_com\nWHERE crawl_strdatetime >= '2026-09-21'\n" +
     "  AND account_name = 'Lowes'\n  AND batch_id = 'l_260921_184541'\nORDER BY item, crawl_strdatetime;");

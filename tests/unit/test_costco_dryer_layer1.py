@@ -68,7 +68,8 @@ class DryerTests(unittest.TestCase):
 
     def test_column_statistics_use_dryer_schema(self):
         source = columns.select_source('SEA', 'LDY_DRYER', 'Costco')
-        sql, params = columns.query_spec(source, source['retailers'][0], ['capacity', 'loading_type'], date(2026, 10, 1), date(2026, 10, 11))
+        retailer = next(r for r in source['retailers'] if r['name'] == 'Costco')
+        sql, params = columns.query_spec(source, retailer, ['capacity', 'loading_type'], date(2026, 10, 1), date(2026, 10, 11))
         self.assertIn('public.ldy_dryer_retail', sql)
         self.assertIn('2026-10-09', params)
         self.assertNotIn('page_type', sql)

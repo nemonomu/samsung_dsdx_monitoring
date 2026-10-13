@@ -442,20 +442,22 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             crawl_date, 'SEA', sea_context['source_key']
         )
         date_column = sea_context['date_column']
-        # Resolve missing account_name from the current batch for Costco edits.
+        peer_accounts = "('bestbuy', 'costco')" if sea_context['product_key'] == 'ldy_dryer' else "('costco')"
         account = f"""COALESCE(NULLIF(TRIM(source.account_name), ''),
             (SELECT peer.account_name FROM {table_name} peer
-             WHERE peer.batch_id = source.batch_id AND LOWER(TRIM(peer.account_name)) = 'costco'
+             WHERE peer.batch_id = source.batch_id AND LOWER(TRIM(peer.account_name)) IN {peer_accounts}
              LIMIT 1))"""
         select_columns = f'source.{column_name}, {account}, source.item'
-        only_costco = 'Costco' if sea_context['product_key'] == 'ldy_dryer' else None
-        costco_only = f"AND LOWER(TRIM({account})) = 'costco'" if table_name in ('public.tv_retail_com', 'public.ldy_dryer_retail') else ''
+        only_costco = None
+        costco_only = f"AND LOWER(TRIM({account})) = 'costco'" if table_name == 'public.tv_retail_com' else ''
+        if sea_context['product_key'] == 'ldy_dryer':
+            costco_only = f"AND LOWER(TRIM({account})) IN ('bestbuy', 'costco')"
         cursor.execute(f"""
             SELECT {select_columns}
             FROM {table_name} source
             WHERE source.id = %s
               AND {source_date_sql(date_column, 'source', only_costco, account_column=account, product=sea_context['product_key'])} = %s
-              AND (LOWER(TRIM({account})) = 'costco' OR {page_scope_sql('source', retailer=only_costco)})
+              AND (LOWER(TRIM({account})) = 'costco' OR {page_scope_sql('source', product=sea_context['product_key'])})
               {costco_only}
               AND source.batch_id = (
                   SELECT anchor.batch_id
@@ -463,7 +465,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                   WHERE {source_date_sql(date_column, 'anchor', only_costco, product=sea_context['product_key'])} = %s
                     AND LOWER(TRIM(anchor.account_name)) =
                         LOWER(TRIM({account}))
-                    AND {page_scope_sql('anchor', anchor=True, retailer=only_costco)}
+                    AND {page_scope_sql('anchor', anchor=True, product=sea_context['product_key'])}
                   ORDER BY anchor.id DESC
                   LIMIT 1
               )
@@ -497,7 +499,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_retailer = new_value
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
-    if is_costco(retailer) and sea_context:
+    if sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
+        if correction_type_value != 'null_check':
+            return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status': 403}
+        editable_cols = (*costco_layer2.NULL_COLUMNS['ldy_dryer'], 'sku')
+    elif is_costco(retailer) and sea_context:
         editable_cols = (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
                          else costco_layer2.NULL_COLUMNS).get(sea_context['product_key'], ())
     elif seda_product_line:

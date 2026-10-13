@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
-from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE')
@@ -28,6 +28,8 @@ def normalize_check(check, country, inspection_date):
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
+                if country == 'SEA' and bestbuy_dryer.matches(product, name) and not bestbuy_dryer.enabled(source_day):
+                    continue
                 if country == 'SEG' and name == 'Expert' and source_day < EXPERT_START_DATE:
                     continue
                 if country == 'SEA' and name == 'Costco' and not costco.enabled(source_day, product):
@@ -53,6 +55,7 @@ def normalize_check(check, country, inspection_date):
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
                     'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                                    else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, name)
                                     else str(costco.first_source_date(product)) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
@@ -101,6 +104,8 @@ def variable_bsr(row, country):
 
 
 def exact_bsr(row, country):
+    if country == 'SEA' and bestbuy_dryer.matches(row['product'], row['retailer']):
+        return True
     if country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco' and str(row['product']).upper() == 'TV':
         return False
     return (country, str(row['retailer']).strip().casefold()) in {

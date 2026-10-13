@@ -24,7 +24,7 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
 }
 (async()=>{
     await review.load(day);
-    for (const [country,retailer,product] of [['SEG','Expert','TV'],['SEG','Expert','REF'],['SEG','Expert','LDY'],['SEA','Costco','LDY_DRYER']]) {
+    for (const [country,retailer,product] of [['SEG','Expert','TV'],['SEG','Expert','REF'],['SEG','Expert','LDY'],['SEA','Costco','LDY_DRYER'],['SEA','Bestbuy','LDY_DRYER']]) {
         const normal=fixture(100,'observing','OK',retailer,country,product);
         assert.strictEqual(normal.row.status,'OK',`${country} ${retailer} ${product} 300/100 needs no manual review`);
         assert(!normal.row._reviewContext);
