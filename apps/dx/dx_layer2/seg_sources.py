@@ -19,7 +19,7 @@ EXPERT_NULL_COMMON = (
 )
 EXPERT_NULL_COLUMNS = {
     'seg_tv': (*EXPERT_NULL_COMMON, 'screen_size'),
-    'seg_ref': (*EXPERT_NULL_COMMON, 'ref_capacity', 'ref_refrigerator_type'),
+    'seg_ref': (*EXPERT_NULL_COMMON, 'ref_capacity'),
     'seg_ldy': (*EXPERT_NULL_COMMON, 'ldy_capacity', 'ldy_loading_type'),
     'seg_ldy_dryer': (*EXPERT_NULL_COMMON, 'capacity', 'loading_type'),
 }

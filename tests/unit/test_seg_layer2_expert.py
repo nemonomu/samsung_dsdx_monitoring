@@ -19,7 +19,7 @@ class ExpertLayer2Tests(unittest.TestCase):
     def test_exact_required_fields_and_scope_isolation(self):
         common = {'item', 'product_url', 'sku', 'retailer_sku_name',
                   'final_sku_price', 'star_rating', 'count_of_reviews', 'count_of_star_ratings'}
-        extras = {'seg_tv': {'screen_size'}, 'seg_ref': {'ref_capacity', 'ref_refrigerator_type'},
+        extras = {'seg_tv': {'screen_size'}, 'seg_ref': {'ref_capacity'},
                   'seg_ldy': {'ldy_capacity', 'ldy_loading_type'}, DRYER: {'capacity', 'loading_type'}}
         for key, fields in extras.items():
             self.assertEqual(common | fields, set(config.get_seg_null_columns(key, 'expert')))
