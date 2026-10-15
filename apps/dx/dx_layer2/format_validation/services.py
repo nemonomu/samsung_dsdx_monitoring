@@ -416,9 +416,10 @@ _SIEL_AMAZON_DELIVERY_WHEN = (
     rf'{_SIEL_AMAZON_DATE} - {_SIEL_AMAZON_DATE})'
 )
 _SIEL_AMAZON_DELIVERY_PATTERN = re.compile(
-    rf'FREE (?:scheduled delivery as soon as|delivery) {_SIEL_AMAZON_DELIVERY_WHEN}'
+    rf'(?:FREE (?:scheduled delivery as soon as|delivery) {_SIEL_AMAZON_DELIVERY_WHEN}'
     rf'(?:,? {_SIEL_AMAZON_TIME} - {_SIEL_AMAZON_TIME}| by {_SIEL_AMAZON_TIME})?'
     rf'(?: on your first order)?\.?(?: Order within {_SIEL_AMAZON_DURATION}\.)?'
+    rf'|FREE delivery {_SIEL_AMAZON_DATE} Limited Period Festive Offer\.)'
 )
 _SIEL_AMAZON_FASTEST_DELIVERY_PATTERN = re.compile(
     rf'^fastest delivery (?:Today by {_SIEL_AMAZON_TIME}|'
@@ -591,7 +592,8 @@ SIEL_FORMAT_RULE_DETAILS = {
         'pattern': (
             'FREE scheduled delivery as soon as {요일}, {일} {월}, {시각} - {시각}. / '
             'FREE delivery {요일}, {일} {월}. / FREE delivery Today·Tomorrow. '
-            '날짜 범위·분 단위 시간·Order within 남은 시간 허용'
+            '날짜 범위·분 단위 시간·Order within 남은 시간 허용. '
+            'FREE delivery {요일}, {일} {월} Limited Period Festive Offer. 허용'
         ),
     },
     'fastest_delivery': {

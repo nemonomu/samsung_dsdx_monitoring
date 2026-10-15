@@ -445,6 +445,36 @@ class SIELFormatValidationTests(unittest.TestCase):
                     errors = self.service.evaluate_siel_format_row({'delivery_availability': value}, product, 'Amazon')
                     self.assertEqual(value in invalid, 'delivery_availability' in errors)
 
+    def test_amazon_festive_delivery_matches_reviewed_values_across_products(self):
+        valid = (
+            'FREE delivery Saturday, 17 October Limited Period Festive Offer.',
+            'FREE delivery Friday, 23 October Limited Period Festive Offer.',
+            'FREE delivery Wednesday, 21 October Limited Period Festive Offer.',
+            'FREE delivery Monday, 01 December Limited Period Festive Offer.',
+        )
+        invalid = (
+            'FREE delivery Wednesday, 32 October Limited Period Festive Offer.',
+            'FREE delivery Wednesday, 0 October Limited Period Festive Offer.',
+            'FREE delivery Wednesday, 21 Wrongmonth Limited Period Festive Offer.',
+            'FREE delivery Wrongday, 21 October Limited Period Festive Offer.',
+            'FREE delivery Wednesday, 21 October Limited Period Other Offer.',
+            'FREE delivery Wednesday, 21 October Limited Period Festive Offer. extra',
+            'FREE delivery Wednesday, 21 October arbitrary text.',
+            'Limited Period Festive Offer.',
+        )
+        for product in ('siel_tv', 'siel_ref', 'siel_ldy'):
+            for value in (*valid, *invalid):
+                with self.subTest(product=product, value=value):
+                    errors = self.service.evaluate_siel_format_row(
+                        {'delivery_availability': value}, product, 'Amazon')
+                    self.assertEqual(value in invalid, 'delivery_availability' in errors)
+            errors = self.service.evaluate_siel_format_row(
+                {'delivery_availability': valid[0]}, product, 'Flipkart')
+            self.assertIn('delivery_availability', errors)
+            errors = self.service.evaluate_siel_format_row(
+                {'fastest_delivery': valid[0]}, product, 'Amazon')
+            self.assertIn('fastest_delivery', errors)
+
     def test_amazon_price_statuses_are_valid_but_bad_rupee_is_not(self):
         for price in (
             '₹10,999', 'Currently unavailable.',
