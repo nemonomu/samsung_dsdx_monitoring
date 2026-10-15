@@ -4,6 +4,7 @@ cursor + params 를 받아 plain dict 를 반환한다.
 """
 
 from datetime import date, datetime
+import re
 from zoneinfo import ZoneInfo
 from apps.common.sea_collection import homedepot_source_enabled, homedepot_inspection_label
 from apps.common.sea_layer2 import (
@@ -1046,6 +1047,38 @@ def _build_dup_delete_query(table, retailer=''):
 
 
 def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
+    """Attach a copy-only SELECT for the exact records returned on this page."""
+    result = _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size)
+    result.update(_duplicate_lookup_query(result, table))
+    return result
+
+
+def _duplicate_lookup_query(result, table):
+    # Table names come from the source registries, IDs from the scoped detail
+    # result. No new date interpretation, latest-batch selection, or DB read.
+    actual = result.get('actual_table') or _DUP_TABLE_CONFIG.get(table, {}).get('actual', '')
+    empty = {'query': '', 'query_record_count': 0}
+    identifier = r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?'
+    if not isinstance(actual, str) or not re.fullmatch(identifier, actual):
+        return empty
+    ids = set()
+    for group in result.get('results', {}).get('duplicates', []):
+        for record in group.get('records', []):
+            raw_id = record.get('id')
+            if isinstance(raw_id, bool) or not re.fullmatch(r'[0-9]+', str(raw_id)):
+                return empty
+            ids.add(int(raw_id))
+    if not ids:
+        return empty
+    actual = actual if '.' in actual else 'public.' + actual
+    id_list = ', '.join(str(value) for value in sorted(ids))
+    return {
+        'query': f"SELECT *\nFROM {actual}\nWHERE id IN ({id_list})\nORDER BY id;",
+        'query_record_count': len(ids),
+    }
+
+
+def _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
     if seda_duplicate_validation.product_line_for(table):
         return seda_duplicate_validation.duplicate_detail(

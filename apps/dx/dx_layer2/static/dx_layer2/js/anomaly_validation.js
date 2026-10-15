@@ -96,6 +96,22 @@ function _doDuplicateCleanup() {
         });
 }
 
+function buildDuplicateQueryHtml(data) {
+    if (!data.query) return '';
+    return '<div class="item-query-section"><div class="query-box">' +
+        '<div class="item-copy-header"><span class="item-copy-title">중복 데이터 조회 SQL (' +
+        esc(String(data.query_record_count || 0)) + '건)</span>' +
+        '<button type="button" class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>' +
+        '<pre class="query-content">' + esc(data.query) + '</pre>' +
+        '<small>현재 상세 조회 결과의 중복 그룹 전체 기준입니다.</small>' +
+        '</div></div>';
+}
+
+function goToDuplicatePage(page) {
+    if (page < 1 || page > modalState.totalPages) return;
+    openDetailModal('duplicate', modalState.tableName, modalState.retailer, modalState.count, page);
+}
+
 function renderDetailTable(type, data, tableParam) {
     const body = getDetailBody();
     modalState.cleanupTable = data.cleanup_table || tableParam;
@@ -147,7 +163,9 @@ function renderDetailTable(type, data, tableParam) {
     var isServerPaging = type === 'duplicate' && modalState.totalPages > 1;
 
     // 컨테이너 HTML 생성
-    var containerHtml = buildDetailContainerHtml({});
+    var containerHtml = buildDetailContainerHtml({
+        itemQueryHtml: type === 'duplicate' ? buildDuplicateQueryHtml(data) : ''
+    });
     body.innerHTML = containerHtml;
     if (data.readonly) {
         var readOnlyBar = document.getElementById('detail-action-bar');
@@ -187,7 +205,7 @@ function renderDetailTable(type, data, tableParam) {
             pageSize: _dupPageSize,
             onPageSizeChange: function(val) {
                 _dupPageSize = val;
-                goToPage(1);
+                goToDuplicatePage(1);
             }
         });
         detailViewState.table.render();
@@ -230,7 +248,7 @@ function renderDetailTable(type, data, tableParam) {
                 variant: 'simple',
                 pageSize: _dupPageSize,
                 showInfo: true,
-                onPageChange: function(page) { goToPage(page); }
+                onPageChange: function(page) { goToDuplicatePage(page); }
             });
             sp.render(modalState.totalGroups, modalState.currentPage);
         }
