@@ -125,12 +125,6 @@
         }
     }
 
-    function recordText(record) {
-        const event = record && record.history && record.history.at(-1);
-        if (!event) return '';
-        return `${event.memo}\n${event.username} · ${new Date(event.at).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'})} (KST)`;
-    }
-
     function recordHtml(record) {
         const event = record?.history?.at(-1);
         if (!event) return '';
@@ -142,9 +136,9 @@
         if (row._reviewContext && reviewStatuses.includes(status)) {
             const done = reviewed(row);
             const bad = rejected(row);
-            const title = (done ? '정상 확인\n' + recordText(row._normalReview) + '\n\n최초 사유\n' : '확인 필요\n')
+            const title = (done ? '정상 확인\n\n최초 사유\n' : '확인 필요\n')
                 + row._reviewReasons.join('\n\n') + '\n\n클릭하여 ' + (done ? '확인 이력 보기 · 확인 취소' : '검토');
-            return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : status === 'VOLUME_LOW' ? 'critical' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+recordText(row._normalReview)+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (status === 'VOLUME_LOW' ? '이상' : '확인 필요')}</button>`;
+            return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : status === 'VOLUME_LOW' ? 'critical' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (status === 'VOLUME_LOW' ? '이상' : '확인 필요')}</button>`;
         }
         const rows = row._reviewRows || [];
         const reviews = rows.filter(item => item._reviewContext);
@@ -164,8 +158,7 @@
                 (priority[value] || 0) > (priority[worst] || 0) ? value : worst, 'OK');
             return getStatusBadge(effective);
         }
-        const title = reviews.map(item => `${item.retailer} · ${reviewed(item) ? '정상 확인' : '확인 필요'}\n${item._reviewReasons.join('\n')}`
-            + (reviewed(item) ? '\n' + recordText(item._normalReview) : '')).join('\n\n');
+        const title = reviews.map(item => `${item.retailer} · ${reviewed(item) ? '정상 확인' : '확인 필요'}\n${item._reviewReasons.join('\n')}`).join('\n\n');
         const low = pending.some(item => item.status === 'VOLUME_LOW');
         return `<span class="status-badge ${done ? 'ok' : low ? 'critical' : 'volume-review'}" tabindex="0" title="${attr(title)}" aria-label="${attr(title)}">${done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (low ? '이상' : '확인 필요') + (pending.length ? ' · 미확인 ' + pending.length + '건' : '')}</span>`;
     }

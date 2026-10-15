@@ -42,7 +42,7 @@ function record(item) {
     assert(badge(cat).includes('✓ 정상 확인'));
     assert(badge(check).includes('✓ 정상 확인'));
     assert(!badge().includes('<script>'));
-    assert(badge().includes('&quot;source&quot;'));
+    assert(!badge().includes('source'), 'review memo is only visible in the dialog');
     assert.strictEqual(row.status, 'REVIEW', 'automatic status must remain intact');
     assert(!sandbox.L1.retailStatus.render(check, 0, 'sem_retail').includes('60건 감소'));
     const confirmed = JSON.parse(JSON.stringify(row));
@@ -106,7 +106,8 @@ function record(item) {
         assert(badge(cat).includes('✓ 정상 확인'));
         const cell = sandbox.L1.retailStatus.bsrCell(row, 53);
         assert(cell.includes('cs-bsr-confirmed'));
-        assert(cell.includes('&lt;script&gt;'));
+        assert(!cell.includes('source'));
+        assert(cell.includes('l1-review-label'));
         assert(!cell.includes('cs-bsr-low'));
         assert(!sandbox.L1.retailStatus.render(check, 0, checkType).includes('BSR 53 / 100'));
         saved[0].active = false;

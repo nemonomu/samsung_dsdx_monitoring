@@ -724,6 +724,7 @@ class StatisticsReviewTests(TestCase):
         result = get_day()
         self.assertEqual('confirm', result['review']['action'])
         self.assertEqual('source page has 99', result['review']['memo'])
+        self.assertEqual('2026-10-15', result['review']['inspection_date'])
         self.assertEqual(99, result['bsr'])
         self.assertEqual('VOLUME_LOW', result['alerts'][0]['status'])
         self.record.active = False

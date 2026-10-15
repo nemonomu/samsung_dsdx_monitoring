@@ -2,6 +2,8 @@
 .cs-bsr-confirmed {background:#ecfdf5 !important;color:#047857 !important}
 .l1-review-badge:hover {box-shadow:0 0 0 2px #bfdbfe}
 .l1-review-badge:focus-visible {outline:2px solid #2563eb;outline-offset:3px}
+.l1-review-label {border:0;background:transparent;color:inherit;font:inherit;font-weight:700;padding:3px 5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.l1-review-label:focus-visible {outline:2px solid #2563eb;outline-offset:2px;border-radius:3px}
 .l1-review-dialog {position:fixed;inset:0;margin:auto;width:min(520px,calc(100vw - 40px));max-height:85vh;overflow:auto;border:1px solid #dbe4ef;border-radius:14px;padding:24px;color:#173052;box-shadow:0 18px 60px #0f172a33}
 .l1-review-dialog::backdrop {background:#0f172a66}
 .l1-review-dialog h2 {font-size:19px;margin:0 0 14px}

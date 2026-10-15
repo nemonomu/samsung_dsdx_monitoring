@@ -64,4 +64,5 @@ def attach_review(day, country, product, retailer, slot, index):
         return result
     result['review'] = {k: event.get(k, '') for k in ('action', 'memo', 'username', 'at')}
     result['review']['metrics'] = sorted({entry[0] for entry in basis})
+    result['review']['inspection_date'] = c['date']
     return result

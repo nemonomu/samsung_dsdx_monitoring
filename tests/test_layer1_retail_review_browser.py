@@ -241,8 +241,9 @@ def main():
         page.locator('dialog [data-primary]').click()
         expect(page.locator('.l1-review-badge')).to_have_text('✓ 정상 확인')
         expect(page.locator('.cs-bsr-confirmed')).to_contain_text('53')
-        expect(page.locator('.cs-bsr-confirmed .l1-review-memo')).to_have_text('log정상 해당 페이지에 100개가 안됨 확인')
-        page.locator('.l1-review-badge').click()
+        expect(page.locator('.cs-bsr-confirmed')).not_to_contain_text('log정상')
+        page.locator('.cs-bsr-confirmed .l1-review-label').click()
+        expect(page.locator('.l1-review-confirmed .l1-review-memo')).to_have_text('log정상 해당 페이지에 100개가 안됨 확인')
         assert page.locator('.l1-review-confirmed .l1-review-memo').evaluate('(el)=>getComputedStyle(el).fontWeight') == '700'
         page.screenshot(path=str(output/'layer1-anomaly-review-reason.png'))
         page.locator('textarea').fill('재검토')
@@ -254,10 +255,11 @@ def main():
         content = template.split('{% block layer1_content %}')[1].split('{% endblock %}')[0]
         stats_html = '<!doctype html><html lang="ko"><meta charset="utf-8"><style>' + css + '</style>' + content
         stats_html += '<script>' + (BASE/'js/collection-statistics.js').read_text(encoding='utf-8') + '</script></html>'
-        stats_day = {'date':'2026-10-14','state':'complete','main':300,'bsr':99,'total':300,
+        stats_day = {'date':'2026-10-14','batch_id':'c20261014_040324','state':'complete','main':300,'bsr':99,'total':300,
             'comparison_state':'ready','observation_state':'ready','slot':'daily',
             'alerts':[{'metric':'bsr','status':'VOLUME_LOW','exact':True,'reason':'BSR 99 / 100'}],
-            'review':{'action':'confirm','metrics':['bsr'],'memo':'log정상 해당 페이지에 100개가 안됨 확인'}}
+            'review':{'action':'confirm','metrics':['bsr'],'memo':'log정상 해당 페이지에 100개가 안됨 확인\n<script>unsafe</script>',
+                      'username':'y.kim','at':'2026-10-15T08:22:57Z','inspection_date':'2026-10-15'}}
         stats_payload = {'weeks':[{'rows':[{'country':'SEA','product':'LDY_DRYER','retailer':'Costco',
             'slot':'daily','daily':[stats_day]}]}]}
         stats_page = browser.new_page(viewport={'width':1450,'height':920})
@@ -267,11 +269,28 @@ def main():
         stats_page.goto('http://statistics.test/?date=2026-10-14')
         expect(stats_page.locator('.cs-bsr-confirmed')).to_contain_text('99')
         expect(stats_page.locator('.cs-bsr-confirmed')).to_contain_text('✓ 정상 확인')
-        memo = stats_page.locator('.cs-review-memo')
+        expect(stats_page.locator('#cs-table-body')).not_to_contain_text('log정상')
+        expect(stats_page.locator('dialog')).to_have_count(0)
+        stats_page.locator('.cs-bsr-confirmed .l1-review-label').click()
+        expect(stats_page.locator('dialog')).to_be_visible()
+        expect(stats_page.locator('dialog')).to_contain_text('정상 확인 이력')
+        expect(stats_page.locator('dialog')).to_contain_text('데이터일 2026-10-14')
+        expect(stats_page.locator('dialog')).to_contain_text('c20261014_040324')
+        expect(stats_page.locator('dialog')).to_contain_text('검수일 2026-10-15')
+        expect(stats_page.locator('dialog')).to_contain_text('y.kim')
+        expect(stats_page.locator('dialog')).to_contain_text('KST')
+        memo = stats_page.locator('dialog .l1-review-memo')
         expect(memo).to_have_text(stats_day['review']['memo'])
         assert memo.evaluate('(el)=>getComputedStyle(el).fontWeight') == '700'
-        assert memo.bounding_box()['y'] > stats_page.locator('.cs-bsr-confirmed small').bounding_box()['y']
+        expect(stats_page.locator('dialog script')).to_have_count(0)
         stats_page.screenshot(path=str(output/'collection-statistics-review-reason.png'))
+        stats_page.locator('dialog [data-close]').click()
+        expect(stats_page.locator('dialog')).to_have_count(0)
+        expect(stats_page.locator('.cs-bsr-confirmed .l1-review-label')).to_be_focused()
+        stats_page.keyboard.press('Enter')
+        expect(stats_page.locator('dialog')).to_be_visible()
+        stats_page.keyboard.press('Escape')
+        expect(stats_page.locator('dialog')).to_have_count(0)
         del stats_day['review']
         stats_page.locator('.cs-primary').click()
         expect(stats_page.locator('.cs-review-memo')).to_have_count(0)

@@ -187,11 +187,12 @@ async function flush() {
         /class="cs-day-cell low cs-bsr-low" title="BSR 기준 100개 \/ 수집 99개 \/ 1개 부족">99<small>이상<\/small>/);
     walmart.daily[6].review = {action:'confirm', metrics:['bsr'], memo:'log정상 <페이지> 100개가 안됨 확인'};
     elements['cs-retailer'].fire('change');
-    assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-confirmed[^>]*>99<small>✓ 정상 확인<\/small><strong class="cs-review-memo">log정상 &lt;페이지&gt; 100개가 안됨 확인/);
+    assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-confirmed[^>]*>99<small><button[^>]*data-cs-review="\d+"[^>]*>✓ 정상 확인<\/button>/);
+    assert(!elements['cs-table-body'].innerHTML.includes('log정상'));
     assert(!elements['cs-table-body'].innerHTML.includes('<페이지>'));
     walmart.daily[6].review.action = 'reject';
     elements['cs-retailer'].fire('change');
-    assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-low[^>]*>99<small>이상 확정/);
+    assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-low[^>]*>99<small><button[^>]*>이상 확정/);
     delete walmart.daily[6].review;
     elements['cs-retailer'].fire('change');
     assert(!elements['cs-table-body'].innerHTML.includes('cs-review-memo'));

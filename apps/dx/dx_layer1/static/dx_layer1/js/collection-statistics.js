@@ -6,6 +6,44 @@
     const countries = ['SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE'];
     const products = ['TV', 'REF', 'LDY', 'LDY_DRYER'];
     let data = null, controller = null, requestId = 0;
+    let reviewTargets = [], reviewDialog = null;
+
+    function openReview(index) {
+        const target = reviewTargets[index];
+        if (!target) return;
+        reviewDialog?.close();
+        const dialog = document.createElement('dialog');
+        reviewDialog = dialog;
+        dialog.className = 'l1-review-dialog';
+        dialog.setAttribute('aria-labelledby', 'cs-review-title');
+        const title = target.entries.every(day => day.review?.action === 'confirm') ? '정상 확인 이력' : '수집 확인 이력';
+        dialog.innerHTML = `<h2 id="cs-review-title">${title}</h2>
+            <p class="l1-review-target">${safe(target.country)} · ${safe(target.product)} · ${safe(target.retailer)}<br>데이터일 ${safe(target.date)} · ${safe(target.metric.toUpperCase())}</p>`
+            + target.entries.map(day => {
+                const review = day.review;
+                const confirmed = review?.action === 'confirm';
+                const time = review?.at ? new Date(review.at).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) + ' (KST)' : '';
+                return `<section><p class="l1-review-target">${safe(day.slot || 'daily')} · 배치 ${safe(day.batch_id || '정보 없음')}${review?.inspection_date ? '<br>검수일 ' + safe(review.inspection_date) : ''}</p>
+                    <p>MAIN ${number(day.main)}건 · BSR ${number(day.bsr)}건 · 총 ${number(day.total)}건</p>`
+                    + (review ? `<p class="${confirmed ? 'l1-review-confirmed' : 'l1-review-rejected'}">${confirmed ? '✓ 정상 확인' : '이상 확정'}<strong class="l1-review-memo">${safe(review.memo)}</strong><span class="l1-review-author">${safe(review.username)} · ${safe(time)}</span></p>` : '<p>확인 필요 · 아직 처리하지 않은 수집입니다.</p>') + '</section>';
+            }).join('') + '<div class="l1-review-actions"><button type="button" data-close autofocus>닫기</button></div>';
+        document.body.appendChild(dialog);
+        dialog.querySelector('[data-close]').onclick = () => dialog.close();
+        dialog.addEventListener('close', () => {
+            dialog.remove();
+            if (reviewDialog === dialog) reviewDialog = null;
+        }, {once:true});
+        dialog.showModal();
+    }
+
+    function reviewLabel(day, metric, group, date) {
+        const label = day[metric + 'Label'];
+        if (!label) return '';
+        const entries = day[metric + 'Reviews'] || [];
+        if (!entries.some(entry => entry.review)) return `<small>${safe(label)}</small>`;
+        const index = reviewTargets.push({country:group.country, product:group.product, retailer:group.retailer, date, metric, entries}) - 1;
+        return `<small><button type="button" class="l1-review-label" data-cs-review="${index}" aria-haspopup="dialog" title="확인 이력 보기">${safe(label)}</button></small>`;
+    }
 
     function shiftDate(value, days) {
         const date = new Date(value + 'T00:00:00Z');
@@ -46,7 +84,7 @@
             for (const day of row.daily) {
                 if (day.date < dates[0] || day.date > dates.at(-1)) continue;
                 if (!group.daily.has(day.date)) group.daily.set(day.date, []);
-                group.daily.get(day.date).push(day);
+                group.daily.get(day.date).push({...day, slot:day.slot || row.slot});
             }
         }
         return [...groups.values()].sort((a, b) =>
@@ -88,9 +126,7 @@
             const decision = day => day.review?.metrics?.includes(metric) ? day.review : null;
             const confirmed = affected.length && affected.every(day => decision(day)?.action === 'confirm');
             const rejected = affected.some(day => decision(day)?.action === 'reject');
-            const memos = affected.filter(day => decision(day)).map(day =>
-                (active.length > 1 ? `${day.slot || 'daily'} · ${decision(day).action === 'confirm' ? '정상 확인' : '이상 확정'}: ` : '') + decision(day).memo);
-            return {confirmed, rejected, memo: memos.join('\n')};
+            return {confirmed, rejected, entries:affected.map(day => ({...day, review:decision(day)}))};
         }
         const bsrReview = reviewInfo('bsr'), mainReview = reviewInfo('main');
         const bsrAlerts = alerts.filter(alert => alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status));
@@ -98,7 +134,7 @@
         const bsrInfo = {
             bsrKind: bsrReview.rejected ? 'low' : bsrReview.confirmed ? 'confirmed' : bsrAlerts.length ? (bsrLow ? 'low' : 'high') : '',
             bsrLabel: bsrReview.rejected ? '이상 확정' : bsrReview.confirmed ? '✓ 정상 확인' : bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
-            bsrMemo: bsrReview.memo,
+            bsrReviews: bsrReview.entries,
             bsrReason: bsrAlerts.map(alert => alert.reason || 'BSR 수량 부족').join(' · '),
         };
         const mainAlerts = alerts.filter(alert => alert.metric === 'main');
@@ -107,7 +143,7 @@
         return {total, main, bsr, ...bsrInfo,
             mainKind: mainReview.rejected ? 'low' : mainReview.confirmed ? 'confirmed' : low ? 'low' : high ? 'high' : '',
             mainLabel: mainReview.rejected ? '이상 확정' : mainReview.confirmed ? '✓ 정상 확인' : low ? '이상' : high ? '확인 필요' : '',
-            mainMemo: mainReview.memo,
+            mainReviews: mainReview.entries,
             mainReason: mainAlerts.map(alert => alert.reason || 'MAIN 수집량 변동').join(' · '),
             label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
     }
@@ -127,6 +163,8 @@
 
     function render() {
         if (!data) return;
+        reviewDialog?.close();
+        reviewTargets = [];
         const endDate = byId('cs-date').value, dates = selectedDates(endDate, Number(byId('cs-days').value));
         const groups = selectedGroups(dates);
         byId('cs-selection').textContent = [
@@ -156,12 +194,12 @@
                 ? completed.reduce((sum, day) => sum + day.total, 0) / completed.length : null;
             return heading + `<tr class="cs-retailer-row"><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong></th>`
                 + `<td class="cs-average"><strong>${number(average == null ? null : Math.round(average))}</strong><small>${completed.length}/${dates.length}일 집계</small></td>`
-                + results.map(day => {
+                + results.map((day, index) => {
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
                     if (day.total == null) return `<td class="cs-day-cell cs-unavailable${day.kind ? ' ' + day.kind : ''}" colspan="3" title="${safe(title)}"><strong>—</strong><small>${safe(day.label)}</small></td>`;
-                    return `<td class="cs-day-cell${day.mainKind ? ' ' + day.mainKind + ' cs-main-' + day.mainKind : ''}"${day.mainReason ? ` title="${safe(day.mainReason)}"` : ''}>${number(day.main)}${day.mainLabel ? `<small>${day.mainLabel}</small>` : ''}${day.mainMemo ? `<strong class="cs-review-memo">${safe(day.mainMemo)}</strong>` : ''}</td>`
-                        + `<td class="cs-day-cell${day.bsrKind ? ' ' + day.bsrKind + (day.bsrKind === 'confirmed' ? ' cs-bsr-confirmed' : day.bsrKind === 'low' ? ' cs-bsr-low' : ' cs-bsr-review') : ''}"${day.bsrReason || day.bsrLabel ? ` title="${safe(day.bsrReason || day.bsrLabel)}"` : ''}>${number(day.bsr)}${day.bsrLabel ? `<small>${safe(day.bsrLabel)}</small>` : ''}${day.bsrMemo ? `<strong class="cs-review-memo">${safe(day.bsrMemo)}</strong>` : ''}</td>`
+                    return `<td class="cs-day-cell${day.mainKind ? ' ' + day.mainKind + ' cs-main-' + day.mainKind : ''}"${day.mainReason ? ` title="${safe(day.mainReason)}"` : ''}>${number(day.main)}${reviewLabel(day, 'main', group, dates[index])}</td>`
+                        + `<td class="cs-day-cell${day.bsrKind ? ' ' + day.bsrKind + (day.bsrKind === 'confirmed' ? ' cs-bsr-confirmed' : day.bsrKind === 'low' ? ' cs-bsr-low' : ' cs-bsr-review') : ''}"${day.bsrReason || day.bsrLabel ? ` title="${safe(day.bsrReason || day.bsrLabel)}"` : ''}>${number(day.bsr)}${reviewLabel(day, 'bsr', group, dates[index])}</td>`
                         + `<td class="cs-day-cell cs-total${day.kind ? ' ' + day.kind : ''}" title="${safe(title)}"><strong>${number(day.total)}</strong>${day.label ? `<small>${safe(day.label)}</small>` : ''}</td>`;
                 }).join('') + '</tr>';
         }).join('');
@@ -190,6 +228,8 @@
             weeks: String(weeksNeeded(endDate, Number(byId('cs-days').value))),
         });
         data = null;
+        reviewDialog?.close();
+        reviewTargets = [];
         byId('cs-results').hidden = true;
         setMessage('일별 수집 건수를 불러오는 중입니다.');
         const timeout = setTimeout(() => activeController.abort(), 10000);
@@ -207,6 +247,10 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        byId('cs-table-body').addEventListener('click', event => {
+            const button = event.target.closest('[data-cs-review]');
+            if (button) openReview(Number(button.dataset.csReview));
+        });
         const params = new URLSearchParams(location.search);
         for (const key of ['country', 'product', 'days']) {
             const input = byId('cs-' + key), value = params.get(key);

@@ -44,9 +44,10 @@
         var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
         var low = rejected || (!normalReviewed && alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; }));
         var count = retailer._reviewContext ? '<button type="button" class="l1-review-count" onclick="event.stopPropagation();L1.retailReview.open(' + retailer._reviewTarget + ')" aria-label="BSR ' + esc(value) + '건 수집 결과 확인">' + esc(value) + '</button>' : esc(value);
+        var label = rejected ? '이상 확정' : low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요';
+        if (retailer._reviewContext && (normalReviewed || rejected)) label = '<button type="button" class="l1-review-label" onclick="event.stopPropagation();L1.retailReview.open(' + retailer._reviewTarget + ')" aria-haspopup="dialog">' + label + '</button>';
         return '<td' + (alerts.length ? ' class="' + (low ? 'cs-bsr-low' : normalReviewed ? 'cs-bsr-confirmed' : 'cs-bsr-review') + '" title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '') + '>'
-            + count + (alerts.length ? '<small style="display:block">' + (rejected ? '이상 확정' : low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요') + '</small>' : '')
-            + (alerts.length && (normalReviewed || rejected) ? '<strong class="l1-review-memo">' + esc(retailer._normalReview.history.at(-1).memo) + '</strong>' : '') + '</td>';
+            + count + (alerts.length ? '<small style="display:block">' + label + '</small>' : '') + '</td>';
     }
 
     function rowBadge(retailer) {
