@@ -1,12 +1,13 @@
 from apps.common.db import dx_table
 from apps.common.sea_dates import appliance_source_date_sql
-from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.retail import costco, homedepot_dryer
 
 
 SOURCES = (
     ('Walmart', 'TV', 'tv_retail_com', 'crawl_datetime'),
     ('HomeDepot', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
     ('HomeDepot', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
+    ('HomeDepot', 'LDY_DRYER', 'ldy_dryer_retail', 'crawl_datetime'),
     ('Costco', 'TV', 'tv_retail_com', 'crawl_datetime'),
     ('Costco', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
     ('Costco', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
@@ -16,12 +17,14 @@ SOURCES = (
 
 def fetch_collection(cursor, source, target_date):
     retailer, _product, table, column = source
+    home_dryer = homedepot_dryer.matches(_product, retailer)
     table = 'public.' + dx_table(table)
     if retailer == 'Costco':
         day = costco.source_date_sql('source.' + column)
         stamp = f"NULLIF(TRIM(CAST(source.{column} AS TEXT)), '')::timestamptz"
     elif retailer == 'HomeDepot':
-        day = appliance_source_date_sql('source.' + column, 'source.account_name')
+        day = (homedepot_dryer.source_date_sql('source.' + column) if home_dryer
+               else appliance_source_date_sql('source.' + column, 'source.account_name'))
         stamp = f"NULLIF(TRIM(CAST(source.{column} AS TEXT)), '')::timestamptz"
     else:
         day = f"LEFT(TRIM(CAST(source.{column} AS TEXT)), 10)"

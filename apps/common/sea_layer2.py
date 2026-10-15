@@ -33,7 +33,8 @@ def layer2_sources(sources):
 
 
 def homedepot_null_columns(product):
-    return (*HOMEDEPOT_NULL_COMMON, f'{product}_capacity')
+    capacity = 'capacity' if product == 'ldy_dryer' else f'{product}_capacity'
+    return (*HOMEDEPOT_NULL_COMMON, capacity)
 
 
 def homedepot_format_columns(product):
@@ -65,6 +66,7 @@ def page_scope_sql(alias='', *, anchor=False, retailer=None):
 
 
 def annotate_source_date(row, retailer=None):
-    if is_homedepot(row.get('account_name') or retailer) and row.get('crawl_strdatetime'):
-        row['_source_date'] = source_date_value(row['crawl_strdatetime'])
+    raw = row.get('crawl_strdatetime') or row.get('crawl_datetime')
+    if is_homedepot(row.get('account_name') or retailer) and raw:
+        row['_source_date'] = source_date_value(raw)
     return row

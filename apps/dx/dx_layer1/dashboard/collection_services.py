@@ -5,7 +5,7 @@ from apps.common.sea_collection import (
     KST, collection_schedule, homedepot_source_enabled,
 )
 from .collection_repositories import SOURCES, fetch_collection
-from apps.dx.dx_layer1.retail import costco
+from apps.dx.dx_layer1.retail import costco, homedepot_dryer
 
 
 def get_collection_status(target_date, now=None):
@@ -16,12 +16,15 @@ def get_collection_status(target_date, now=None):
         retailer, product, _table, _column = source
         if retailer == 'Costco' and not costco.enabled(target_date, product):
             continue
-        scheduled = collection_schedule(target_date, retailer)
+        home_dryer = homedepot_dryer.matches(product, retailer)
+        if home_dryer and not homedepot_dryer.enabled(target_date):
+            continue
+        scheduled = None if home_dryer else collection_schedule(target_date, retailer)
         row = {'retailer': retailer, 'product': product,
-               'source_date': str(target_date), 'scheduled_at': scheduled.isoformat(),
+               'source_date': str(target_date), 'scheduled_at': scheduled.isoformat() if scheduled else None,
                'count': 0, 'main_count': 0, 'bsr_count': 0,
                'last_collected_at': None, 'batch_id': None,
-               'status': 'scheduled' if current < scheduled else 'waiting'}
+               'status': 'scheduled' if scheduled and current < scheduled else 'waiting'}
         enabled = retailer != 'HomeDepot' or homedepot_source_enabled(target_date)
         if enabled:
             try:

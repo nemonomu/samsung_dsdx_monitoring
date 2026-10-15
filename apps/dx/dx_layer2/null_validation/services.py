@@ -41,7 +41,7 @@ try:
     from apps.common.inspection_dates import resolve_monitoring_date
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
     from apps.common.sea_layer2 import layer2_sources
-    SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES), include_dryer=True)
+    SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES), include_dryer=True, include_homedepot_dryer=True)
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -454,6 +454,8 @@ def _resolve_youtube_null_date(target_date):
 
 def _get_sea_null_anchor_batch(cursor, source, source_date, retailer):
     """Use only the newest MAIN row on the exact SEA source date."""
+    if costco_layer2.homedepot_dryer.matches(source['product_key'], retailer) and not costco_layer2.homedepot_dryer.enabled(source_date):
+        return None
     if costco_layer2.bestbuy_dryer.matches(source['product_key'], retailer) and not costco_layer2.bestbuy_dryer.enabled(source_date):
         return None
     if is_costco(retailer) and not costco_layer2.costco.enabled(source_date, source['product_key']):
@@ -2358,6 +2360,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 continue
 
             retailer_name = check_info['display_name']
+            if sea_source and sea_date and costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.homedepot_dryer.enabled(sea_date['source_date']):
+                continue
             if sea_source and sea_date and costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.bestbuy_dryer.enabled(sea_date['source_date']):
                 continue
             if category == 'tv_retail':
@@ -3228,6 +3232,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
     if sea_source:
+        if costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
+            return {'error': 'HomeDepot 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
         if costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
         if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:

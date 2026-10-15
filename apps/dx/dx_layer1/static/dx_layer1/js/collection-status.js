@@ -37,7 +37,7 @@ function renderDdayCollection(data) {
                 '<td class="rt-name">' + esc(row.retailer) + batch + '</td>' +
                 '<td>' + (row.main_count == null ? '-' : Number(row.main_count).toLocaleString()) + '</td>' +
                 '<td>' + (row.bsr_count == null ? '-' : Number(row.bsr_count).toLocaleString()) + '</td>' +
-                '<td>' + esc(scheduled) + ' KST</td>' +
+                '<td>' + (scheduled ? esc(scheduled) + ' KST' : '미정') + '</td>' +
                 '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' KST' : '') + '</td>' +
                 '<td class="rt-total">' + (row.count === null ? '-' : Number(row.count).toLocaleString()) + '</td>' +
                 '<td class="rt-status ct-nc">' + ddayStatusBadge(row.status) + '</td></tr>';

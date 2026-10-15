@@ -14,7 +14,7 @@ from apps.common.sea_collection import homedepot_inspection_label
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 
 from . import retail_repositories as repo
-from . import costco, bestbuy_dryer
+from . import costco, bestbuy_dryer, homedepot_dryer
 
 
 OK_THRESHOLD = 200
@@ -33,7 +33,7 @@ ALLOWED_RANK_FIELDS = {'promotion_position'}
 
 def _get_layer1_source(value):
     if str(value).lower() in ('ldy_dryer', 'sea_ldy_dryer'):
-        return {**costco.DRYER_SOURCE, 'retailers': ('Bestbuy', 'Costco')}
+        return {**costco.DRYER_SOURCE, 'retailers': ('Bestbuy', 'Costco', 'HomeDepot')}
     source = get_sea_retail_source(value)
     if source['product_key'] in ('ref', 'ldy'):
         source = {**source, 'retailers': (*source['retailers'], HOMEDEPOT)}
@@ -145,7 +145,7 @@ def _retailer_criteria(category, retailer):
         # Receipt only here; the shared five-day observation/median policy
         # evaluates volume through collection-statistics snapshots.
         return {'total_min': 1} if category.upper() == 'TV' else {'total_min': 1, 'bsr_exact': 100}
-    if category.upper() in ('REF', 'LDY') and retailer.lower() == 'homedepot':
+    if category.upper() in ('REF', 'LDY', 'LDY_DRYER') and retailer.lower() == 'homedepot':
         return None
 
     if (
@@ -318,6 +318,8 @@ def _build_category(cursor, source, inspection_date, now):
     slot_retailers = _slot_retailers(source, schedule_slots)
     if source['product_key'] == 'ldy_dryer' and not bestbuy_dryer.enabled(source_date):
         slot_retailers = [r for r in slot_retailers if r['name'] != 'Bestbuy']
+    if source['product_key'] == 'ldy_dryer' and not homedepot_dryer.enabled(source_date):
+        slot_retailers = [r for r in slot_retailers if r['name'] != HOMEDEPOT]
     if not costco.enabled(source_date, source['product_key']):
         slot_retailers = [r for r in slot_retailers if r['name'] != 'Costco']
     rows = _source_rows(
@@ -328,6 +330,13 @@ def _build_category(cursor, source, inspection_date, now):
     )
 
     for retailer in retailer_details:
+        if homedepot_dryer.matches(source['product_key'], retailer['retailer']):
+            ready = homedepot_dryer.complete(source_date, now)
+            retailer['collection_phase'] = 'complete' if ready else 'collecting'
+            retailer['collection_status'] = _homedepot_collection_status(inspection_date, now, retailer['count'])
+            if not ready:
+                retailer['status'] = 'COLLECTING'
+            continue
         if bestbuy_dryer.matches(source['product_key'], retailer['retailer']):
             ready = bestbuy_dryer.complete(source_date, now)
             retailer['collection_phase'] = 'complete' if ready else 'collecting'
@@ -608,6 +617,8 @@ def get_retail_summary(target_date, product_line):
         for retailer in source['retailers']:
             if bestbuy_dryer.matches(source['product_key'], retailer) and not bestbuy_dryer.enabled(source_date):
                 continue
+            if homedepot_dryer.matches(source['product_key'], retailer) and not homedepot_dryer.enabled(source_date):
+                continue
             if retailer == 'Costco' and not costco.enabled(source_date, source['product_key']):
                 continue
             check_columns = (
@@ -615,7 +626,7 @@ def get_retail_summary(target_date, product_line):
                 if source['product_key'] == 'tv' and retailer != 'Costco'
                 else []
             )
-            if retailer == 'Costco' or bestbuy_dryer.matches(source['product_key'], retailer):
+            if retailer == 'Costco' or source['product_key'] == 'ldy_dryer':
                 check_columns = [c for c in costco.COLUMNS[source['product_key']]
                                  if c not in ('id', source['date_column'], 'main_rank', 'bsr_rank')]
             for column in check_columns:
@@ -762,7 +773,7 @@ def get_retailer_raw_data(category, retailer, period, target_date):
         **_contract_fields(contract),
     }
     try:
-        if retailer_name == 'Costco' or bestbuy_dryer.matches(source['product_key'], retailer_name):
+        if retailer_name == 'Costco' or source['product_key'] == 'ldy_dryer':
             columns = list(costco.COLUMNS[source['product_key']])
             with dx_connection() as (_conn, cursor):
                 batch_id = repo.get_latest_appliance_main_batch(
@@ -835,6 +846,6 @@ def get_retailer_columns_info():
             'columns': columns,
             'all_columns': sorted({c for fields in columns.values() for c in fields}),
         }
-    result['ldy_dryer'] = {'columns': {r: list(costco.COLUMNS['ldy_dryer']) for r in ('Bestbuy', 'Costco')},
+    result['ldy_dryer'] = {'columns': {r: list(costco.COLUMNS['ldy_dryer']) for r in ('Bestbuy', 'Costco', 'HomeDepot')},
                            'all_columns': list(costco.COLUMNS['ldy_dryer'])}
     return result

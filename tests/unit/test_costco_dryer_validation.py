@@ -63,7 +63,7 @@ class CostcoDryerValidationTests(unittest.TestCase):
         self.assertNotIn('ldy_dryer', policy.FORMAT_COLUMNS)
         self.assertNotIn('ldy_dryer', sea_retail.SEA_RETAIL_SOURCES)
         self.assertNotIn('ldy_dryer', policy.sources(sea_retail.SEA_RETAIL_SOURCES))
-        self.assertEqual(('Bestbuy', 'Costco'), self.null.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
+        self.assertEqual(('Bestbuy', 'Costco', 'HomeDepot'), self.null.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
 
     def test_null_anchor_edit_and_confirmation_use_real_schema_and_launch_date(self):
         source = policy.dryer_source()

@@ -122,7 +122,7 @@ def _get_sea_edit_context(table_name):
     if not resolve_monitoring_date:
         return None
     if table_name == 'public.ldy_dryer_retail':
-        return costco_layer2.dryer_source()
+        return costco_layer2.dryer_source(include_homedepot=True)
     if table_name == 'public.tv_retail_com':
         return costco_layer2.tv_source(SEA_RETAIL_SOURCES)
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
@@ -499,7 +499,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_retailer = new_value
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
-    if sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
+    if sea_context and costco_layer2.homedepot_dryer.matches(sea_context['product_key'], retailer):
+        if correction_type_value != 'null_check':
+            return {'error': 'HomeDepot 건조기는 NULL 검수만 지원합니다', 'status': 403}
+        editable_cols = costco_layer2.sea_layer2.homedepot_null_columns('ldy_dryer')
+    elif sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
         if correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status': 403}
         editable_cols = (*costco_layer2.NULL_COLUMNS['ldy_dryer'], 'sku')

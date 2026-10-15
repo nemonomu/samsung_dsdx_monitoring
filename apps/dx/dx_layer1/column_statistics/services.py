@@ -6,7 +6,7 @@ from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS, EXPERT_START_DATE
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
 )
@@ -40,7 +40,7 @@ def _sources():
             if source['product'] == 'LDY':
                 yield _source('sea_ldy_dryer', 'SEA', 'LDY_DRYER',
                               'public.ldy_dryer_retail', 'crawl_datetime', 'text',
-                              (_retailer('Bestbuy'), _retailer('Costco')), has_page_type=False, collection_scope='all')
+                              (_retailer('Bestbuy'), _retailer('Costco'), _retailer('HomeDepot')), has_page_type=False, collection_scope='all')
         elif source['country'] == 'SEG':
             yield {**source, 'retailers': (*source['retailers'], _retailer('Expert'))}
             if source['product'] == 'LDY':
@@ -72,6 +72,9 @@ def query_spec(source, retailer, columns, start, end):
     if source['country'] == 'SEA' and bestbuy_dryer.matches(source['product'], retailer['name']):
         day = bestbuy_dryer.source_date_sql(col)
         start = max(start, bestbuy_dryer.FIRST_SOURCE_DATE)
+    elif source['country'] == 'SEA' and homedepot_dryer.matches(source['product'], retailer['name']):
+        day = homedepot_dryer.source_date_sql(col)
+        start = max(start, homedepot_dryer.FIRST_SOURCE_DATE)
     elif is_costco:
         # SEA TV's shared report date is batch_id; Costco uses its recorded crawl date.
         if source['key'] == 'sea_tv':
@@ -141,7 +144,7 @@ def daily_counts(country, product, retailer_name, end, days):
                      if country == 'SEG' and retailer_name == 'Expert' else
                      [{**selected['retailers'][0],
                        'columns': costco.COLUMNS[product.lower()]}]
-                     if country == 'SEA' and (retailer_name == 'Costco' or bestbuy_dryer.matches(product, retailer_name))
+                     if country == 'SEA' and (retailer_name == 'Costco' or product == 'LDY_DRYER')
                      else _configured_retailers(cursor, selected))
         if not retailers:
             raise ValueError('No configured collection fields')
@@ -158,6 +161,7 @@ def daily_counts(country, product, retailer_name, end, days):
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
             'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
+                            else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, retailer_name)
                             else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, retailer_name)
                             else str(costco.first_source_date(product)) if country == 'SEA' and retailer_name == 'Costco' else None),
             'columns': columns, 'dates': dates,
