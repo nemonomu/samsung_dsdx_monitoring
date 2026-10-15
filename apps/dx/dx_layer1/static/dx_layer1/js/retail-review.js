@@ -1,7 +1,7 @@
 // Keep automatic verdicts for audit; review decisions never change collected counts.
 (function () {
     const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE'};
-    const reviewStatuses = ['REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH'];
+    const reviewStatuses = ['REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH', 'VOLUME_LOW'];
     let records = [], previousRecords = [], loadedDate = '', loadError = '', generation = 0, targets = [];
     const attr = value => esc(String(value)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const stable = value => JSON.stringify(value, function (_, item) {
@@ -51,9 +51,9 @@
         });
         if (row.volume_alerts.some(a => a.status === 'VOLUME_LOW')) return;
         const requiresReview = row.volume_alerts.some(a => a.status === 'VOLUME_REVIEW');
-        if (observing && requiresReview && !reviewStatuses.includes(row.status)) row.volume_alerts.push({metric:'observation', status:'VOLUME_REVIEW',
+        if (observing && requiresReview && (!reviewStatuses.includes(row.status) || row.status === 'VOLUME_LOW')) row.volume_alerts.push({metric:'observation', status:'VOLUME_REVIEW',
             reason:'신규 수집 · 관찰 중 (' + row.observation_days + '/5일) / 실제 수집 결과 확인 필요'});
-        if (!reviewStatuses.includes(row.status) && requiresReview) row.status = 'VOLUME_REVIEW';
+        if ((!reviewStatuses.includes(row.status) || row.status === 'VOLUME_LOW') && requiresReview) row.status = 'VOLUME_REVIEW';
         // An exact-target retailer with an already normal 300/100 collection needs no manual observation review.
         const exactTarget = (country === 'SEG' && row.retailer === 'Expert')
             || (country === 'SEA' && ((row.retailer === 'Costco' && product !== 'TV') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')));
@@ -85,7 +85,8 @@
                         delete row._reviewContext;
                         delete row._normalReview;
                         row._reviewReasons = reasons(row);
-                        if (!reviewStatuses.includes(row.status)) return;
+                        if (!reviewStatuses.includes(row.status) || L1.collectionVolume.metrics(row, country).main <= 0
+                            || L1.collectionVolume.metrics(row, country).total <= 0) return;
                         if (!row._reviewReasons.length) row._reviewReasons = ['수집량이 자동 판정 기준을 벗어났습니다. 수집 결과를 확인해 주세요.'];
                         const metrics = L1.collectionVolume.metrics(row, country);
                         const context = {
@@ -118,8 +119,9 @@
         });
         if (data.summary && !data.error) {
             const checked = (data.checks || []).filter(c=>c.is_target_date);
-            data.summary.failed = checked.filter(c=> ['CRITICAL','VOLUME_LOW','ERROR'].includes(c.status)
-                || (c._reviewRows || []).some(rejected)).length;
+            data.summary.failed = checked.filter(c=> (c._reviewRows || []).length
+                ? c._reviewRows.some(row => rejected(row) || (!reviewed(row) && ['CRITICAL','VOLUME_LOW','ERROR'].includes(row.status)))
+                : ['CRITICAL','VOLUME_LOW','ERROR'].includes(c.status)).length;
         }
     }
 
@@ -129,13 +131,20 @@
         return `${event.memo}\n${event.username} · ${new Date(event.at).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'})} (KST)`;
     }
 
+    function recordHtml(record) {
+        const event = record?.history?.at(-1);
+        if (!event) return '';
+        return '<strong class="l1-review-memo">' + esc(event.memo) + '</strong><span class="l1-review-author">'
+            + esc(event.username + ' · ' + new Date(event.at).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) + ' (KST)') + '</span>';
+    }
+
     function badge(row, status) {
         if (row._reviewContext && reviewStatuses.includes(status)) {
             const done = reviewed(row);
             const bad = rejected(row);
             const title = (done ? '정상 확인\n' + recordText(row._normalReview) + '\n\n최초 사유\n' : '확인 필요\n')
                 + row._reviewReasons.join('\n\n') + '\n\n클릭하여 ' + (done ? '확인 이력 보기 · 확인 취소' : '검토');
-            return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+recordText(row._normalReview)+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>확인 필요'}</button>`;
+            return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : status === 'VOLUME_LOW' ? 'critical' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+recordText(row._normalReview)+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (status === 'VOLUME_LOW' ? '이상' : '확인 필요')}</button>`;
         }
         const rows = row._reviewRows || [];
         const reviews = rows.filter(item => item._reviewContext);
@@ -157,7 +166,8 @@
         }
         const title = reviews.map(item => `${item.retailer} · ${reviewed(item) ? '정상 확인' : '확인 필요'}\n${item._reviewReasons.join('\n')}`
             + (reviewed(item) ? '\n' + recordText(item._normalReview) : '')).join('\n\n');
-        return `<span class="status-badge ${done ? 'ok' : 'volume-review'}" tabindex="0" title="${attr(title)}" aria-label="${attr(title)}">${done ? '✓ 정상 확인' : '<span class="status-dot"></span>확인 필요' + (pending.length ? ' · 미확인 ' + pending.length + '건' : '')}</span>`;
+        const low = pending.some(item => item.status === 'VOLUME_LOW');
+        return `<span class="status-badge ${done ? 'ok' : low ? 'critical' : 'volume-review'}" tabindex="0" title="${attr(title)}" aria-label="${attr(title)}">${done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (low ? '이상' : '확인 필요') + (pending.length ? ' · 미확인 ' + pending.length + '건' : '')}</span>`;
     }
 
     async function load(day) {
@@ -208,8 +218,8 @@
             <p class="l1-review-target">${esc(context.country)} · ${esc(context.product)} · ${esc(context.retailer)}<br>검수일 ${esc(context.date)} · 데이터일 ${esc(context.source_date)}<br>배치 ${esc(context.batch_id || '정보 없음')}</p>
             <div class="l1-review-reasons"><strong>${done ? '최초 확인 필요 사유' : '확인 필요 사유'}</strong><p>${esc(context.reasons.join('\n\n'))}</p></div>
             <p>현재 수집: MAIN ${number(context.counts[0])}건 · BSR ${number(context.counts[1])}건 · 총 ${number(context.counts[2])}건</p>
-            ${row._previousReview ? '<details class="l1-previous-review"><summary>같은 BSR 수량의 이전 정상 확인 · '+esc(row._previousReview.context.date)+'</summary><p>'+esc(recordText(row._previousReview))+'</p><p>이전 배치 '+esc(row._previousReview.context.batch_id)+' · BSR '+number(row._previousReview.context.counts[1])+'건</p><p>이전 확인은 참고 이력입니다. 이번 수집은 별도로 확인하세요.</p></details>' : ''}
-            ${done ? '<p class="l1-review-confirmed">✓ 정상 확인<br>' + esc(recordText(record)) + '</p>' : ''}
+            ${row._previousReview ? '<details class="l1-previous-review"><summary>같은 BSR 수량의 이전 정상 확인 · '+esc(row._previousReview.context.date)+'</summary><p>'+recordHtml(row._previousReview)+'</p><p>이전 배치 '+esc(row._previousReview.context.batch_id)+' · BSR '+number(row._previousReview.context.counts[1])+'건</p></details>' : ''}
+            ${decided ? '<p class="' + (done ? 'l1-review-confirmed' : 'l1-review-rejected') + '">' + (done ? '✓ 정상 확인' : '이상 확정') + recordHtml(record) + '</p>' : ''}
             ${(record && record.history.length) ? '<details><summary>확인·취소 이력</summary>' + record.history.map(event => '<p>' + esc((event.action === 'confirm' ? '정상 확인' : event.action === 'reject' ? '이상 확정' : '확인 취소') + ' · ' + event.username + ' · ' + new Date(event.at).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'}) + ' (KST)\n' + event.memo) + '</p>').join('') + '</details>' : ''}
             <label for="l1-review-memo">${decided ? '취소 사유' : '수집 결과 확인 근거'}</label>
             <textarea id="l1-review-memo" required maxlength="1000" rows="3" placeholder="${decided ? '확인을 취소하는 이유를 입력하세요.' : '예: 원본 사이트 상품 수와 일치함'}"></textarea>

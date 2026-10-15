@@ -11,6 +11,7 @@ from django.views.decorators.http import require_GET
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 from apps.dx.dx_layer1.common.context import build_context
 from .calculations import COUNTRIES, MINIMUM_DAYS, MAIN_POLICY_VERSION, comparison_rules, current_volume_decision, week_start
+from .reviews import attach_review, review_index
 
 
 def page(request):
@@ -44,6 +45,7 @@ def weekly(request):
         country_filter = {'country__in': COUNTRIES} if country == 'ALL' else {'country': country}
         snapshots = list(Weekly.objects.filter(week_start__range=(start_week, end_week),
                                                 **country_filter).order_by('-week_start', 'country'))
+        reviews = review_index(start_week, end_week + timedelta(days=6))
     except DatabaseError:
         return JsonResponse({'error': '통계를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.'}, status=503)
     by_week = defaultdict(list)
@@ -56,8 +58,9 @@ def weekly(request):
         monday = end_week - timedelta(weeks=offset)
         week_snapshots = by_week.get(monday, [])
         rows = [{**row, 'country': snapshot.country,
-                 'daily': [current_volume_decision({**day, 'product': row['product'],
-                                                'retailer': row['retailer']}, snapshot.country)
+                 'daily': [attach_review(current_volume_decision({**day, 'product': row['product'],
+                                                'retailer': row['retailer']}, snapshot.country),
+                                        snapshot.country, row['product'], row['retailer'], row['slot'], reviews)
                            for day in row.get('daily', [])]}
                 for snapshot in week_snapshots for row in snapshot.rows
                 if (product == 'ALL' or row['product'] == product)
@@ -66,9 +69,11 @@ def weekly(request):
                        'rows': rows, 'available': bool(week_snapshots),
                        'updated_at': max((snapshot.updated_at for snapshot in week_snapshots),
                                          default=None)})
-    return JsonResponse({'country': country, 'product': product, 'retailers': retailers, 'weeks': result,
+    response = JsonResponse({'country': country, 'product': product, 'retailers': retailers, 'weeks': result,
                          'updated_at': min((s.updated_at for s in snapshots), default=None),
                          'basis': 'source_date', 'baseline_days': 28, 'minimum_history_days': MINIMUM_DAYS})
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @require_GET

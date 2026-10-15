@@ -223,6 +223,8 @@ def main():
         page.locator('.l1-previous-review summary').click()
         expect(page.locator('.l1-previous-review')).to_contain_text('실제 사이트 BSR 99건과 일치')
         expect(page.locator('.l1-previous-review')).to_contain_text('2026-10-13')
+        expect(page.locator('dialog')).not_to_contain_text('이전 확인은 참고 이력입니다.')
+        assert page.locator('.l1-previous-review .l1-review-memo').evaluate('(el)=>getComputedStyle(el).fontWeight') == '700'
         page.screenshot(path=str(output/'layer1-costco-next-day-review.png'))
         page.locator('textarea').fill('이번 배치는 원본과 불일치')
         page.locator('dialog [data-reject]').click()
@@ -231,6 +233,49 @@ def main():
         page.locator('textarea').fill('다시 확인 필요')
         page.locator('dialog [data-primary]').click()
         expect(page.locator('.l1-review-badge')).to_have_text('확인 필요')
+        page.evaluate("showCostco('2026-10-14','ready',53)")
+        expect(page.locator('.l1-review-badge')).to_have_text('이상')
+        page.locator('.l1-review-badge').click()
+        expect(page.locator('dialog')).to_contain_text('BSR 53건')
+        page.locator('textarea').fill('log정상 해당 페이지에 100개가 안됨 확인')
+        page.locator('dialog [data-primary]').click()
+        expect(page.locator('.l1-review-badge')).to_have_text('✓ 정상 확인')
+        expect(page.locator('.cs-bsr-confirmed')).to_contain_text('53')
+        expect(page.locator('.cs-bsr-confirmed .l1-review-memo')).to_have_text('log정상 해당 페이지에 100개가 안됨 확인')
+        page.locator('.l1-review-badge').click()
+        assert page.locator('.l1-review-confirmed .l1-review-memo').evaluate('(el)=>getComputedStyle(el).fontWeight') == '700'
+        page.screenshot(path=str(output/'layer1-anomaly-review-reason.png'))
+        page.locator('textarea').fill('재검토')
+        page.locator('dialog [data-primary]').click()
+        expect(page.locator('.l1-review-badge')).to_have_text('이상')
+        expect(page.locator('.cs-bsr-low')).to_contain_text('53')
+        # Render the real statistics template with saved review API fixtures.
+        template = (ROOT/'apps/dx/dx_layer1/templates/dx_layer1_collection_statistics.html').read_text(encoding='utf-8')
+        content = template.split('{% block layer1_content %}')[1].split('{% endblock %}')[0]
+        stats_html = '<!doctype html><html lang="ko"><meta charset="utf-8"><style>' + css + '</style>' + content
+        stats_html += '<script>' + (BASE/'js/collection-statistics.js').read_text(encoding='utf-8') + '</script></html>'
+        stats_day = {'date':'2026-10-14','state':'complete','main':300,'bsr':99,'total':300,
+            'comparison_state':'ready','observation_state':'ready','slot':'daily',
+            'alerts':[{'metric':'bsr','status':'VOLUME_LOW','exact':True,'reason':'BSR 99 / 100'}],
+            'review':{'action':'confirm','metrics':['bsr'],'memo':'log정상 해당 페이지에 100개가 안됨 확인'}}
+        stats_payload = {'weeks':[{'rows':[{'country':'SEA','product':'LDY_DRYER','retailer':'Costco',
+            'slot':'daily','daily':[stats_day]}]}]}
+        stats_page = browser.new_page(viewport={'width':1450,'height':920})
+        stats_page.on('pageerror', lambda error: errors.append(str(error)))
+        stats_page.route('**/*', lambda route: route.fulfill(json=stats_payload)
+            if '/api/' in route.request.url else route.fulfill(content_type='text/html', body=stats_html))
+        stats_page.goto('http://statistics.test/?date=2026-10-14')
+        expect(stats_page.locator('.cs-bsr-confirmed')).to_contain_text('99')
+        expect(stats_page.locator('.cs-bsr-confirmed')).to_contain_text('✓ 정상 확인')
+        memo = stats_page.locator('.cs-review-memo')
+        expect(memo).to_have_text(stats_day['review']['memo'])
+        assert memo.evaluate('(el)=>getComputedStyle(el).fontWeight') == '700'
+        assert memo.bounding_box()['y'] > stats_page.locator('.cs-bsr-confirmed small').bounding_box()['y']
+        stats_page.screenshot(path=str(output/'collection-statistics-review-reason.png'))
+        del stats_day['review']
+        stats_page.locator('.cs-primary').click()
+        expect(stats_page.locator('.cs-review-memo')).to_have_count(0)
+        expect(stats_page.locator('.cs-bsr-low')).to_contain_text('이상')
         assert not errors, errors
         browser.close()
     print('Browser: unified colors, reasons, confirm/reload/cancel, failure and stale modal passed.')

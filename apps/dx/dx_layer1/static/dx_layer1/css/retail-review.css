@@ -10,6 +10,9 @@
 .l1-review-reasons p,.l1-review-confirmed,.l1-review-dialog details p {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
 .l1-review-reasons p {margin-bottom:0}
 .l1-review-confirmed {background:#ecfdf5;border-radius:8px;padding:12px;color:#047857;font-size:13px}
+.l1-review-memo {display:block;font-size:14px;font-weight:700;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:inherit}
+.l1-review-author {display:block;font-size:12px;font-weight:400}
+.l1-review-rejected {background:#fff1f2;border-radius:8px;padding:12px;color:#b91c1c;font-size:13px}
 .l1-review-dialog details {font-size:12px;margin:14px 0}
 .l1-review-dialog label {display:block;font-size:13px;font-weight:600;margin:18px 0 8px}
 .l1-review-dialog textarea {box-sizing:border-box;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font:inherit;font-size:13px;resize:vertical}

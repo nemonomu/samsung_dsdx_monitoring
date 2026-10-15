@@ -90,5 +90,30 @@ function record(item) {
     decorate(); assert(!review.reviewed(row), 'new reason must reopen review');
     assert(sandbox.getStatusBadge('OK').includes('>정상<'));
     assert(review.reasons({status: 'REVIEW', main_count: 0, expected: 40})[0].includes('MAIN 데이터가 없어'));
+    for (const checkType of ['retail', 'seda_retail', 'siel_retail', 'seg_retail', 'sem_retail', 'tse_retail']) {
+        check.check_type = checkType;
+        row.status = 'VOLUME_LOW';
+        row.observation_state = 'ready';
+        row.volume_alerts = [{metric:'bsr', status:'VOLUME_LOW', baseline:100, actual:53,
+            rule:'fixed_100', exact:false, reason:'BSR 53 / 100'}];
+        row.bsr_count = 53;
+        saved = []; await review.load(date); decorate();
+        assert(row._reviewContext, checkType);
+        assert(badge().includes('critical'));
+        assert(badge().includes('L1.retailReview.open('));
+        assert(sandbox.L1.retailStatus.rowBadge(row).includes('이상</button>'));
+        saved = [record(row)]; await review.load(date); decorate();
+        assert(badge(cat).includes('✓ 정상 확인'));
+        const cell = sandbox.L1.retailStatus.bsrCell(row, 53);
+        assert(cell.includes('cs-bsr-confirmed'));
+        assert(cell.includes('&lt;script&gt;'));
+        assert(!cell.includes('cs-bsr-low'));
+        assert(!sandbox.L1.retailStatus.render(check, 0, checkType).includes('BSR 53 / 100'));
+        saved[0].active = false;
+        saved[0].history.push({action:'cancel', memo:'recheck'});
+        await review.load(date); decorate();
+        assert(badge().includes('이상</button>'));
+        assert(sandbox.L1.retailStatus.bsrCell(row, 53).includes('cs-bsr-low'));
+    }
     console.log('Layer1 review scopes, tooltips, aggregates, cancellation and escaping passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

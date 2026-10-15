@@ -80,21 +80,34 @@
         if (total === 0 && (main || 0) === 0 && (bsr || 0) === 0 && !sum('collected_count')) {
             return annotate({total, main, bsr, label: '미수집', kind: 'low'});
         }
-        const alerts = active.flatMap(day => (day.alerts || []).filter(alert =>
-            alert.exact || !['observing', 'unknown'].includes(day.observation_state)));
+        const visibleAlerts = day => (day.alerts || []).filter(alert =>
+            alert.exact || !['observing', 'unknown'].includes(day.observation_state));
+        const alerts = active.flatMap(visibleAlerts);
+        function reviewInfo(metric) {
+            const affected = active.filter(day => visibleAlerts(day).some(alert => alert.metric === metric));
+            const decision = day => day.review?.metrics?.includes(metric) ? day.review : null;
+            const confirmed = affected.length && affected.every(day => decision(day)?.action === 'confirm');
+            const rejected = affected.some(day => decision(day)?.action === 'reject');
+            const memos = affected.filter(day => decision(day)).map(day =>
+                (active.length > 1 ? `${day.slot || 'daily'} · ${decision(day).action === 'confirm' ? '정상 확인' : '이상 확정'}: ` : '') + decision(day).memo);
+            return {confirmed, rejected, memo: memos.join('\n')};
+        }
+        const bsrReview = reviewInfo('bsr'), mainReview = reviewInfo('main');
         const bsrAlerts = alerts.filter(alert => alert.metric === 'bsr' && ['VOLUME_LOW', 'VOLUME_REVIEW'].includes(alert.status));
         const bsrLow = bsrAlerts.some(alert => alert.status === 'VOLUME_LOW');
         const bsrInfo = {
-            bsrKind: bsrAlerts.length ? (bsrLow ? 'low' : 'high') : '',
-            bsrLabel: bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
+            bsrKind: bsrReview.rejected ? 'low' : bsrReview.confirmed ? 'confirmed' : bsrAlerts.length ? (bsrLow ? 'low' : 'high') : '',
+            bsrLabel: bsrReview.rejected ? '이상 확정' : bsrReview.confirmed ? '✓ 정상 확인' : bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
+            bsrMemo: bsrReview.memo,
             bsrReason: bsrAlerts.map(alert => alert.reason || 'BSR 수량 부족').join(' · '),
         };
         const mainAlerts = alerts.filter(alert => alert.metric === 'main');
         const low = mainAlerts.some(alert => alert.status === 'VOLUME_LOW');
         const high = mainAlerts.some(alert => ['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(alert.status));
         return {total, main, bsr, ...bsrInfo,
-            mainKind: low ? 'low' : high ? 'high' : '',
-            mainLabel: low ? '이상' : high ? '확인 필요' : '',
+            mainKind: mainReview.rejected ? 'low' : mainReview.confirmed ? 'confirmed' : low ? 'low' : high ? 'high' : '',
+            mainLabel: mainReview.rejected ? '이상 확정' : mainReview.confirmed ? '✓ 정상 확인' : low ? '이상' : high ? '확인 필요' : '',
+            mainMemo: mainReview.memo,
             mainReason: mainAlerts.map(alert => alert.reason || 'MAIN 수집량 변동').join(' · '),
             label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
     }
@@ -147,8 +160,8 @@
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
                     if (day.total == null) return `<td class="cs-day-cell cs-unavailable${day.kind ? ' ' + day.kind : ''}" colspan="3" title="${safe(title)}"><strong>—</strong><small>${safe(day.label)}</small></td>`;
-                    return `<td class="cs-day-cell${day.mainKind ? ' ' + day.mainKind + ' cs-main-' + day.mainKind : ''}"${day.mainReason ? ` title="${safe(day.mainReason)}"` : ''}>${number(day.main)}${day.mainLabel ? `<small>${day.mainLabel}</small>` : ''}</td>`
-                        + `<td class="cs-day-cell${day.bsrKind ? ' ' + day.bsrKind + (day.bsrKind === 'low' ? ' cs-bsr-low' : ' cs-bsr-review') : ''}"${day.bsrReason || day.bsrLabel ? ` title="${safe(day.bsrReason || day.bsrLabel)}"` : ''}>${number(day.bsr)}${day.bsrLabel ? `<small>${safe(day.bsrLabel)}</small>` : ''}</td>`
+                    return `<td class="cs-day-cell${day.mainKind ? ' ' + day.mainKind + ' cs-main-' + day.mainKind : ''}"${day.mainReason ? ` title="${safe(day.mainReason)}"` : ''}>${number(day.main)}${day.mainLabel ? `<small>${day.mainLabel}</small>` : ''}${day.mainMemo ? `<strong class="cs-review-memo">${safe(day.mainMemo)}</strong>` : ''}</td>`
+                        + `<td class="cs-day-cell${day.bsrKind ? ' ' + day.bsrKind + (day.bsrKind === 'confirmed' ? ' cs-bsr-confirmed' : day.bsrKind === 'low' ? ' cs-bsr-low' : ' cs-bsr-review') : ''}"${day.bsrReason || day.bsrLabel ? ` title="${safe(day.bsrReason || day.bsrLabel)}"` : ''}>${number(day.bsr)}${day.bsrLabel ? `<small>${safe(day.bsrLabel)}</small>` : ''}${day.bsrMemo ? `<strong class="cs-review-memo">${safe(day.bsrMemo)}</strong>` : ''}</td>`
                         + `<td class="cs-day-cell cs-total${day.kind ? ' ' + day.kind : ''}" title="${safe(title)}"><strong>${number(day.total)}</strong>${day.label ? `<small>${safe(day.label)}</small>` : ''}</td>`;
                 }).join('') + '</tr>';
         }).join('');

@@ -426,7 +426,7 @@ class StoreTests(TestCase):
         for day, expected in [(self.end - timedelta(days=1), fifth), (self.end, sixth)]:
             with self.assertNumQueries(1):
                 dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(day)})).content)
-            with self.assertNumQueries(1):
+            with self.assertNumQueries(2):
                 weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(day), 'country': 'SEM'})).content)
             displayed = next(d for w in weekly['weeks'] for r in w['rows'] for d in r['daily'] if d['date'] == str(day))
             for actual in [dashboard['snapshots'][0]['rows'][0], displayed]:
@@ -472,7 +472,7 @@ class StoreTests(TestCase):
                 'updated_at': timezone.now()})
             with self.assertNumQueries(1):
                 dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(self.end + timedelta(days=1))})).content)
-            with self.assertNumQueries(1):
+            with self.assertNumQueries(2):
                 weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(self.end), 'country': 'SEA', 'weeks': '1'})).content)
             alerts = dashboard['snapshots'][0]['rows'][0]['alerts']
             self.assertEqual([expected] if expected else [], [alert['status'] for alert in alerts])
@@ -577,7 +577,7 @@ class StoreTests(TestCase):
         Weekly.objects.create(country='SEA', week_start=calc.week_start(self.end), rows=rows,
                               updated_at=timezone.now())
         with patch.object(collector, 'load_check', side_effect=AssertionError('no source read')):
-            with self.assertNumQueries(1):
+            with self.assertNumQueries(2):
                 weekly = json.loads(api.weekly(self.factory.get('/', {
                     'date': str(self.end), 'country': 'SEA', 'weeks': '1'})).content)
             with self.assertNumQueries(1):
@@ -612,20 +612,20 @@ class StoreTests(TestCase):
         self.assertTrue(result['busy'])
         load.assert_not_called()
 
-    def test_weekly_api_one_bounded_query_no_collector_call(self):
+    def test_weekly_api_bounded_snapshot_and_review_queries_no_collector_call(self):
         self.refresh(self.end - timedelta(days=7))
         with patch.object(collector, 'load_check', side_effect=AssertionError('web must not read source')):
-            with self.assertNumQueries(1):
+            with self.assertNumQueries(2):
                 response = api.weekly(self.factory.get('/', {'date': '2026-09-20', 'country': 'SEA', 'weeks': 12}))
         self.assertEqual(200, response.status_code)
         payload = json.loads(response.content)
         self.assertEqual(12, len(payload['weeks']))
         self.assertEqual(['Lowes'], payload['retailers'])
 
-    def test_weekly_api_all_countries_uses_one_saved_snapshot_query(self):
+    def test_weekly_api_all_countries_uses_bounded_snapshot_and_review_queries(self):
         self.refresh(country='SEA')
         self.refresh(country='SEG')
-        with self.assertNumQueries(1):
+        with self.assertNumQueries(2):
             response = api.weekly(self.factory.get('/', {
                 'date': '2026-09-20', 'country': 'ALL', 'product': 'REF', 'weeks': '1',
             }))
@@ -694,6 +694,60 @@ class StoreTests(TestCase):
         self.assertIsNone(automatic.history_range('SEA', last_due))
         Daily.objects.filter(source_date=date(2026, 9, 10)).update(refresh_error=True)
         self.assertEqual((date(2026, 9, 10), date(2026, 9, 10)), automatic.history_range('SEA', last_due))
+
+
+class StatisticsReviewTests(TestCase):
+    def setUp(self):
+        from apps.dx.dx_layer1.models import RetailNormalReview
+        from apps.dx.dx_layer1.common.retail_review_api import validate_context
+        self.day = calc.current_volume_decision({**sample(retailer='Costco', product='LDY_DRYER', bsr=99),
+            'date': '2026-10-14', 'state': 'complete', 'observation_state': 'observing'}, 'SEA')
+        alerts = [{**alert, 'status': 'VOLUME_REVIEW'} for alert in self.day['alerts']]
+        alerts.append({'metric': 'observation', 'status': 'VOLUME_REVIEW'})
+        context = dict(version=1, date='2026-10-15', source_date='2026-10-14', country='SEA',
+            product='LDY_DRYER', retailer='Costco', slot='daily', batch_id='b1',
+            status='VOLUME_REVIEW', counts=[300,99,300,1], reasons=['BSR 99'],
+            basis=json.dumps({'alerts': alerts}))
+        self.record = RetailNormalReview.objects.create(fingerprint=validate_context(context),
+            inspection_date='2026-10-15', context=context, active=True, revision=1,
+            history=[{'action':'confirm', 'memo':'source page has 99', 'username':'reviewer',
+                      'at':'2026-10-15T01:00:00Z'}])
+        Weekly.objects.create(country='SEA', week_start=date(2026,10,12), updated_at=timezone.now(),
+            rows=[{'product':'LDY_DRYER','retailer':'Costco','slot':'daily','daily':[self.day]}])
+
+    def test_api_reads_current_confirmation_and_cancellation_without_refreshing_snapshots(self):
+        def get_day():
+            with self.assertNumQueries(2):
+                response = api.weekly(RequestFactory().get('/', {'date':'2026-10-15', 'weeks':'1'}))
+            self.assertEqual('private, no-store', response['Cache-Control'])
+            return json.loads(response.content)['weeks'][0]['rows'][0]['daily'][0]
+        result = get_day()
+        self.assertEqual('confirm', result['review']['action'])
+        self.assertEqual('source page has 99', result['review']['memo'])
+        self.assertEqual(99, result['bsr'])
+        self.assertEqual('VOLUME_LOW', result['alerts'][0]['status'])
+        self.record.active = False
+        self.record.history.append({'action':'cancel', 'memo':'recheck', 'at':'2026-10-15T02:00:00Z'})
+        self.record.save()
+        self.assertNotIn('review', get_day())
+        self.record.history.append({'action':'reject', 'memo':'missing', 'at':'2026-10-15T03:00:00Z'})
+        self.record.save()
+        self.assertEqual('reject', get_day()['review']['action'])
+
+    def test_changed_scope_counts_or_rules_do_not_reuse_confirmation(self):
+        from apps.dx.dx_layer1.collection_statistics.reviews import attach_review, review_index
+        index = review_index(date(2026,10,12), date(2026,10,18))
+        def attach(day=None, **scope):
+            return attach_review(day or self.day, scope.get('country','SEA'), scope.get('product','LDY_DRYER'),
+                                 scope.get('retailer','Costco'), scope.get('slot','daily'), index)
+        for field, value in [('country','SEG'), ('product','LDY'), ('retailer','Other'), ('slot','evening')]:
+            self.assertNotIn('review', attach(**{field:value}), field)
+        for field, value in [('date','2026-10-15'), ('batch_id','new'), ('main',301), ('bsr',98),
+                             ('total',301), ('state','pending'), ('base_status','ERROR'), ('batch_count',2)]:
+            self.assertNotIn('review', attach({**self.day,field:value}), field)
+        self.assertNotIn('review', attach({**self.day, 'alerts':[{**self.day['alerts'][0],'baseline':101}]}))
+        self.assertNotIn('review', attach({**self.day, 'alerts':self.day['alerts'] + [
+            {'metric':'main','status':'VOLUME_LOW','baseline':500,'actual':300}]}))
 
 
 if __name__ == '__main__':

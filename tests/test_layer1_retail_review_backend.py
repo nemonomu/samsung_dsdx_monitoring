@@ -29,6 +29,17 @@ def sample():
 
 
 class ReviewTests(TestCase):
+    def test_low_volume_review_all_countries_and_products(self):
+        for country in ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE'):
+            for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
+                context = {**sample(), 'country': country, 'product': product,
+                           'retailer': 'Any retailer', 'status': 'VOLUME_LOW'}
+                self.assertEqual(200, self.request('confirm', context=context)[0])
+                self.assertEqual(200, self.request('cancel', context=context, revision=1)[0])
+                self.assertEqual(200, self.request('reject', context=context, revision=2)[0])
+        self.assertEqual(400, self.request('confirm', context={**sample(), 'status': 'VOLUME_LOW',
+                                                              'counts': [0, 0, 0, 1]})[0])
+
     def request(self, action=None, context=None, revision=0, memo='원본 사이트와 일치', user='reviewer', **extra):
         factory = RequestFactory()
         request = factory.post('/reviews/', data=json.dumps({

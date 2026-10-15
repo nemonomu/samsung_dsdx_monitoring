@@ -23,7 +23,7 @@ def validate_context(value):
         raise ValueError('검토 대상 정보가 올바르지 않습니다.')
     if value['version'] != 1 or value['country'] not in ('SEA', 'SEDA', 'SEM', 'SIEL', 'SEG', 'TSE'):
         raise ValueError('지원하지 않는 검토 대상입니다.')
-    if value['product'] not in ('TV', 'REF', 'LDY', 'LDY_DRYER') or value['status'] not in ('REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH'):
+    if value['product'] not in ('TV', 'REF', 'LDY', 'LDY_DRYER') or value['status'] not in ('REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH', 'VOLUME_LOW'):
         raise ValueError('확인 필요 항목만 정상 확인할 수 있습니다.')
     for key in ('date', 'source_date'):
         if not isinstance(value[key], str) or date.fromisoformat(value[key]).isoformat() != value[key]:
@@ -34,6 +34,8 @@ def validate_context(value):
     counts = value['counts']
     if not isinstance(counts, list) or len(counts) != 4 or any(type(n) is not int or n < 0 for n in counts):
         raise ValueError('수집 건수가 올바르지 않습니다.')
+    if value['status'] == 'VOLUME_LOW' and (counts[0] <= 0 or counts[2] <= 0):
+        raise ValueError('수집 데이터가 있는 이상 항목만 확인할 수 있습니다.')
     reasons = value['reasons']
     if not isinstance(reasons, list) or not 1 <= len(reasons) <= 20 or any(
         not isinstance(text, str) or not text.strip() or len(text) > 1000 for text in reasons
