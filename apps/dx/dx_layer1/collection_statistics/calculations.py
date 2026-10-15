@@ -59,6 +59,8 @@ def normalize_check(check, country, inspection_date):
                                     else str(costco.first_source_date(product)) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
+                if country == 'SEA' and name in ('Costco', 'HomeDepot'):
+                    rows[-1]['source_date_basis'] = 'db_original'
     return sorted(rows, key=row_key)
 
 

@@ -11,11 +11,14 @@ class SEAHomeDepotReportTests(unittest.TestCase):
             with self.subTest(product=product):
                 source = sources[f'sea_{product}']
                 retailer = next(r for r in source['retailers'] if r['name'] == 'HomeDepot')
+                columns = list(dict.fromkeys(('item', f'{product}_capacity',
+                                              *retailer.get('email_required_columns', ()))))
+                counts = (count, *(value for _ in columns for value in (count, 0)), count, 100)
                 cursor = ScriptedCursor([
                     {'fetchall': [('item', 'HomeDepot', False),
                                   (f'{product}_capacity', 'HomeDepot', False)]},
                     {'fetchone': ('h20260918_015939',)},
-                    {'fetchone': (count, count, 0, count, 1, count, 100)},
+                    {'fetchone': counts},
                 ])
                 service = load_service(cursor)
                 result = service._query_source(
@@ -28,7 +31,8 @@ class SEAHomeDepotReportTests(unittest.TestCase):
                 self.assertEqual(count, result['main_count'])
                 self.assertEqual(100, result['bsr_count'])
                 for sql, params in cursor.calls[1:]:
-                    self.assertIn("AT TIME ZONE 'America/New_York'", sql)
+                    self.assertNotIn("AT TIME ZONE 'America/New_York'", sql)
+                    self.assertIn('LEFT(BTRIM(CAST(', sql)
                     self.assertIn('2026-09-20', params)
                     self.assertNotIn('page_type', sql)
                     self.assertIn(source['table_name'], sql)

@@ -61,7 +61,10 @@ class CostcoTests(SimpleTestCase):
                 result = dday.get_collection_status(date(2026, 10, 6), datetime(2026, 10, 6, hour, minute, tzinfo=KST))
             rows = [r for r in result['retailers'] if r['retailer'] == 'Costco']
             self.assertEqual(len(rows), 3)
-            self.assertEqual({r['status'] for r in rows}, {expected})
+            for row in rows:
+                # TV already uses a variable BSR target; appliances require 100.
+                row_expected = 'received' if row['product'] == 'TV' and count else expected
+                self.assertEqual(row['status'], row_expected)
         with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection', side_effect=RuntimeError):
             result = dday.get_collection_status(date(2026, 10, 6), datetime(2026, 10, 6, 16, tzinfo=KST))
         self.assertTrue(all(r['status'] == 'error' and r['count'] is None for r in result['retailers']))
@@ -75,7 +78,8 @@ class CostcoTests(SimpleTestCase):
             self.assertEqual(result, (main, bsr, 0, total, 'c6'))
             for call in cursor.execute.call_args_list:
                 self.assertNotIn('page_type', call.args[0])
-                self.assertIn("AT TIME ZONE 'Asia/Seoul'", call.args[0])
+                self.assertNotIn("AT TIME ZONE 'Asia/Seoul'", call.args[0])
+                self.assertIn('LEFT(BTRIM(CAST(', call.args[0])
             self.assertIn('batch_id IS NOT DISTINCT FROM %s', cursor.execute.call_args.args[0])
 
     def test_tv_summary_replaces_all_batch_costco_count(self):
@@ -116,7 +120,8 @@ class CostcoTests(SimpleTestCase):
             sql, _ = columns.query_spec(source, retailer, fields, date(2026, 10, 5), date(2026, 10, 10))
             self.assertNotIn('page_type', sql)
             self.assertIn('latest AS', sql)
-            self.assertIn("AT TIME ZONE 'Asia/Seoul'", sql)
+            self.assertNotIn("AT TIME ZONE 'Asia/Seoul'", sql)
+            self.assertIn('LEFT(BTRIM(CAST(', sql)
             date_column = 'crawl_datetime' if product == 'TV' else 'crawl_strdatetime'
             self.assertIn(costco.source_date_sql('source.' + date_column), sql)
             self.assertNotIn('CAST(source.batch_id AS TEXT)', sql)
@@ -152,7 +157,7 @@ class CostcoTests(SimpleTestCase):
         self.assertEqual(comparison.minimum_days({**data, 'retailer': 'Walmart'}), 7)
 
     def test_five_day_observation_then_median_review_for_main_and_bsr(self):
-        current = dict(product='TV', retailer='Costco', slot='일일', main=80, bsr=75, total=91,
+        current = dict(product='REF', retailer='Costco', slot='일일', main=80, bsr=75, total=91,
                        complete=True, base_status='OK', baseline_eligible=True)
         history = [{**current, 'source_date': f'2026-10-0{i}', 'main': n, 'bsr': 89}
                    for i, n in zip(range(5, 10), [90, 90, 100, 100, 900])]
@@ -184,6 +189,27 @@ class CostcoTests(SimpleTestCase):
 
 
 class CostcoSnapshotTests(TestCase):
+    def test_old_timezone_snapshots_are_recollected_for_both_changed_retailers(self):
+        from django.utils import timezone
+        end = date(2026, 10, 10)
+        for retailer in ('Costco', 'HomeDepot'):
+            with self.subTest(retailer=retailer):
+                Daily.objects.all().delete()
+                rows = [{'product': p, 'retailer': 'Costco', 'bsr': 100,
+                         'source_date_basis': 'db_original'} for p in ('TV', 'REF', 'LDY')]
+                rows.append({'product': 'REF', 'retailer': 'HomeDepot', 'bsr': 0,
+                             'source_date_basis': 'db_original'})
+                Daily.objects.bulk_create([
+                    Daily(country='SEA', source_date=end - timedelta(days=i),
+                          inspection_date=end - timedelta(days=i - 1), rows=rows,
+                          digest='test', updated_at=timezone.now()) for i in range(3, 112)])
+                self.assertIsNone(automatic.history_range('SEA', end))
+                old_rows = [{k: v for k, v in r.items() if k != 'source_date_basis'}
+                            if r['retailer'] == retailer else r for r in rows]
+                Daily.objects.filter(source_date=date(2026, 10, 5)).update(rows=old_rows)
+                self.assertEqual((date(2026, 10, 5), date(2026, 10, 5)),
+                                 automatic.history_range('SEA', end))
+
     def test_collector_publishes_three_products_with_five_day_medians(self):
         def loader(country, inspection):
             count = 80 if inspection == date(2026, 10, 11) else 100
@@ -210,7 +236,7 @@ class CostcoSnapshotTests(TestCase):
     def test_history_with_missing_costco_is_backfilled(self):
         end = date(2026, 10, 10)
         from django.utils import timezone
-        complete = [{'product': p, 'retailer': 'Costco', 'bsr': 89} for p in ('TV', 'REF', 'LDY')]
+        complete = [{'product': p, 'retailer': 'Costco', 'bsr': 89, 'source_date_basis': 'db_original'} for p in ('TV', 'REF', 'LDY')]
         Daily.objects.bulk_create([
             Daily(country='SEA', source_date=end - timedelta(days=i),
                   inspection_date=end - timedelta(days=i - 1), rows=complete,

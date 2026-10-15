@@ -45,13 +45,14 @@ class CostcoLayer2Tests(unittest.TestCase):
                 self.assertTrue(set((*policy.METRICS, *policy.PRICES)) <= set(displayed))
                 self.assertEqual(len(displayed), len(set(displayed)))
 
-    def test_utc_to_kst_and_launch_boundary(self):
+    def test_original_date_and_launch_boundary(self):
         for stamp in ('2026-10-03T15:00:00+00:00', '2026-10-03 15:00:00'):
             row = policy.annotate_source_date({'account_name': 'Costco', 'crawl_datetime': stamp})
-            self.assertEqual('2026-10-04', row['_source_date'])
+            self.assertEqual('2026-10-03', row['_source_date'])
             self.assertEqual(stamp, row['crawl_datetime'])
         sql = policy.source_date_sql('crawl_datetime', retailer='Costco')
-        self.assertIn("'Asia/Seoul'", sql)
+        self.assertNotIn("'Asia/Seoul'", sql)
+        self.assertIn('LEFT(BTRIM(CAST(', sql)
         self.assertIn("'2026-10-04'", sql)
 
     def test_latest_batch_null_scope_includes_unranked_rows(self):
@@ -113,7 +114,7 @@ class CostcoLayer2Tests(unittest.TestCase):
         for product in LEGACY_NULL_COLUMNS:
             date_col = 'crawl_datetime' if product == 'tv' else 'crawl_strdatetime'
             record = dict(id=42, account_name='Costco', item='123', retailer_sku_name='Product',
-                          batch_id='b', **{date_col: '2026-10-04T16:00:00+00:00'},
+                          batch_id='b', **{date_col: '2026-10-05T16:00:00+00:00'},
                           **{field: None for field in (*policy.METRICS, *policy.PRICES)})
             cursor = ScriptedCursor([{'fetchone': ('b',)},
                                     {'description': [(key,) for key in record], 'fetchall': [tuple(record.values())]},
@@ -124,7 +125,7 @@ class CostcoLayer2Tests(unittest.TestCase):
                 result = self.null.get_null_detail(cursor, date(2026, 10, 6),
                     'tv_retail' if product == 'tv' else f'sea_{product}_retail', 'Costco', 1, 'star_rating')
             self.assertEqual(list(policy.METRICS), result['results'][0]['null_fields'])
-            self.assertEqual('2026-10-05 01:00:00', result['results'][0][date_col])
+            self.assertEqual('2026-10-06 01:00:00', result['results'][0][date_col])
             self.assertEqual('2026-10-05', result['results'][0]['_source_date'])
             self.assertTrue(set((*policy.METRICS, *policy.PRICES)) <= set(result['editable_cols']))
             self.assertEqual(3, result['raw_null_count'])

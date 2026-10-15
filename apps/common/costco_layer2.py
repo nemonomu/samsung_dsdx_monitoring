@@ -1,6 +1,7 @@
 """Costco NULL, duplicate, and format validation policy."""
 from datetime import datetime, timezone
 from apps.common import sea_layer2
+from apps.common.source_dates import source_date_value
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer
 
 METRICS = ('star_rating', 'count_of_star_ratings', 'count_of_reviews')
@@ -39,11 +40,12 @@ def tv_source(registry):
     return {**registry['tv'], 'retailers': ('Costco',), 'latest_main_batch': True}
 
 
-def source_date_sql(column, alias='', retailer=None, account_column=None, product=''):
+def source_date_sql(column, alias='', retailer=None, account_column=None, product='', *, query_scope=False):
     prefix = f'{alias}.' if alias else ''
     if bestbuy_dryer.matches(product, retailer):
         return bestbuy_dryer.source_date_sql(prefix + column)
-    day = costco.source_date_sql(prefix + column)
+    date_sql = costco.query_date_sql if query_scope else costco.source_date_sql
+    day = date_sql(prefix + column)
     day = f"CASE WHEN {day} >= '{costco.first_source_date(product)}' THEN {day} END"
     if is_costco(retailer):
         return f'({day})'
@@ -70,11 +72,11 @@ def annotate_source_date(row, retailer=None, *, display_kst=False):
     if is_costco(row.get('account_name') or retailer):
         raw = row.get('crawl_datetime') or row.get('crawl_strdatetime')
         if raw:
-            stamp = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
-            if stamp.tzinfo is None:
-                stamp = stamp.replace(tzinfo=timezone.utc)
-            row['_source_date'] = stamp.astimezone(costco.KST).date().isoformat()
+            row['_source_date'] = source_date_value(raw)
             if display_kst:
+                stamp = datetime.fromisoformat(str(raw).strip().replace('Z', '+00:00'))
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
                 column = 'crawl_datetime' if row.get('crawl_datetime') else 'crawl_strdatetime'
                 row[column] = stamp.astimezone(costco.KST).strftime('%Y-%m-%d %H:%M:%S')
         return row

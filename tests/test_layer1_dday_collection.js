@@ -63,6 +63,7 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);
     assert(html.includes('수집 대상일: 2026-09-21'));
+    assert(html.includes('수집일: DB 원본 날짜 · 표시 시각: KST'));
     assert(requests[1].url.endsWith('date=2026-09-21'));
     const failed = sandbox.loadDdayCollection('2026-09-22');
     requests[2].resolve({ ok: false });

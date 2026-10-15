@@ -53,14 +53,14 @@ def _scope(check_type, product_line, source_date):
         params = (str(day), SIEL_BUSINESS_TIMEZONE,
                   str(day), SIEL_BUSINESS_TIMEZONE)
     elif check_type == 'retail' and source['product_key'] == 'tv':
-        from apps.dx.dx_layer1.retail.costco import source_date_sql
-        stamp = f"CASE WHEN {account} = 'costco' THEN ({source_date_sql(column)})::timestamp ELSE {column}::timestamp END"
+        from apps.dx.dx_layer1.retail.costco import query_date_sql
+        stamp = f"CASE WHEN {account} = 'costco' THEN ({query_date_sql(column)})::timestamp ELSE {column}::timestamp END"
         condition = f'{stamp} >= %s::timestamp AND {stamp} < %s::timestamp'
         params = (str(day), str(day + timedelta(days=1)))
     elif check_type == 'retail':
-        from apps.common.sea_dates import appliance_source_date_sql
-        from apps.dx.dx_layer1.retail.costco import source_date_sql
-        day_sql = f"CASE WHEN {account} = 'costco' THEN {source_date_sql(column)} ELSE {appliance_source_date_sql(column)} END"
+        from apps.common.sea_dates import appliance_query_date_sql
+        from apps.dx.dx_layer1.retail.costco import query_date_sql
+        day_sql = f"CASE WHEN {account} = 'costco' THEN {query_date_sql(column)} ELSE {appliance_query_date_sql(column)} END"
         condition = f'({day_sql}) = %s'
         params = (str(day),)
     else:
@@ -194,8 +194,8 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
             query_params.append(row['batch_id'])
         copy_date_scope = f'{column} >= %s'
         if is_costco:
-            from apps.dx.dx_layer1.retail.costco import source_date_sql
-            copy_date_scope = f'({source_date_sql(column)}) = %s'
+            from apps.dx.dx_layer1.retail.costco import query_date_sql
+            copy_date_scope = f'({query_date_sql(column)}) = %s'
         query = f"""SELECT *
 FROM {source['table_name']}
 WHERE {copy_date_scope}

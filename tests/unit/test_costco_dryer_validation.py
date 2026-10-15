@@ -74,7 +74,8 @@ class CostcoDryerValidationTests(unittest.TestCase):
         self.assertEqual('batch', self.null._get_sea_null_anchor_batch(cursor, source, '2026-10-09', 'Costco'))
         sql, _ = cursor.calls[0]
         self.assertIn('2026-10-09', sql)
-        self.assertIn('Asia/Seoul', sql)
+        self.assertNotIn('Asia/Seoul', sql)
+        self.assertIn('LEFT(BTRIM(CAST(', sql)
         self.assertNotIn('page_type', sql)
         query, retailers = self.null._build_sea_latest_batch_record_query(source, 'capacity')
         self.assertNotIn('page_type', query)

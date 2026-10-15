@@ -114,7 +114,7 @@ class HomeDepotLaunchTests(unittest.TestCase):
         self.assertEqual(('2026-09-20', '2026-09-20', 'HomeDepot') * 2, cursor.calls[0][1])
 
     def test_crossfield_excludes_old_homedepot_but_keeps_other_retailers(self):
-        old = _bestbuy_row(account_name='HomeDepot', crawl_strdatetime='2026-09-20T01:00:00Z')
+        old = _bestbuy_row(account_name='HomeDepot', crawl_strdatetime='2026-09-19T23:59:59Z')
         first = _bestbuy_row(id=11, account_name='HomeDepot', crawl_strdatetime='2026-09-20T04:00:00Z')
         bestbuy = _bestbuy_row(id=12)
         cursor = ScriptedCursor([{'fetchall': [old, first, bestbuy]}])

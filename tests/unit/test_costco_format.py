@@ -81,19 +81,20 @@ class CostcoFormatTests(unittest.TestCase):
         self.assertIn('source.crawl_datetime', sql)
         for missing in ('source.sku', 'source.product,', 'source.page_type', 'crawl_strdatetime'):
             self.assertNotIn(missing, sql)
-        self.assertIn('Asia/Seoul', sql)
+        self.assertNotIn('Asia/Seoul', sql)
+        self.assertIn('LEFT(BTRIM(CAST(', sql)
         self.assertIn('source.batch_id IS NOT DISTINCT FROM latest.batch_id', sql)
         self.assertEqual(('2026-10-04', '2026-10-05', 'Costco') * 2, params)
 
     def test_tv_detail_displays_all_six_metrics_and_prices_in_kst(self):
         row = dict(id=42, account_name='Costco', item='C1', screen_size='wrong',
-                   crawl_datetime='2026-10-04T16:00:00+00:00')
+                   crawl_datetime='2026-10-05T16:00:00+00:00')
         with patch.object(self.service, '_fetch_sea_format_rows', return_value=[row]), \
              patch.object(self.service, '_load_sea_format_normal_reviews', return_value={}):
-            result = self.service.get_format_detail(Mock(), date(2026, 10, 6), 'tv_retail', 'Costco', 1)
+            result = self.service._get_format_detail_raw(Mock(), date(2026, 10, 6), 'tv_retail', 'Costco', 1)
         self.assertEqual({'screen_size': 1}, result['field_counts'])
         self.assertEqual('2026-10-05', result['source_date'])
-        self.assertEqual('2026-10-05 01:00:00', result['results'][0]['crawl_datetime'])
+        self.assertEqual('2026-10-06 01:00:00', result['results'][0]['crawl_datetime'])
         self.assertTrue(set((*policy.METRICS, *policy.PRICES)) <= set(result['column_names']))
         self.assertEqual(set(policy.FORMAT_COLUMNS['tv']), set(result['editable_cols']))
 

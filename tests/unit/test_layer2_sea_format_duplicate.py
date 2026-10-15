@@ -389,7 +389,8 @@ class SEADuplicateValidationTests(unittest.TestCase):
                     'HomeDepot', 1, 20,
                 )
                 sql, params = cursor.calls[0]
-                self.assertIn("AT TIME ZONE 'America/New_York'", sql)
+                self.assertNotIn("AT TIME ZONE 'America/New_York'", sql)
+                self.assertIn('LEFT(BTRIM(CAST(', sql)
                 self.assertIn('IS NOT DISTINCT FROM latest_batch.batch_id', sql)
                 self.assertNotIn("= 'MAIN'", sql)
                 self.assertNotIn("IN ('MAIN', 'BSR')", sql)
@@ -424,7 +425,8 @@ class SEADuplicateValidationTests(unittest.TestCase):
                 '2026-09-01', 'tester',
             )
             sql, params = cursor.calls[0]
-            self.assertIn("AT TIME ZONE 'America/New_York'", sql)
+            self.assertNotIn("AT TIME ZONE 'America/New_York'", sql)
+            self.assertIn('LEFT(BTRIM(CAST(', sql)
             self.assertIn('homedepot', params)
             self.assertIn("latest.retailer_key IN ('homedepot', 'costco')", sql)
             self.assertEqual('item', cursor.calls[2][1][3])

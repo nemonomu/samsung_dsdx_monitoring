@@ -13,7 +13,7 @@ from tests.unit.test_layer3_sea_data_edit import services as edit_services, Fake
 
 def homedepot_row(**overrides):
     row = _bestbuy_row(account_name='HomeDepot', page_type=None, item='HD1',
-                       batch_id='h20260918_015939', crawl_strdatetime='2026-09-22T01:59:39+00:00',
+                       batch_id='h20260918_015939', crawl_strdatetime='2026-09-21T01:59:39+00:00',
                        final_sku_price='$1,699.00', original_sku_price='$1,899.00',
                        savings='$200.00 (11%)', detailed_review_content=None, recommendation_intent=None)
     row.update(overrides)
@@ -79,19 +79,20 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         self.assertEqual('HomeDepot', sea_services._retailer_name(' HOMEDEPOT '))
         self.assertEqual(set(), sea_services.evaluate_sea_row(homedepot_row(account_name='homedepot')))
 
-    def test_query_uses_new_york_date_and_includes_null_page_type(self):
+    def test_query_uses_original_date_and_includes_null_page_type(self):
         cursor = ScriptedCursor([{'fetchall': []}])
         sea_services.load_latest_sea_rows(cursor, date(2026, 9, 22), 'sea_ref', from_date=date(2026, 9, 20))
         sql, params = cursor.calls[0]
-        self.assertIn('America/New_York', sql)
+        self.assertNotIn('America/New_York', sql)
+        self.assertIn('LEFT(BTRIM(CAST(', sql)
         self.assertIn("IN ('bestbuy', 'lowes', 'homedepot', 'costco')", sql)
         self.assertIn("LOWER(TRIM(account_name)) = 'homedepot' OR", sql)
         self.assertIn('anchor.batch_id = source.batch_id', sql)
         self.assertIn('anchor.batch_rank = 1', sql)
         self.assertEqual(('2026-09-19', '2026-09-21') * 2, params)
 
-    def test_history_uses_ny_dates_and_only_current_findings(self):
-        rows = [homedepot_row(id=9, crawl_strdatetime='2026-09-21T01:59:39+00:00'),
+    def test_history_uses_original_dates_and_only_current_findings(self):
+        rows = [homedepot_row(id=9, crawl_strdatetime='2026-09-20T01:59:39+00:00'),
                 homedepot_row(id=10, savings='$201.00 (11%)')]
         cursor = ScriptedCursor([{'fetchall': [_rule(1, 'savings_amount_match', 'HomeDepot')]},
                                  {'fetchall': rows}, {'fetchall': []}])
@@ -104,9 +105,9 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
         self.assertIn('HomeDepot', result['retailer_columns'])
         self.assertIn("crawl_strdatetime >= '2026-09-19'", result['query'])
 
-    def test_new_york_boundary_and_non_homedepot_text_dates(self):
+    def test_original_boundary_and_non_homedepot_text_dates(self):
         self.assertEqual('2026-09-21', appliance_source_date_value(homedepot_row()))
-        self.assertEqual('2026-01-17', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-01-18T04:59:59Z')))
+        self.assertEqual('2026-01-18', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-01-18T04:59:59Z')))
         self.assertEqual('2026-09-22', appliance_source_date_value(homedepot_row(crawl_strdatetime='2026-09-22T04:00:00Z')))
         self.assertEqual('2026-08-30', appliance_source_date_value(_bestbuy_row()))
 
@@ -136,14 +137,16 @@ class HomeDepotCrossfieldTests(unittest.TestCase):
             result = edit_services.update_cell_value(cursor, conn, 'public.ref_retail_com', 10, 'savings',
                                                      '$200.00 (11%)', '2026-09-22', 'cross_field', 'tester', '', 1)
         self.assertTrue(result['success'])
-        self.assertIn('America/New_York', cursor.calls[0][0])
+        self.assertNotIn('America/New_York', cursor.calls[0][0])
+        self.assertIn('LEFT(BTRIM(CAST(', cursor.calls[0][0])
         self.assertIn("LOWER(TRIM(source.account_name)) = 'homedepot' OR", cursor.calls[0][0])
         self.assertEqual((10, '2026-09-21', '2026-09-21'), cursor.calls[0][1])
         cursor = ScriptedCursor([{'fetchone': ('$200.00 (11%)', 'HomeDepot', 'HD1')}, {'fetchone': None}, {}])
         result = edit_services.save_review(cursor, FakeConnection(), 'public.ldy_retail_com', 10, 'savings',
                                            'normal', 'checked', 'reason', '2026-09-22', 'cross_field', 'tester', 1)
         self.assertTrue(result['success'])
-        self.assertIn('America/New_York', cursor.calls[0][0])
+        self.assertNotIn('America/New_York', cursor.calls[0][0])
+        self.assertIn('LEFT(BTRIM(CAST(', cursor.calls[0][0])
         self.assertEqual((10, '2026-09-21', '2026-09-21'), cursor.calls[0][1])
 
 

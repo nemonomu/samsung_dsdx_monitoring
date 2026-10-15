@@ -2,8 +2,8 @@
 
 Database rows in ``monitoring_validation_rules`` enable and describe rules.
 Validation itself stays allow-listed here so a stored query cannot widen the
-exact D-1/latest-batch scope used by the SEA monitoring contract. HomeDepot
-uses New York source dates and accepts batches without a page_type marker.
+exact D-1/latest-batch scope used by the SEA monitoring contract. Source dates
+come from the DB timestamp; HomeDepot accepts batches without a page_type marker.
 """
 
 from collections import OrderedDict
@@ -983,7 +983,7 @@ def build_sea_display_query(
     next_date = end_date + timedelta(days=1)
     if key == 'sea_ldy_dryer' or (retailer_values and all(costco_layer2.is_costco(value) for value in retailer_values)):
         query_retailer = retailer_values[0] if len(retailer_values) == 1 else None
-        day = costco_layer2.source_date_sql(date_column, retailer=query_retailer, product=source['product_key'])
+        day = costco_layer2.source_date_sql(date_column, retailer=query_retailer, product=source['product_key'], query_scope=True)
         return (f"SELECT\n{select_sql}\nFROM {source['table_name']}\n"
                 f"WHERE {day} BETWEEN '{start_date}' AND '{end_date}'{scope_sql}\n"
                 f"ORDER BY item, {date_column};")

@@ -30,8 +30,9 @@ class SeaLayer1RepositoryTests(unittest.TestCase):
             for cursor in (count_cursor, raw_cursor, detail_cursor):
                 for sql, params in cursor.calls:
                     self.assertNotIn('page_type', sql)
-                    self.assertIn("AT TIME ZONE 'America/New_York'", sql)
-                    self.assertIn('END) = %s', sql)
+                    self.assertNotIn("AT TIME ZONE 'America/New_York'", sql)
+                    self.assertIn('LEFT(BTRIM(CAST(', sql)
+                    self.assertIn('LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10)) = %s', sql)
                     self.assertEqual('2026-09-20', params[0])
                     self.assertEqual('HomeDepot', params[1])
                 self.assertIn('ORDER BY id DESC', cursor.calls[0][0])

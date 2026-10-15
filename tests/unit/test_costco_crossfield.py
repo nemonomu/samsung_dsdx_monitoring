@@ -19,7 +19,7 @@ FIELDS = ('star_rating', 'count_of_star_ratings', 'count_of_reviews',
 def row(product='ref', **updates):
     value = _bestbuy_row(account_name='Costco', page_type=None, batch_id='c_20261005',
                         detailed_review_content=None, recommendation_intent=None,
-                        crawl_strdatetime='2026-10-04T16:00:00+00:00')
+                        crawl_strdatetime='2026-10-05T16:00:00+00:00')
     if product == 'tv':
         value['crawl_datetime'] = value.pop('crawl_strdatetime')
         value.pop('sku')
@@ -78,7 +78,8 @@ class CostcoCrossfieldTests(unittest.TestCase):
             self.assertEqual(0, result['total_anomalies'])
             self.assertEqual(1, result['total_checked'])
             sql = cursor.calls[1][0]
-            self.assertIn('Asia/Seoul', sql)
+            self.assertNotIn('Asia/Seoul', sql)
+            self.assertIn('LEFT(BTRIM(CAST(', sql)
             self.assertIn('2026-10-04', sql)
             if product == 'tv':
                 self.assertNotIn('crawl_strdatetime', sql)
@@ -88,14 +89,14 @@ class CostcoCrossfieldTests(unittest.TestCase):
                 self.assertTrue(set(FIELDS) <= set(summary['select_fields'].split('|')))
 
     def test_tv_detail_has_kst_history_six_fields_and_one_current_finding(self):
-        rows = [row('tv', id=9, crawl_datetime='2026-10-03T16:00:00+00:00'),
+        rows = [row('tv', id=9, crawl_datetime='2026-10-04T16:00:00+00:00'),
                 row('tv', savings='$101')]
         cursor = ScriptedCursor([{'fetchall': [rule('savings_amount_match', 'tv')]},
                                  {'fetchall': rows}, {'fetchall': []}])
         result = service.get_sea_cross_field_rule_detail(cursor, date(2026, 10, 6), 'sea_tv', 1, 3)
         self.assertEqual(1, result['total_anomalies'])
         self.assertEqual(['comparison_history', 'target'], [r['row_role'] for r in result['anomalies']])
-        self.assertEqual('2026-10-05 01:00:00', result['anomalies'][1]['crawl_datetime'])
+        self.assertEqual('2026-10-06 01:00:00', result['anomalies'][1]['crawl_datetime'])
         self.assertEqual(set(FIELDS), set(result['editable_columns']))
         self.assertTrue(set(FIELDS) <= set(result['select_fields'].split('|')))
         self.assertNotIn('sku,', result['queries']['Costco'])
@@ -126,7 +127,8 @@ class CostcoCrossfieldTests(unittest.TestCase):
         self.assertEqual(1, len(cursor.calls))
         sql, params = cursor.calls[0]
         self.assertIn('ORDER BY anchor.id DESC LIMIT 1', sql)
-        self.assertIn('Asia/Seoul', sql)
+        self.assertNotIn('Asia/Seoul', sql)
+        self.assertIn('LEFT(BTRIM(CAST(', sql)
         self.assertNotIn('crawl_strdatetime', sql)
         self.assertEqual((42, '2026-10-05', '2026-10-05'), params)
 

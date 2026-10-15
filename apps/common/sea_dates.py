@@ -1,17 +1,11 @@
 """SQL source-date expressions for SEA appliance collection timestamps."""
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from apps.common.source_dates import source_date_sql, source_date_value
 from apps.common.sea_collection import homedepot_launch_scope_sql
 
 
 def appliance_source_date_value(row, date_column='crawl_strdatetime'):
-    raw = str(row.get(date_column) or '').strip()
-    if str(row.get('account_name') or '').strip().casefold() == 'homedepot' and raw:
-        stamp = datetime.fromisoformat(raw.replace('Z', '+00:00'))
-        if stamp.tzinfo:
-            return stamp.astimezone(ZoneInfo('America/New_York')).date().isoformat()
-    return raw[:10]
+    return source_date_value(row.get(date_column))
 
 
 def appliance_page_scope_sql(alias='', *, anchor=False):
@@ -25,12 +19,12 @@ def appliance_page_scope_sql(alias='', *, anchor=False):
 
 
 def appliance_source_date_sql(date_column, account_column='account_name'):
-    """Use New York dates for HomeDepot's offset-bearing UTC timestamps.
+    """All SEA appliances use the date recorded in the source timestamp."""
+    return source_date_sql(date_column)
 
-    Other retailers already store their source date in the text prefix.  Keep
-    the cast inside CASE so their non-ISO timestamps are never parsed as UTC.
-    Column names must come from the fixed source registry, never request data.
-    """
+
+def appliance_query_date_sql(date_column, account_column='account_name'):
+    """Preserve the existing date conversion in the separate batch lookup UI."""
     return f"""CASE
         WHEN LOWER(BTRIM(CAST({account_column} AS TEXT))) = 'homedepot'
         THEN TO_CHAR(

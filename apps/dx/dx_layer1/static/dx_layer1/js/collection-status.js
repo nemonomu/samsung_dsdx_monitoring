@@ -64,7 +64,7 @@ function renderDdayCollection(data) {
     return '<details class="check-item" open><summary class="check-main retail-check-main">' +
         '<div class="check-info"><div class="check-name"><span class="toggle-icon">▶</span> 🇺🇸 SEA Retail</div>' +
         '<div class="check-description" id="dday-collection-date">수집 대상일: ' + esc(data.source_date) +
-        ' · 한국시간(KST) 기준</div></div><div class="check-stats"><div class="check-stat">' +
+        ' · 수집일: DB 원본 날짜 · 표시 시각: KST</div></div><div class="check-stats"><div class="check-stat">' +
         '<div class="value">' + overall.count.toLocaleString() + '</div><div class="label">' +
         (overall.status === 'error' ? '확인된 수집량' : '총 수집량') + '</div></div>' +
         ddayStatusBadge(overall.status) + '</div></summary>' +

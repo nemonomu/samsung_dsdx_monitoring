@@ -1,7 +1,8 @@
-"""Costco's Layer 1 collection contract (UTC timestamps, combined rank rows)."""
+"""Costco's collection contract (DB source dates, combined rank rows)."""
 from datetime import date, datetime, time
 
 from apps.common.sea_collection import KST
+from apps.common.source_dates import source_date_sql
 
 FIRST_SOURCE_DATE = date(2026, 10, 4)
 DRYER_FIRST_SOURCE_DATE = date(2026, 10, 9)
@@ -43,6 +44,7 @@ def complete(source_date, now=None):
     return enabled(day) and current >= datetime.combine(day, time(15), KST)
 
 
-def source_date_sql(column):
+def query_date_sql(column):
+    """Keep the existing KST date scope for the separate lookup UI."""
     return (f"TO_CHAR(NULLIF(BTRIM(CAST({column} AS TEXT)), '')::timestamptz "
             "AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')")

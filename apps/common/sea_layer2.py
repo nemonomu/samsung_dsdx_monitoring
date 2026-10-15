@@ -1,9 +1,7 @@
 """Layer 2-only HomeDepot policy; other SEA layers keep their own rollout."""
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
 from apps.common.sea_dates import appliance_source_date_sql
+from apps.common.source_dates import source_date_value
 from apps.common.sea_collection import homedepot_launch_scope_sql
 
 
@@ -68,8 +66,5 @@ def page_scope_sql(alias='', *, anchor=False, retailer=None):
 
 def annotate_source_date(row, retailer=None):
     if is_homedepot(row.get('account_name') or retailer) and row.get('crawl_strdatetime'):
-        raw = str(row['crawl_strdatetime']).strip()
-        stamp = datetime.fromisoformat(raw.replace('Z', '+00:00'))
-        row['_source_date'] = (stamp.astimezone(ZoneInfo('America/New_York')).date().isoformat()
-                               if stamp.tzinfo else stamp.date().isoformat())
+        row['_source_date'] = source_date_value(row['crawl_strdatetime'])
     return row

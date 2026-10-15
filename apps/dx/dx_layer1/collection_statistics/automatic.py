@@ -13,6 +13,9 @@ def history_range(country, last_due):
     stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
         source_date__range=(start, end)).values_list('source_date', 'rows')
         if not any(row.get('bsr') is None for row in rows)
+        and (country != 'SEA' or all(
+            row.get('source_date_basis') == 'db_original'
+            for row in rows if row['retailer'] in ('Costco', 'HomeDepot')))
         and (country != 'SEA' or not bestbuy_dryer.enabled(day)
              or any(bestbuy_dryer.matches(r['product'], r['retailer']) for r in rows))
         and (country != 'SEA' or not costco.enabled(day)

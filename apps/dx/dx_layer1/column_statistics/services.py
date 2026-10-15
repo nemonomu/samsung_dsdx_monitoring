@@ -73,7 +73,7 @@ def query_spec(source, retailer, columns, start, end):
         day = bestbuy_dryer.source_date_sql(col)
         start = max(start, bestbuy_dryer.FIRST_SOURCE_DATE)
     elif is_costco:
-        # SEA TV's shared report date is batch_id; Costco uses its UTC crawl time.
+        # SEA TV's shared report date is batch_id; Costco uses its recorded crawl date.
         if source['key'] == 'sea_tv':
             col = 'source.crawl_datetime'
         day = costco.source_date_sql(col)
