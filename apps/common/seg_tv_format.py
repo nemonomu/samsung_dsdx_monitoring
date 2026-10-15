@@ -17,6 +17,10 @@ _DELIVERY_PREFIX = rf'(?:FREE delivery(?: by appointment to a location of your c
 _DELIVERY = re.compile(rf'{_DELIVERY_PREFIX} {_DATES}(?: for qualifying first order)?{_ORDER}\.?')
 _FASTEST = re.compile(rf'Or (?:fastest|earliest) delivery (?:{_DATES}(?:, {_TIMES})?|tomorrow {_TIMES}){_ORDER}\.?')
 _EN_DATE = re.compile(rf'({_MONTH}) ([0-9]{{1,2}})(st|nd|rd|th)')
+_EN_DATE_YEAR = re.compile(_EN_DATE.pattern + r', ([0-9]{4})')
+# Reviewed SEG Amazon delivery_availability examples (2026-10-13/15).
+# Keep this separate from _DATES: fastest/paid/appointment variants were not reviewed.
+_YEAR_RANGE_DELIVERY = re.compile(rf'FREE delivery {_DATE}, [0-9]{{4}} - {_DATE}, [0-9]{{4}}\.?')
 _PERIOD = re.compile(r'(?:Usually ready to ship in ([1-9][0-9]*) to ([1-9][0-9]*) (?:days|weeks|months)|Gewoehnlich versandfertig in ([1-9][0-9]*) bis ([1-9][0-9]*) (?:Tagen|Wochen|Monaten))')
 
 
@@ -25,17 +29,21 @@ def _match(pattern):
     return lambda value: compiled.fullmatch(value) is not None
 
 
+def _calendar_date(match, year):
+    day = int(match[2])
+    suffix = 'th' if 10 <= day % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+    if match[3] != suffix:
+        raise ValueError('Invalid ordinal suffix')
+    return date(year, _MONTHS.index(match[1]) + 1, day)
+
+
 def _delivery_dates_valid(value):
     # Yearless February 29 is valid; do not infer a year from today's date.
     year_match = re.search(r', ([0-9]{4})(?=\.| for |$)', value)
     year = int(year_match[1]) if year_match else 2000
     for match in _EN_DATE.finditer(value):
-        day = int(match[2])
-        suffix = 'th' if 10 <= day % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
-        if match[3] != suffix:
-            return False
         try:
-            date(year, _MONTHS.index(match[1]) + 1, day)
+            _calendar_date(match, year)
         except ValueError:
             return False
     for start, end in re.findall(rf'({_TIME}) - ({_TIME})', value):
@@ -45,6 +53,12 @@ def _delivery_dates_valid(value):
 
 
 def _amazon_delivery(value, fastest=False):
+    if not fastest and _YEAR_RANGE_DELIVERY.fullmatch(value):
+        try:
+            start, end = [_calendar_date(match, int(match[4])) for match in _EN_DATE_YEAR.finditer(value)]
+        except ValueError:
+            return False
+        return start <= end
     return bool((_FASTEST if fastest else _DELIVERY).fullmatch(value)) and _delivery_dates_valid(value)
 
 
@@ -109,7 +123,7 @@ RULES = {
         'number_of_units_purchased_past_month': (_match(r'[1-9][0-9]*\+ gekauft Mal im letzten Monat'), 'N+ gekauft Mal im letzten Monat (N은 양의 정수)'),
         # sku_status is pending: the export has no populated examples.
         'available_quantity_for_purchase': (_match(r'Nur noch [1-9][0-9]* auf Lager(?: \(mehr ist unterwegs\)\.)?'), 'Nur noch N auf Lager / Nur noch N auf Lager (mehr ist unterwegs). (N은 양의 정수)'),
-        'delivery_availability': (_amazon_delivery, '무료·유료·예약 배송 + 영문 날짜/날짜 범위, 선택 연도·첫 주문 조건·Order within 시간'),
+        'delivery_availability': (_amazon_delivery, '무료·유료·예약 배송 + 영문 날짜/날짜 범위, 선택 연도·첫 주문 조건·Order within 시간 / FREE delivery 월 일서수, YYYY - 월 일서수, YYYY (실제 날짜·서수 확인, 시작일 ≤ 종료일)'),
         'fastest_delivery': (lambda v: _amazon_delivery(v, fastest=True), 'Or fastest delivery / Or earliest delivery + 날짜 또는 tomorrow, 선택 시간대·Order within 시간'),
         'inventory_status': (_inventory, 'In Stock / Currently unavailable. / Currently out of stock. / Only N left in stock (선택 추가 입고 문구) / Usually ready to ship in N to M days·weeks·months / Gewoehnlich versandfertig in N bis M Tagen·Wochen·Monaten'),
     },

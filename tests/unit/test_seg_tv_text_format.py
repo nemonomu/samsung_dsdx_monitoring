@@ -83,6 +83,43 @@ class SegTvTextFormatTests(unittest.TestCase):
              'Or fastest delivery tomorrow 14:60 - 18:00', 'Or earliest delivery February 30th',
              'FREE delivery Friday, September 25th', 'Or fastest delivery tomorrow 14:00 - 18:00 extra'])
 
+    def test_amazon_reviewed_delivery_ranges_with_two_years(self):
+        self.check_values('Amazon', 'delivery_availability', [
+            # Previously approved values and the two new findings.
+            'FREE delivery December 7th, 2026 - April 23rd, 2027',
+            'FREE delivery November 25th, 2026 - April 22nd, 2027',
+            'FREE delivery November 24th, 2026 - April 13th, 2027',
+            'FREE delivery December 9th, 2026 - April 26th, 2027',
+            'FREE delivery November 30th, 2026 - April 24th, 2027',
+            'FREE delivery January 1st, 2027 - January 1st, 2027.',
+            'FREE delivery February 29th, 2028 - March 1st, 2029',
+            'FREE delivery February 28th, 2027 - February 29th, 2028',
+        ], [
+            'FREE delivery February 29th, 2027 - March 1st, 2028',
+            'FREE delivery February 29th, 2028 - February 29th, 2029',
+            'FREE delivery April 31st, 2026 - May 1st, 2026',
+            'FREE delivery December 9th, 2027 - April 26th, 2027',
+            'FREE delivery April 26th, 2027 - April 25th, 2027',
+            'FREE delivery November 30st, 2026 - April 24th, 2027',
+            'FREE delivery November 30th, 2026 - April 21th, 2027',
+            'FREE delivery December 0th, 2026 - April 26th, 2027',
+            'FREE delivery December 9th, 0000 - April 26th, 2027',
+            'FREE delivery December 9th, 26 - April 26th, 2027',
+            'FREE delivery December 9th, 2026 - April 26th',
+            'FREE delivery December 9th, 2026 - April 26th, 2027 extra',
+            'product FREE delivery December 9th, 2026 - April 26th, 2027',
+        ])
+
+    def test_year_range_does_not_expand_unreviewed_delivery_variants(self):
+        self.check_values('Amazon', 'fastest_delivery', [], [
+            'Or fastest delivery December 9th, 2026 - April 26th, 2027'])
+        self.check_values('Amazon', 'delivery_availability', [], [
+            'delivery for 3€ December 9th, 2026 - April 26th, 2027',
+            'FREE delivery by appointment to a location of your choice December 9th, 2026 - April 26th, 2027'])
+        for retailer in ('Mediamarkt', 'OTTO'):
+            self.check_values(retailer, 'delivery_availability', [], [
+                'FREE delivery December 9th, 2026 - April 26th, 2027'])
+
     def test_empty_fields_and_exact_scope(self):
         for retailer, rules in seg_tv_format.RULES.items():
             for empty in (None, '', '   '):
