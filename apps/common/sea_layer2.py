@@ -38,6 +38,8 @@ def homedepot_null_columns(product):
 
 
 def homedepot_format_columns(product):
+    if product == 'ldy_dryer':
+        return (*(field for field in HOMEDEPOT_FORMAT_COMMON if field != 'product'), 'capacity')
     return (*HOMEDEPOT_FORMAT_COMMON, f'{product}_capacity')
 
 

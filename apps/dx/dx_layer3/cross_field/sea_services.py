@@ -252,7 +252,7 @@ def normalize_sea_product_line(value):
 def _source_for_product_line(product_line):
     key = normalize_sea_product_line(product_line)
     if key == 'sea_ldy_dryer':
-        return costco_layer2.dryer_source()
+        return costco_layer2.dryer_source(include_homedepot=True)
     return get_sea_retail_source(SEA_PRODUCT_KEYS[key])
 
 
@@ -533,7 +533,7 @@ def load_active_sea_rules(cursor, product_line):
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
         if key == 'sea_tv' and not costco_layer2.is_costco(configured_retailer):
             continue
-        if key == 'sea_ldy_dryer' and (configured_retailer.casefold() not in ('bestbuy', 'costco') or rule_key not in HOMEDEPOT_RULE_KEYS):
+        if key == 'sea_ldy_dryer' and (configured_retailer.casefold() not in ('bestbuy', 'costco', 'homedepot') or rule_key not in HOMEDEPOT_RULE_KEYS):
             continue
         if (
             configured_retailer.upper() != 'ALL'
@@ -619,7 +619,7 @@ def load_latest_sea_rows(cursor, inspection_date, product_line, from_date=None):
     if normalize_sea_product_line(product_line) in ('sea_tv', 'sea_ldy_dryer'):
         dryer = source['product_key'] == 'ldy_dryer'
         retailer = None if dryer else 'Costco'
-        accounts = "('bestbuy', 'costco')" if dryer else "('costco')"
+        accounts = "('bestbuy', 'costco', 'homedepot')" if dryer else "('costco')"
         day = costco_layer2.source_date_sql(date_column, retailer=retailer, product=source['product_key'])
         source_day = costco_layer2.source_date_sql(date_column, 'source', retailer=retailer, product=source['product_key'])
         cursor.execute(f"""

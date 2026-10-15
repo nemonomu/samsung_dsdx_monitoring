@@ -31,7 +31,7 @@ INSERT INTO _homedepot_columns VALUES
  ('sea_ldy_dryer', 'loading_type', FALSE, FALSE);
 
 UPDATE public.monitoring_retail_columns t
-SET duplicate_key = FALSE, skip_missing_check = NOT c.required,
+SET skip_missing_check = NOT c.required,
     is_editable = c.editable, is_active = TRUE, is_del = FALSE,
     updated_at = NOW(), updated_id = 'setup_homedepot_dryer_layer2'
 FROM _homedepot_columns c

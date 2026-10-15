@@ -60,6 +60,7 @@ try:
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
     from apps.common.sea_layer2 import layer2_sources
     SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
+    SEA_RETAIL_SOURCES['ldy_dryer'] = {**costco_layer2.dryer_source(), 'retailers': ('HomeDepot',)}
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -77,6 +78,7 @@ except (ImportError, AttributeError):
 
 
 SEA_FORMAT_SECTION_BY_PRODUCT = {
+    'ldy_dryer': 'sea_ldy_dryer_retail',
     'ref': 'sea_ref_retail',
     'ldy': 'sea_ldy_retail',
 }
@@ -923,6 +925,10 @@ def _get_sea_format_fields(product_key, retailer):
 def _fetch_sea_format_rows(
         cursor, start_date, end_date, source, retailer_value):
     """Fetch each day's latest appliance batch using the retailer's page policy."""
+    if costco_layer2.homedepot_dryer.matches(source['product_key'], retailer_value):
+        if not costco_layer2.homedepot_dryer.enabled(end_date):
+            return []
+        start_date = max(str(start_date), str(costco_layer2.homedepot_dryer.FIRST_SOURCE_DATE))
     if is_homedepot(retailer_value):
         if not homedepot_source_enabled(end_date):
             return []
@@ -940,7 +946,9 @@ def _fetch_sea_format_rows(
         'item', 'sku', 'retailer_sku_name', *format_fields,
         date_column, 'product_url',
     )))
-    date_expression = source_date_sql(date_column, 'source', retailer_value)
+    date_expression = source_date_sql(date_column, 'source', retailer_value, product=product_key)
+    if product_key == 'ldy_dryer':
+        select_columns = [c for c in select_columns if c not in ('product', 'page_type')]
     if is_costco(retailer_value) and product_key == 'tv':
         select_columns = [c for c in select_columns if c not in ('sku', 'product', 'page_type')]
     # Country is a validated value for HomeDepot, not a source selector.
@@ -959,7 +967,7 @@ def _fetch_sea_format_rows(
             WHERE {date_expression} >= %s
               AND {date_expression} <= %s
               AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
-              AND {page_scope_sql('source', anchor=True, retailer=retailer_value)}
+              AND {page_scope_sql('source', anchor=True, retailer=retailer_value, product=product_key)}
             ORDER BY crawl_date, source.id DESC
         )
         SELECT {', '.join('source.' + column for column in select_columns)}
@@ -975,7 +983,7 @@ def _fetch_sea_format_rows(
               OR TRIM(CAST(source.account_name AS TEXT)) = ''
           )
           AND {country_scope}
-          AND {page_scope_sql('source', retailer=retailer_value)}
+          AND {page_scope_sql('source', retailer=retailer_value, product=product_key)}
         ORDER BY source.item, {date_expression}, source.id
     """, (
         str(start_date), str(end_date), retailer_value,
@@ -1118,6 +1126,9 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days, include_n
     editable_columns = set(get_editable_columns(
         source['product_line'], retailer_value
     ))
+    if product_key == 'ldy_dryer':
+        column_names = [c for c in column_names if c not in ('product', 'page_type')]
+        editable_columns = set(format_fields)
     if is_costco(retailer_value):
         editable_columns = set(format_fields)
         if product_key == 'tv':
@@ -1170,6 +1181,8 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
             table_checked = 0
             table_issues = 0
             for retailer_value in source.get('retailers', ()):
+                if costco_layer2.homedepot_dryer.matches(product_key, retailer_value) and not costco_layer2.homedepot_dryer.enabled(source_date):
+                    continue
                 if product_key == 'tv' and not is_costco(retailer_value):
                     continue
                 if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):

@@ -19,7 +19,7 @@ def get_collection_status(target_date, now=None):
         home_dryer = homedepot_dryer.matches(product, retailer)
         if home_dryer and not homedepot_dryer.enabled(target_date):
             continue
-        scheduled = None if home_dryer else collection_schedule(target_date, retailer)
+        scheduled = collection_schedule(target_date, retailer)
         row = {'retailer': retailer, 'product': product,
                'source_date': str(target_date), 'scheduled_at': scheduled.isoformat() if scheduled else None,
                'count': 0, 'main_count': 0, 'bsr_count': 0,

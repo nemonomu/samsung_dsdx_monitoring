@@ -44,7 +44,7 @@ except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
 
-SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES), include_dryer=True)
+SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES), include_dryer=True, include_homedepot_dryer=True)
 
 try:
     from apps.common.siel_retail import (
@@ -191,6 +191,8 @@ def _resolve_sea_duplicate_retailer(source, retailer):
 
 def _fetch_sea_duplicate_rows(cursor, source_date, source, retailer_value):
     """Fetch the latest SEA appliance batch using each retailer's date/page policy."""
+    if costco_layer2.homedepot_dryer.matches(source['product_key'], retailer_value) and not costco_layer2.homedepot_dryer.enabled(source_date):
+        return []
     if costco_layer2.bestbuy_dryer.matches(source['product_key'], retailer_value) and not costco_layer2.bestbuy_dryer.enabled(source_date):
         return []
     if is_homedepot(retailer_value) and not homedepot_source_enabled(source_date):
@@ -372,6 +374,7 @@ def _get_sea_anomaly_detail(
         'actual_table': source['table_name'],
         'backup_table': source['backup_table'],
         'readonly': product_key == 'ldy_dryer',
+        'readonly_message': '건조기 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.' if product_key == 'ldy_dryer' else '',
         'results': {
             'duplicates': groups[offset:offset + page_size],
             'total_groups': total_groups,
@@ -408,6 +411,8 @@ def _append_sea_anomaly_stats(cursor, target_date, validation, category=None):
                 if product_key == 'tv' and not is_costco(retailer_value):
                     continue
                 if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date, source['product_key']):
+                    continue
+                if costco_layer2.homedepot_dryer.matches(product_key, retailer_value) and not costco_layer2.homedepot_dryer.enabled(source_date):
                     continue
                 if costco_layer2.bestbuy_dryer.matches(product_key, retailer_value) and not costco_layer2.bestbuy_dryer.enabled(source_date):
                     continue

@@ -88,7 +88,7 @@ class HomeDepotDryerTests(unittest.TestCase):
         self.assertEqual('2026-10-15', home['source_date'])
         self.assertEqual(268, home['count'])
         self.assertEqual('received', home['status'])
-        self.assertIsNone(home['scheduled_at'])
+        self.assertEqual('2026-10-15T13:00:00+09:00', home['scheduled_at'])
 
     def test_null_fields_match_ldy_with_capacity_mapping(self):
         fields = self.null.load_null_check_config()[CATEGORY]['checks']['homedepot']['columns']
@@ -147,20 +147,17 @@ class HomeDepotDryerTests(unittest.TestCase):
                 result = self.edit.update_cell_value(cursor, Mock(), TABLE, 42, field, 'value', DAY, 'null', 'tester', 'fixed')
             self.assertTrue(result.get('success'), result)
 
-    def test_other_layers_remain_disabled(self):
+    def test_duplicate_rollout_does_not_enable_other_dryer_format_policies(self):
         self.assertNotIn('HomeDepot', policy.dryer_source()['retailers'])
-        self.assertNotIn('HomeDepot', self.dup.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
+        self.assertIn('HomeDepot', self.dup.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
         self.assertNotIn('ldy_dryer', policy.FORMAT_COLUMNS)
-        cursor = ScriptedCursor([{'fetchone': (None, 'HomeDepot', '123')}])
-        result = self.null.save_null_review(cursor, Mock(), TABLE, 42, 'capacity', 'normal', 'checked', 'checked', str(DAY), 'format', 'tester')
-        self.assertEqual(400, result.get('status_code'))
 
     @override_settings(DEBUG=True)
     def test_registration_is_null_only_and_transaction_checked(self):
         sql = setup.registration_sql()
         self.assertIn('public.test_monitoring_null_column', sql)
         self.assertNotIn('public.monitoring_null_column', sql)
-        self.assertIn('duplicate_key = FALSE', sql)
+        self.assertNotIn('SET duplicate_key', sql)
         self.assertNotIn('UPDATE public.ldy_dryer_retail', sql)
         self.assertNotIn('BEGIN;', sql)
         conn, cursor = Mock(), Mock()

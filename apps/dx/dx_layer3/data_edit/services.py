@@ -103,7 +103,7 @@ def _is_sem_table(table_name):
 
 def _get_sea_edit_context(table_name):
     if table_name == 'public.ldy_dryer_retail':
-        return costco_layer2.dryer_source()
+        return costco_layer2.dryer_source(include_homedepot=True)
     if table_name == 'public.tv_retail_com':
         return SEA_RETAIL_SOURCES['tv']
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
@@ -183,7 +183,7 @@ def _select_sea_record(
     date_column = source['date_column']
     if table_name in ('public.tv_retail_com', 'public.ldy_dryer_retail'):
         retailer = None if source['product_key'] == 'ldy_dryer' else 'Costco'
-        accounts = "('bestbuy', 'costco')" if source['product_key'] == 'ldy_dryer' else "('costco')"
+        accounts = "('bestbuy', 'costco', 'homedepot')" if source['product_key'] == 'ldy_dryer' else "('costco')"
         day = costco_layer2.source_date_sql(date_column, 'source', retailer=retailer, product=source['product_key'])
         anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer=retailer, product=source['product_key'])
         cursor.execute(f"""SELECT {select_columns} FROM {table_name} source

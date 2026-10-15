@@ -55,7 +55,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
-    const isSeaRetail = /^sea_(ref|ldy)_retail$/.test(tableParam);
+    const isSeaRetail = /^sea_(ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
@@ -189,7 +189,8 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     // Item/쿼리 섹션 (retail만)
     if (isRetail) {
         const items = [...new Set(filteredRecords.map(r => r.item).filter(Boolean))].sort();
-        if (isSegRetail && String(modalState.retailer || '').toLowerCase() === 'expert') {
+        if (tableParam === 'sea_ldy_dryer_retail'
+            || (isSegRetail && String(modalState.retailer || '').toLowerCase() === 'expert')) {
             const query = _buildNullRetailDisplayQuery(
                 fieldName, data, filteredRecords, date, currentDays,
                 modalState.retailer || '', false
@@ -225,6 +226,9 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 sea_ref_retail: {
                     tableName: 'public.ref_retail_com',
                     dateColumn: 'crawl_strdatetime'
+                },
+                sea_ldy_dryer_retail: {
+                    tableName: 'public.ldy_dryer_retail', dateColumn: 'crawl_datetime'
                 },
                 sea_ldy_retail: {
                     tableName: 'public.ldy_retail_com',

@@ -62,6 +62,15 @@ async function main() {
     assert.strictEqual(tableOptions.type, 'duplicate');
     assert.strictEqual(tableOptions.data[0].records[0].id, 10);
 
+    const dryer = {...payload([20, 21], true), retailer: 'HomeDepot',
+        query: 'SELECT * FROM public.ldy_dryer_retail WHERE id IN (20, 21);',
+        readonly_message: '건조기 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.',
+        select_cols: {group: ['duplicate_type', 'item'], record: ['id', 'sku', 'crawl_datetime', 'product_url']}};
+    context.renderDetailTable('duplicate', dryer, 'sea_ldy_dryer_retail');
+    assert(body.innerHTML.includes('public.ldy_dryer_retail'));
+    assert(tableOptions.config.detail.some(col => col.key === 'crawl_datetime'));
+    assert(!tableOptions.config.group.some(col => col.key === 'page_type'));
+
     vm.runInContext("modalState.totalPages = 3; modalState.totalGroups = 5; modalState.currentPage = 2; modalState.tableName = 'TSE REF'; modalState.retailer = 'Homepro'; modalState.count = 5;", context);
     const second = payload([20, 21], true);
     context.renderDetailTable('duplicate', second, 'tse_ref_retail');

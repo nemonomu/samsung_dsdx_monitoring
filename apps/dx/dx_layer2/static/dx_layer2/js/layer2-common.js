@@ -237,7 +237,7 @@ function getColumnConfig(type, tableParam) {
                     { key: 'batch_id', label: '배치 ID', width: 200 }],
             };
         }
-        if (tableParam === 'seg_ldy_dryer_retail') {
+        if (['sea_ldy_dryer_retail', 'seg_ldy_dryer_retail'].includes(tableParam)) {
             return {
                 group: DETAIL_COLUMNS.dup_sea_retail.group.filter(col => col.key !== 'page_type'),
                 detail: DETAIL_COLUMNS.dup_sea_retail.detail.map(col => col.key === 'crawl_strdatetime'
@@ -639,7 +639,7 @@ function renderDetailWithTable(options) {
     if (type === 'null' || type === 'format') {
         defaultCols = normalizeRetailSourceDateColumns(defaultCols);
     }
-    if (!isRowspan && /^(?:(?:tv|hhp)_retail|(?:sea|seda|siel|seg|sem|tse)_(?:tv|ref|ldy)_retail)$/.test(tableParam)) {
+    if (!isRowspan && /^(?:(?:tv|hhp)_retail|(?:sea|seda|siel|seg|sem|tse)_(?:tv|ref|ldy|ldy_dryer)_retail)$/.test(tableParam)) {
         defaultCols = arrangeRetailInspectionColumns(defaultCols,
             (selectCols || []).concat(data.flatMap(function(row) { return Object.keys(row); })),
             type === 'format' ? options.formatReviewField : '');

@@ -3232,8 +3232,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     retailer = None if youtube_columns is not None else row[1]
     if sea_source:
-        if costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
-            return {'error': 'HomeDepot 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
+        if costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer) and correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'HomeDepot 건조기는 NULL·형식 검수를 지원합니다', 'status_code': 400}
         if costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
         if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:

@@ -14,10 +14,10 @@ day = '2026-10-16';
 assert(rows().some(r => r.retailer === 'HomeDepot'));
 const html = context.renderDdayCollection({ source_date: '2026-10-15', retailers: [{
     product: 'LDY_DRYER', retailer: 'HomeDepot', count: 268, main_count: 268, bsr_count: 100,
-    status: 'received', scheduled_at: null, batch_id: 'h1', last_collected_at: '2026-10-15 13:00:07'
+    status: 'received', scheduled_at: '2026-10-15T13:00:00+09:00', batch_id: 'h1', last_collected_at: '2026-10-15 13:00:07'
 }] });
 assert(html.includes('HomeDepot'));
-assert(html.includes('미정'));
+assert(html.includes('2026-10-15 13:00 KST'));
 assert(html.includes('수집 확인'));
 assert(!html.includes('368'));
 console.log('HomeDepot dryer launch and receipt display passed.');

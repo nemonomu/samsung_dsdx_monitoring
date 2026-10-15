@@ -500,9 +500,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
     if sea_context and costco_layer2.homedepot_dryer.matches(sea_context['product_key'], retailer):
-        if correction_type_value != 'null_check':
-            return {'error': 'HomeDepot 건조기는 NULL 검수만 지원합니다', 'status': 403}
-        editable_cols = costco_layer2.sea_layer2.homedepot_null_columns('ldy_dryer')
+        if correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'HomeDepot 건조기는 NULL·형식 검수 값만 수정할 수 있습니다', 'status': 403}
+        editable_cols = (costco_layer2.sea_layer2.homedepot_format_columns('ldy_dryer')
+                         if correction_type_value == 'format_check'
+                         else costco_layer2.sea_layer2.homedepot_null_columns('ldy_dryer'))
     elif sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
         if correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status': 403}

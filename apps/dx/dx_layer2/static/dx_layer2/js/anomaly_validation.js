@@ -146,7 +146,7 @@ function renderDetailTable(type, data, tableParam) {
     } else {
         config = getColumnConfig(type, tableParam);
     }
-    if (type === 'duplicate' && String(data.retailer || '').toLowerCase() === 'costco'
+    if (type === 'duplicate' && (tableParam === 'sea_ldy_dryer_retail' || String(data.retailer || '').toLowerCase() === 'costco')
         && data.select_cols && data.select_cols.group) {
         var seaColumns = getColumnConfig('duplicate', 'sea_ref_retail');
         var knownColumns = new Map(getAllColumns(seaColumns).map(function(col) { return [col.key, col]; }));
