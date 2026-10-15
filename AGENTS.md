@@ -18,3 +18,13 @@
   silently determine that date.
 - Verify date-boundary cases and unchanged SIEL / lookup behavior when changing
   date policy. Do not rewrite raw DB collection timestamps to fix classification.
+
+# Format normal approvals
+
+- Share registered normal values by country, normalized retailer, column, and
+  exact value across TV, REF, LDY, and LDY_DRYER. Keep production/test isolated.
+- Preserve the originating product, evidence, and audit history. Revoking a
+  shared normal approval applies across products; error confirmations remain
+  scoped to their source product and record IDs.
+- Date/time patterns must be explicitly reviewed and bounded. Do not infer an
+  unrestricted pattern from each new exact-value approval.

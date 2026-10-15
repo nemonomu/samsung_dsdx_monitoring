@@ -39,10 +39,12 @@ def load_scopes():
 
 
 def has_scope(scopes, table, retailer, day=None):
-    return any(scope.context['section'] == table
+    country = 'SEA' if table == 'tv_retail' else str(table).split('_')[0].upper()
+    return any(scope.context.get('country') == country
                and scope.context['retailer'] == retailer_key(retailer)
                and scope.context.get('environment') == ('test' if settings.DEBUG else 'production')
                and any(not p.get('is_del') and p['action'] in ('normal', 'error')
+                       and (p['action'] == 'normal' or scope.context['section'] == table)
                        and (day is None or p['date'] <= str(day)) for p in scope.policies.values())
                for scope in scopes.values()) if supported(table) else False
 
@@ -64,13 +66,57 @@ def group_key(field, value):
     return digest([field, value])
 
 
+def shared_context(context):
+    """Normal approvals span products, but never countries or DB environments."""
+    return (context['country'], context['retailer'], context['check'], context['environment'],
+            context['source_table'].removeprefix('public.').startswith('test_'))
+
+
+def related_scopes(context, scopes):
+    return {key: scope for key, scope in scopes.items()
+            if shared_context(scope.context) == shared_context(context)}
+
+
+def effective_policies(context, scopes, day=None):
+    policies, local_errors = {}, {}
+    local_key = digest(context)
+    for fingerprint, scope in related_scopes(context, scopes).items():
+        for key, policy in scope.policies.items():
+            # Only normal registrations and their revocation are shared. Error
+            # records and their IDs retain the original source-table scope.
+            if day is not None and policy['date'] > str(day):
+                continue
+            enriched = {**policy, 'origin_fingerprint': fingerprint,
+                        'origin_product': scope.context['product']}
+            if policy['action'] == 'error':
+                if fingerprint == local_key:
+                    local_errors[key] = enriched
+                continue
+            if not policy.get('shared_normal', True):
+                continue
+            previous = policies.get(key)
+            if previous and previous.get('event_id', 0) > policy.get('event_id', 0):
+                continue
+            policies[key] = enriched
+    for key, policy in local_errors.items():
+        shared = policies.get(key, {})
+        if (shared.get('action') != 'normal' or shared.get('is_del')
+                or policy.get('event_id', 0) > shared.get('event_id', 0)):
+            policies[key] = policy
+    return policies
+
+
+def shared_revision(context, scopes):
+    return digest({key: scope.revision for key, scope in related_scopes(context, scopes).items()})
+
+
 def apply_detail(data, scopes, errors_only=False):
     data = deepcopy(data)
     if not data.get('actual_table'):
         return data
     context = context_for(data)
     scope = scopes.get(digest(context))
-    policies = scope.policies if scope else {}
+    policies = effective_policies(context, scopes, data['date'])
     day = str(data['date'])
     targets = {str(i) for i in data.get('target_ids', [])}
     fields = data.get('validation_fields', [])
@@ -166,14 +212,24 @@ def inventory(cursor, day, table, retailer, scopes=None):
         group['tab'] = 'issues' if states.get('pending', 0) + states.get('error', 0) else (
             'registered' if states.get('registered_normal') else 'baseline'
         )
-    registrations = [dict(policy) for policy in (scope.policies.values() if scope else [])
+    registrations = [dict(policy) for policy in effective_policies(context, scopes).values()
                      if not policy.get('is_del')]
+    history = []
+    for key, related in related_scopes(context, scopes).items():
+        for event in repository.history(related):
+            if key != fingerprint and not event['shared_normal']:
+                continue
+            history.append({**event, 'origin_fingerprint': key,
+                            'origin_product': related.context['product'],
+                            'origin_revision': related.revision})
     return {
         'context': context, 'fingerprint': fingerprint, 'date': str(day),
         'source_date': data.get('source_date', str(day)), 'retailer': data['retailer'],
         'revision': scope.revision if scope else 0, 'groups': list(groups.values()),
+        'shared_revision': shared_revision(context, scopes),
         'counts': data['review_counts'], 'registrations': registrations,
-        'history': repository.history(scope), 'available': repository.ready(evidence=True),
+        'history': sorted(history, key=lambda e: e['id'], reverse=True)[:100],
+        'available': repository.ready(evidence=True),
         'record_count': len(data['target_ids']),
         'baseline_excluded_fields': sorted(BASELINE_EXCLUDED_FIELDS),
     }
@@ -194,6 +250,8 @@ def selected_targets(data, keys, action):
     if action == 'revoke':
         for policy in data['registrations']:
             groups.setdefault(policy['key'], {**policy, 'records': [], 'count': 0})
+            groups[policy['key']] = {**groups[policy['key']],
+                                     'shared_normal': policy['action'] == 'normal'}
     if any(key not in groups for key in keys):
         raise repository.ReviewConflict('수집 데이터가 변경됐습니다. 새로 조회하세요.')
     if action == 'revoke' and any(key not in {p['key'] for p in data['registrations']} for key in keys):
@@ -213,6 +271,7 @@ def preview(data, keys, action, reason, evidence=None):
         'fingerprint': data['fingerprint'], 'revision': data['revision'], 'date': data['date'],
         'keys': sorted(keys), 'action': action, 'reason': reason, 'snapshot': digest(targets),
         'evidence': digest(review_evidence.signature(evidence)),
+        'shared_revision': data['shared_revision'],
     }
     return {
         'token': signing.dumps(stamp, salt='format-review-v1', compress=True),
@@ -228,7 +287,7 @@ def commit(data, token, actor, evidence=None):
         stamp = signing.loads(token, salt='format-review-v1', max_age=600)
     except signing.BadSignature as exc:
         raise repository.ReviewConflict('미리보기가 만료되거나 유효하지 않습니다. 다시 확인하세요.') from exc
-    if any(stamp[key] != data[key] for key in ('fingerprint', 'revision', 'date')):
+    if any(stamp.get(key) != data[key] for key in ('fingerprint', 'revision', 'date', 'shared_revision')):
         raise repository.ReviewConflict('검토 범위나 기준이 변경됐습니다. 다시 미리보기 하세요.')
     targets = selected_targets(data, stamp['keys'], stamp['action'])
     if digest(targets) != stamp['snapshot']:
@@ -237,19 +296,33 @@ def commit(data, token, actor, evidence=None):
     if stamp.get('evidence') != digest(review_evidence.signature(evidence)):
         raise repository.ReviewConflict('확인 근거가 변경됐습니다. 다시 미리보기 하세요.')
     return repository.save(data['context'], data['fingerprint'], data['revision'], stamp['action'],
-                           targets, stamp['reason'], actor, date.fromisoformat(data['date']), evidence)
+                           targets, stamp['reason'], actor, date.fromisoformat(data['date']), evidence,
+                           expected_shared_revision=data['shared_revision'])
+
+
+def event_origin(data, event_id):
+    for entry in [*data['history'], *data['registrations']]:
+        if entry.get('event_id', entry.get('id')) == event_id:
+            return entry['origin_fingerprint']
+    raise ValueError('이 범위의 처리 이력을 찾을 수 없습니다.')
 
 
 def merge_report(cursor, day, type_summary, reason_summary, table_summary, details):
     scopes = load_scopes()
+    if not scopes:
+        return
+    from .services import _get_format_stats_raw
+    stats, _ = _get_format_stats_raw(cursor, day)
+    destinations = {(table['table'], retailer['retailer'])
+                    for table in stats['tables'] for retailer in table.get('retailers', [])
+                    if has_scope(scopes, table['table'], retailer['retailer'], day)}
     additions = []
-    for scope in scopes.values():
-        context = scope.context
-        if not has_scope({scope.fingerprint: scope}, context['section'], context['retailer'], day):
-            continue
-        data = inventory(cursor, day, context['section'], context['retailer_name'], scopes=scopes)
+    for table, retailer in sorted(destinations):
+        data = inventory(cursor, day, table, retailer, scopes=scopes)
+        context = data['context']
+        policies = effective_policies(context, scopes, day)
         for group in data['groups']:
-            policy = scope.policies.get(group['key'])
+            policy = policies.get(group['key'])
             if not policy or policy.get('is_del'):
                 continue
             for row in group['records']:

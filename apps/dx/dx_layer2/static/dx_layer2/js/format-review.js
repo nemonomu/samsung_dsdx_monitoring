@@ -72,11 +72,11 @@
         const fields = [...new Set((state.tab==='registered' ? data.registrations : data.groups.filter(g=>g.tab===state.tab && baselineAllowed(g))).map(g => g.field))].sort();
         if (!fields.includes(state.field)) state.field='';
         dialog.innerHTML = `<div class="fr-header"><div><h2>형식검증 · 값별 일괄 검토</h2><div class="fr-muted">${escape(data.context.country)} / ${escape(state.retailer)} / ${escape(data.context.product)} · 조회일 ${escape(data.date)} · 수집일 ${escape(data.source_date)}</div></div><button data-fr="close">닫기</button></div>
-            <div class="fr-body"><div class="fr-note">현재 검증 대상 ${data.record_count}건을 컬럼·값별로 묶습니다. 비교 이력은 처리 대상에서 제외합니다. 상품 URL을 확인한 뒤 정상 값을 등록하면 같은 범위의 동일 값은 다음 수집에도 정상으로 인정됩니다. 오류 값은 다음 수집에서 다시 검증합니다.</div>
+            <div class="fr-body"><div class="fr-note">현재 검증 대상 ${data.record_count}건을 컬럼·값별로 묶습니다. 비교 이력은 처리 대상에서 제외합니다. 상품 URL을 확인한 뒤 정상 값을 등록하면 같은 국가·리테일러·컬럼의 동일 값은 TV·REF·LDY·LDY_DRYER에 함께 적용되며 다음 수집에도 정상으로 인정됩니다. 오류 값은 다음 수집에서 다시 검증합니다.</div>
             ${!data.available?'<div class="fr-warning">검토 저장소 마이그레이션이 필요합니다. 조회만 가능하며 저장은 비활성화됩니다.</div>':''}
             <div class="fr-tabs">${[['issues','이상 검출 확인'],['baseline','기존 정상 재확인'],['registered','등록한 정상 관리'],['history','처리 이력']].map(([key,label])=>`<button data-fr="tab" data-tab="${key}" aria-pressed="${state.tab===key}">${label}</button>`).join('')}</div>
             <div class="fr-tools"><label>컬럼 <select id="fr-field"><option value="">전체 컬럼</option>${fields.map(f=>`<option value="${escape(f)}" ${state.field===f?'selected':''}>${escape(f)}</option>`).join('')}</select></label><input id="fr-search" type="search" aria-label="수집 값 검색" placeholder="값 검색" value="${escape(state.search)}"><button data-fr="select-all">검색된 그룹 전체 선택</button><button data-fr="clear">선택 해제</button></div>
-            <div class="fr-layout"><div id="fr-groups"></div><aside><div id="fr-selected"></div><p class="fr-muted">정상·오류 처리는 선택한 범위의 정확히 같은 값에 적용되며 원본 값은 수정하지 않습니다. 취소 시에도 아래에 사유를 입력하세요.</p><label for="fr-reason">확인 / 취소 사유</label><textarea id="fr-reason" maxlength="1000" placeholder="페이지 확인 결과와 처리 근거를 입력하세요">${escape(state.reason)}</textarea><div id="fr-evidence-input"><details><summary>확인한 상품 URL 선택 <span id="fr-url-count"></span></summary><p class="fr-muted">실제로 페이지를 확인한 URL만 체크하세요. 최대 100개.</p><div id="fr-checked-urls"></div></details><label class="fr-upload">캡처 첨부 (선택)<input id="fr-files" type="file" accept="image/png,image/jpeg,image/webp" multiple></label><p class="fr-muted">Ctrl+V 붙여넣기 가능 · 최대 3장. 큰 이미지는 저장 크기에 맞춰 축소합니다. 대표 상품의 캡처를 일괄 처리 근거로 함께 저장합니다.</p><div id="fr-captures"></div></div><div class="fr-actions"><button data-fr="preview" data-decision="normal">정상 값 일괄 등록</button><button data-fr="preview" data-decision="error">오류 일괄 확정</button></div><div id="fr-message" role="status" aria-live="polite"></div><div id="fr-preview" hidden></div></aside></div></div>`;
+            <div class="fr-layout"><div id="fr-groups"></div><aside><div id="fr-selected"></div><p class="fr-muted">정상 등록·등록 취소는 같은 국가·리테일러·컬럼의 TV·REF·LDY·LDY_DRYER에 공유됩니다. 오류 확정은 현재 상품군에 적용하며 원본 값은 수정하지 않습니다. 취소 시에도 아래에 사유를 입력하세요.</p><label for="fr-reason">확인 / 취소 사유</label><textarea id="fr-reason" maxlength="1000" placeholder="페이지 확인 결과와 처리 근거를 입력하세요">${escape(state.reason)}</textarea><div id="fr-evidence-input"><details><summary>확인한 상품 URL 선택 <span id="fr-url-count"></span></summary><p class="fr-muted">실제로 페이지를 확인한 URL만 체크하세요. 최대 100개.</p><div id="fr-checked-urls"></div></details><label class="fr-upload">캡처 첨부 (선택)<input id="fr-files" type="file" accept="image/png,image/jpeg,image/webp" multiple></label><p class="fr-muted">Ctrl+V 붙여넣기 가능 · 최대 3장. 큰 이미지는 저장 크기에 맞춰 축소합니다. 대표 상품의 캡처를 일괄 처리 근거로 함께 저장합니다.</p><div id="fr-captures"></div></div><div class="fr-actions"><button data-fr="preview" data-decision="normal">정상 값 일괄 등록</button><button data-fr="preview" data-decision="error">오류 일괄 확정</button></div><div id="fr-message" role="status" aria-live="polite"></div><div id="fr-preview" hidden></div></aside></div></div>`;
         renderGroups();
     }
     function baselineAllowed(group) { return state.tab!=='baseline' || !(state.data.baseline_excluded_fields || []).includes(group.field); }
@@ -84,7 +84,7 @@
         return state.data.groups.filter(g => g.tab === state.tab && baselineAllowed(g) && (!state.field || g.field === state.field) && g.value.toLowerCase().includes(state.search.toLowerCase()));
     }
     function policyRow(policy) {
-        return `<article class="fr-group"><b>${escape(policy.field)}</b><div class="fr-value">${escape(policy.value)}</div><p>${escape(policy.actor)} · ${escape(policy.created_at)} · 적용 시작 ${escape(policy.date)}</p><p>${escape(policy.reason)}</p><button data-fr="evidence" data-event="${policy.event_id}">확인 근거 보기</button> <button data-fr="revoke" data-key="${policy.key}">등록 취소</button></article>`;
+        return `<article class="fr-group"><b>${escape(policy.field)}</b><div class="fr-value">${escape(policy.value)}</div><p>${escape(policy.origin_product || state.data.context.product)}에서 등록 · ${escape(policy.actor)} · ${escape(policy.created_at)} · 적용 시작 ${escape(policy.date)}</p><p>${escape(policy.reason)}</p><button data-fr="evidence" data-event="${policy.event_id}">확인 근거 보기</button> <button data-fr="revoke" data-key="${policy.key}">등록 취소</button></article>`;
     }
     function renderGroups() {
         if (!state.data || !el('groups')) return;
@@ -97,7 +97,7 @@
         if (state.evidenceDetail) {
             renderEvidence();
         } else if (state.tab === 'history') {
-            el('groups').innerHTML = `<p class="fr-note">최근 ${state.data.history.length}건 · 확인 근거에서 처리 당시 상품·URL과 캡처를 볼 수 있습니다. 취소된 처리도 기록을 보존합니다.</p>` + (state.data.history.map(e=>`<article class="fr-event"><b>${escape(actionLabels[e.action] || e.action)} · ${e.count}건 / ${e.groups}개 값 ${e.is_del?'(취소됨)':''}</b><p>${escape(e.actor)} · ${escape(e.created_at)} · 조회일 ${escape(e.inspection_date)}</p><p>${escape(e.reason)}</p><button data-fr="evidence" data-event="${e.id}">확인 근거 보기 · 캡처 ${e.capture_count}장</button> ${!e.is_del&&e.action!=='undo'?`<button data-fr="undo" data-event="${e.id}">이 처리 취소</button>`:''}</article>`).join('') || '<p>처리 이력이 없습니다.</p>');
+            el('groups').innerHTML = `<p class="fr-note">최근 ${state.data.history.length}건 · 확인 근거에서 처리 당시 상품·URL과 캡처를 볼 수 있습니다. 취소된 처리도 기록을 보존합니다.</p>` + (state.data.history.map(e=>`<article class="fr-event"><b>${escape(actionLabels[e.action] || e.action)} · ${e.count}건 / ${e.groups}개 값 ${e.is_del?'(취소됨)':''}</b><p>${escape(e.origin_product || state.data.context.product)}에서 처리 · ${escape(e.actor)} · ${escape(e.created_at)} · 조회일 ${escape(e.inspection_date)}</p><p>${escape(e.reason)}</p><button data-fr="evidence" data-event="${e.id}">확인 근거 보기 · 캡처 ${e.capture_count}장</button> ${!e.is_del&&e.action!=='undo'?`<button data-fr="undo" data-event="${e.id}">이 처리 취소</button>`:''}</article>`).join('') || '<p>처리 이력이 없습니다.</p>');
         } else if (state.tab === 'registered') {
             const policies = state.data.registrations.filter(p => (!state.field || p.field === state.field) && p.value.toLowerCase().includes(state.search.toLowerCase()));
             el('groups').innerHTML = policies.filter(p=>p.action==='normal').map(policyRow).join('') || '<p>등록한 정상 값이 없습니다.</p>';
@@ -112,7 +112,7 @@
     function renderSelection() {
         const groups = state.data.groups.filter(g=>state.selected.has(g.key));
         el('selected').innerHTML = state.tab==='history' ? '<b>처리 취소</b>' : `<strong>${groups.reduce((n,g)=>n+g.count,0)}건</strong> / ${groups.length}개 값 선택`;
-        el('selected').nextElementSibling.textContent=state.tab==='history' ? '취소 사유를 입력한 뒤, 취소할 이력의 ‘이 처리 취소’를 누르세요. 저장된 확인 근거는 보존됩니다.' : '정상·오류 처리는 선택한 범위의 정확히 같은 값에 적용되며 원본 값은 수정하지 않습니다. 등록 취소 시에도 아래에 사유를 입력하세요.';
+        el('selected').nextElementSibling.textContent=state.tab==='history' ? '취소 사유를 입력한 뒤, 취소할 이력의 ‘이 처리 취소’를 누르세요. 저장된 확인 근거는 보존됩니다.' : '정상 등록·등록 취소는 같은 국가·리테일러·컬럼의 TV·REF·LDY·LDY_DRYER에 공유됩니다. 오류 확정은 현재 상품군에 적용하며 원본 값은 수정하지 않습니다. 등록 취소 시에도 아래에 사유를 입력하세요.';
         dialog.querySelectorAll('[data-fr="preview"]').forEach(b=>b.disabled=!groups.length || !state.data.available || state.busy || state.uploading || ['registered','history'].includes(state.tab));
         const records = new Map(groups.flatMap(g=>g.records).filter(r=>safeURL(r.url)).map(r=>[r.url,r]));
         state.checkedURLs = new Set([...state.checkedURLs].filter(url=>records.has(url)));
@@ -171,7 +171,7 @@
         if (seq!==sequence || version!==state.previewVersion) return;
         state.preview=preview;
         el('preview').hidden=false;
-        el('preview').innerHTML=`<h3>${escape(actionLabels[decision])} 미리보기</h3><p><b>${preview.count}건 / ${preview.groups}개 값</b> · 수집일 ${escape(preview.source_date)}</p><p>${escape(preview.scope.country)} / ${escape(state.retailer)} / ${escape(preview.scope.product)}</p>${preview.targets.map(t=>`<p><b>${escape(t.field)}</b> · ${escape(t.value)} · ${t.count}건</p>`).join('')}<p>${decision==='normal'?'같은 범위의 동일 값은 다음 수집에도 정상으로 인정합니다.':decision==='error'?'같은 오류 값은 다음 수집에서 재검증하며, 값이 바뀌면 기존 검증 기준으로 판단합니다.':'등록 기준을 취소하고 다시 검증합니다.'}</p><button data-fr="apply">${preview.count}건에 적용</button><button data-fr="cancel-preview">닫기</button>`;
+        el('preview').innerHTML=`<h3>${escape(actionLabels[decision])} 미리보기</h3><p><b>${preview.count}건 / ${preview.groups}개 값</b> · 수집일 ${escape(preview.source_date)}</p><p>${escape(preview.scope.country)} / ${escape(state.retailer)} / ${escape(preview.scope.product)}</p>${preview.targets.map(t=>`<p><b>${escape(t.field)}</b> · ${escape(t.value)} · ${t.count}건</p>`).join('')}<p>${decision==='normal'?'같은 국가·리테일러·컬럼의 동일 값은 TV·REF·LDY·LDY_DRYER에 함께 적용하며 다음 수집에도 정상으로 인정합니다.':decision==='error'?'같은 오류 값은 다음 수집에서 재검증하며, 값이 바뀌면 기존 검증 기준으로 판단합니다.':'등록 기준을 취소하고 다시 검증합니다. 정상 등록 취소는 공유하는 모든 상품군에 반영됩니다.'}</p><button data-fr="apply">${preview.count}건에 적용</button><button data-fr="cancel-preview">닫기</button>`;
         el('preview').insertAdjacentHTML('afterbegin', `<p>확인 URL ${preview.checked_urls.length}개 · 캡처 ${preview.capture_count}장 · 사유: ${escape(reason)}</p>`);
     }
     function evidencePayload() {
@@ -247,7 +247,7 @@
             if(action==='undo'){
                 const reason=el('reason').value.trim();
                 if(!reason){message('처리 취소 사유를 입력하세요.');el('reason').focus();return;}
-                await mutate({action:'undo',event_id:Number(b.dataset.event),revision:state.data.revision,reason});
+                await mutate({action:'undo',event_id:Number(b.dataset.event),revision:state.data.revision,shared_revision:state.data.shared_revision,reason});
             }
         } catch(error){message(error.message);}
     }

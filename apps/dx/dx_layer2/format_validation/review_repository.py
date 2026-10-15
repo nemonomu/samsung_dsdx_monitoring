@@ -34,19 +34,29 @@ def history(scope, limit=100):
         'is_del': row.is_del, 'count': sum(t['count'] for t in row.targets),
         'groups': len(row.targets),
         'capture_count': row.capture_count,
+        'shared_normal': row.action == 'normal' or (row.action in ('revoke', 'undo')
+                         and any(t.get('shared_normal', True) for t in row.targets)),
     } for row in scope.formatreviewevent_set.annotate(capture_count=Count('captures')).order_by('-id')[:limit]]
 
 
 @transaction.atomic
-def save(context, fingerprint, revision, action, targets, reason, actor, day, evidence=None):
+def save(context, fingerprint, revision, action, targets, reason, actor, day, evidence=None,
+         expected_shared_revision=None):
     from apps.dx.dx_layer2.models import FormatReviewScope, FormatReviewEvent, FormatReviewCapture
     evidence = evidence or {'checked_urls': [], 'captures': []}
+    if expected_shared_revision is not None:
+        from .review_service import shared_revision
+        current = {row.fingerprint: row for row in FormatReviewScope.objects.select_for_update()}
+        if shared_revision(context, current) != expected_shared_revision:
+            raise ReviewConflict('다른 상품군의 정상 기준이 변경됐습니다. 다시 확인하세요.')
     scope, _ = FormatReviewScope.objects.get_or_create(
         fingerprint=fingerprint, defaults={'context': context},
     )
     if scope.revision != revision:
         raise ReviewConflict('다른 사용자의 처리가 반영됐습니다. 새로 조회한 뒤 다시 확인하세요.')
     policies = dict(scope.policies)
+    targets = [{**t, 'shared_normal': action == 'normal' or
+                (action == 'revoke' and t.get('shared_normal', True))} for t in targets]
     previous = {target['key']: policies.get(target['key']) for target in targets}
     event = FormatReviewEvent.objects.create(
         scope=scope, inspection_date=day, action=action, actor=actor,
@@ -66,6 +76,7 @@ def save(context, fingerprint, revision, action, targets, reason, actor, day, ev
             'record_ids': [r['id'] for r in target['records']],
             'created_at': timezone.localtime(event.created_at).strftime('%Y-%m-%d %H:%M:%S'),
             'is_del': action == 'revoke',
+            'shared_normal': action == 'normal' or (action == 'revoke' and target.get('shared_normal', True)),
         }
     updated = FormatReviewScope.objects.filter(pk=scope.pk, revision=revision).update(
         policies=policies, revision=revision + 1,
@@ -98,14 +109,23 @@ def capture(capture_id, environment):
 
 
 @transaction.atomic
-def undo(fingerprint, revision, event_id, actor, reason):
+def undo(fingerprint, revision, event_id, actor, reason, expected_shared_revision=None):
     from apps.dx.dx_layer2.models import FormatReviewScope, FormatReviewEvent
-    scope = FormatReviewScope.objects.get(fingerprint=fingerprint)
+    current_scopes = {row.fingerprint: row for row in FormatReviewScope.objects.select_for_update()}
+    scope = current_scopes[fingerprint]
+    if expected_shared_revision is not None:
+        from .review_service import shared_revision
+        if shared_revision(scope.context, current_scopes) != expected_shared_revision:
+            raise ReviewConflict('다른 상품군의 정상 기준이 변경됐습니다. 다시 확인하세요.')
     if scope.revision != revision:
         raise ReviewConflict('기준이 변경됐습니다. 새로 조회하세요.')
     event = scope.formatreviewevent_set.filter(pk=event_id, is_del=False).first()
     if not event or event.action == 'undo':
         raise ReviewConflict('취소할 처리를 찾을 수 없습니다.')
+    from .review_service import effective_policies
+    current = effective_policies(scope.context, current_scopes)
+    if any(current.get(t['key'], {}).get('event_id', 0) > event.pk for t in event.targets):
+        raise ReviewConflict('다른 상품군에서 이후 변경한 기준이 있습니다. 해당 기준을 개별 취소하세요.')
     policies = dict(scope.policies)
     if any(policies.get(t['key'], {}).get('event_id') != event.pk for t in event.targets):
         raise ReviewConflict('이후 변경된 기준이 있습니다. 해당 기준을 개별 취소하세요.')

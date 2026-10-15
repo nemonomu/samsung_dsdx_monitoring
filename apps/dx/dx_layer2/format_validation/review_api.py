@@ -27,7 +27,8 @@ def reviews(request):
             data = service.inventory(cursor, day, table, retailer)
         if request.method == 'GET':
             if body.get('event_id'):
-                response = JsonResponse(repository.evidence_detail(data['fingerprint'], int(body['event_id'])))
+                event_id = int(body['event_id'])
+                response = JsonResponse(repository.evidence_detail(service.event_origin(data, event_id), event_id))
                 response['Cache-Control'] = 'private, no-store'
                 return response
             return JsonResponse(data)
@@ -44,8 +45,16 @@ def reviews(request):
             revision, event_id = body.get('revision'), body.get('event_id')
             if type(revision) is not int or type(event_id) is not int or revision < 0 or event_id < 1:
                 raise ValueError('취소할 처리 정보가 올바르지 않습니다.')
-            repository.undo(data['fingerprint'], revision, event_id, request.user.get_username(),
-                            service.validate_reason(body.get('reason')))
+            if body.get('shared_revision') != data['shared_revision'] or revision != data['revision']:
+                raise repository.ReviewConflict('공유 기준이 변경됐습니다. 새로 조회하세요.')
+            origin = service.event_origin(data, event_id)
+            event = next((e for e in data['history'] if e['id'] == event_id), None)
+            if not event:
+                raise ValueError('취소할 처리 이력을 찾을 수 없습니다.')
+            origin_revision = event['origin_revision']
+            repository.undo(origin, origin_revision, event_id, request.user.get_username(),
+                            service.validate_reason(body.get('reason')),
+                            expected_shared_revision=data['shared_revision'])
             return JsonResponse({'success': True})
         raise ValueError('지원하지 않는 처리입니다.')
     except repository.ReviewConflict as exc:

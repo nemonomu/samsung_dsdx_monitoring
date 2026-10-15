@@ -201,6 +201,10 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
             table = f'{product}_retail_com'
             migration = (root / f'sql/update_lowes_{product}_discount_pickup.sql').read_text(encoding='utf-8')
             patterns = re.findall(r'\$pattern\$(.*?)\$pattern\$', migration, re.S)
+            # The later pickup migration supersedes the pickup part of these
+            # historical discount/pickup migrations.
+            latest = (root / 'sql/update_lowes_pickup_patterns.sql').read_text(encoding='utf-8')
+            patterns[1] = latest.split('$pattern$')[1]
             expected = [row['pattern'] for row in self.rules
                         if row['table_name'] == table and row['account_name'] == 'Lowes'
                         and row['column_name'] in cases]
@@ -209,9 +213,9 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
                 self.assertIn(f"product.table_name = '{table}' AND rule.column_name = '{field}'", seed)
             self.assertIn(f"WHERE table_name = '{table}' AND account_name = 'Lowes'", migration)
 
-    def test_pickup_est_migration_matches_seed_and_targets_only_lowes_pickup(self):
+    def test_pickup_pattern_migration_matches_seed_and_targets_only_lowes_pickup(self):
         root = Path(__file__).resolve().parents[2]
-        migration = (root / 'sql/update_lowes_pickup_est.sql').read_text(encoding='utf-8')
+        migration = (root / 'sql/update_lowes_pickup_patterns.sql').read_text(encoding='utf-8')
         pattern, = re.findall(r'\$pattern\$(.*?)\$pattern\$', migration, re.S)
         for table in ('ref_retail_com', 'ldy_retail_com'):
             rule, = [r for r in self.rules if r['table_name'] == table
@@ -226,14 +230,15 @@ class SeaApplianceFormatRuleTests(unittest.TestCase):
         cases = {
             'pick_up_availability': (
                 ('Pickup Ready Today', 'Pickup Ready by Tue, Sep 22', 'Pickup Ready by Wed, Oct 1',
-                 'Pickup Ready by Wed, Oct 7 (Est.)', 'Pickup Ready by Tue, Sep 29 (Est.)'),
+                 'Pickup Ready by Wed, Oct 7 (Est.)', 'Pickup Ready by Tue, Sep 29 (Est.)',
+                 'Pickup Wed, Oct 7 (Est.)'),
                 ('Pick up today', 'Pick up tomorrow', 'Pickup Ready today', 'Pickup Ready by Tue, Sep 0',
                  'Pickup Ready by Tue, Sep 32', 'Pickup Ready by Tue, 9 22',
                  'Pickup Ready by XXX, Sep 22', 'Pickup Ready Today extra',
                  'Pickup Ready Today (Est.)', 'Pickup Ready Tomorrow (Est.)',
                  'Pickup Ready by Wed, Oct 7 (Est)', 'Pickup Ready by Wed, Oct 7 (EstX)',
                  'Pickup Ready by Wed, Oct 7 (Est.) extra', 'Pickup Ready by Wed, Oct 32 (Est.)',
-                 'Pickup Ready by Wed, Oct 7 (Est.) (Est.)', 'Pickup Wed, Oct 7 (Est.)'),
+                 'Pickup Ready by Wed, Oct 7 (Est.) (Est.)'),
             ),
             'delivery_availability': (
                 ('Delivery Sat, Sep 19', 'Shipping Mon, Sep 21', 'Delivery w/FREE Installation',

@@ -176,7 +176,7 @@ class FormatReviewTests(TestCase):
 
     def test_scope_and_exact_text_boundaries(self):
         self.apply()
-        for changes in [{'retailer':'Amazon'}, {'table':'sea_ldy_retail'}, {'actual_table':'test_ref_retail_com'}]:
+        for changes in [{'retailer':'Amazon'}, {'table':'seg_ref_retail'}, {'actual_table':'test_ref_retail_com'}]:
             data={**self.raw,**changes}
             self.assertIn('pick_up_availability',service.apply_detail(data,repo.scopes())['results'][0]['error_fields'])
         for value in ['Pickup Ready by 9am Tomorrow ', 'pickup ready by 9am tomorrow']:
@@ -242,9 +242,144 @@ class FormatReviewTests(TestCase):
                   'column_name':'pick_up_availability','status':'normal','reason':'과거 확인'}]
         types,reasons,tables={},{},{}
         reasons=[]
-        service.merge_report(None,DAY,types,reasons,tables,details)
+        stats = {'tables': [{'table': 'sea_ref_retail', 'retailers': [{'retailer': 'Lowes'}]}]}
+        with patch.object(services, '_get_format_stats_raw', return_value=(stats, 0)):
+            service.merge_report(None,DAY,types,reasons,tables,details)
         self.assertEqual({'normal':3,'error':1},types['format_check'])
         self.assertEqual(4,len(details))
+
+    def change_product(self, product, country='sea'):
+        self.raw['table'] = 'tv_retail' if country == 'sea' and product == 'tv' else f'{country}_{product}_retail'
+        self.raw['actual_table'] = f'public.{product}_retail_com' if country == 'sea' else f'public.{country}_{product}_retail'
+
+    def test_existing_normal_shared_across_all_products_and_country_isolated(self):
+        self.apply()
+        original = FormatReviewEvent.objects.get()
+        for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+            self.change_product(product)
+            with self.subTest(product=product):
+                self.assertTrue(service.has_scope(repo.scopes(), self.raw['table'], 'Lowes', DAY))
+                data = self.inventory()
+                group = next(g for g in data['groups'] if g['value'] == 'Pickup Ready by 9am Tomorrow')
+                self.assertEqual({'registered_normal': 3}, group['states'])
+                self.assertEqual('REF', data['registrations'][0]['origin_product'])
+                self.assertEqual(original.pk, data['history'][0]['id'])
+                origin = service.event_origin(data, original.pk)
+                self.assertEqual('REF', repo.evidence_detail(origin, original.pk)['context']['product'])
+        self.change_product('ref', 'seg')
+        self.assertFalse(service.has_scope(repo.scopes(), self.raw['table'], 'Lowes', DAY))
+        self.assertEqual([], self.inventory()['registrations'])
+        self.assertEqual([], self.inventory()['history'])
+        self.assertEqual(1, FormatReviewEvent.objects.count())
+
+    def test_german_dryer_normal_shared_with_tv_same_column_only(self):
+        self.change_product('ldy_dryer', 'seg')
+        self.raw['retailer'] = 'Expert'
+        data = service.inventory(None, DAY, self.raw['table'], 'Expert')
+        key = service.group_key('pick_up_availability', 'Pickup Ready Today')
+        preview = service.preview(data, [key], 'normal', 'Confirmed on retailer page')
+        service.commit(data, preview['token'], 'reviewer')
+        self.change_product('tv', 'seg')
+        self.raw['results'][0]['pick_up_availability'] = 'Pickup Ready Today'
+        self.raw['results'][0]['final_sku_price'] = 'Pickup Ready Today'
+        result = service.apply_detail(self.raw, repo.scopes())
+        self.assertEqual('registered_normal', result['results'][0]['review_states']['pick_up_availability'])
+        self.assertIn('final_sku_price', result['results'][0]['error_fields'])
+
+    def test_shared_revoke_and_undo_restore_all_products(self):
+        self.apply()
+        self.change_product('ldy')
+        self.apply(action='revoke')
+        revocation = FormatReviewEvent.objects.latest('pk')
+        for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+            self.change_product(product)
+            self.assertEqual([], self.inventory()['registrations'])
+            self.assertIn('pick_up_availability', service.apply_detail(self.raw, repo.scopes())['results'][0]['error_fields'])
+        repo.undo(revocation.scope.fingerprint, revocation.scope.revision, revocation.pk, 'reviewer', 'Restore approval')
+        self.assertEqual('registered_normal', service.apply_detail(self.raw, repo.scopes())['results'][0]['review_states']['pick_up_availability'])
+
+    def test_other_product_changes_invalidate_preview_and_old_undo(self):
+        self.apply()
+        first = FormatReviewEvent.objects.get()
+        self.change_product('ldy')
+        data = self.inventory()
+        key = service.group_key('pick_up_availability', 'Pickup Ready Today')
+        preview = service.preview(data, [key], 'normal', 'Confirm')
+        self.change_product('ref')
+        self.apply()
+        self.change_product('ldy')
+        with self.assertRaises(repo.ReviewConflict):
+            service.commit(self.inventory(), preview['token'], 'reviewer')
+        with self.assertRaises(repo.ReviewConflict):
+            service.commit(data, preview['token'], 'reviewer')
+        scope = FormatReviewScope.objects.get(pk=first.scope_id)
+        with self.assertRaises(repo.ReviewConflict):
+            repo.undo(scope.fingerprint, scope.revision, first.pk, 'reviewer', 'Undo old approval')
+
+    def test_error_is_local_and_shared_revoke_does_not_clear_it(self):
+        self.apply()
+        self.change_product('ldy')
+        self.apply(action='error')
+        self.change_product('ref')
+        self.assertEqual('registered_normal', service.apply_detail(self.raw, repo.scopes())['results'][0]['review_states']['pick_up_availability'])
+        self.apply(action='revoke')
+        self.change_product('ldy')
+        self.assertEqual('error', service.apply_detail(self.raw, repo.scopes())['results'][0]['review_states']['pick_up_availability'])
+        self.apply(action='revoke')
+        self.assertEqual([], self.inventory()['registrations'])
+
+    def test_future_approval_and_missing_field_do_not_apply(self):
+        self.apply()
+        self.change_product('ldy')
+        self.raw['date'] = '2026-10-10'
+        self.assertIn('pick_up_availability', service.apply_detail(self.raw, repo.scopes())['results'][0]['error_fields'])
+        self.raw['date'] = str(DAY)
+        self.raw['validation_fields'] = ['final_sku_price']
+        self.assertNotIn('pick_up_availability', service.apply_detail(self.raw, repo.scopes())['results'][0]['review_states'])
+
+    def test_shared_evidence_and_undo_api(self):
+        self.apply()
+        event = FormatReviewEvent.objects.get()
+        self.change_product('ldy')
+        data = self.inventory()
+        factory = RequestFactory()
+        params = {'date': str(DAY), 'table': self.raw['table'], 'retailer': 'Lowes'}
+        with patch.object(review_api, 'dx_connection', connection_stub), patch.object(review_api.timezone, 'localdate', return_value=DAY):
+            req = factory.get('/reviews/', {**params, 'event_id': event.pk})
+            req.user = SimpleNamespace(is_authenticated=True, get_username=lambda: 'reviewer')
+            response = review_api.reviews(req)
+            self.assertEqual(200, response.status_code)
+            self.assertEqual('REF', json.loads(response.content)['context']['product'])
+            body = {**params, 'action': 'undo', 'event_id': event.pk, 'revision': data['revision'],
+                    'shared_revision': 'stale', 'reason': 'Undo from another product'}
+            req = factory.post('/reviews/', data=json.dumps(body), content_type='application/json')
+            req.user = SimpleNamespace(is_authenticated=True, get_username=lambda: 'reviewer')
+            self.assertEqual(409, review_api.reviews(req).status_code)
+            body['shared_revision'] = data['shared_revision']
+            req = factory.post('/reviews/', data=json.dumps(body), content_type='application/json')
+            req.user = SimpleNamespace(is_authenticated=True, get_username=lambda: 'reviewer')
+            self.assertEqual(200, review_api.reviews(req).status_code)
+        self.assertEqual([], self.inventory()['registrations'])
+        event.refresh_from_db()
+        self.assertTrue(event.is_del)
+
+    def test_shared_report_uses_destination_table_and_deduplicates(self):
+        self.apply()
+        stats = {'tables': [{'table': f'sea_{product}_retail', 'retailers': [{'retailer': 'Lowes'}]}
+                            for product in ('ref', 'ldy')]}
+        def load(_cursor, _day, table, *_args, **_kwargs):
+            raw = copy.deepcopy(self.raw)
+            raw['table'] = table
+            raw['actual_table'] = 'public.ldy_retail_com' if table == 'sea_ldy_retail' else 'public.ref_retail_com'
+            return raw
+        types, reasons, tables, details = {}, [], {}, []
+        with patch.object(services, '_get_format_stats_raw', return_value=(stats, 0)), \
+             patch.object(services, '_get_format_detail_raw', side_effect=load):
+            service.merge_report(None, DAY, types, reasons, tables, details)
+            service.merge_report(None, DAY, types, reasons, tables, details)
+        self.assertEqual(6, len(details))
+        self.assertEqual({'normal': 6}, types['format_check'])
+        self.assertEqual({'public.ref_retail_com', 'public.ldy_retail_com'}, {r['table_name'] for r in details})
 
     def test_api_authentication_and_invalid_request(self):
         factory=RequestFactory()
@@ -304,7 +439,7 @@ class FormatReviewTests(TestCase):
             data=services._get_format_detail_raw(cursor,DAY,'tv_retail','Amazon',3,include_normal=True)
         self.assertEqual([2],data['target_ids'])
         context=service.context_for(data)
-        scopes={service.digest(context):SimpleNamespace(revision=1,policies={
+        scopes={service.digest(context):SimpleNamespace(context=context,revision=1,policies={
             service.group_key('final_sku_price','bad'):{'action':'normal','date':str(DAY)}})}
         result=service.apply_detail(data,scopes,errors_only=True)
         self.assertEqual({'item (참조 무결성)':1},result['field_counts'])
