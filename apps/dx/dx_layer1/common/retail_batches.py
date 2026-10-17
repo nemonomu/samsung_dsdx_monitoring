@@ -3,6 +3,8 @@
 from collections.abc import Mapping
 from datetime import date, timedelta
 
+from apps.common.source_dates import source_date_sql
+
 
 RETAIL_CHECK_TYPES = frozenset({
     'retail', 'seda_retail', 'siel_retail', 'seg_retail',
@@ -53,18 +55,13 @@ def _scope(check_type, product_line, source_date):
         params = (str(day), SIEL_BUSINESS_TIMEZONE,
                   str(day), SIEL_BUSINESS_TIMEZONE)
     elif check_type == 'retail' and source['product_key'] == 'tv':
-        from apps.dx.dx_layer1.retail.costco import query_date_sql
-        stamp = f"CASE WHEN {account} = 'costco' THEN ({query_date_sql(column)})::timestamp ELSE {column}::timestamp END"
+        stamp = f"CASE WHEN {account} = 'costco' THEN ({source_date_sql(column)})::timestamp ELSE {column}::timestamp END"
         condition = f'{stamp} >= %s::timestamp AND {stamp} < %s::timestamp'
         params = (str(day), str(day + timedelta(days=1)))
-    elif check_type == 'retail':
-        from apps.common.sea_dates import appliance_query_date_sql
-        from apps.dx.dx_layer1.retail.costco import query_date_sql
-        day_sql = f"CASE WHEN {account} = 'costco' THEN {query_date_sql(column)} ELSE {appliance_query_date_sql(column)} END"
-        condition = f'({day_sql}) = %s'
-        params = (str(day),)
     else:
-        condition = f'LEFT(BTRIM(CAST({column} AS TEXT)), 10) = %s'
+        # Monitoring membership uses the recorded day, independently of the
+        # time zone used to display a batch's start/end timestamps below.
+        condition = f'{source_date_sql(column)} = %s'
         params = (str(day),)
 
     return source, account, condition, params
@@ -193,9 +190,9 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if row['batch_id'] is not None:
             query_params.append(row['batch_id'])
         copy_date_scope = f'{column} >= %s'
-        if is_costco:
-            from apps.dx.dx_layer1.retail.costco import query_date_sql
-            copy_date_scope = f'({query_date_sql(column)}) = %s'
+        if check_type == 'retail' and key in ('costco', 'homedepot'):
+            # Reproduce the displayed batch's monitoring date in its copy SQL.
+            copy_date_scope = f'{source_date_sql(column)} = %s'
         query = f"""SELECT *
 FROM {source['table_name']}
 WHERE {copy_date_scope}

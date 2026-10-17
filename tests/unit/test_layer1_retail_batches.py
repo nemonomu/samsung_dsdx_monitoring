@@ -2,6 +2,8 @@ import unittest
 from copy import deepcopy
 from unittest.mock import Mock, patch
 
+from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.source_dates import source_date_sql
 from apps.dx.dx_layer1.common import retail_batches as batches
 
 
@@ -59,7 +61,7 @@ class RetailBatchTests(unittest.TestCase):
             ('seg_retail', 'seg_ldy', 'dx_seg.dx_seg_ldy_retail_com', 'crawl_strdatetime'),
             ('sem_retail', 'sem_ref', 'dx_sem.dx_sem_ref_retail_com', 'crawl_datetime'),
             ('tse_retail', 'tse_tv', 'dx_tse.dx_tse_tv_retail_com', 'crawl_datetime'),
-            ('retail', 'ref', 'public.ref_retail_com', 'America/New_York'),
+            ('retail', 'ref', 'public.ref_retail_com', 'crawl_strdatetime'),
         ]
         for check_type, product, table, date_rule in cases:
             with self.subTest(check_type=check_type):
@@ -74,6 +76,51 @@ class RetailBatchTests(unittest.TestCase):
                 self.assertEqual('2026-09-20', params[0])
                 if check_type == 'siel_retail':
                     self.assertEqual(('2026-09-20', 'Asia/Seoul', '2026-09-20', 'Asia/Seoul'), params)
+                else:
+                    self.assertNotIn('AT TIME ZONE', sql)
+                    self.assertNotIn('timestamptz', sql)
+
+    def test_sea_batch_membership_uses_original_day_for_every_product(self):
+        for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+            for inspection_day, source_day in (
+                ('2026-10-15', '2026-10-14'),
+                ('2027-01-01', '2026-12-31'),
+            ):
+                with self.subTest(product=product, inspection_day=inspection_day):
+                    contract = resolve_monitoring_date(inspection_day, 'SEA', 'sea_' + product)
+                    self.assertEqual(source_day, contract['source_date'])
+                    source, _, condition, params = batches._scope(
+                        'retail', product, contract['source_date'])
+                    self.assertIn(source_date_sql(source['date_column']), condition)
+                    self.assertNotRegex(condition, r'AT TIME ZONE|timestamptz|batch_id')
+                    self.assertEqual(source_day, params[0])
+
+    def test_costco_and_homedepot_details_and_copy_sql_share_original_date(self):
+        for retailer, products in (
+            ('Costco', ('tv', 'ref', 'ldy', 'ldy_dryer')),
+            ('HomeDepot', ('ref', 'ldy', 'ldy_dryer')),
+        ):
+            for product in products:
+                with self.subTest(retailer=retailer, product=product):
+                    cursor = Mock()
+                    # A batch ID may retain a different day after a source correction.
+                    cursor.fetchall.return_value = [{'batch_id': 'c20261016_203216'}]
+                    cursor.mogrify.return_value = b'SELECT *;'
+                    result = batches.fetch_batch_details(
+                        cursor, 'retail', product, '2026-10-14', retailer)
+                    sql, params = cursor.execute.call_args.args
+                    membership = sql.split('), latest AS')[0]
+                    self.assertNotRegex(membership, r'AT TIME ZONE|timestamptz')
+                    self.assertEqual('2026-10-14', params[0])
+                    self.assertEqual('2026-10-14', result['source_date'])
+                    # Display-time conversion remains independent of membership.
+                    zone = 'Asia/Seoul' if retailer == 'Costco' else 'America/New_York'
+                    self.assertIn(zone, sql)
+                    copy_sql, copy_params = cursor.mogrify.call_args.args
+                    column = 'crawl_datetime' if product in ('tv', 'ldy_dryer') else 'crawl_strdatetime'
+                    self.assertIn(f'WHERE {source_date_sql(column)} = %s', copy_sql)
+                    self.assertNotRegex(copy_sql, r'AT TIME ZONE|timestamptz')
+                    self.assertEqual(('2026-10-14', retailer, 'c20261016_203216'), copy_params)
 
     def test_metadata_uses_category_source_date_and_preserves_validation(self):
         check = {'check_type': 'retail', 'source_date': '2026-09-21', 'status': 'OK', 'categories': [
