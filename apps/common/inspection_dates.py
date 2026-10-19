@@ -42,6 +42,8 @@ SOURCE_COUNTRY_BY_KEY['seg_ldy_dryer'] = 'SEG'
 SOURCE_PRODUCT_BY_KEY['seg_ldy_dryer'] = 'LDY_DRYER'
 SOURCE_COUNTRY_BY_KEY['sea_ldy_dryer'] = 'SEA'
 SOURCE_PRODUCT_BY_KEY['sea_ldy_dryer'] = 'LDY_DRYER'
+SOURCE_COUNTRY_BY_KEY['sem_ldy_dryer'] = 'SEM'
+SOURCE_PRODUCT_BY_KEY['sem_ldy_dryer'] = 'LDY_DRYER'
 
 # SEIB is currently enabled for collection monitoring and NULL validation only.
 for _product in ('tv', 'ref', 'ldy', 'ldy_dryer'):

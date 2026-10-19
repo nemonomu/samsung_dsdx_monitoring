@@ -308,18 +308,22 @@ def _select_sem_record(
     )
     table_name = source['table_name']
     source_date = mapping['source_date']
+    source_day = (source_date_sql('source.crawl_datetime') if source['source_key'] == 'sem_ldy_dryer'
+                  else 'LEFT(BTRIM(source.crawl_datetime), 10)')
+    anchor_day = (source_date_sql('anchor.crawl_datetime') if source['source_key'] == 'sem_ldy_dryer'
+                  else 'LEFT(BTRIM(anchor.crawl_datetime), 10)')
     placeholders = ', '.join(['%s'] * len(source['retailers']))
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
-          AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND {source_day} = %s
           AND UPPER(BTRIM(source.country)) = %s
           AND LOWER(BTRIM(source.account_name)) IN ({placeholders})
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
-              WHERE LEFT(BTRIM(anchor.crawl_datetime), 10) = %s
+              WHERE {anchor_day} = %s
                 AND LOWER(BTRIM(anchor.account_name)) = LOWER(BTRIM(source.account_name))
               ORDER BY anchor.id DESC
               LIMIT 1
@@ -547,6 +551,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         ))
     if retail_context and correction_type == 'cross_field':
         editable_cols = set(editable_cols) | PRICE_EDITABLE_COLUMNS
+        if sem_context:
+            editable_cols &= set(get_sem_editable_columns(product_line, retailer))
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 

@@ -97,7 +97,7 @@ def _backup_error_response(result, default_error):
 
 
 def backup_retail_data(request):
-    """Configured retail TV/REF/LDY integrated backup API.
+    """Configured retail TV/REF/LDY/LDY_DRYER integrated backup API.
 
     GET: 백업 대상 건수 조회
     POST: 백업 실행
@@ -125,12 +125,18 @@ def backup_retail_data(request):
                 'sem_tv_count': result['sem_tv_count'],
                 'sem_ref_count': result['sem_ref_count'],
                 'sem_ldy_count': result['sem_ldy_count'],
+                'sem_ldy_dryer_count': result.get('sem_ldy_dryer_count', 0),
+                'sea_ldy_dryer_count': result.get('sea_ldy_dryer_count', 0),
                 'seg_tv_count': result.get('seg_tv_count', 0),
                 'seg_ref_count': result.get('seg_ref_count', 0),
                 'seg_ldy_count': result.get('seg_ldy_count', 0),
                 'tse_tv_count': result['tse_tv_count'],
                 'tse_ref_count': result['tse_ref_count'],
                 'tse_ldy_count': result['tse_ldy_count'],
+                'seib_tv_count': result.get('seib_tv_count', 0),
+                'seib_ref_count': result.get('seib_ref_count', 0),
+                'seib_ldy_count': result.get('seib_ldy_count', 0),
+                'seib_ldy_dryer_count': result.get('seib_ldy_dryer_count', 0),
                 'hhp_count': 0,
                 'total_count': result['total_count'],
                 'inspection_date': result['inspection_date'],
@@ -159,12 +165,18 @@ def backup_retail_data(request):
                 'sem_tv_count': result['sem_tv']['count'],
                 'sem_ref_count': result['sem_ref']['count'],
                 'sem_ldy_count': result['sem_ldy']['count'],
+                'sem_ldy_dryer_count': result.get('sem_ldy_dryer', {}).get('count', 0),
+                'sea_ldy_dryer_count': result.get('sea_ldy_dryer', {}).get('count', 0),
                 'seg_tv_count': result.get('seg_tv', {}).get('count', 0),
                 'seg_ref_count': result.get('seg_ref', {}).get('count', 0),
                 'seg_ldy_count': result.get('seg_ldy', {}).get('count', 0),
                 'tse_tv_count': result['tse_tv']['count'],
                 'tse_ref_count': result['tse_ref']['count'],
                 'tse_ldy_count': result['tse_ldy']['count'],
+                'seib_tv_count': result.get('seib_tv', {}).get('count', 0),
+                'seib_ref_count': result.get('seib_ref', {}).get('count', 0),
+                'seib_ldy_count': result.get('seib_ldy', {}).get('count', 0),
+                'seib_ldy_dryer_count': result.get('seib_ldy_dryer', {}).get('count', 0),
             }
             message = (
                 f"백업 완료 - SEA TV: {counts['tv_count']}건, "
@@ -179,12 +191,18 @@ def backup_retail_data(request):
                 f"SEM TV: {counts['sem_tv_count']}건, "
                 f"SEM REF: {counts['sem_ref_count']}건, "
                 f"SEM LDY: {counts['sem_ldy_count']}건, "
+                f"SEM LDY_DRYER: {counts['sem_ldy_dryer_count']}건, "
+                f"SEA LDY_DRYER: {counts['sea_ldy_dryer_count']}건, "
                 f"SEG TV: {counts['seg_tv_count']}건, "
                 f"SEG REF: {counts['seg_ref_count']}건, "
                 f"SEG LDY: {counts['seg_ldy_count']}건, "
                 f"TSE TV: {counts['tse_tv_count']}건, "
                 f"TSE REF: {counts['tse_ref_count']}건, "
-                f"TSE LDY: {counts['tse_ldy_count']}건"
+                f"TSE LDY: {counts['tse_ldy_count']}건, "
+                f"SEIB TV: {counts['seib_tv_count']}건, "
+                f"SEIB REF: {counts['seib_ref_count']}건, "
+                f"SEIB LDY: {counts['seib_ldy_count']}건, "
+                f"SEIB LDY_DRYER: {counts['seib_ldy_dryer_count']}건"
             )
             return JsonResponse({
                 'success': True,

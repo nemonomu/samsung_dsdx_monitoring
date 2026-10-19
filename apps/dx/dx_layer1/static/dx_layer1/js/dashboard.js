@@ -248,7 +248,9 @@ function formatBackupSourceDate(sourceDates, keys) {
     if (dates.every(function(date) { return date === dates[0]; })) {
         return dates[0];
     }
-    return 'TV ' + dates[0] + ' · REF ' + dates[1] + ' · LDY ' + dates[2];
+    return keys.map(function(key, index) {
+        return key.replace(/^[^_]+_/, '').toUpperCase() + ' ' + dates[index];
+    }).join(' · ');
 }
 
 function formatBackupPrompt(data) {
@@ -267,12 +269,18 @@ function formatBackupPrompt(data) {
             Number(data.sem_tv_count || 0) +
             Number(data.sem_ref_count || 0) +
             Number(data.sem_ldy_count || 0) +
+            Number(data.sem_ldy_dryer_count || 0) +
+            Number(data.sea_ldy_dryer_count || 0) +
             Number(data.seg_tv_count || 0) +
             Number(data.seg_ref_count || 0) +
             Number(data.seg_ldy_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
-            Number(data.tse_ldy_count || 0);
+            Number(data.tse_ldy_count || 0) +
+            Number(data.seib_tv_count || 0) +
+            Number(data.seib_ref_count || 0) +
+            Number(data.seib_ldy_count || 0) +
+            Number(data.seib_ldy_dryer_count || 0);
     }
 
     return [
@@ -281,11 +289,12 @@ function formatBackupPrompt(data) {
         '검수일  ' + (data.inspection_date || '-'),
         '',
         'SEA · D-1 데이터 · ' + formatBackupSourceDate(
-            sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy']
+            sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy', 'sea_ldy_dryer']
         ),
         'TV ' + formatBackupCount(data.tv_count) +
             '  ·  REF ' + formatBackupCount(data.sea_ref_count) +
-            '  ·  LDY ' + formatBackupCount(data.sea_ldy_count),
+            '  ·  LDY ' + formatBackupCount(data.sea_ldy_count) +
+            '  ·  LDY_DRYER ' + formatBackupCount(data.sea_ldy_dryer_count),
         '',
         'SEDA · D-1 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['seda_tv', 'seda_ref', 'seda_ldy']
@@ -295,11 +304,12 @@ function formatBackupPrompt(data) {
             '  ·  LDY ' + formatBackupCount(data.seda_ldy_count),
         '',
         'SEM · D 데이터 · ' + formatBackupSourceDate(
-            sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']
+            sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer']
         ),
         'TV ' + formatBackupCount(data.sem_tv_count) +
             '  ·  REF ' + formatBackupCount(data.sem_ref_count) +
-            '  ·  LDY ' + formatBackupCount(data.sem_ldy_count),
+            '  ·  LDY ' + formatBackupCount(data.sem_ldy_count) +
+            '  ·  LDY_DRYER ' + formatBackupCount(data.sem_ldy_dryer_count),
         '',
         'SIEL · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['siel_tv', 'siel_ref', 'siel_ldy']
@@ -321,6 +331,14 @@ function formatBackupPrompt(data) {
         'TV ' + formatBackupCount(data.tse_tv_count) +
             '  ·  REF ' + formatBackupCount(data.tse_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.tse_ldy_count),
+        '',
+        'SEIB · D 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer']
+        ),
+        'TV ' + formatBackupCount(data.seib_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.seib_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.seib_ldy_count) +
+            '  ·  LDY_DRYER ' + formatBackupCount(data.seib_ldy_dryer_count),
         '',
         '총 ' + formatBackupCount(totalCount),
         '',
@@ -347,12 +365,18 @@ function renderBackupConfirmContent(data) {
             Number(data.sem_tv_count || 0) +
             Number(data.sem_ref_count || 0) +
             Number(data.sem_ldy_count || 0) +
+            Number(data.sem_ldy_dryer_count || 0) +
+            Number(data.sea_ldy_dryer_count || 0) +
             Number(data.seg_tv_count || 0) +
             Number(data.seg_ref_count || 0) +
             Number(data.seg_ldy_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
-            Number(data.tse_ldy_count || 0);
+            Number(data.tse_ldy_count || 0) +
+            Number(data.seib_tv_count || 0) +
+            Number(data.seib_ref_count || 0) +
+            Number(data.seib_ldy_count || 0) +
+            Number(data.seib_ldy_dryer_count || 0);
     }
 
     function element(tagName, text, styles) {
@@ -363,7 +387,7 @@ function renderBackupConfirmContent(data) {
     }
 
     function countryCard(country, offsetLabel, sourceDate, counts) {
-        var flagCodes = { SEA: 'us', SEDA: 'br', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th' };
+        var flagCodes = { SEA: 'us', SEDA: 'br', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th', SEIB: 'es' };
         var card = element('div', null,
             'border:1px solid #e2e8f0;border-radius:10px;padding:13px 14px;background:#fff;');
         var header = element('div', null,
@@ -388,7 +412,7 @@ function renderBackupConfirmContent(data) {
         card.appendChild(header);
 
         var countGrid = element('div', null,
-            'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;');
+            'display:grid;grid-template-columns:repeat(' + counts.length + ',minmax(0,1fr));gap:8px;');
         counts.forEach(function(item) {
             var countBox = element('div', null,
                 'padding:8px 6px;border-radius:8px;background:#f8fafc;text-align:center;');
@@ -421,11 +445,12 @@ function renderBackupConfirmContent(data) {
         'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;');
     cards.appendChild(countryCard(
         'SEA', 'D-1',
-        formatBackupSourceDate(sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy']),
+        formatBackupSourceDate(sourceDates, ['sea_tv', 'sea_ref', 'sea_ldy', 'sea_ldy_dryer']),
         [
             { label: 'TV', value: data.tv_count },
             { label: 'REF', value: data.sea_ref_count },
-            { label: 'LDY', value: data.sea_ldy_count }
+            { label: 'LDY', value: data.sea_ldy_count },
+            { label: 'LDY_DRYER', value: data.sea_ldy_dryer_count }
         ]
     ));
     cards.appendChild(countryCard(
@@ -439,11 +464,12 @@ function renderBackupConfirmContent(data) {
     ));
     cards.appendChild(countryCard(
         'SEM', 'D',
-        formatBackupSourceDate(sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy']),
+        formatBackupSourceDate(sourceDates, ['sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer']),
         [
             { label: 'TV', value: data.sem_tv_count },
             { label: 'REF', value: data.sem_ref_count },
-            { label: 'LDY', value: data.sem_ldy_count }
+            { label: 'LDY', value: data.sem_ldy_count },
+            { label: 'LDY_DRYER', value: data.sem_ldy_dryer_count }
         ]
     ));
     cards.appendChild(countryCard(
@@ -471,6 +497,16 @@ function renderBackupConfirmContent(data) {
             { label: 'TV', value: data.seg_tv_count },
             { label: 'REF', value: data.seg_ref_count },
             { label: 'LDY', value: data.seg_ldy_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'SEIB', 'D',
+        formatBackupSourceDate(sourceDates, ['seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer']),
+        [
+            { label: 'TV', value: data.seib_tv_count },
+            { label: 'REF', value: data.seib_ref_count },
+            { label: 'LDY', value: data.seib_ldy_count },
+            { label: 'LDY_DRYER', value: data.seib_ldy_dryer_count }
         ]
     ));
     container.appendChild(cards);

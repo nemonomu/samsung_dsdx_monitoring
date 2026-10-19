@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.source_dates import source_date_sql
 from apps.common.null_review_evidence import uses_new_policy
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 from apps.common.sem_retail import (
@@ -15,6 +16,7 @@ from apps.common.sem_retail import (
     SEM_RETAILER,
     SEM_SECTION_TO_PRODUCT_LINE,
     SEM_SOURCE_CONFIG,
+    SEM_DRYER_FIRST_SOURCE_DATE,
     get_sem_editable_columns,
     get_sem_required_columns,
     get_sem_table_columns,
@@ -157,14 +159,22 @@ def _mapping(target_date, source):
     return resolve_monitoring_date(target_date, SEM_COUNTRY, source['source_key'])
 
 
-def _latest_rows(cursor, target_date, source, retailer=SEM_RETAILER):
+def _source_day(column, source):
+    if source['source_key'] == 'sem_ldy_dryer':
+        return source_date_sql(column)
+    return f'LEFT(BTRIM({column}), 10)'
+
+
+def _latest_rows(cursor, target_date, source, retailer=None):
     retailer = normalize_sem_retailer(source['source_key'], retailer)
     mapping = _mapping(target_date, source)
+    day = _source_day('crawl_datetime', source)
+    row_day = _source_day('source.crawl_datetime', source)
     cursor.execute(f"""
         WITH latest_batch AS (
             SELECT batch_id, account_name
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM(crawl_datetime), 10) = %s
+            WHERE {day} = %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
             ORDER BY id DESC
             LIMIT 1
@@ -172,7 +182,7 @@ def _latest_rows(cursor, target_date, source, retailer=SEM_RETAILER):
         SELECT source.*
         FROM {source['table_name']} source
         CROSS JOIN latest_batch
-        WHERE LEFT(BTRIM(source.crawl_datetime), 10) = %s
+        WHERE {row_day} = %s
           AND LOWER(BTRIM(source.account_name)) = LOWER(BTRIM(latest_batch.account_name))
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
         ORDER BY source.id
@@ -183,7 +193,7 @@ def _latest_rows(cursor, target_date, source, retailer=SEM_RETAILER):
 
 
 def _history_rows(cursor, source, start_date, end_date, items,
-                  include_missing_item=False, retailer=SEM_RETAILER):
+                  include_missing_item=False, retailer=None):
     """Load the retailer's latest batch per day for target error items."""
     retailer = normalize_sem_retailer(source['source_key'], retailer)
     conditions = []
@@ -199,17 +209,18 @@ def _history_rows(cursor, source, start_date, end_date, items,
     if not conditions:
         return []
 
-    date_expression = "LEFT(BTRIM(source.crawl_datetime), 10)"
+    date_expression = _source_day('source.crawl_datetime', source)
+    day = _source_day('crawl_datetime', source)
     cursor.execute(f"""
         WITH latest_batches AS (
-            SELECT DISTINCT ON (LEFT(BTRIM(crawl_datetime), 10))
-                   LEFT(BTRIM(crawl_datetime), 10) AS source_date,
+            SELECT DISTINCT ON ({day})
+                   {day} AS source_date,
                    batch_id,
                    account_name, country,
                    id
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM(crawl_datetime), 10) >= %s
-              AND LEFT(BTRIM(crawl_datetime), 10) <= %s
+            WHERE {day} >= %s
+              AND {day} <= %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
               AND UPPER(BTRIM(country)) = %s
             ORDER BY source_date, id DESC
@@ -445,12 +456,14 @@ def _serialize(row, product_line, retailer=SEM_RETAILER):
 def append_null_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
+        if product_line == 'sem_ldy_dryer' and str(target_date)[:10] < str(SEM_DRYER_FIRST_SOURCE_DATE):
+            continue
         if category and category != source['section_code']:
             continue
         normal_reviews = _load_normal_reviews(
             cursor, target_date, product_line, 'null_check'
         )
-        fields = list(get_sem_required_columns(product_line))
+        fields = list(get_sem_required_columns(product_line, source['retailers'][0]))
         retailers = []
         mapping = _mapping(target_date, source)
         for retailer in source['retailers']:
@@ -500,9 +513,11 @@ def append_null_stats(cursor, target_date, validation, category=None):
     return total_issues
 
 
-def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILER):
+def null_detail(cursor, target_date, table, column, days=1, retailer=None):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
+    if source and retailer is None:
+        retailer = source['retailers'][0]
     if not source or column not in get_sem_required_columns(product_line, retailer):
         return {'results': [], 'display_config': {}, 'query_config': {}}
     retailer = normalize_sem_retailer(product_line, retailer)
@@ -583,6 +598,8 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=SEM_RETAILE
 def append_format_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
+        if source.get('null_only'):
+            continue
         if category and category != source['section_code']:
             continue
         normal_reviews = _load_normal_reviews(
@@ -620,7 +637,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
 def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, include_normal=False):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
-    if not source:
+    if not source or source.get('null_only'):
         return {'results': [], 'column_names': [], 'actual_table': ''}
     retailer = normalize_sem_retailer(product_line, retailer)
     rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
@@ -709,6 +726,8 @@ def _duplicate_groups(rows):
 def append_duplicate_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for _product_line, source in SEM_SOURCE_CONFIG.items():
+        if source.get('null_only'):
+            continue
         if category and category != source['section_code']:
             continue
         rows, mapping = _latest_rows(cursor, target_date, source)
@@ -737,7 +756,7 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
 def duplicate_detail(cursor, target_date, table, page=1, page_size=50):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
-    if not source:
+    if not source or source.get('null_only'):
         return {'results': {'duplicates': [], 'total_groups': 0}}
     rows, mapping = _latest_rows(cursor, target_date, source)
     groups = _duplicate_groups(rows)

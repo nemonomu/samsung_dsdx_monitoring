@@ -25,6 +25,7 @@ SEA_TSE_DEFAULT_HISTORY_CATEGORIES = frozenset({
     'sem_tv_retail',
     'sem_ref_retail',
     'sem_ldy_retail',
+    'sem_ldy_dryer_retail',
     'seg_tv_retail',
     'seg_ref_retail',
     'seg_ldy_retail',

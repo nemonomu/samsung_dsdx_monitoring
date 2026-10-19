@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 
 from apps.common.sem_retail import get_sem_source
+from apps.common.source_dates import source_date_sql
 
 
 def _rows(cursor):
@@ -16,11 +17,13 @@ def _rows(cursor):
 def get_latest_batch_counts(cursor, product_line, retailer, target_date):
     source = get_sem_source(product_line)
     table_name = source['table_name']
+    day = source_date_sql('crawl_datetime') if product_line == 'sem_ldy_dryer' else 'LEFT(BTRIM(crawl_datetime), 10)'
+    source_day = source_date_sql('source.crawl_datetime') if product_line == 'sem_ldy_dryer' else 'LEFT(BTRIM(source.crawl_datetime), 10)'
     cursor.execute(f"""
         WITH latest_batch AS (
             SELECT batch_id
             FROM {table_name}
-            WHERE LEFT(BTRIM(crawl_datetime), 10) = %s
+            WHERE {day} = %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
             ORDER BY id DESC
             LIMIT 1
@@ -32,7 +35,7 @@ def get_latest_batch_counts(cursor, product_line, retailer, target_date):
                COUNT(source.bsr_rank) AS bsr_count
         FROM {table_name} source
         CROSS JOIN latest_batch
-        WHERE LEFT(BTRIM(source.crawl_datetime), 10) = %s
+        WHERE {source_day} = %s
           AND LOWER(BTRIM(source.account_name)) = LOWER(%s)
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
         GROUP BY source.account_name, source.batch_id
@@ -56,14 +59,15 @@ def get_previous_main_counts(
 ):
     source = get_sem_source(product_line)
     table_name = source['table_name']
+    day = source_date_sql('crawl_datetime') if product_line == 'sem_ldy_dryer' else 'LEFT(BTRIM(crawl_datetime), 10)'
     cursor.execute(f"""
         WITH retailer_rows AS (
             SELECT id, batch_id,
-                   LEFT(BTRIM(crawl_datetime), 10) AS collection_date,
+                   {day} AS collection_date,
                    main_rank
             FROM {table_name}
             WHERE LOWER(BTRIM(account_name)) = LOWER(%s)
-              AND LEFT(BTRIM(crawl_datetime), 10) < %s
+              AND {day} < %s
         ),
         latest_batches AS (
             SELECT DISTINCT ON (collection_date) collection_date, batch_id

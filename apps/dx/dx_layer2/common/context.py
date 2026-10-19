@@ -98,6 +98,7 @@ SEM_RETAIL_SIDEBAR_CHILDREN = (
     {'name': 'SEM TV', 'label': 'TV', 'detail_code': 'sem_tv_retail'},
     {'name': 'SEM REF', 'label': 'REF', 'detail_code': 'sem_ref_retail'},
     {'name': 'SEM LDY', 'label': 'LDY', 'detail_code': 'sem_ldy_retail'},
+    {'name': 'SEM LDY_DRYER', 'label': 'LDY_DRYER', 'detail_code': 'sem_ldy_dryer_retail'},
 )
 SEM_RETAIL_CATEGORIES = {
     child['detail_code'] for child in SEM_RETAIL_SIDEBAR_CHILDREN
@@ -115,6 +116,7 @@ DISPLAY_NAME_OVERRIDES = {
     'sem_tv_retail': 'SEM TV',
     'sem_ref_retail': 'SEM REF',
     'sem_ldy_retail': 'SEM LDY',
+    'sem_ldy_dryer_retail': 'SEM LDY_DRYER',
 }
 
 
@@ -135,6 +137,7 @@ def _legacy_display_order(category):
         'sem_tv_retail': 6,
         'sem_ref_retail': 7,
         'sem_ldy_retail': 8,
+        'sem_ldy_dryer_retail': 8.1,
         'youtube': 9,
     }.get(category, 10)
 
@@ -157,8 +160,8 @@ def get_sidebar_items():
     ]
     return {
         'null': items,
-        'format': [item for item in items if item['key'] != 'sea_ldy_dryer_retail' and not item['key'].startswith('seib_')],
-        'anomaly': [item for item in items if not item['key'].startswith('seib_')],
+        'format': [item for item in items if item['key'] not in ('sea_ldy_dryer_retail', 'sem_ldy_dryer_retail') and not item['key'].startswith('seib_')],
+        'anomaly': [item for item in items if item['key'] != 'sem_ldy_dryer_retail' and not item['key'].startswith('seib_')],
     }
 
 
@@ -259,6 +262,8 @@ def build_sidebar_groups(section, focus=''):
                 children = []
                 for child in SEM_RETAIL_SIDEBAR_CHILDREN:
                     detail_code = child['detail_code']
+                    if detail_code == 'sem_ldy_dryer_retail' and sec != 'null_validation':
+                        continue
                     child_info = config.get(detail_code)
                     if child_info is None:
                         continue

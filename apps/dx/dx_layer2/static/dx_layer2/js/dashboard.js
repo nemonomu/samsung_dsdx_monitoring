@@ -20,7 +20,8 @@ const LAYER2_TABLE_DISPLAY_NAMES = {
     seib_ldy_dryer_retail: 'SEIB LDY_DRYER',
     sem_tv_retail: 'SEM TV',
     sem_ref_retail: 'SEM REF',
-    sem_ldy_retail: 'SEM LDY'
+    sem_ldy_retail: 'SEM LDY',
+    sem_ldy_dryer_retail: 'SEM LDY_DRYER'
 };
 
 const LAYER2_TABLE_DISPLAY_ORDER = {
@@ -41,6 +42,7 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     sem_tv_retail: 9,
     sem_ref_retail: 10,
     sem_ldy_retail: 11,
+    sem_ldy_dryer_retail: 11.1,
     tse_tv_retail: 12,
     tse_ref_retail: 13,
     tse_ldy_retail: 14,
@@ -80,7 +82,7 @@ const LAYER2_NULL_TABLE_GROUPS = [
         key: 'sem',
         name: 'SEM Retail',
         description: 'SEM TV/REF/LDY NULL 검증',
-        tableCodes: ['sem_tv_retail', 'sem_ref_retail', 'sem_ldy_retail']
+        tableCodes: ['sem_tv_retail', 'sem_ref_retail', 'sem_ldy_retail', 'sem_ldy_dryer_retail']
     },
     {
         key: 'tse',

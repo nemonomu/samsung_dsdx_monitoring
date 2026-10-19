@@ -119,7 +119,11 @@ class Layer1BackupApiTests(unittest.TestCase):
                 'tse_tv_count': 2,
                 'tse_ref_count': 3,
                 'tse_ldy_count': 4,
-                'total_count': 171,
+                'seib_tv_count': 1,
+                'seib_ref_count': 2,
+                'seib_ldy_count': 3,
+                'seib_ldy_dryer_count': 4,
+                'total_count': 181,
                 **date_payload(),
             },
             lambda username, date: {},
@@ -145,7 +149,8 @@ class Layer1BackupApiTests(unittest.TestCase):
         self.assertEqual(response['tse_tv_count'], 2)
         self.assertEqual(response['tse_ref_count'], 3)
         self.assertEqual(response['tse_ldy_count'], 4)
-        self.assertEqual(response['total_count'], 171)
+        self.assertEqual(response['seib_ldy_dryer_count'], 4)
+        self.assertEqual(response['total_count'], 181)
         self.assertEqual(response['hhp_count'], 0)
         self.assertEqual(response['inspection_date'], '2026-08-11')
         self.assertEqual(response['source_dates']['sea_tv'], '2026-08-10')
@@ -174,6 +179,10 @@ class Layer1BackupApiTests(unittest.TestCase):
                 'tse_tv': {'count': 2},
                 'tse_ref': {'count': 3},
                 'tse_ldy': {'count': 4},
+                'seib_tv': {'count': 1},
+                'seib_ref': {'count': 2},
+                'seib_ldy': {'count': 3},
+                'seib_ldy_dryer': {'count': 4},
                 **date_payload(),
             },
         )
@@ -181,7 +190,8 @@ class Layer1BackupApiTests(unittest.TestCase):
         response = call_backup_api(api, request('POST'))
 
         self.assertTrue(response['success'])
-        self.assertEqual(response['total_count'], 171)
+        self.assertEqual(response['seib_ldy_dryer_count'], 4)
+        self.assertEqual(response['total_count'], 181)
         self.assertIn('SEA TV: 1건', response['message'])
         self.assertIn('SEA REF: 5건', response['message'])
         self.assertIn('SEA LDY: 6건', response['message'])

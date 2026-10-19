@@ -35,7 +35,7 @@ BEGIN
 
     ALTER TABLE public.monitoring_null_review_evidence
         ADD CONSTRAINT monitoring_null_review_evidence_country_check
-        CHECK (country IN ('SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'));
+        CHECK (country IN ('SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG', 'SEIB'));
 END
 $seda_evidence$;
 

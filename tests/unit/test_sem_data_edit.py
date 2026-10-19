@@ -96,7 +96,7 @@ class SemLayer2NormalReviewTests(unittest.TestCase):
             scope_sql,
         )
         self.assertEqual(
-            ('2026-09-07', 'liverpool', 'homedepot', 404, '2026-09-07'),
+            ('2026-09-07', 'liverpool', 'homedepot', 'coppel', 404, '2026-09-07'),
             scope_params,
         )
         self.assertIn('INSERT INTO monitoring_corrections', cursor.calls[2][0])
@@ -164,7 +164,7 @@ class SemLayer3DataEditTests(unittest.TestCase):
         self.assertEqual(403, result['status'])
         self.assertEqual([], cursor.calls)
 
-    def test_crossfield_allows_savings_correction(self):
+    def test_crossfield_rejects_liverpool_savings_correction(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, 'batch-1', 'Liverpool', 'TV-1')},
             {},
@@ -175,10 +175,8 @@ class SemLayer3DataEditTests(unittest.TestCase):
             date(2026, 9, 7), 'cross_field', 'tester',
             'price correction', None,
         )
-        self.assertTrue(result['success'])
-        self.assertIn(
-            f'UPDATE {SEM_TABLE} SET savings = %s', cursor.calls[1][0]
-        )
+        self.assertEqual(403, result['status'])
+        self.assertEqual(1, len(cursor.calls))
 
 
 if __name__ == '__main__':

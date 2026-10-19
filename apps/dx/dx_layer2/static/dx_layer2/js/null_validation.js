@@ -24,6 +24,7 @@ const SEA_TSE_NULL_HISTORY_TABLES = new Set([
     'sem_tv_retail',
     'sem_ref_retail',
     'sem_ldy_retail',
+    'sem_ldy_dryer_retail',
     'seg_tv_retail',
     'seg_ref_retail',
     'seg_ldy_retail',
@@ -283,6 +284,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEIB LDY_DRYER' ? 'seib_ldy_dryer_retail' :
                        tableName === 'SEM TV' ? 'sem_tv_retail' :
                        tableName === 'SEM REF' ? 'sem_ref_retail' :
+                       tableName === 'SEM LDY_DRYER' ? 'sem_ldy_dryer_retail' :
                        tableName === 'SEM LDY' ? 'sem_ldy_retail' :
                        tableName === 'TV Retail' ? 'tv_retail' :
                        tableName === 'HHP Retail' ? 'hhp_retail' :

@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from apps.common.db import dx_connection
 from apps.common.seib_retail import SEIB_SOURCE_CONFIG, FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
 from apps.common.source_dates import source_date_sql
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
@@ -35,6 +36,10 @@ def catalog():
 
 
 def _sources():
+    yield _source('sem_ldy_dryer', 'SEM', 'LDY_DRYER',
+                  'dx_sem.dx_sem_ldy_dryer_retail_com', 'crawl_datetime', 'text',
+                  (_retailer('HomeDepot'),), has_page_type=False,
+                  collection_scope='all')
     for key, config in SEIB_SOURCE_CONFIG.items():
         yield _source(key, 'SEIB', config['category'], config['table_name'], 'crawl_datetime', 'text',
                       (_retailer('MediaMarkt'),), has_page_type=False, collection_scope='all')
@@ -74,7 +79,10 @@ def query_spec(source, retailer, columns, start, end):
     if is_expert:
         start = max(start, EXPERT_START_DATE)
     col = 'source.' + source['date_column']
-    if source['country'] == 'SEIB':
+    if source['key'] == 'sem_ldy_dryer':
+        day = source_date_sql(col)
+        start = max(start, SEM_DRYER_FIRST_SOURCE_DATE)
+    elif source['country'] == 'SEIB':
         day = source_date_sql(col)
         start = max(start, SEIB_START_DATE)
     elif source['country'] == 'SEA' and lowes_dryer.matches(source['product'], retailer['name']):
@@ -173,7 +181,7 @@ def daily_counts(country, product, retailer_name, end, days):
                                 'counts': {c: int(v) for c, v in zip(columns, values[2:])}}
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
-            'active_from': (str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
+            'active_from': (str(SEM_DRYER_FIRST_SOURCE_DATE) if country == 'SEM' and product == 'LDY_DRYER' else str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
                             else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, retailer_name)
                             else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, retailer_name)
                             else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, retailer_name)

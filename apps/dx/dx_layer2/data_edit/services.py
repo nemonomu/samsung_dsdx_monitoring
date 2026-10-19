@@ -6,6 +6,7 @@ cursor + params 를 받아 plain dict 를 반환한다.
 import re
 from datetime import datetime
 from apps.common.costco_layer2 import source_date_sql, page_scope_sql, is_costco
+from apps.common.source_dates import source_date_sql as raw_source_date_sql
 from apps.common import costco_layer2
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
@@ -279,18 +280,22 @@ def _select_sem_edit_record(
     )
     table_name = context['table_name']
     source_date = mapping['source_date']
+    source_day = (raw_source_date_sql('source.crawl_datetime') if source['source_key'] == 'sem_ldy_dryer'
+                  else 'LEFT(BTRIM(source.crawl_datetime), 10)')
+    anchor_day = (raw_source_date_sql('anchor.crawl_datetime') if source['source_key'] == 'sem_ldy_dryer'
+                  else 'LEFT(BTRIM(anchor.crawl_datetime), 10)')
     placeholders = ', '.join(['%s'] * len(source['retailers']))
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
-          AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND {source_day} = %s
           AND UPPER(BTRIM(source.country)) = %s
           AND LOWER(BTRIM(source.account_name)) IN ({placeholders})
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
-              WHERE LEFT(BTRIM(anchor.crawl_datetime), 10) = %s
+              WHERE {anchor_day} = %s
                 AND LOWER(BTRIM(anchor.account_name)) = LOWER(BTRIM(source.account_name))
               ORDER BY anchor.id DESC
               LIMIT 1

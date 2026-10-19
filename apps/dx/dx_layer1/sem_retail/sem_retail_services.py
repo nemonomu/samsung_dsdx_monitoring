@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta, timezone
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.source_dates import source_date_value
 from apps.common.sem_retail import (
     SEM_CHECK_TYPE,
     SEM_COUNTRY,
@@ -10,6 +11,7 @@ from apps.common.sem_retail import (
     SEM_HISTORY_DAYS,
     SEM_LAYER1_RETAILERS,
     SEM_SOURCE_CONFIG,
+    SEM_DRYER_FIRST_SOURCE_DATE,
     get_sem_collection_phase,
     get_sem_count_status,
 )
@@ -28,7 +30,7 @@ def _as_date(value):
         return value.date()
     if isinstance(value, date):
         return value
-    return date.fromisoformat(str(value)[:10])
+    return date.fromisoformat(source_date_value(value))
 
 
 def _phase(target_date, now):
@@ -147,6 +149,7 @@ def get_layer1_stats(cursor, target_date, now=None):
     categories = [
         _category(cursor, key, source, target_date, phase)
         for key, source in SEM_SOURCE_CONFIG.items()
+        if key != 'sem_ldy_dryer' or _as_date(target_date) >= SEM_DRYER_FIRST_SOURCE_DATE
     ]
     failed = []
     if phase == 'complete':

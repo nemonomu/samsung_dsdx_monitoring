@@ -190,7 +190,7 @@ def _coppel_price_rules(row, checks):
 def _result(cursor, target_date, product_line):
     key = product_line_for(product_line)
     source = SEM_SOURCE_CONFIG.get(key)
-    if not source:
+    if not source or source.get('null_only'):
         raise ValueError(f'Unsupported SEM product line: {product_line}')
     definitions = _RULES + (
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in source['retailers'] else ()

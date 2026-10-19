@@ -5,6 +5,7 @@ from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB')
@@ -23,13 +24,15 @@ def normalize_check(check, country, inspection_date):
     rows = []
     for category in check.get('categories', []):
         product = str(category.get('name') or category.get('category', '')).upper()
-        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG', 'SEIB') and product == 'LDY_DRYER'):
+        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG', 'SEM', 'SEIB') and product == 'LDY_DRYER'):
             continue
         slots = category.get('time_slots') or [{'name': 'daily', 'retailers': category.get('retailers', [])}]
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
                 if country == 'SEIB' and source_day < SEIB_START_DATE:
+                    continue
+                if country == 'SEM' and product == 'LDY_DRYER' and source_day < SEM_DRYER_FIRST_SOURCE_DATE:
                     continue
                 if country == 'SEA' and lowes_dryer.matches(product, name) and not lowes_dryer.enabled(source_day):
                     continue
@@ -61,7 +64,7 @@ def normalize_check(check, country, inspection_date):
                     'verification_state': verification,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
-                    'active_from': (str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                    'active_from': (str(SEM_DRYER_FIRST_SOURCE_DATE) if country == 'SEM' and product == 'LDY_DRYER' else str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
                                     else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, name)
                                     else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, name)
                                     else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, name)
@@ -69,6 +72,8 @@ def normalize_check(check, country, inspection_date):
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
                 if country == 'SEIB':
+                    rows[-1]['source_date_basis'] = 'db_original'
+                if country == 'SEM' and product == 'LDY_DRYER':
                     rows[-1]['source_date_basis'] = 'db_original'
                 if country == 'SEA' and (name in ('Costco', 'HomeDepot') or lowes_dryer.matches(product, name)):
                     rows[-1]['source_date_basis'] = 'db_original'

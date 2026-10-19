@@ -5,6 +5,7 @@ from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS
 from .collector import refresh_country
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUMNS
 
@@ -34,6 +35,9 @@ def history_range(country, last_due):
         and (country != 'SEIB' or day < SEIB_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'MediaMarkt'
                  and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})
+        and (country != 'SEM' or day < SEM_DRYER_FIRST_SOURCE_DATE
+             or any(r['product'] == 'LDY_DRYER' and r['retailer'] == 'HomeDepot'
+                    and r.get('source_date_basis') == 'db_original' for r in rows))
         and (country != 'SEG' or day < EXPERT_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'Expert'} == set(EXPERT_COLUMNS))}
     # Most recent missing history first, so the default page becomes useful early.

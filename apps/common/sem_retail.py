@@ -1,6 +1,6 @@
 """SEM (Mexico) retail monitoring constants and allowlists."""
 
-from datetime import time
+from datetime import date, time
 
 
 SEM_CHECK_TYPE = 'sem_retail'
@@ -8,6 +8,7 @@ SEM_COUNTRY = 'SEM'
 SEM_RETAILER = 'Liverpool'
 SEM_HOMEDEPOT_RETAILER = 'HomeDepot'
 SEM_COPPEL_RETAILER = 'Coppel'
+SEM_DRYER_FIRST_SOURCE_DATE = date(2026, 10, 18)
 SEM_COPPEL_EXCLUDED_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
@@ -15,6 +16,7 @@ SEM_LAYER1_RETAILERS = {
     'sem_tv': (SEM_RETAILER,),
     'sem_ref': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
     'sem_ldy': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
+    'sem_ldy_dryer': (SEM_HOMEDEPOT_RETAILER,),
 }
 SEM_COLLECTION_START = time(9, 0)
 SEM_COLLECTION_END = time(13, 30)
@@ -106,6 +108,20 @@ SEM_SOURCE_CONFIG = {
         'extra_format_columns': ('ldy_capacity', 'ldy_loading_type'),
         'extra_table_columns': ('ldy_loading_type', 'ldy_capacity'),
     },
+    'sem_ldy_dryer': {
+        'source_key': 'sem_ldy_dryer',
+        'category': 'LDY_DRYER',
+        'section_code': 'sem_ldy_dryer_retail',
+        'display_name': 'SEM LDY_DRYER',
+        'table_name': 'dx_sem.dx_sem_ldy_dryer_retail_com',
+        'backup_table_name': 'dx_sem.dx_sem_ldy_dryer_retail_com_backup',
+        'date_column': 'crawl_datetime',
+        'retailers': (SEM_HOMEDEPOT_RETAILER,),
+        'extra_required_columns': ('capacity',),
+        'extra_format_columns': ('capacity', 'loading_type'),
+        'extra_table_columns': ('loading_type', 'capacity'),
+        'null_only': True,
+    },
 }
 
 SEM_TABLE_TO_PRODUCT_LINE = {
@@ -139,7 +155,7 @@ def resolve_sem_table(value):
     raise ValueError(f'Unsupported SEM table: {value}')
 
 
-def get_sem_required_columns(product_line, retailer=SEM_RETAILER):
+def get_sem_required_columns(product_line, retailer=None):
     source = get_sem_source(product_line)
     columns = SEM_COMMON_REQUIRED_COLUMNS + source['extra_required_columns']
     if normalize_sem_retailer(product_line, retailer) == SEM_COPPEL_RETAILER:
@@ -153,9 +169,10 @@ def get_sem_product_line_for_table(table_name):
     return SEM_TABLE_TO_PRODUCT_LINE[canonical]
 
 
-def normalize_sem_retailer(product_line, retailer=SEM_RETAILER):
-    key = str(retailer or SEM_RETAILER).strip().casefold()
-    for candidate in get_sem_source(product_line)['retailers']:
+def normalize_sem_retailer(product_line, retailer=None):
+    candidates = get_sem_source(product_line)['retailers']
+    key = str(retailer or candidates[0]).strip().casefold()
+    for candidate in candidates:
         if candidate.casefold() == key:
             return candidate
     raise ValueError(f'Unsupported SEM retailer: {retailer}')

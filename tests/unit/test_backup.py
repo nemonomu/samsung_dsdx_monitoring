@@ -1,5 +1,6 @@
 import unittest
 from apps.common import sea_dates
+from apps.common.source_dates import source_date_value
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from datetime import date, timedelta
@@ -80,7 +81,16 @@ SEM_SOURCE_CONFIG = {
         'backup_table_name': f'dx_sem.dx_sem_{product}_retail_com_backup',
         'date_column': 'crawl_datetime',
     }
-    for product, category in (('tv', 'TV'), ('ref', 'REF'), ('ldy', 'LDY'))
+    for product, category in (('tv', 'TV'), ('ref', 'REF'), ('ldy', 'LDY'), ('ldy_dryer', 'LDY_DRYER'))
+}
+
+SEIB_SOURCE_CONFIG = {
+    f'seib_{product}': {
+        'source_key': f'seib_{product}',
+        'display_name': f'SEIB {product.upper()}',
+        'table_name': f'dx_seib.dx_seib_{product}_retail_com',
+    }
+    for product in ('tv', 'ref', 'ldy', 'ldy_dryer')
 }
 
 
@@ -216,12 +226,45 @@ def load_backup(connection, errors=None):
             'apps.common.seda_retail': module_stub(
                 'apps.common.seda_retail', SEDA_SOURCE_CONFIG=SEDA_SOURCE_CONFIG,
             ),
+            'apps.common.seib_retail': module_stub(
+                'apps.common.seib_retail', SEIB_SOURCE_CONFIG=SEIB_SOURCE_CONFIG,
+            ),
+            'apps.common.source_dates': module_stub(
+                'apps.common.source_dates',
+                source_date_sql=lambda column: f'LEFT(BTRIM(CAST({column} AS TEXT)), 10)',
+            ),
         },
     )
 
 
 class BackupTests(unittest.TestCase):
-    def test_sea_appliance_pending_and_insert_share_local_source_date(self):
+    def test_sea_and_sem_dryer_backup_use_original_source_dates(self):
+        cursor = BackupCursor(
+            pending={'public.ldy_dryer_retail_backup': 2,
+                     'dx_sem_ldy_dryer_retail_com_backup': 3},
+            inserted={'public.ldy_dryer_retail_backup': [1, 2],
+                      'dx_sem_ldy_dryer_retail_com_backup': [3, 4, 5]},
+        )
+        connection = BackupConnection(cursor)
+        backup = load_backup(connection)
+        counts = backup.get_backup_count('2026-10-19')
+        self.assertEqual(2, counts['sea_ldy_dryer_count'])
+        self.assertEqual(3, counts['sem_ldy_dryer_count'])
+        self.assertEqual('2026-10-18', counts['source_dates']['sea_ldy_dryer'])
+        self.assertEqual('2026-10-19', counts['source_dates']['sem_ldy_dryer'])
+        result = backup.backup_all_retail('tester', '2026-10-19')
+        self.assertEqual(2, result['sea_ldy_dryer']['count'])
+        self.assertEqual(3, result['sem_ldy_dryer']['count'])
+        self.assertEqual(1, connection.commits)
+        for table, day in (('public.ldy_dryer_retail', '2026-10-18'),
+                           ('dx_sem.dx_sem_ldy_dryer_retail_com', '2026-10-19')):
+            scoped = [(sql, params) for sql, params in cursor.calls if table + ' a' in sql]
+            self.assertEqual(2, len(scoped))
+            for sql, params in scoped:
+                self.assertIn('LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s', sql)
+                self.assertEqual((day,), params)
+
+    def test_sea_appliance_pending_and_insert_share_recorded_source_date(self):
         cursor = BackupCursor()
         backup = load_backup(BackupConnection(cursor))
         for product in ('ref', 'ldy'):
@@ -238,7 +281,7 @@ class BackupTests(unittest.TestCase):
             for sql, bound in scoped_calls:
                 self.assertIn(' '.join(predicate.split()), sql)
                 self.assertEqual(('2026-09-17',), bound)
-            self.assertIn("AT TIME ZONE 'America/New_York'", predicate)
+            self.assertIn('LEFT(BTRIM(CAST(a.crawl_strdatetime AS TEXT)), 10)', predicate)
             self.assertEqual(('2026-09-17',), params)
 
     def test_seg_backup_uses_existing_tables_and_same_day_ids(self):
@@ -261,6 +304,38 @@ class BackupTests(unittest.TestCase):
             self.assertIn('WHERE b.id IS NULL', sql)
             self.assertNotIn('redirect', sql)
             self.assertEqual(('2026-08-11',), params)
+
+    def test_seib_backup_covers_four_sources_on_original_same_day(self):
+        self.assertEqual(
+            '2026-10-18', source_date_value('2026-10-18T23:37:34-04:00'),
+        )
+        cursor = BackupCursor(
+            pending={'dx_seib_ldy_dryer_retail_com_backup': 2},
+            inserted={'dx_seib_ldy_dryer_retail_com_backup': [11, 12]},
+        )
+        connection = BackupConnection(cursor)
+        backup = load_backup(connection)
+
+        counts = backup.get_backup_count('2026-10-18')
+        self.assertEqual(2, counts['seib_ldy_dryer_count'])
+        self.assertEqual('2026-10-18', counts['source_dates']['seib_ldy_dryer'])
+        self.assertEqual(2, counts['total_count'])
+
+        result = backup.backup_all_retail('tester', '2026-10-18')
+        self.assertTrue(result['success'])
+        self.assertEqual(2, result['seib_ldy_dryer']['count'])
+        self.assertEqual(1, connection.commits)
+        for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+            source_table = f'dx_seib.dx_seib_{product}_retail_com'
+            backup_table = source_table + '_backup'
+            scoped = [(sql, params) for sql, params in cursor.calls
+                      if source_table + ' a' in sql]
+            self.assertEqual(2, len(scoped))
+            for sql, params in scoped:
+                self.assertIn(backup_table, sql)
+                self.assertIn('LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s', sql)
+                self.assertEqual(('2026-10-18',), params)
+
 
     def test_pending_count_includes_all_retail_sources(self):
         cursor = BackupCursor(pending={
@@ -313,7 +388,7 @@ class BackupTests(unittest.TestCase):
             for sql, params in cursor.calls
             if 'SELECT COUNT(*)' in sql
         ]
-        self.assertEqual(len(count_calls), 18)
+        self.assertEqual(len(count_calls), 24)
         self.assertIn(
             'FROM public.tv_retail_com a',
             count_calls[0][0],
@@ -324,37 +399,42 @@ class BackupTests(unittest.TestCase):
         )
         self.assertIn('FROM public.ref_retail_com a', count_calls[1][0])
         self.assertIn('FROM public.ldy_retail_com a', count_calls[2][0])
+        self.assertIn('FROM public.ldy_dryer_retail a', count_calls[3][0])
         self.assertTrue(all(
-            "AT TIME ZONE 'America/New_York'" in sql
-            and 'ELSE LEFT(BTRIM(CAST(a.crawl_strdatetime AS TEXT)), 10)' in sql
+            'LEFT(BTRIM(CAST(a.crawl_strdatetime AS TEXT)), 10)' in sql
+            and "AT TIME ZONE 'America/New_York'" not in sql
             for sql, _ in count_calls[1:3]
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_strdatetime), 10) = %s' in sql
-            for sql, _ in count_calls[3:6]
+            for sql, _ in count_calls[4:7]
         ))
         self.assertIn(
-            'FROM dx_seda.dx_seda_tv_retail_com a', count_calls[3][0],
+            'FROM dx_seda.dx_seda_tv_retail_com a', count_calls[4][0],
         )
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
-            for sql, _ in count_calls[6:9]
+            for sql, _ in count_calls[7:10]
         ))
         self.assertIn(
-            'FROM dx_siel.dx_siel_tv_retail_com a', count_calls[9][0],
+            'FROM dx_siel.dx_siel_tv_retail_com a', count_calls[10][0],
         )
         self.assertTrue(all(
             "AT TIME ZONE 'Asia/Seoul'" in sql
-            for sql, _ in count_calls[9:12]
+            for sql, _ in count_calls[10:13]
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_datetime), 10) = %s' in sql
-            for sql, _ in count_calls[12:15]
+            for sql, _ in count_calls[13:16]
         ))
         self.assertTrue(all(
             'LEFT(TRIM(a.crawl_strdatetime), 10) = %s' in sql
             and 'redirect' not in sql
-            for sql, _ in count_calls[15:]
+            for sql, _ in count_calls[17:20]
+        ))
+        self.assertTrue(all(
+            'LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s' in sql
+            for sql, _ in count_calls[20:]
         ))
         self.assertTrue(all(
             'batch_id' not in sql and 'page_type' not in sql
@@ -362,10 +442,10 @@ class BackupTests(unittest.TestCase):
         ))
         self.assertEqual(
             [params for _, params in count_calls],
-            [('2026-08-10',)] * 6 +
+            [('2026-08-10',)] * 7 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 6,
+            [('2026-08-11',)] * 11,
         )
         self.assertTrue(cursor.closed)
         self.assertTrue(connection.closed)
@@ -438,7 +518,7 @@ class BackupTests(unittest.TestCase):
             if sql.startswith('INSERT INTO')
             and 'monitoring_backup_log' not in sql
         ]
-        self.assertEqual(len(insert_calls), 18)
+        self.assertEqual(len(insert_calls), 24)
         self.assertTrue(all(
             'ON CONFLICT DO NOTHING' in sql
             for sql, _ in insert_calls
@@ -446,10 +526,10 @@ class BackupTests(unittest.TestCase):
         self.assertTrue(all('RETURNING id' in sql for sql, _ in insert_calls))
         self.assertEqual(
             [params for _, params in insert_calls],
-            [('2026-08-10',)] * 6 +
+            [('2026-08-10',)] * 7 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 6,
+            [('2026-08-11',)] * 11,
         )
         log_calls = [
             params for sql, params in cursor.calls

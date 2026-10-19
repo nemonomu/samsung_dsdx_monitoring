@@ -17,6 +17,8 @@ from apps.common.siel_retail import (
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
+from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.source_dates import source_date_sql
 
 
 def _sea_backup_source(product_key):
@@ -31,6 +33,20 @@ def _sea_backup_source(product_key):
         'backup_table': source['backup_table'],
         'date_column': f"a.{source['date_column']}",
         'date_mode': 'sea_appliance' if product_key in ('ref', 'ldy') else source['date_mode'],
+    }
+
+
+def _sea_dryer_backup_source():
+    return {
+        'key': 'sea_ldy_dryer',
+        'source_key': 'sea_ldy_dryer',
+        'country': 'SEA',
+        'category': 'SEA LDY_DRYER',
+        'product_line': 'sea_ldy_dryer',
+        'source_table': 'public.ldy_dryer_retail',
+        'backup_table': 'public.ldy_dryer_retail_backup',
+        'date_column': 'a.crawl_datetime',
+        'date_mode': 'raw_source_text',
     }
 
 
@@ -60,7 +76,7 @@ def _sem_backup_source(source_key):
         'source_table': source['table_name'],
         'backup_table': source['backup_table_name'],
         'date_column': f"a.{source['date_column']}",
-        'date_mode': 'text_prefix',
+        'date_mode': 'raw_source_text' if source_key == 'sem_ldy_dryer' else 'text_prefix',
     }
 
 
@@ -94,10 +110,25 @@ def _seda_backup_source(source_key):
     }
 
 
+def _seib_backup_source(source_key):
+    source = SEIB_SOURCE_CONFIG[source_key]
+    return {
+        'key': source_key,
+        'source_key': source_key,
+        'country': 'SEIB',
+        'category': source['display_name'],
+        'product_line': source_key,
+        'source_table': source['table_name'],
+        'backup_table': source['table_name'] + '_backup',
+        'date_column': 'a.crawl_datetime',
+        'date_mode': 'raw_source_text',
+    }
+
+
 _BACKUP_SOURCES = tuple(
     _sea_backup_source(product_key)
     for product_key in ('tv', 'ref', 'ldy')
-) + tuple(
+) + (_sea_dryer_backup_source(),) + tuple(
     _seda_backup_source(source_key)
     for source_key in ('seda_tv', 'seda_ref', 'seda_ldy')
 ) + (
@@ -139,10 +170,13 @@ _BACKUP_SOURCES = tuple(
     for source_key in ('siel_tv', 'siel_ref', 'siel_ldy')
 ) + tuple(
     _sem_backup_source(source_key)
-    for source_key in ('sem_tv', 'sem_ref', 'sem_ldy')
+    for source_key in ('sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer')
 ) + tuple(
     _seg_backup_source(source_key)
     for source_key in ('seg_tv', 'seg_ref', 'seg_ldy')
+) + tuple(
+    _seib_backup_source(source_key)
+    for source_key in ('seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer')
 )
 _BACKUP_SOURCE_BY_KEY = {source['key']: source for source in _BACKUP_SOURCES}
 _INVALID_DATE_ERROR_CODE = 'invalid_inspection_date'
@@ -204,6 +238,8 @@ def _date_condition(date_column, target_date, mode='timestamp'):
 
     if mode == 'text_prefix':
         return f"AND LEFT(TRIM({date_column}), 10) = %s", (date_value,)
+    if mode == 'raw_source_text':
+        return f"AND {source_date_sql(date_column)} = %s", (date_value,)
     if mode == 'sea_appliance':
         return f"AND ({appliance_source_date_sql(date_column, 'a.account_name')}) = %s", (date_value,)
     if mode == 'timestamp':

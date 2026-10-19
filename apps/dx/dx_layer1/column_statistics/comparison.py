@@ -12,6 +12,10 @@ MINIMUM_DAYS = 7
 def collection_complete(country, product, retailer, source_day, now=None):
     """Use Layer 1's existing collection windows, always with source dates."""
     now = (now or datetime.now(KST)).astimezone(KST)
+    if country == 'SEM' and product == 'LDY_DRYER':
+        from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
+        if source_day < SEM_DRYER_FIRST_SOURCE_DATE:
+            return False
     if country == 'SEG' and retailer == 'Expert':
         from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
         if source_day < EXPERT_START_DATE:

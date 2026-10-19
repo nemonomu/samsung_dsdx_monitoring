@@ -47,11 +47,11 @@ class SemRetailConfigurationTests(unittest.TestCase):
 
     def test_product_lines_and_layer1_retailers_are_configured(self):
         self.assertEqual(
-            {'sem_tv', 'sem_ref', 'sem_ldy'},
+            {'sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer'},
             set(SEM_SOURCE_CONFIG),
         )
         for key, source in SEM_SOURCE_CONFIG.items():
-            self.assertEqual('Liverpool', source['retailers'][0])
+            self.assertEqual('HomeDepot' if key == 'sem_ldy_dryer' else 'Liverpool', source['retailers'][0])
             self.assertTrue(source['table_name'].startswith('dx_sem.'))
             self.assertEqual(key, product_line_for(source['section_code']))
             self.assertEqual(key, product_line_for(source['table_name']))
@@ -411,6 +411,8 @@ class SemRetailValidationTests(unittest.TestCase):
             'apps.dx.dx_layer2.format_validation.api_sem_routing_test', stubs,
         )
         for product_line, source in SEM_SOURCE_CONFIG.items():
+            if source.get('null_only'):
+                continue
             with self.subTest(product_line=product_line), patch(
                 'apps.dx.dx_layer2.sem_validation._latest_rows',
                 return_value=([{
@@ -459,6 +461,8 @@ class SemRetailValidationTests(unittest.TestCase):
 
     def test_exported_mexico_formats_are_accepted(self):
         for product_line in SEM_SOURCE_CONFIG:
+            if SEM_SOURCE_CONFIG[product_line].get('null_only'):
+                continue
             self.assertEqual([], evaluate_format(self.row, product_line))
 
     def test_liverpool_bundle_values_and_liter_capacity_are_accepted(self):

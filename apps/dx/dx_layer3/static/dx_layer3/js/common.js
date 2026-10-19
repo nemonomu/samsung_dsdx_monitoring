@@ -207,7 +207,13 @@ function formatBackupPendingCounts(data) {
         `SEA LDY: ${Number(data.sea_ldy_count || 0).toLocaleString()}, ` +
         `TSE TV: ${Number(data.tse_tv_count || 0).toLocaleString()}, ` +
         `TSE REF: ${Number(data.tse_ref_count || 0).toLocaleString()}, ` +
-        `TSE LDY: ${Number(data.tse_ldy_count || 0).toLocaleString()}`;
+        `TSE LDY: ${Number(data.tse_ldy_count || 0).toLocaleString()}, ` +
+        `SEIB TV: ${Number(data.seib_tv_count || 0).toLocaleString()}, ` +
+        `SEIB REF: ${Number(data.seib_ref_count || 0).toLocaleString()}, ` +
+        `SEIB LDY: ${Number(data.seib_ldy_count || 0).toLocaleString()}, ` +
+        `SEIB LDY_DRYER: ${Number(data.seib_ldy_dryer_count || 0).toLocaleString()}, ` +
+        `SEA LDY_DRYER: ${Number(data.sea_ldy_dryer_count || 0).toLocaleString()}, ` +
+        `SEM LDY_DRYER: ${Number(data.sem_ldy_dryer_count || 0).toLocaleString()}`;
 }
 
 async function checkBackupStatus() {

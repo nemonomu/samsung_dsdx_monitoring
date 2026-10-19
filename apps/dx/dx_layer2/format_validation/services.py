@@ -207,13 +207,15 @@ VALID_TABLES_FORMAT = {
 } | {
     source['section_code']
     for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
+    if not source.get('null_only')
 }
 VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
 } | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG) | set(
-    getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})
+    key for key, source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).items()
+    if not source.get('null_only')
 ) | set(
     getattr(seg_validation, 'SEG_FORMAT_SOURCE_CONFIG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}))
 )

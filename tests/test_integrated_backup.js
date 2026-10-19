@@ -74,6 +74,7 @@ async function testIntegratedBackupPromptAndPost() {
             sea_tv: '2026-08-10',
             sea_ref: '2026-08-10',
             sea_ldy: '2026-08-10',
+            sea_ldy_dryer: '2026-08-10',
             seda_tv: '2026-08-10',
             seda_ref: '2026-08-10',
             seda_ldy: '2026-08-10',
@@ -83,12 +84,17 @@ async function testIntegratedBackupPromptAndPost() {
             sem_tv: '2026-08-11',
             sem_ref: '2026-08-11',
             sem_ldy: '2026-08-11',
+            sem_ldy_dryer: '2026-08-11',
             seg_tv: '2026-08-11',
             seg_ref: '2026-08-11',
             seg_ldy: '2026-08-11',
             tse_tv: '2026-08-11',
             tse_ref: '2026-08-11',
-            tse_ldy: '2026-08-11'
+            tse_ldy: '2026-08-11',
+            seib_tv: '2026-08-11',
+            seib_ref: '2026-08-11',
+            seib_ldy: '2026-08-11',
+            seib_ldy_dryer: '2026-08-11'
         }
     };
     const postResult = {
@@ -177,8 +183,11 @@ async function testIntegratedBackupPromptAndPost() {
     assert.strictEqual(cards[3].children[0].children[0].children[0].src, '/static/img/flags/in.svg');
     assert.strictEqual(cards[4].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
     assert.strictEqual(cards[5].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
+    assert.strictEqual(cards[6].children[0].children[0].children[0].src, '/static/img/flags/es.svg');
+    assert(renderedText.includes('SEIB'));
+    assert(renderedText.includes('LDY_DRYER'));
     assert(fs.readFileSync(path.join(root, 'apps', 'dx', 'dx_layer1', 'templates', 'dx_layer1_dashboard.html'), 'utf8')
-        .includes("dx_layer1/js/dashboard.js' %}?v=20260915-perf1"));
+        .includes("dx_layer1/js/dashboard.js' %}?v=20261019-dryer-backup"));
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');

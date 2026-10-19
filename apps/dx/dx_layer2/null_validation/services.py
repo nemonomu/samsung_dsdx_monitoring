@@ -9,6 +9,7 @@ from apps.common.sea_layer2 import (
 )
 from apps.common import costco_layer2
 from apps.common.costco_layer2 import source_date_sql, page_scope_sql, annotate_source_date, is_costco
+from apps.common.source_dates import source_date_sql as raw_source_date_sql
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from apps.common.db import execute_dx_query, dx_table
@@ -3042,6 +3043,7 @@ def _capture_null_review_record(cursor, table_name, record_id, column_name,
     else:
         date_column = source.get('date_column', 'crawl_datetime')
         date_where = (f"{source_date_sql(date_column, retailer=retailer, product=source.get('product_key', ''))} = %s" if country == 'SEA' and (source.get('latest_main_batch') or is_costco(retailer))
+                      else f"{raw_source_date_sql(date_column)} = %s" if country == 'SEM' and source.get('source_key') == 'sem_ldy_dryer'
                       else f"LEFT(TRIM(CAST({date_column} AS TEXT)), 10) = %s")
         date_params = [str(source_day)]
     # table_name and column_name have already passed the normal-review
