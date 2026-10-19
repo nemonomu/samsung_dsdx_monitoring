@@ -127,14 +127,18 @@
     .check-stat .label { font-size: 11px; color: var(--text-secondary); }
 
     .retail-check-main { flex-wrap: wrap; gap: 12px 20px; }
-    .retail-check-main .check-info { flex: 1 1 200px; }
+    .retail-check-main .check-info { flex: 0 1 260px; min-width: 180px; }
     .retail-check-main .check-stats { flex-shrink: 0; margin-left: auto; }
     .retail-check-main .check-criteria { margin-right: 0; }
-    .retail-missing-summary { display: flex; flex: 0 1 390px; flex-wrap: wrap; justify-content: flex-end; gap: 6px 10px; font-size: 12px; }
-    .retail-missing-item { padding: 4px 8px; border-radius: 4px; color: var(--color-critical); background: rgba(239, 68, 68, 0.08); white-space: nowrap; }
+    .retail-missing-summary { display: flex; flex: 1 1 560px; min-width: 0; max-height: 58px; overflow-y: auto; flex-wrap: wrap; align-content: flex-start; justify-content: flex-end; gap: 6px 8px; padding-right: 2px; font-size: 12px; scrollbar-width: thin; }
+    .retail-missing-item { padding: 3px 7px; border-radius: 4px; color: var(--color-critical); background: rgba(239, 68, 68, 0.08); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
     .retail-missing-item.volume-review { color: #1d4ed8; background: #eff6ff; }
     .retail-missing-item a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
     .retail-missing-item a:hover { text-decoration-thickness: 2px; }
+    @media (max-width: 1100px) {
+        .retail-check-main .check-info { flex: 1 1 200px; }
+        .retail-missing-summary { order: 3; flex: 1 0 100%; justify-content: flex-start; }
+    }
 
     .time-slots-container { display: none; background: var(--bg-primary); padding: 16px 24px; }
     .time-slots-container.show { display: block; }
