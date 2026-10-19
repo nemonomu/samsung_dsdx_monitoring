@@ -298,12 +298,41 @@ class BackupTests(unittest.TestCase):
         self.assertEqual(2, result['seg_tv']['count'])
         inserts = [(sql, params) for sql, params in cursor.calls
                    if sql.startswith('INSERT INTO dx_seg.')]
-        self.assertEqual(3, len(inserts))
+        self.assertEqual(4, len(inserts))
         for sql, params in inserts:
             self.assertIn('ON a.id = b.id', sql)
             self.assertIn('WHERE b.id IS NULL', sql)
             self.assertNotIn('redirect', sql)
             self.assertEqual(('2026-08-11',), params)
+
+    def test_seg_dryer_backup_uses_raw_collection_date_and_logs_inserted_ids(self):
+        table = 'dx_seg.dx_seg_ldy_dryer_retail'
+        backup_table = table + '_backup'
+        cursor = BackupCursor(
+            pending={backup_table: 2},
+            inserted={backup_table: [101, 102]},
+        )
+        connection = BackupConnection(cursor)
+        backup = load_backup(connection)
+
+        counts = backup.get_backup_count('2026-10-19')
+        self.assertEqual(2, counts['seg_ldy_dryer_count'])
+        self.assertEqual('2026-10-19', counts['source_dates']['seg_ldy_dryer'])
+        result = backup.backup_all_retail('tester', '2026-10-19')
+        self.assertTrue(result['success'])
+        self.assertEqual(2, result['seg_ldy_dryer']['count'])
+        self.assertEqual(1, connection.commits)
+        scoped = [(sql, params) for sql, params in cursor.calls if table + ' a' in sql]
+        self.assertEqual(2, len(scoped))
+        for sql, params in scoped:
+            self.assertIn(backup_table, sql)
+            self.assertIn('LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s', sql)
+            self.assertEqual(('2026-10-19',), params)
+        logs = [params for sql, params in cursor.calls
+                if 'INSERT INTO monitoring_backup_log' in sql
+                and params[0] == 'seg_ldy_dryer']
+        self.assertEqual(1, len(logs))
+        self.assertEqual((2, 101, 102), logs[0][3:6])
 
     def test_seib_backup_covers_four_sources_on_original_same_day(self):
         self.assertEqual(
@@ -388,7 +417,7 @@ class BackupTests(unittest.TestCase):
             for sql, params in cursor.calls
             if 'SELECT COUNT(*)' in sql
         ]
-        self.assertEqual(len(count_calls), 24)
+        self.assertEqual(len(count_calls), 25)
         self.assertIn(
             'FROM public.tv_retail_com a',
             count_calls[0][0],
@@ -432,9 +461,11 @@ class BackupTests(unittest.TestCase):
             and 'redirect' not in sql
             for sql, _ in count_calls[17:20]
         ))
+        self.assertIn('LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s',
+                      count_calls[20][0])
         self.assertTrue(all(
             'LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s' in sql
-            for sql, _ in count_calls[20:]
+            for sql, _ in count_calls[21:]
         ))
         self.assertTrue(all(
             'batch_id' not in sql and 'page_type' not in sql
@@ -445,7 +476,7 @@ class BackupTests(unittest.TestCase):
             [('2026-08-10',)] * 7 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 11,
+            [('2026-08-11',)] * 12,
         )
         self.assertTrue(cursor.closed)
         self.assertTrue(connection.closed)
@@ -518,7 +549,7 @@ class BackupTests(unittest.TestCase):
             if sql.startswith('INSERT INTO')
             and 'monitoring_backup_log' not in sql
         ]
-        self.assertEqual(len(insert_calls), 24)
+        self.assertEqual(len(insert_calls), 25)
         self.assertTrue(all(
             'ON CONFLICT DO NOTHING' in sql
             for sql, _ in insert_calls
@@ -529,7 +560,7 @@ class BackupTests(unittest.TestCase):
             [('2026-08-10',)] * 7 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 11,
+            [('2026-08-11',)] * 12,
         )
         log_calls = [
             params for sql, params in cursor.calls

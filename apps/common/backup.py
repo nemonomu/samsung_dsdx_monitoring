@@ -95,6 +95,20 @@ def _seg_backup_source(source_key):
     }
 
 
+def _seg_dryer_backup_source():
+    return {
+        'key': 'seg_ldy_dryer',
+        'source_key': 'seg_ldy_dryer',
+        'country': 'SEG',
+        'category': 'SEG LDY_DRYER',
+        'product_line': 'seg_ldy_dryer',
+        'source_table': 'dx_seg.dx_seg_ldy_dryer_retail',
+        'backup_table': 'dx_seg.dx_seg_ldy_dryer_retail_backup',
+        'date_column': 'a.crawl_datetime',
+        'date_mode': 'raw_source_text',
+    }
+
+
 def _seda_backup_source(source_key):
     source = SEDA_SOURCE_CONFIG[source_key]
     return {
@@ -174,7 +188,7 @@ _BACKUP_SOURCES = tuple(
 ) + tuple(
     _seg_backup_source(source_key)
     for source_key in ('seg_tv', 'seg_ref', 'seg_ldy')
-) + tuple(
+) + (_seg_dryer_backup_source(),) + tuple(
     _seib_backup_source(source_key)
     for source_key in ('seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer')
 )

@@ -171,6 +171,9 @@ def daily_counts(country, product, retailer_name, end, days):
             raise ValueError('No configured collection fields')
         retailer = retailers[0]
         columns = ordered_columns(retailer['columns'])
+        if country == 'SEG' and retailer_name == 'Expert':
+            # Expert intentionally loads savings as NULL; do not compare its collection count.
+            columns = [column for column in columns if column != 'savings']
         sql, params = query_spec(source, retailer, columns, start, end)
         cursor.execute(sql, params)
         records = cursor.fetchall()

@@ -11,7 +11,7 @@ from apps.dx.dx_layer1.common import retail_batches
 from apps.dx.dx_layer1.collection_statistics.calculations import normalize_check, build_week
 from apps.dx.dx_layer1.collection_statistics import automatic
 from apps.dx.dx_layer1.column_statistics import services as columns
-from apps.dx.dx_layer1.column_statistics.comparison import collection_complete
+from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, compare_columns
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from tests.unit.support import ScriptedCursor
 
@@ -103,6 +103,34 @@ class ExpertLayer1Tests(unittest.TestCase):
         self.assertNotIn('ldy_capacity', data['columns'])
         self.assertNotIn('id', data['columns'])
         self.assertFalse(collection_complete('SEG', 'LDY_DRYER', 'Expert', date(2026, 10, 10)))
+
+    def test_expert_savings_is_excluded_only_from_expert_column_monitoring(self):
+        cursor = MagicMock()
+        cursor.fetchall.return_value = []
+
+        @contextmanager
+        def connection():
+            yield None, cursor
+
+        with patch.object(columns, 'dx_connection', connection):
+            for product in sources.EXPERT_COLUMNS:
+                with self.subTest(product=product):
+                    data = columns.daily_counts('SEG', product, 'Expert', date(2026, 10, 19), 29)
+                    self.assertNotIn('savings', data['columns'])
+                    self.assertTrue(all('savings' not in day['counts'] for day in data['daily']))
+                    self.assertNotIn('source.savings', cursor.execute.call_args.args[0])
+                    completed = {day['date']: True for day in data['daily']}
+                    self.assertNotIn('savings', [row['column'] for row in
+                                                compare_columns(data, date(2026, 10, 19), completed)])
+
+        source = columns.select_source('SEG', 'TV', 'Amazon')
+        amazon = next(retailer for retailer in source['retailers'] if retailer['name'] == 'Amazon')
+        with patch.object(columns, 'dx_connection', connection), patch.object(
+                columns, '_configured_retailers', return_value=[{**amazon, 'columns': ('item', 'savings')}]
+        ):
+            data = columns.daily_counts('SEG', 'TV', 'Amazon', date(2026, 10, 19), 29)
+        self.assertIn('savings', data['columns'])
+        self.assertIn('source.savings', cursor.execute.call_args.args[0])
 
     def test_background_refresh_revisits_snapshots_missing_expert(self):
         from datetime import timedelta

@@ -275,6 +275,7 @@ function formatBackupPrompt(data) {
             Number(data.seg_tv_count || 0) +
             Number(data.seg_ref_count || 0) +
             Number(data.seg_ldy_count || 0) +
+            Number(data.seg_ldy_dryer_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
             Number(data.tse_ldy_count || 0) +
@@ -320,11 +321,12 @@ function formatBackupPrompt(data) {
             '  ·  LDY ' + formatBackupCount(data.siel_ldy_count),
         '',
         'SEG · D 데이터 · ' + formatBackupSourceDate(
-            sourceDates, ['seg_tv', 'seg_ref', 'seg_ldy']
+            sourceDates, ['seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer']
         ),
         'TV ' + formatBackupCount(data.seg_tv_count) +
             '  ·  REF ' + formatBackupCount(data.seg_ref_count) +
-            '  ·  LDY ' + formatBackupCount(data.seg_ldy_count),
+            '  ·  LDY ' + formatBackupCount(data.seg_ldy_count) +
+            '  ·  DRY ' + formatBackupCount(data.seg_ldy_dryer_count),
         '',
         'TSE · D 데이터 · ' + formatBackupSourceDate(
             sourceDates, ['tse_tv', 'tse_ref', 'tse_ldy']
@@ -371,6 +373,7 @@ function renderBackupConfirmContent(data) {
             Number(data.seg_tv_count || 0) +
             Number(data.seg_ref_count || 0) +
             Number(data.seg_ldy_count || 0) +
+            Number(data.seg_ldy_dryer_count || 0) +
             Number(data.tse_tv_count || 0) +
             Number(data.tse_ref_count || 0) +
             Number(data.tse_ldy_count || 0) +
@@ -506,11 +509,12 @@ function renderBackupConfirmContent(data) {
     ));
     cards.appendChild(countryCard(
         'SEG', 'D',
-        formatBackupSourceDate(sourceDates, ['seg_tv', 'seg_ref', 'seg_ldy']),
+        formatBackupSourceDate(sourceDates, ['seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer']),
         [
             { label: 'TV', value: data.seg_tv_count },
             { label: 'REF', value: data.seg_ref_count },
-            { label: 'LDY', value: data.seg_ldy_count }
+            { label: 'LDY', value: data.seg_ldy_count },
+            { label: 'DRY', value: data.seg_ldy_dryer_count }
         ]
     ));
     container.appendChild(cards);

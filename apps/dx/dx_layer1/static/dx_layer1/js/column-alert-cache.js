@@ -2,7 +2,7 @@
     'use strict';
     // Only derived comparison counts are retained, never raw product/review data.
     // Per-tab, per-user, date/retailer-specific and short-lived across navigation.
-    const storageKey = 'column-alert-comparisons:v1:' + (window.LAYER1.username || '');
+    const storageKey = 'column-alert-comparisons:v2:' + (window.LAYER1.username || '');
     const ttl = 60000;
     let entries = {};
     try { entries = JSON.parse(window.sessionStorage.getItem(storageKey) || '{}'); } catch (_) {}

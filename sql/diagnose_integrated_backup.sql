@@ -4,6 +4,7 @@ WITH pairs(source_table, backup_table) AS (
     VALUES
         ('public.ldy_dryer_retail', 'public.ldy_dryer_retail_backup'),
         ('dx_sem.dx_sem_ldy_dryer_retail_com', 'dx_sem.dx_sem_ldy_dryer_retail_com_backup'),
+        ('dx_seg.dx_seg_ldy_dryer_retail', 'dx_seg.dx_seg_ldy_dryer_retail_backup'),
         ('dx_seib.dx_seib_tv_retail_com', 'dx_seib.dx_seib_tv_retail_com_backup'),
         ('dx_seib.dx_seib_ref_retail_com', 'dx_seib.dx_seib_ref_retail_com_backup'),
         ('dx_seib.dx_seib_ldy_retail_com', 'dx_seib.dx_seib_ldy_retail_com_backup'),

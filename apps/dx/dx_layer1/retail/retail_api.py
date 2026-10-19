@@ -134,6 +134,7 @@ def backup_retail_data(request):
                 'seg_tv_count': result.get('seg_tv_count', 0),
                 'seg_ref_count': result.get('seg_ref_count', 0),
                 'seg_ldy_count': result.get('seg_ldy_count', 0),
+                'seg_ldy_dryer_count': result.get('seg_ldy_dryer_count', 0),
                 'tse_tv_count': result['tse_tv_count'],
                 'tse_ref_count': result['tse_ref_count'],
                 'tse_ldy_count': result['tse_ldy_count'],
@@ -174,6 +175,7 @@ def backup_retail_data(request):
                 'seg_tv_count': result.get('seg_tv', {}).get('count', 0),
                 'seg_ref_count': result.get('seg_ref', {}).get('count', 0),
                 'seg_ldy_count': result.get('seg_ldy', {}).get('count', 0),
+                'seg_ldy_dryer_count': result.get('seg_ldy_dryer', {}).get('count', 0),
                 'tse_tv_count': result['tse_tv']['count'],
                 'tse_ref_count': result['tse_ref']['count'],
                 'tse_ldy_count': result['tse_ldy']['count'],
@@ -200,6 +202,7 @@ def backup_retail_data(request):
                 f"SEG TV: {counts['seg_tv_count']}건, "
                 f"SEG REF: {counts['seg_ref_count']}건, "
                 f"SEG LDY: {counts['seg_ldy_count']}건, "
+                f"SEG LDY_DRYER: {counts['seg_ldy_dryer_count']}건, "
                 f"TSE TV: {counts['tse_tv_count']}건, "
                 f"TSE REF: {counts['tse_ref_count']}건, "
                 f"TSE LDY: {counts['tse_ldy_count']}건, "
