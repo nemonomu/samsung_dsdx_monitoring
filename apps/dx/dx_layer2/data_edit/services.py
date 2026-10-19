@@ -122,7 +122,7 @@ def _get_sea_edit_context(table_name):
     if not resolve_monitoring_date:
         return None
     if table_name == 'public.ldy_dryer_retail':
-        return costco_layer2.dryer_source(include_homedepot=True)
+        return costco_layer2.dryer_source(include_homedepot=True, include_lowes=True)
     if table_name == 'public.tv_retail_com':
         return costco_layer2.tv_source(SEA_RETAIL_SOURCES)
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
@@ -442,7 +442,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             crawl_date, 'SEA', sea_context['source_key']
         )
         date_column = sea_context['date_column']
-        peer_accounts = "('bestbuy', 'costco')" if sea_context['product_key'] == 'ldy_dryer' else "('costco')"
+        peer_accounts = "('bestbuy', 'costco', 'lowes')" if sea_context['product_key'] == 'ldy_dryer' else "('costco')"
         account = f"""COALESCE(NULLIF(TRIM(source.account_name), ''),
             (SELECT peer.account_name FROM {table_name} peer
              WHERE peer.batch_id = source.batch_id AND LOWER(TRIM(peer.account_name)) IN {peer_accounts}
@@ -451,7 +451,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         only_costco = None
         costco_only = f"AND LOWER(TRIM({account})) = 'costco'" if table_name == 'public.tv_retail_com' else ''
         if sea_context['product_key'] == 'ldy_dryer':
-            costco_only = f"AND LOWER(TRIM({account})) IN ('bestbuy', 'costco')"
+            costco_only = f"AND LOWER(TRIM({account})) IN ('bestbuy', 'costco', 'lowes')"
         cursor.execute(f"""
             SELECT {select_columns}
             FROM {table_name} source
@@ -505,6 +505,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_cols = (costco_layer2.sea_layer2.homedepot_format_columns('ldy_dryer')
                          if correction_type_value == 'format_check'
                          else costco_layer2.sea_layer2.homedepot_null_columns('ldy_dryer'))
+    elif sea_context and costco_layer2.lowes_dryer.matches(sea_context['product_key'], retailer):
+        if correction_type_value != 'null_check':
+            return {'error': 'Lowes 건조기는 NULL 검수만 지원합니다', 'status': 403}
+        editable_cols = costco_layer2.lowes_dryer.NULL_COLUMNS
     elif sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
         if correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status': 403}

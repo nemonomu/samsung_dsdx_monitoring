@@ -6,7 +6,7 @@ var SEA_RETAIL_PRODUCTS = [
     { key: 'tv', category: 'TV', retailers: ['Amazon', 'Bestbuy', 'Walmart', 'Costco'] },
     { key: 'ref', category: 'REF', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] },
     { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] },
-    { key: 'ldy_dryer', category: 'LDY_DRYER', retailers: ['Bestbuy', 'Costco', 'HomeDepot'] }
+    { key: 'ldy_dryer', category: 'LDY_DRYER', retailers: ['Bestbuy', 'Lowes', 'Costco', 'HomeDepot'] }
 ];
 var seaRetailSummaryCache = {};
 var seaRetailSummaryDate = '';
@@ -337,6 +337,7 @@ function buildSeaRetailFallbackCategories() {
         var total = getRetailSummaryTotal(summaryData);
         var summaryRetailers = summaryData && summaryData.summary || [];
         var retailers = product.retailers.filter(function(retailerName) {
+            if (product.key === 'ldy_dryer' && retailerName === 'Lowes') return getSelectedDate() >= '2026-10-18';
             if (product.key === 'ldy_dryer' && retailerName === 'HomeDepot') return getSelectedDate() >= '2026-10-16';
             return product.key !== 'ldy_dryer' || retailerName !== 'Bestbuy' || getSelectedDate() >= '2026-10-13';
         }).map(function(retailerName) {

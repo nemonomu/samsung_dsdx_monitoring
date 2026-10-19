@@ -52,7 +52,7 @@ class BestbuyDryerTests(unittest.TestCase):
 
     def test_collection_order_counts_and_launch(self):
         source = retail._get_layer1_source('LDY_DRYER')
-        self.assertEqual(('Bestbuy', 'Costco', 'HomeDepot'), source['retailers'])
+        self.assertEqual(('Bestbuy', 'Lowes', 'Costco', 'HomeDepot'), source['retailers'])
         cur = ScriptedCursor([])
         self.assertIsNone(repo.get_latest_appliance_main_batch(cur, TABLE, 'crawl_datetime', '2026-10-11', 'Bestbuy'))
         self.assertFalse(cur.calls)
@@ -79,7 +79,7 @@ class BestbuyDryerTests(unittest.TestCase):
 
     def test_column_statistics_same_schema_latest_batch_and_date(self):
         source = columns.select_source('SEA', 'LDY_DRYER', 'Bestbuy')
-        self.assertEqual(['Bestbuy', 'Costco', 'HomeDepot'], [r['name'] for r in source['retailers']])
+        self.assertEqual(['Bestbuy', 'Lowes', 'Costco', 'HomeDepot'], [r['name'] for r in source['retailers']])
         fields = columns.ordered_columns(policy.costco.COLUMNS['ldy_dryer'])
         sql, params = columns.query_spec(source, source['retailers'][0], fields, date(2026, 10, 1), date(2026, 10, 12))
         self.assertIn('2026-10-12', params)

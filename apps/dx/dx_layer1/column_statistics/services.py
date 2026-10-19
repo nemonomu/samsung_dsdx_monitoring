@@ -6,7 +6,7 @@ from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS, EXPERT_START_DATE
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
 )
@@ -40,7 +40,7 @@ def _sources():
             if source['product'] == 'LDY':
                 yield _source('sea_ldy_dryer', 'SEA', 'LDY_DRYER',
                               'public.ldy_dryer_retail', 'crawl_datetime', 'text',
-                              (_retailer('Bestbuy'), _retailer('Costco'), _retailer('HomeDepot')), has_page_type=False, collection_scope='all')
+                              (_retailer('Bestbuy'), _retailer('Lowes'), _retailer('Costco'), _retailer('HomeDepot')), has_page_type=False, collection_scope='all')
         elif source['country'] == 'SEG':
             yield {**source, 'retailers': (*source['retailers'], _retailer('Expert'))}
             if source['product'] == 'LDY':
@@ -69,7 +69,10 @@ def query_spec(source, retailer, columns, start, end):
     if is_expert:
         start = max(start, EXPERT_START_DATE)
     col = 'source.' + source['date_column']
-    if source['country'] == 'SEA' and bestbuy_dryer.matches(source['product'], retailer['name']):
+    if source['country'] == 'SEA' and lowes_dryer.matches(source['product'], retailer['name']):
+        day = lowes_dryer.source_date_sql(col)
+        start = max(start, lowes_dryer.FIRST_SOURCE_DATE)
+    elif source['country'] == 'SEA' and bestbuy_dryer.matches(source['product'], retailer['name']):
         day = bestbuy_dryer.source_date_sql(col)
         start = max(start, bestbuy_dryer.FIRST_SOURCE_DATE)
     elif source['country'] == 'SEA' and homedepot_dryer.matches(source['product'], retailer['name']):
@@ -161,6 +164,7 @@ def daily_counts(country, product, retailer_name, end, days):
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
             'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
+                            else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, retailer_name)
                             else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, retailer_name)
                             else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, retailer_name)
                             else str(costco.first_source_date(product)) if country == 'SEA' and retailer_name == 'Costco' else None),

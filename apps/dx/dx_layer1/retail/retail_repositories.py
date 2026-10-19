@@ -3,7 +3,7 @@
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.common.sea_collection import homedepot_source_enabled
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 
 
 def _timestamp_expression(date_field):
@@ -37,6 +37,8 @@ def _normalized_account(alias=''):
 
 
 def _appliance_date_condition(date_column, retailer):
+    if date_column == 'crawl_datetime' and lowes_dryer.matches('ldy_dryer', retailer):
+        return f"({lowes_dryer.source_date_sql(date_column)}) = %s"
     if str(retailer or '').strip().lower() == 'costco':
         return f"({costco.source_date_sql(date_column)}) = %s"
     if str(retailer or '').strip().lower() == 'homedepot':
@@ -182,6 +184,8 @@ def get_retailer_raw_data_list(cursor, table_name, columns, retailer,
 def get_latest_appliance_main_batch(cursor, table_name, date_column,
                                     target_date, retailer):
     """Return the latest daily batch; HomeDepot has no MAIN page marker."""
+    if lowes_dryer.matches(table_name, retailer) and not lowes_dryer.enabled(target_date):
+        return None
     if homedepot_dryer.matches(table_name, retailer) and not homedepot_dryer.enabled(target_date):
         return None
     if bestbuy_dryer.matches(table_name, retailer) and not bestbuy_dryer.enabled(target_date):

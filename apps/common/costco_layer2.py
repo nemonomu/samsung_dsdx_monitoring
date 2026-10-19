@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from apps.common import sea_layer2
 from apps.common.source_dates import source_date_value
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 
 METRICS = ('star_rating', 'count_of_star_ratings', 'count_of_reviews')
 PRICES = ('final_sku_price', 'original_sku_price', 'savings')
@@ -24,16 +24,18 @@ def is_costco(retailer):
     return str(retailer or '').strip().casefold() == 'costco'
 
 
-def dryer_source(*, include_homedepot=False):
+def dryer_source(*, include_homedepot=False, include_lowes=False):
     retailers = ('Bestbuy', 'Costco', 'HomeDepot') if include_homedepot else ('Bestbuy', 'Costco')
+    if include_lowes:
+        retailers = (*retailers, 'Lowes')
     return {**costco.DRYER_SOURCE, 'retailers': retailers, 'backup_table': None}
 
 
-def sources(registry, *, include_dryer=False, include_homedepot_dryer=False):
+def sources(registry, *, include_dryer=False, include_homedepot_dryer=False, include_lowes_dryer=False):
     result = {key: {**source, 'retailers': tuple(dict.fromkeys((*source['retailers'], 'Costco')))}
             for key, source in registry.items()}
     if include_dryer:
-        result['ldy_dryer'] = dryer_source(include_homedepot=include_homedepot_dryer)
+        result['ldy_dryer'] = dryer_source(include_homedepot=include_homedepot_dryer, include_lowes=include_lowes_dryer)
     return result
 
 
@@ -43,6 +45,8 @@ def tv_source(registry):
 
 def source_date_sql(column, alias='', retailer=None, account_column=None, product='', *, query_scope=False):
     prefix = f'{alias}.' if alias else ''
+    if lowes_dryer.matches(product, retailer):
+        return lowes_dryer.source_date_sql(prefix + column)
     if homedepot_dryer.matches(product, retailer):
         return homedepot_dryer.source_date_sql(prefix + column)
     if bestbuy_dryer.matches(product, retailer):
@@ -59,7 +63,8 @@ def source_date_sql(column, alias='', retailer=None, account_column=None, produc
     if product == 'ldy_dryer':
         bestbuy_day = bestbuy_dryer.source_date_sql(prefix + column)
         home_day = homedepot_dryer.source_date_sql(prefix + column)
-        legacy = f"CASE WHEN LOWER(TRIM({account})) = 'homedepot' THEN {home_day} ELSE {bestbuy_day} END"
+        lowes_day = lowes_dryer.source_date_sql(prefix + column)
+        legacy = f"CASE WHEN LOWER(TRIM({account})) = 'lowes' THEN {lowes_day} WHEN LOWER(TRIM({account})) = 'homedepot' THEN {home_day} ELSE {bestbuy_day} END"
     return f"(CASE WHEN LOWER(TRIM({account})) = 'costco' THEN {day} ELSE {legacy} END)"
 
 
@@ -74,6 +79,9 @@ def page_scope_sql(alias='', *, anchor=False, retailer=None, product=''):
 
 
 def annotate_source_date(row, retailer=None, *, display_kst=False):
+    if str(row.get('account_name') or retailer or '').strip().casefold() == 'lowes' and row.get('crawl_datetime'):
+        row['_source_date'] = source_date_value(row['crawl_datetime'])
+        return row
     if is_costco(row.get('account_name') or retailer):
         raw = row.get('crawl_datetime') or row.get('crawl_strdatetime')
         if raw:

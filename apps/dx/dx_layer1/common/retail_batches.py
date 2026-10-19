@@ -131,7 +131,7 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
     is_costco = check_type == 'retail' and key == 'costco'
     all_batches = check_type == 'retail' and source['product_key'] == 'tv' and not is_costco
     appliance = check_type == 'retail' and source['product_key'] != 'tv'
-    main_anchor = check_type in {'siel_retail', 'seg_retail', 'seda_retail'} or (appliance and key not in ('homedepot', 'costco'))
+    main_anchor = check_type in {'siel_retail', 'seg_retail', 'seda_retail'} or (appliance and source['product_key'] != 'ldy_dryer' and key not in ('homedepot', 'costco'))
     if check_type == 'seg_retail' and key == 'expert':
         main_anchor = False
     page = "LOWER(BTRIM(CAST(page_type AS TEXT)))"
@@ -190,7 +190,7 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if row['batch_id'] is not None:
             query_params.append(row['batch_id'])
         copy_date_scope = f'{column} >= %s'
-        if check_type == 'retail' and key in ('costco', 'homedepot'):
+        if check_type == 'retail' and (key in ('costco', 'homedepot') or source['product_key'] == 'ldy_dryer'):
             # Reproduce the displayed batch's monitoring date in its copy SQL.
             copy_date_scope = f'{source_date_sql(column)} = %s'
         query = f"""SELECT *

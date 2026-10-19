@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE')
@@ -28,6 +28,8 @@ def normalize_check(check, country, inspection_date):
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
+                if country == 'SEA' and lowes_dryer.matches(product, name) and not lowes_dryer.enabled(source_day):
+                    continue
                 if country == 'SEA' and homedepot_dryer.matches(product, name) and not homedepot_dryer.enabled(source_day):
                     continue
                 if country == 'SEA' and bestbuy_dryer.matches(product, name) and not bestbuy_dryer.enabled(source_day):
@@ -57,12 +59,13 @@ def normalize_check(check, country, inspection_date):
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
                     'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                                    else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, name)
                                     else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, name)
                                     else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, name)
                                     else str(costco.first_source_date(product)) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
-                if country == 'SEA' and name in ('Costco', 'HomeDepot'):
+                if country == 'SEA' and (name in ('Costco', 'HomeDepot') or lowes_dryer.matches(product, name)):
                     rows[-1]['source_date_basis'] = 'db_original'
     return sorted(rows, key=row_key)
 
@@ -96,7 +99,7 @@ def remember_observation(days, rows, source_date):
 def tiered_bsr(row, country):
     retailer = str(row['retailer']).strip().casefold()
     product = row['product']
-    return ((country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY'))
+    return ((country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY', 'LDY_DRYER'))
             or (retailer == 'amazon' and product in {
                 'SEA': ('TV',), 'SIEL': ('TV', 'REF', 'LDY'), 'SEG': ('TV', 'REF'),
             }.get(country, ())))

@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta, timezone
 from importlib import import_module
 from statistics import median
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer
+from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 
 KST = timezone(timedelta(hours=9))
 BASELINE_DAYS = 28
@@ -19,6 +19,8 @@ def collection_complete(country, product, retailer, source_day, now=None):
     if source_day > now.date():
         return False
     if country == 'SEA':
+        if lowes_dryer.matches(product, retailer):
+            return lowes_dryer.complete(source_day, now)
         if homedepot_dryer.matches(product, retailer):
             return homedepot_dryer.complete(source_day, now)
         if bestbuy_dryer.matches(product, retailer):
