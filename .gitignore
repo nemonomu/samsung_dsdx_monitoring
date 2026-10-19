@@ -56,6 +56,7 @@ config/create_admin.py
 !sql/setup_homedepot_dryer_layer2.sql
 !sql/setup_lowes_dryer_layer2.sql
 !sql/setup_lowes_dryer_format.sql
+!sql/setup_bestbuy_costco_dryer_format.sql
 !sql/setup_homedepot_dryer_validation.sql
 !sql/setup_sea_homedepot_format_only.sql
 !sql/setup_sea_homedepot_crossfield.sql

@@ -537,12 +537,16 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             if correction_type_value == 'format_check' else costco_layer2.lowes_dryer.NULL_COLUMNS
         )
     elif sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
-        if correction_type_value != 'null_check':
-            return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status': 403}
-        editable_cols = (*costco_layer2.NULL_COLUMNS['ldy_dryer'], 'sku')
+        if correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'Bestbuy 건조기는 NULL·형식 검수만 지원합니다', 'status': 403}
+        editable_cols = (costco_layer2.DRYER_FORMAT_EDITABLE
+                         if correction_type_value == 'format_check'
+                         else (*costco_layer2.NULL_COLUMNS['ldy_dryer'], 'sku'))
     elif is_costco(retailer) and sea_context:
-        editable_cols = (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
-                         else costco_layer2.NULL_COLUMNS).get(sea_context['product_key'], ())
+        editable_cols = (costco_layer2.DRYER_FORMAT_EDITABLE
+                         if correction_type_value == 'format_check' and sea_context['product_key'] == 'ldy_dryer'
+                         else (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
+                               else costco_layer2.NULL_COLUMNS).get(sea_context['product_key'], ()))
     elif seib_product_line:
         editable_cols = (seib_format_validation.get_format_editable_columns(product_line)
                          if correction_type_value == 'format_check'

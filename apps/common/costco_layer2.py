@@ -26,6 +26,15 @@ LOWES_DRYER_FORMAT_COLUMNS = (
 LOWES_DRYER_FORMAT_EDITABLE = tuple(
     field for field in LOWES_DRYER_FORMAT_COLUMNS if field != 'crawl_datetime'
 )
+DRYER_FORMAT_COLUMNS = (
+    'account_name', 'country', 'item', 'product_url', 'crawl_datetime',
+    'calendar_week', 'final_sku_price', 'original_sku_price', 'savings',
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+    'capacity', 'loading_type',
+)
+DRYER_FORMAT_EDITABLE = tuple(
+    field for field in DRYER_FORMAT_COLUMNS if field != 'crawl_datetime'
+)
 
 
 def is_costco(retailer):

@@ -3115,6 +3115,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             costco_layer2.NULL_COLUMNS[sea_source['product_key']],
             _get_sea_null_columns('ldy_dryer', 'Bestbuy') if sea_source['product_key'] == 'ldy_dryer' else (),
             costco_layer2.FORMAT_COLUMNS.get(sea_source['product_key'], ()),
+            costco_layer2.DRYER_FORMAT_COLUMNS if sea_source['product_key'] == 'ldy_dryer' else (),
             costco_layer2.LOWES_DRYER_FORMAT_COLUMNS if sea_source['product_key'] == 'ldy_dryer' else (),
             homedepot_null_columns(sea_source['product_key']), homedepot_format_columns(sea_source['product_key']))
     ):
@@ -3271,11 +3272,12 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             return {'error': 'HomeDepot 건조기는 NULL·형식 검수를 지원합니다', 'status_code': 400}
         if costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer) and correction_type_value not in {'null_check', 'format_check'}:
             return {'error': 'Lowes 건조기는 NULL·형식 검수만 지원합니다', 'status_code': 403}
-        if costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
-            return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
+        if costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer) and correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'Bestbuy 건조기는 NULL·형식 검수만 지원합니다', 'status_code': 400}
         if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:
             return {'error': 'Costco는 NULL·형식 검수만 지원합니다', 'status_code': 400}
-        allowed = ((costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check' else costco_layer2.NULL_COLUMNS).get(sea_source['product_key'], ()) if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
+        allowed = (costco_layer2.DRYER_FORMAT_COLUMNS if correction_type_value == 'format_check' and sea_source['product_key'] == 'ldy_dryer' and (is_costco(retailer) or costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer))
+                   else (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check' else costco_layer2.NULL_COLUMNS).get(sea_source['product_key'], ()) if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
                    if is_homedepot(retailer) and correction_type_value == 'format_check'
                    else homedepot_null_columns(sea_source['product_key']) if is_homedepot(retailer)
                    else costco_layer2.LOWES_DRYER_FORMAT_COLUMNS if costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer) and correction_type_value == 'format_check'

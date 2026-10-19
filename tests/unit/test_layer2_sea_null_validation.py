@@ -136,6 +136,15 @@ def common_stubs():
         'apps.dx.dx_layer2.sem_validation': sem_validation_stub(),
         'apps.dx.dx_layer2.seg_validation': seg_validation_stub(),
         'apps.dx.dx_layer2.seda_null_validation': seda_null_validation_stub(),
+        'apps.dx.dx_layer2.seib_null_validation': module_stub(
+            'apps.dx.dx_layer2.seib_null_validation', SEIB_SOURCE_CONFIG={},
+            product_line_for=lambda _value: None,
+            append_null_stats=lambda *_args, **_kwargs: 0,
+        ),
+        'apps.dx.dx_layer2.seib_format_validation': module_stub(
+            'apps.dx.dx_layer2.seib_format_validation', SEIB_SOURCE_CONFIG={},
+            product_line_for=lambda _value: None,
+        ),
         'apps.dx.dx_layer2.common': package_stub(
             'apps.dx.dx_layer2.common'
         ),

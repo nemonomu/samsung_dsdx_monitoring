@@ -62,7 +62,7 @@ try:
     from apps.common.sea_layer2 import layer2_sources
     SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
     SEA_RETAIL_SOURCES['ldy_dryer'] = {
-        **costco_layer2.dryer_source(), 'retailers': ('HomeDepot', 'Lowes'),
+        **costco_layer2.dryer_source(include_homedepot=True, include_lowes=True),
     }
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
@@ -914,6 +914,10 @@ def _resolve_sea_format_retailer(source, retailer):
 
 
 def _get_sea_format_fields(product_key, retailer):
+    if product_key == 'ldy_dryer' and (
+        is_costco(retailer) or costco_layer2.bestbuy_dryer.matches(product_key, retailer)
+    ):
+        return costco_layer2.DRYER_FORMAT_COLUMNS
     if is_costco(retailer):
         return costco_layer2.FORMAT_COLUMNS[product_key]
     if is_homedepot(retailer):
@@ -940,14 +944,18 @@ def _fetch_sea_format_rows(
         if not costco_layer2.lowes_dryer.enabled(end_date):
             return []
         start_date = max(str(start_date), str(costco_layer2.lowes_dryer.FIRST_SOURCE_DATE))
+    if costco_layer2.bestbuy_dryer.matches(source['product_key'], retailer_value):
+        if not costco_layer2.bestbuy_dryer.enabled(end_date):
+            return []
+        start_date = max(str(start_date), str(costco_layer2.bestbuy_dryer.FIRST_SOURCE_DATE))
     if is_homedepot(retailer_value):
         if not homedepot_source_enabled(end_date):
             return []
         start_date = max(str(start_date), HOMEDEPOT_FIRST_SOURCE_DATE.isoformat())
     if is_costco(retailer_value):
-        if not costco_layer2.costco.enabled(end_date):
+        if not costco_layer2.costco.enabled(end_date, source['product_key']):
             return []
-        start_date = max(str(start_date), str(costco_layer2.costco.FIRST_SOURCE_DATE))
+        start_date = max(str(start_date), str(costco_layer2.costco.first_source_date(source['product_key'])))
     canonical_table = source['table_name']
     date_column = source['date_column']
     product_key = source['product_key']
@@ -962,8 +970,8 @@ def _fetch_sea_format_rows(
         select_columns = [c for c in select_columns if c not in ('product', 'page_type')]
     if is_costco(retailer_value) and product_key == 'tv':
         select_columns = [c for c in select_columns if c not in ('sku', 'product', 'page_type')]
-    # Country is a validated value for HomeDepot, not a source selector.
-    country_scope = 'TRUE' if is_homedepot(retailer_value) or is_costco(retailer_value) else """(
+    # Dryer country is validated, so a wrong country must still be fetched.
+    country_scope = 'TRUE' if product_key == 'ldy_dryer' or is_homedepot(retailer_value) or is_costco(retailer_value) else """(
         UPPER(TRIM(COALESCE(source.country, ''))) = 'SEA'
         OR source.country IS NULL
         OR TRIM(CAST(source.country AS TEXT)) = ''
@@ -1139,10 +1147,16 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days, include_n
     ))
     if product_key == 'ldy_dryer':
         column_names = [c for c in column_names if c not in ('product', 'page_type')]
-        editable_columns = (set(costco_layer2.LOWES_DRYER_FORMAT_EDITABLE)
-                            if retailer_value == 'Lowes' else set(format_fields))
+        editable_columns = (
+            set(costco_layer2.LOWES_DRYER_FORMAT_EDITABLE)
+            if retailer_value == 'Lowes'
+            else set(costco_layer2.DRYER_FORMAT_EDITABLE)
+            if retailer_value in ('Bestbuy', 'Costco')
+            else set(format_fields)
+        )
     if is_costco(retailer_value):
-        editable_columns = set(format_fields)
+        editable_columns = (set(costco_layer2.DRYER_FORMAT_EDITABLE)
+                            if product_key == 'ldy_dryer' else set(format_fields))
         if product_key == 'tv':
             column_names = [c for c in column_names if c not in ('sku', 'product', 'page_type')]
     return {
@@ -1198,9 +1212,11 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
                     continue
                 if costco_layer2.lowes_dryer.matches(product_key, retailer_value) and not costco_layer2.lowes_dryer.enabled(source_date):
                     continue
+                if costco_layer2.bestbuy_dryer.matches(product_key, retailer_value) and not costco_layer2.bestbuy_dryer.enabled(source_date):
+                    continue
                 if product_key == 'tv' and not is_costco(retailer_value):
                     continue
-                if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date):
+                if is_costco(retailer_value) and not costco_layer2.costco.enabled(source_date, product_key):
                     continue
                 rows = _fetch_sea_format_rows(
                     cursor, source_date, source_date, source, retailer_value

@@ -34,6 +34,14 @@ class SEALayer2DataEditTests(unittest.TestCase):
     def setUpClass(cls):
         stubs = {
             'apps.dx.dx_layer2.seda_null_validation': seda_null_validation_stub(),
+            'apps.dx.dx_layer2.seib_null_validation': module_stub(
+                'apps.dx.dx_layer2.seib_null_validation', SEIB_SOURCE_CONFIG={},
+                product_line_for=lambda _value: None,
+            ),
+            'apps.dx.dx_layer2.seib_format_validation': module_stub(
+                'apps.dx.dx_layer2.seib_format_validation', SEIB_SOURCE_CONFIG={},
+                product_line_for=lambda _value: None,
+            ),
             'apps': package_stub('apps'),
             'apps.dx': package_stub('apps.dx'),
             'apps.dx.dx_layer2': package_stub('apps.dx.dx_layer2'),

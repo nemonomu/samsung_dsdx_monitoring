@@ -2,6 +2,7 @@
 from datetime import date, datetime
 
 from apps.common.sea_collection import KST
+from apps.common.source_dates import source_date_sql as original_date_sql
 
 FIRST_SOURCE_DATE = date(2026, 10, 12)
 
@@ -23,5 +24,5 @@ def complete(source_date, now=None):
 
 
 def source_date_sql(column):
-    day = f"LEFT(BTRIM(CAST({column} AS TEXT)), 10)"
+    day = original_date_sql(column)
     return f"(CASE WHEN {day} >= '{FIRST_SOURCE_DATE}' THEN {day} END)"
