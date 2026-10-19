@@ -9,6 +9,11 @@ from apps.common.retail_columns import get_editable_columns
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
+from apps.common.seib_retail import (
+    FIRST_SOURCE_DATE as SEIB_FIRST_SOURCE_DATE,
+    SEIB_SOURCE_CONFIG, RETAILER as SEIB_RETAILER,
+)
+from apps.common.source_dates import source_date_sql
 from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_field_missing_editable_columns
 from apps.common.seda_retail import (
     SEDA_SOURCE_CONFIG, get_seda_product_line, get_seda_crossfield_editable_columns,
@@ -69,6 +74,8 @@ VALID_TABLES_UPDATE.update(TSE_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SIEL_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SEG_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SEM_TABLE_TO_PRODUCT_LINE)
+SEIB_TABLES = {source['table_name']: source for source in SEIB_SOURCE_CONFIG.values()}
+VALID_TABLES_UPDATE.update(SEIB_TABLES)
 SEDA_TABLES = {source['table_name'] for source in SEDA_SOURCE_CONFIG.values()}
 VALID_TABLES_UPDATE.update(SEDA_TABLES)
 
@@ -82,6 +89,10 @@ SEG_CROSSFIELD_REVIEW_COLUMNS = frozenset({
     'count_of_reviews', 'detailed_review_content',
     'final_sku_price', 'original_sku_price', 'savings',
     'page_type', 'main_rank', 'bsr_rank',
+})
+SEIB_CROSSFIELD_COLUMNS = frozenset({
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+    'final_sku_price', 'original_sku_price', 'savings',
 })
 
 
@@ -101,9 +112,13 @@ def _is_sem_table(table_name):
     return table_name in SEM_TABLE_TO_PRODUCT_LINE
 
 
+def _get_seib_edit_context(table_name):
+    return SEIB_TABLES.get(table_name)
+
+
 def _get_sea_edit_context(table_name):
     if table_name == 'public.ldy_dryer_retail':
-        return costco_layer2.dryer_source(include_homedepot=True)
+        return costco_layer2.dryer_source(include_homedepot=True, include_lowes=True)
     if table_name == 'public.tv_retail_com':
         return SEA_RETAIL_SOURCES['tv']
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
@@ -146,6 +161,8 @@ def _get_sem_edit_context(table_name):
 
 
 def _get_product_line(table_name):
+    if table_name in SEIB_TABLES:
+        return SEIB_TABLES[table_name]['source_key']
     if table_name in SEDA_TABLES:
         return get_seda_product_line(table_name)
     if _is_tse_table(table_name):
@@ -183,7 +200,7 @@ def _select_sea_record(
     date_column = source['date_column']
     if table_name in ('public.tv_retail_com', 'public.ldy_dryer_retail'):
         retailer = None if source['product_key'] == 'ldy_dryer' else 'Costco'
-        accounts = "('bestbuy', 'costco', 'homedepot')" if source['product_key'] == 'ldy_dryer' else "('costco')"
+        accounts = "('bestbuy', 'costco', 'homedepot', 'lowes')" if source['product_key'] == 'ldy_dryer' else "('costco')"
         day = costco_layer2.source_date_sql(date_column, 'source', retailer=retailer, product=source['product_key'])
         anchor_day = costco_layer2.source_date_sql(date_column, 'anchor', retailer=retailer, product=source['product_key'])
         cursor.execute(f"""SELECT {select_columns} FROM {table_name} source
@@ -214,6 +231,29 @@ def _select_sea_record(
     """, (
         row_id, date_contract['source_date'], date_contract['source_date'],
     ))
+
+
+def _select_seib_record(cursor, source, select_columns, row_id, inspection_date):
+    mapping = resolve_monitoring_date(inspection_date, 'SEIB', source['source_key'])
+    day = mapping['source_date']
+    if day < str(SEIB_FIRST_SOURCE_DATE):
+        return
+    source_day = source_date_sql('source.crawl_datetime')
+    anchor_day = source_date_sql('anchor.crawl_datetime')
+    cursor.execute(f"""
+        SELECT {select_columns}
+        FROM {source['table_name']} source
+        WHERE source.id = %s AND {source_day} = %s
+          AND LOWER(BTRIM(source.account_name)) = %s
+          AND source.batch_id IS NOT DISTINCT FROM (
+              SELECT anchor.batch_id
+              FROM {source['table_name']} anchor
+              WHERE {anchor_day} = %s
+                AND LOWER(BTRIM(anchor.account_name)) = %s
+              ORDER BY anchor.id DESC LIMIT 1
+          )
+        FOR UPDATE OF source
+    """, (row_id, day, SEIB_RETAILER.casefold(), day, SEIB_RETAILER.casefold()))
 
 
 def _select_siel_record(
@@ -333,6 +373,8 @@ def _validate_edit_target(table_name, column_name, *, allow_related_price=False)
         return {'error': '허용되지 않는 테이블', 'status': 400}
     if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(column_name or '')):
         return {'error': '잘못된 컬럼명', 'status': 400}
+    if table_name in SEIB_TABLES and column_name not in SEIB_CROSSFIELD_COLUMNS:
+        return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     if (table_name in SEDA_TABLES
             and column_name not in get_seda_crossfield_editable_columns(table_name)
             and not (allow_related_price and column_name in PRICE_EDITABLE_COLUMNS)):
@@ -398,17 +440,20 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         return invalid_target
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
+    seib_context = _get_seib_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
     seg_context = _get_seg_edit_context(table_name)
     sem_context = _get_sem_edit_context(table_name)
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
     retail_context = bool(
         table_name in SEDA_TABLES or _is_tse_table(table_name)
-        or sea_context or siel_context or seg_context or sem_context
+        or sea_context or seib_context or siel_context or seg_context or sem_context
         or table_basename in {'tv_retail_com', 'ref_retail_com', 'ldy_retail_com'}
     )
     if sea_context:
         table_name = sea_context['table_name']
+    elif seib_context:
+        table_name = seib_context['table_name']
     elif siel_context:
         table_name = siel_context['table_name']
     elif seg_context:
@@ -429,6 +474,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     select_columns = (
         f"{column_name}, batch_id, account_name, item"
         if (_is_tse_table(table_name) or _is_sem_table(table_name)
+            or seib_context
             or _is_seg_table(table_name))
         else f"{column_name}, NULL AS batch_id, account_name, item"
     )
@@ -447,6 +493,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         _select_sem_record(
             cursor, sem_context, select_columns, row_id, crawl_date
         )
+    elif seib_context:
+        _select_seib_record(cursor, seib_context, select_columns, row_id, crawl_date)
     elif sea_context:
         _select_sea_record(
             cursor, sea_context, select_columns, row_id, crawl_date
@@ -477,6 +525,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
 
     if table_name == 'public.ldy_dryer_retail' and correction_type == 'cross_field':
         editable_cols = (*costco_layer2.METRICS, *costco_layer2.PRICES)
+    elif seib_context:
+        editable_cols = SEIB_CROSSFIELD_COLUMNS if correction_type == 'cross_field' else ()
     elif table_name in SEDA_TABLES:
         editable_cols = get_seda_crossfield_editable_columns(product_line, retailer)
     elif sem_context:
@@ -547,11 +597,14 @@ def save_review(cursor, conn, table_name, record_id, column_name,
         return invalid_target
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
+    seib_context = _get_seib_edit_context(table_name)
     siel_context = _get_siel_edit_context(table_name)
     seg_context = _get_seg_edit_context(table_name)
     sem_context = _get_sem_edit_context(table_name)
     if sea_context:
         table_name = sea_context['table_name']
+    elif seib_context:
+        table_name = seib_context['table_name']
     elif siel_context:
         table_name = siel_context['table_name']
     elif seg_context:
@@ -580,6 +633,9 @@ def save_review(cursor, conn, table_name, record_id, column_name,
             cursor, sem_context,
             f'{column_name}, account_name, item', record_id, crawl_date,
         )
+    elif seib_context:
+        _select_seib_record(cursor, seib_context,
+                            f'{column_name}, account_name, item', record_id, crawl_date)
     elif sea_context:
         _select_sea_record(
             cursor, sea_context,
@@ -612,6 +668,9 @@ def save_review(cursor, conn, table_name, record_id, column_name,
 
     if table_name in SEDA_TABLES and column_name not in get_seda_crossfield_editable_columns(product_line, retailer):
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+
+    if seib_context and (correction_type != 'cross_field' or column_name not in SEIB_CROSSFIELD_COLUMNS):
+        return {'error': f'{column_name} 컬럼은 정상 확인할 수 없습니다', 'status': 403}
 
     if _is_tse_table(table_name):
         editable_cols = get_editable_columns(product_line, retailer)

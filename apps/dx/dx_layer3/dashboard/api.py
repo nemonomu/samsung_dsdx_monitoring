@@ -14,6 +14,7 @@ from apps.dx.dx_layer3.cross_field.seg_sources import SEG_SOURCE_CONFIG
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
+from apps.common.seib_retail import SEIB_SOURCE_CONFIG
 from apps.dx.dx_layer3.cross_field import (
     sea_services,
     sem_services,
@@ -22,6 +23,7 @@ from apps.dx.dx_layer3.cross_field import (
 )
 from apps.dx.dx_layer3.cross_field import seg_services
 from apps.dx.dx_layer3.cross_field import seda_services
+from apps.dx.dx_layer3.cross_field import seib_services
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -398,6 +400,36 @@ def layer_stats(request):
                             if sea_review_needed
                             else 'OK'
                         ),
+                    })
+
+            if run_crossfield:
+                seib_product_lines = (
+                    list(SEIB_SOURCE_CONFIG) if product_line == 'all'
+                    else [product_line] if product_line in SEIB_SOURCE_CONFIG else []
+                )
+                for seib_product_line in seib_product_lines:
+                    try:
+                        seib_result = seib_services.get_seib_cross_field_summary(
+                            cursor, target_date, seib_product_line,
+                        )
+                        if not seib_result['configured']:
+                            continue
+                    except Exception as e:
+                        log_error(e)
+                        continue
+                    checked = seib_result['total_checked']
+                    failed = seib_result['failed_records']
+                    findings = seib_result['total_anomalies']
+                    total_checked += checked
+                    total_anomalies += findings
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{seib_result['label']} 논리적 일관성",
+                        'detail_code': seib_product_line,
+                        'description': '리뷰·별점 수와 가격·할인율 관계 검증',
+                        'checked': checked, 'passed': seib_result['passed_records'],
+                        'failed': failed, 'finding_count': findings,
+                        'status': get_status(failed, checked),
                     })
 
             # SIEL TV/REF/LDY는 검수일 당일(D), KST 날짜 기준으로
