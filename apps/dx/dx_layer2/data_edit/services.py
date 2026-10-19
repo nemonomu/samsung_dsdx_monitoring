@@ -11,7 +11,7 @@ from apps.common import costco_layer2
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
-from apps.dx.dx_layer2 import seda_null_validation, seib_null_validation
+from apps.dx.dx_layer2 import seda_null_validation, seib_null_validation, seib_format_validation
 from apps.dx.dx_layer2 import seda_format_validation
 
 try:
@@ -379,8 +379,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     )
     if seib_product_line:
         product_line = seib_product_line
-        if correction_type_value != 'null_check' or (column_name not in seib_null_validation.get_seib_null_columns(product_line) and not price_edit_context):
-            return {'error': 'SEIB NULL 검수 대상 컬럼이 아닙니다', 'status': 403}
+        seib_columns = (seib_format_validation.get_format_columns(product_line)
+                        if correction_type_value == 'format_check'
+                        else seib_null_validation.get_seib_null_columns(product_line))
+        if correction_type_value not in {'null_check', 'format_check'} or (column_name not in seib_columns and not price_edit_context):
+            return {'error': 'SEIB 검수 대상 컬럼이 아닙니다', 'status': 403}
     elif seda_product_line:
         product_line = seda_product_line
         if correction_type not in {'null', 'null_check', 'format'}:
@@ -424,7 +427,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         select_columns += ", batch_id"
     if seib_product_line:
         try:
-            seib_row = seib_null_validation.select_record(cursor, crawl_date, product_line, row_id, column_name, for_edit=True)
+            seib_row = seib_null_validation.select_record(
+                cursor, crawl_date, product_line, row_id, column_name, for_edit=True,
+                format_columns=(seib_format_validation.get_format_columns(product_line)
+                                if correction_type_value == 'format_check' else None),
+            )
         except (TypeError, ValueError):
             return {'error': '검수일 또는 수정 대상이 올바르지 않습니다', 'status': 400}
     elif seda_product_line:
@@ -523,9 +530,12 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                          if correction_type_value == 'format_check'
                          else costco_layer2.sea_layer2.homedepot_null_columns('ldy_dryer'))
     elif sea_context and costco_layer2.lowes_dryer.matches(sea_context['product_key'], retailer):
-        if correction_type_value != 'null_check':
-            return {'error': 'Lowes 건조기는 NULL 검수만 지원합니다', 'status': 403}
-        editable_cols = costco_layer2.lowes_dryer.NULL_COLUMNS
+        if correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'Lowes 건조기는 NULL·형식 검수만 지원합니다', 'status': 403}
+        editable_cols = (
+            costco_layer2.LOWES_DRYER_FORMAT_EDITABLE
+            if correction_type_value == 'format_check' else costco_layer2.lowes_dryer.NULL_COLUMNS
+        )
     elif sea_context and costco_layer2.bestbuy_dryer.matches(sea_context['product_key'], retailer):
         if correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status': 403}
@@ -534,7 +544,9 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         editable_cols = (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
                          else costco_layer2.NULL_COLUMNS).get(sea_context['product_key'], ())
     elif seib_product_line:
-        editable_cols = seib_null_validation.get_seib_null_columns(product_line, retailer)
+        editable_cols = (seib_format_validation.get_format_editable_columns(product_line)
+                         if correction_type_value == 'format_check'
+                         else seib_null_validation.get_seib_null_columns(product_line, retailer))
     elif seda_product_line:
         editable_cols = seda_columns(product_line, retailer)
     elif sem_context:

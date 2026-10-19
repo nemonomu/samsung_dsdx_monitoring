@@ -139,6 +139,8 @@ _FORMAT_RULE_DETAILS = {
         'description': '허용된 세탁기 로딩 유형',
         'pattern': 'Front Load / Top Load',
     },
+    'capacity': {'description': '건조기 용량의 kg 형식', 'pattern': '8 kg / 22 kg'},
+    'loading_type': {'description': '값이 있을 때 로딩 유형', 'pattern': 'Front Load / Top Load'},
 }
 
 
@@ -291,6 +293,9 @@ def _format_checks(product_line, retailer=SEM_RETAILER):
         checks['ldy_loading_type'] = (
             lambda value: str(value).strip() in _LDY_LOADING_TYPES
         )
+    elif product_line == 'sem_ldy_dryer':
+        checks['capacity'] = lambda value: bool(_LDY_CAPACITY.fullmatch(str(value).strip()))
+        checks['loading_type'] = lambda value: str(value).strip() in _LDY_LOADING_TYPES
     if retailer == SEM_HOMEDEPOT_RETAILER:
         checks.update({
             'calendar_week': lambda value: bool(_HOMEDEPOT_WEEK.fullmatch(str(value).strip())),
@@ -598,7 +603,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
 def append_format_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
-        if source.get('null_only'):
+        if source.get('null_only') and product_line != 'sem_ldy_dryer':
             continue
         if category and category != source['section_code']:
             continue
@@ -637,7 +642,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
 def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, include_normal=False):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
-    if not source or source.get('null_only'):
+    if not source or (source.get('null_only') and product_line != 'sem_ldy_dryer'):
         return {'results': [], 'column_names': [], 'actual_table': ''}
     retailer = normalize_sem_retailer(product_line, retailer)
     rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
@@ -691,6 +696,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
         'actual_table': source['table_name'],
         'validation_fields': [r['field'] for r in get_format_rule_details(product_line, retailer)],
         'target_ids': [r['id'] for r in target_records],
+        'batch_id': rows[0].get('batch_id') if rows else None,
         'normal_reviews': normal_reviews,
         'results': records,
         'field_counts': dict(field_counts),

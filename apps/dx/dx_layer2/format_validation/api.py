@@ -29,6 +29,8 @@ RETAIL_DEFAULT_HISTORY_TABLES = frozenset({
     'seg_ref_retail',
     'seg_ldy_retail',
     'seg_ldy_dryer_retail',
+    'sea_ldy_dryer_retail', 'sem_ldy_dryer_retail',
+    'seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail',
 })
 
 

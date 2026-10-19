@@ -1,4 +1,4 @@
-"""Spain MediaMarkt: original collection dates and same-day 01:00–04:00 KST checks."""
+"""Spain MediaMarkt source contract for collection, NULL, and format checks."""
 from datetime import date, datetime, time
 
 from apps.common.sea_collection import KST

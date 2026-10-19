@@ -30,7 +30,7 @@ def retailer_key(value):
 
 def supported(table):
     return table == 'tv_retail' or bool(re.fullmatch(
-        r'(sea|siel|tse|seda|seg|sem)_(tv|ref|ldy|ldy_dryer)_retail', str(table),
+        r'(sea|siel|tse|seda|seg|sem|seib)_(tv|ref|ldy|ldy_dryer)_retail', str(table),
     ))
 
 

@@ -59,10 +59,11 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
-    const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSemRetail = /^sem_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
+    const isSeibRetail = /^seib_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
         || isSeaRetail || isSielRetail || isSegRetail || isSedaRetail
-        || isSemRetail || isTseRetail;
+        || isSemRetail || isSeibRetail || isTseRetail;
     const currentDays = modalState.days
         || (typeof getDefaultFormatHistoryDays === 'function'
             ? getDefaultFormatHistoryDays(tableParam) : 1);
@@ -189,7 +190,8 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     // Item/쿼리 섹션 (retail만)
     if (isRetail) {
         const items = [...new Set(filteredRecords.map(r => r.item).filter(Boolean))].sort();
-        if (tableParam === 'sea_ldy_dryer_retail'
+        if (tableParam === 'sea_ldy_dryer_retail' || tableParam === 'sem_ldy_dryer_retail'
+            || isSeibRetail
             || (isSegRetail && String(modalState.retailer || '').toLowerCase() === 'expert')) {
             const query = _buildNullRetailDisplayQuery(
                 fieldName, data, filteredRecords, date, currentDays,
@@ -268,6 +270,10 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
                 },
                 sem_ldy_retail: {
                     tableName: 'dx_sem.dx_sem_ldy_retail_com',
+                    dateColumn: 'crawl_datetime'
+                },
+                sem_ldy_dryer_retail: {
+                    tableName: 'dx_sem.dx_sem_ldy_dryer_retail_com',
                     dateColumn: 'crawl_datetime'
                 }
             };

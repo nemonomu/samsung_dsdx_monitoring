@@ -20,7 +20,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.null_review_evidence import uses_new_policy, is_non_target_metric
 from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.dx.dx_layer2.common.context import get_status
-from apps.dx.dx_layer2 import sem_validation, seda_null_validation, seda_format_validation, seib_null_validation
+from apps.dx.dx_layer2 import sem_validation, seda_null_validation, seda_format_validation, seib_null_validation, seib_format_validation
 
 try:
     from apps.dx.dx_layer2 import seg_validation
@@ -3097,8 +3097,11 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if not reason and not is_siel_format_review:
         return {'error': '이유 선택은 필수입니다', 'status_code': 400}
     if seib_product_line:
-        if correction_type_value != 'null_check' or column_name not in seib_null_validation.get_seib_null_columns(seib_product_line):
-            return {'error': 'SEIB NULL 검수 대상 컬럼이 아닙니다', 'status_code': 400}
+        allowed = (seib_format_validation.get_format_columns(seib_product_line)
+                   if correction_type_value == 'format_check'
+                   else seib_null_validation.get_seib_null_columns(seib_product_line))
+        if correction_type_value not in {'null_check', 'format_check'} or column_name not in allowed:
+            return {'error': 'SEIB 검수 대상 컬럼이 아닙니다', 'status_code': 400}
     if seda_product_line:
         if correction_type not in {'null', 'null_check', 'format'}:
             return {'error': 'SEDA는 NULL/형식 검수만 지원합니다', 'status_code': 400}
@@ -3112,6 +3115,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
             costco_layer2.NULL_COLUMNS[sea_source['product_key']],
             _get_sea_null_columns('ldy_dryer', 'Bestbuy') if sea_source['product_key'] == 'ldy_dryer' else (),
             costco_layer2.FORMAT_COLUMNS.get(sea_source['product_key'], ()),
+            costco_layer2.LOWES_DRYER_FORMAT_COLUMNS if sea_source['product_key'] == 'ldy_dryer' else (),
             homedepot_null_columns(sea_source['product_key']), homedepot_format_columns(sea_source['product_key']))
     ):
         return {'error': '허용되지 않는 컬럼', 'status_code': 400}
@@ -3179,7 +3183,11 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
 
     if seib_product_line:
         try:
-            row = seib_null_validation.select_record(cursor, crawl_date, seib_product_line, record_id, column_name)
+            row = seib_null_validation.select_record(
+                cursor, crawl_date, seib_product_line, record_id, column_name,
+                format_columns=(seib_format_validation.get_format_columns(seib_product_line)
+                                if correction_type_value == 'format_check' else None),
+            )
         except (TypeError, ValueError):
             return {'error': '검수일 또는 검수 대상이 올바르지 않습니다', 'status_code': 400}
     elif seda_product_line:
@@ -3253,7 +3261,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 
     old_value = row[0]
-    if seib_product_line and not seib_null_validation.missing(old_value):
+    if seib_product_line and correction_type_value == 'null_check' and not seib_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     if seda_product_line and correction_type_value == 'null_check' and not seda_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
@@ -3261,8 +3269,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     if sea_source:
         if costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer) and correction_type_value not in {'null_check', 'format_check'}:
             return {'error': 'HomeDepot 건조기는 NULL·형식 검수를 지원합니다', 'status_code': 400}
-        if costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
-            return {'error': 'Lowes 건조기는 NULL 검수만 지원합니다', 'status_code': 403}
+        if costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer) and correction_type_value not in {'null_check', 'format_check'}:
+            return {'error': 'Lowes 건조기는 NULL·형식 검수만 지원합니다', 'status_code': 403}
         if costco_layer2.bestbuy_dryer.matches(sea_source['product_key'], retailer) and correction_type_value != 'null_check':
             return {'error': 'Bestbuy 건조기는 NULL 검수만 지원합니다', 'status_code': 400}
         if is_costco(retailer) and correction_type_value not in {'null_check', 'format_check'}:
@@ -3270,6 +3278,7 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         allowed = ((costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check' else costco_layer2.NULL_COLUMNS).get(sea_source['product_key'], ()) if is_costco(retailer) else homedepot_format_columns(sea_source['product_key'])
                    if is_homedepot(retailer) and correction_type_value == 'format_check'
                    else homedepot_null_columns(sea_source['product_key']) if is_homedepot(retailer)
+                   else costco_layer2.LOWES_DRYER_FORMAT_COLUMNS if costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer) and correction_type_value == 'format_check'
                    else _get_sea_null_columns(sea_source['product_key'], retailer))
         if column_name not in allowed:
             return {'error': '허용되지 않은 리테일러별 컬럼', 'status_code': 400}

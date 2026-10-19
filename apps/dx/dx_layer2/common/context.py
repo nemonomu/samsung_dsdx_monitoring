@@ -160,7 +160,7 @@ def get_sidebar_items():
     ]
     return {
         'null': items,
-        'format': [item for item in items if item['key'] not in ('sea_ldy_dryer_retail', 'sem_ldy_dryer_retail') and not item['key'].startswith('seib_')],
+        'format': items,
         'anomaly': [item for item in items if item['key'] != 'sem_ldy_dryer_retail' and not item['key'].startswith('seib_')],
     }
 
@@ -198,8 +198,6 @@ def build_sidebar_groups(section, focus=''):
                 sea_children = []
                 for child in SEA_RETAIL_SIDEBAR_CHILDREN:
                     detail_code = child['detail_code']
-                    if detail_code == 'sea_ldy_dryer_retail' and sec == 'format_validation':
-                        continue
                     child_info = config.get(detail_code)
                     if child_info is None:
                         continue
@@ -262,7 +260,7 @@ def build_sidebar_groups(section, focus=''):
                 children = []
                 for child in SEM_RETAIL_SIDEBAR_CHILDREN:
                     detail_code = child['detail_code']
-                    if detail_code == 'sem_ldy_dryer_retail' and sec != 'null_validation':
+                    if detail_code == 'sem_ldy_dryer_retail' and sec == 'anomaly_validation':
                         continue
                     child_info = config.get(detail_code)
                     if child_info is None:
@@ -298,11 +296,14 @@ def build_sidebar_groups(section, focus=''):
     from apps.common.seib_retail import SEIB_SOURCE_CONFIG
     seib_children = [
         {'name': s['display_name'], 'label': s['category'], 'detail_code': s['section_code'],
-         'active': section == 'null_validation' and focus in (s['display_name'], s['section_code'])}
+         'active': section in ('null_validation', 'format_validation') and focus in (s['display_name'], s['section_code'])}
         for s in SEIB_SOURCE_CONFIG.values() if s['section_code'] in active_categories]
     if seib_children:
-        section_items['null_validation'].append({'name': 'SEIB Retail', 'children': seib_children,
-                                               'active': any(c['active'] for c in seib_children)})
+        for target_section in ('null_validation', 'format_validation'):
+            section_items[target_section].append({
+                'name': 'SEIB Retail', 'children': seib_children,
+                'active': section == target_section and any(c['active'] for c in seib_children),
+            })
 
     for section_name in ('null_validation', 'format_validation', 'anomaly_validation'):
         seda_children = [

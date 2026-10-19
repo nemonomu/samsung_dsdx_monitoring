@@ -67,7 +67,7 @@ class HomeDepotDryerValidationTests(unittest.TestCase):
 
     def test_ten_fields_and_valid_shapes(self):
         self.assertEqual(10, len(homedepot_format_columns('ldy_dryer')))
-        self.assertEqual(('HomeDepot',), self.format.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
+        self.assertEqual(('HomeDepot', 'Lowes'), self.format.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
         for updates in ({}, dict(original_sku_price=None, savings=None),
                         dict(final_sku_price='$1,249.00', capacity='0.6 cu ft'),
                         dict(star_rating='0.0', count_of_reviews='0', count_of_star_ratings='0')):

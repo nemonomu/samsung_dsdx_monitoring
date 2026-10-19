@@ -120,7 +120,7 @@ SEM_SOURCE_CONFIG = {
         'extra_required_columns': ('capacity',),
         'extra_format_columns': ('capacity', 'loading_type'),
         'extra_table_columns': ('loading_type', 'capacity'),
-        'null_only': True,
+        'null_only': True,  # Duplicate validation remains off; format opts in separately.
     },
 }
 

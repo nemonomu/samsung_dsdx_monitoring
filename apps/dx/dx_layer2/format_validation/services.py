@@ -25,6 +25,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import seg_validation, sem_validation, seda_format_validation
+from apps.dx.dx_layer2 import seib_format_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -60,7 +61,9 @@ try:
     from apps.common.sea_retail import SEA_RETAIL_SOURCES
     from apps.common.sea_layer2 import layer2_sources
     SEA_RETAIL_SOURCES = costco_layer2.sources(layer2_sources(SEA_RETAIL_SOURCES))
-    SEA_RETAIL_SOURCES['ldy_dryer'] = {**costco_layer2.dryer_source(), 'retailers': ('HomeDepot',)}
+    SEA_RETAIL_SOURCES['ldy_dryer'] = {
+        **costco_layer2.dryer_source(), 'retailers': ('HomeDepot', 'Lowes'),
+    }
 except (ImportError, AttributeError):
     resolve_monitoring_date = None
     SEA_RETAIL_SOURCES = {}
@@ -207,18 +210,18 @@ VALID_TABLES_FORMAT = {
 } | {
     source['section_code']
     for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
-    if not source.get('null_only')
-}
+    if not source.get('null_only') or source['source_key'] == 'sem_ldy_dryer'
+} | {source['section_code'] for source in seib_format_validation.SEIB_SOURCE_CONFIG.values()}
 VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
     'openai_forecast_results',
 } | _sea_format_rule_tables() | set(SIEL_SOURCE_CONFIG) | set(TSE_SOURCE_CONFIG) | set(
     key for key, source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).items()
-    if not source.get('null_only')
+    if not source.get('null_only') or key == 'sem_ldy_dryer'
 ) | set(
     getattr(seg_validation, 'SEG_FORMAT_SOURCE_CONFIG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}))
-)
+) | set(seib_format_validation.SEIB_SOURCE_CONFIG)
 VALID_TABLES_FORMAT |= {source['section_code'] for source in seda_format_validation.SEDA_SOURCE_CONFIG.values()}
 VALID_TABLES_RULES |= set(seda_format_validation.SEDA_SOURCE_CONFIG)
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
@@ -915,6 +918,8 @@ def _get_sea_format_fields(product_key, retailer):
         return costco_layer2.FORMAT_COLUMNS[product_key]
     if is_homedepot(retailer):
         return homedepot_format_columns(product_key)
+    if product_key == 'ldy_dryer' and str(retailer or '').strip().casefold() == 'lowes':
+        return costco_layer2.LOWES_DRYER_FORMAT_COLUMNS
     return tuple(dict.fromkeys(
         SEA_FORMAT_COMMON_FIELDS + SEA_FORMAT_EXTRA_FIELDS.get(
             product_key, ()
@@ -931,6 +936,10 @@ def _fetch_sea_format_rows(
         if not costco_layer2.homedepot_dryer.enabled(end_date):
             return []
         start_date = max(str(start_date), str(costco_layer2.homedepot_dryer.FIRST_SOURCE_DATE))
+    if costco_layer2.lowes_dryer.matches(source['product_key'], retailer_value):
+        if not costco_layer2.lowes_dryer.enabled(end_date):
+            return []
+        start_date = max(str(start_date), str(costco_layer2.lowes_dryer.FIRST_SOURCE_DATE))
     if is_homedepot(retailer_value):
         if not homedepot_source_enabled(end_date):
             return []
@@ -1130,7 +1139,8 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days, include_n
     ))
     if product_key == 'ldy_dryer':
         column_names = [c for c in column_names if c not in ('product', 'page_type')]
-        editable_columns = set(format_fields)
+        editable_columns = (set(costco_layer2.LOWES_DRYER_FORMAT_EDITABLE)
+                            if retailer_value == 'Lowes' else set(format_fields))
     if is_costco(retailer_value):
         editable_columns = set(format_fields)
         if product_key == 'tv':
@@ -1152,6 +1162,7 @@ def _get_sea_format_detail(cursor, target_date, table, retailer, days, include_n
         'normal_reviews': normal_reviews,
         'validation_fields': list(format_fields),
         'target_ids': [r['id'] for r in target_records],
+        'batch_id': target_rows[0].get('batch_id') if target_rows else None,
         'results': results,
         'field_counts': field_counts,
         'total_format_count': sum(field_counts.values()),
@@ -1184,6 +1195,8 @@ def _append_sea_format_stats(cursor, target_date, validation, category=None):
             table_issues = 0
             for retailer_value in source.get('retailers', ()):
                 if costco_layer2.homedepot_dryer.matches(product_key, retailer_value) and not costco_layer2.homedepot_dryer.enabled(source_date):
+                    continue
+                if costco_layer2.lowes_dryer.matches(product_key, retailer_value) and not costco_layer2.lowes_dryer.enabled(source_date):
                     continue
                 if product_key == 'tv' and not is_costco(retailer_value):
                     continue
@@ -2132,6 +2145,11 @@ def _get_format_detail_raw(cursor, target_date, table, retailer, days, include_n
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if seib_format_validation.product_line_for(table):
+        return seib_format_validation.format_detail(
+            cursor, target_date, table, retailer, days,
+            include_normal=include_normal,
+        )
     if seda_format_validation.product_line_for(table):
         return seda_format_validation.format_detail(cursor, target_date, table, retailer, days, **({"include_normal": True} if include_normal else {}))
     if seg_validation.product_line_for(table):
@@ -2827,6 +2845,8 @@ def get_format_rules(cursor, table_name, retailer):
     형식검증 규칙 조회.
     Returns dict: {rules: [...]}
     """
+    if seib_format_validation.product_line_for(table_name):
+        return {'rules': seib_format_validation.get_format_rule_details(table_name, retailer)}
     if table_name in TSE_SOURCE_CONFIG:
         return {
             'rules': _get_tse_static_format_rules(table_name, retailer)
@@ -2851,6 +2871,9 @@ def get_format_rules(cursor, table_name, retailer):
             'rules': sem_validation.get_format_rule_details(sem_product_line, retailer)
         }
 
+    sea_product_key = _sea_format_product_key(table_name)
+    if sea_product_key:
+        table_name = SEA_RETAIL_SOURCES[sea_product_key]['table_name'].split('.')[-1]
     tbl_rules = dx_table('monitoring_format_rules')
     tbl_templates = dx_table('monitoring_format_templates')
 
@@ -2869,7 +2892,6 @@ def get_format_rules(cursor, table_name, retailer):
     cols = [desc[0] for desc in cursor.description]
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
-    sea_product_key = _sea_format_product_key(table_name)
     if table_name == 'tv_retail_com' and is_costco(retailer):
         sea_product_key = 'tv'
     if sea_product_key:
@@ -3359,6 +3381,9 @@ def _get_format_stats_raw(cursor, target_date, category=None):
     total_format_issues += sem_validation.append_format_stats(
         cursor, target_date, format_validation,
         **({"category": category} if category else {})
+    )
+    total_format_issues += seib_format_validation.append_format_stats(
+        cursor, target_date, format_validation, category=category,
     )
 
     format_validation['total_issues'] = total_format_issues

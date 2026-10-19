@@ -64,10 +64,12 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items):
     return _rows(cursor)
 
 
-def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False):
-    if (column not in get_seib_null_columns(product_line)
+def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False,
+                  format_columns=None):
+    allowed = tuple(format_columns) if format_columns is not None else get_seib_null_columns(product_line)
+    if (column not in allowed
             and not (for_edit and column in PRICE_EDITABLE_COLUMNS)):
-        raise ValueError('Unsupported SEIB NULL column')
+        raise ValueError('Unsupported SEIB validation column')
     source = SEIB_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
     cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'])
@@ -77,7 +79,7 @@ def select_record(cursor, target_date, product_line, record_id, column, *, for_e
         {scope} AND source.id = %s FOR UPDATE OF source
     """, [*params, record_id])
     row = cursor.fetchone()
-    if (row and column not in get_seib_null_columns(product_line, row[1])
+    if (row and column not in allowed
             and not (for_edit and column in PRICE_EDITABLE_COLUMNS)):
         return None
     return row if for_edit else row[:3] if row else None
