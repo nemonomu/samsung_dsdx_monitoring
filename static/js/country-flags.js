@@ -14,6 +14,7 @@
         if (/^SEA(?:\s|$)/.test(text)) return 'us';
         if (/^SEDA(?:\s|$)/.test(text)) return 'br';
         if (/^SIEL(?:\s|$)/.test(text)) return 'in';
+        if (/^SEIB(?:\s|$)/.test(text)) return 'es';
         if (/^SEM(?:\s|$)/.test(text)) return 'mx';
         if (/^SEG(?:\s|$)/.test(text)) return 'de';
         if (/^TSE(?:\s|$)/.test(text)) return 'th';

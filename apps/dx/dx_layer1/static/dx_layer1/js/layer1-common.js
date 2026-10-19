@@ -150,7 +150,7 @@ var L1 = (function() {
 function onSubitemClick(groupKey, itemName) {
     const countryChecks = {
         'SEDA Retail': 'seda_retail', 'SIEL Retail': 'siel_retail',
-        'SEM Retail': 'sem_retail', 'SEG Retail': 'seg_retail', 'TSE Retail': 'tse_retail',
+        'SEM Retail': 'sem_retail', 'SEG Retail': 'seg_retail', 'TSE Retail': 'tse_retail', 'SEIB Retail': 'seib_retail',
     };
     const checkType = countryChecks[itemName];
     if (checkType && window.LAYER1.section === 'dashboard' && currentStatsData) {
@@ -168,6 +168,7 @@ function onSubitemClick(groupKey, itemName) {
         'SEDA Retail': '/dx/layer1/',
         'SIEL Retail': '/dx/layer1/',
         'SEM Retail': '/dx/layer1/',
+        'SEIB Retail': '/dx/layer1/',
         'SEG Retail': '/dx/layer1/',
         'TSE Retail': '/dx/layer1/',
         'Retail 감성분석': '/dx/layer1/sentiment/',
@@ -396,6 +397,7 @@ function flattenCheckToDetails(sectionType, check) {
             break;
         case 'seda_retail':
         case 'siel_retail':
+        case 'seib_retail':
         case 'sem_retail':
         case 'seg_retail':
         case 'tse_retail':
@@ -555,7 +557,7 @@ function getCheckBadgeHtml(sectionType) {
     }
     var isRetailSection = sectionType === 'retail' ||
         sectionType === 'seda_retail' || sectionType === 'siel_retail' ||
-        sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
+        sectionType === 'seib_retail' || sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
         sectionType === 'tse_retail';
     var isFullRate = check && check.rate >= 100 && !isRetailSection;
 

@@ -12,6 +12,7 @@ let modalState = {
 };
 var _dupPageSize = 50;
 const SEA_TSE_NULL_HISTORY_TABLES = new Set([
+    'seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail',
     'seda_tv_retail', 'seda_ref_retail', 'seda_ldy_retail',
     'tv_retail',
     'sea_ref_retail',
@@ -223,11 +224,13 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
     const accountName = _retailSqlAccountName(data, records, retailer,
         /^dx_seda\./.test(tableName));
     const isCostcoDryer = tableName === 'public.ldy_dryer_retail' && accountName.toLowerCase() === 'costco';
+    const isSeib = /^dx_seib\./.test(tableName);
     const dateExpression = isCostcoDryer
         ? `TO_CHAR(NULLIF(BTRIM(CAST(${dateColumn} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`
-        : dateColumn;
+        : isSeib ? `LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10)` : dateColumn;
     const historyStart = _tseHistoryStartDate(sourceDate, days);
-    const startDate = isCostcoDryer && historyStart < '2026-10-09' ? '2026-10-09' : historyStart;
+    const startDate = isCostcoDryer && historyStart < '2026-10-09' ? '2026-10-09'
+        : isSeib && historyStart < '2026-10-18' ? '2026-10-18' : historyStart;
     const where = [
         `${dateExpression} >= ${_tseSqlLiteral(startDate)}`,
         `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
@@ -274,6 +277,10 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEG REF' ? 'seg_ref_retail' :
                        tableName === 'SEG LDY' ? 'seg_ldy_retail' :
                        tableName === 'SEG LDY_DRYER' ? 'seg_ldy_dryer_retail' :
+                       tableName === 'SEIB TV' ? 'seib_tv_retail' :
+                       tableName === 'SEIB REF' ? 'seib_ref_retail' :
+                       tableName === 'SEIB LDY' ? 'seib_ldy_retail' :
+                       tableName === 'SEIB LDY_DRYER' ? 'seib_ldy_dryer_retail' :
                        tableName === 'SEM TV' ? 'sem_tv_retail' :
                        tableName === 'SEM REF' ? 'sem_ref_retail' :
                        tableName === 'SEM LDY' ? 'sem_ldy_retail' :
@@ -502,10 +509,11 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isSeibRetail = /^seib_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || isSedaRetail || tableParam === 'youtube';
     const isRetail = isLegacyRetail || isSeaRetail || isSielRetail
-        || isSemRetail || isSegRetail || isSedaRetail;
+        || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const supportsDayHistory = isLegacyRetail
         || (isSeaAppliance && data.supports_day_history === true)
@@ -513,6 +521,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         || (isSemRetail && data.supports_day_history === true)
         || (isSegRetail && data.supports_day_history === true)
         || (isSedaRetail && data.supports_day_history === true)
+        || (isSeibRetail && data.supports_day_history === true)
         || (isTseRetail && data.supports_day_history === true);
     const defaultDays = getDefaultNullHistoryDays(tableParam);
     const currentDays = supportsDayHistory
@@ -564,7 +573,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 <input type="date" id="null-modal-date" value="${date}"
                     onchange="reloadNullData(this.value)">
             </div>
-            ${(isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isTseRetail || isSedaRetail) ? daysInputHtml : ''}
+            ${(isRetail || isTseRetail) ? daysInputHtml : ''}
         </div>`;
         itemQueryHtml += `<h4 style="margin-bottom: 12px; font-size: 15px;">${fieldName} NULL ${supportsReview ? '검수 조회' : '오류'} (${records.length}건)</h4>`;
     }
@@ -629,16 +638,16 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             if (items.length > 0) {
                 const inClause = items.map(item => `'${item}'`).join(', ');
                 const sourceDate = data.source_date || date;
-                const historyDays = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail) ? currentDays : 3;
+                const historyDays = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail) ? currentDays : 3;
                 const historyStartDate = _tseHistoryStartDate(sourceDate, historyDays);
                 const accountName = _retailSqlAccountName(data, records,
                     modalState.retailer || '', isSedaRetail);
                 const batchFilter = historyDays === 1 && data.batch_id != null && data.batch_id !== ''
                     ? `\n  AND batch_id = ${_tseSqlLiteral(data.batch_id)}` : '';
-                const query3Days = tblName === 'public.ldy_dryer_retail'
+                const query3Days = tblName === 'public.ldy_dryer_retail' || isSeibRetail
                     ? _buildNullRetailDisplayQuery(fieldName, data, records, date, historyDays, retailerName, false)
                     : `SELECT *\nFROM ${tblName}\nWHERE ${dateColumn} >= '${historyStartDate}'\n  AND ${dateColumn} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(accountName)}${batchFilter}\n  AND item IN (${inClause})\nORDER BY item, ${dateColumn};`;
-                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail)
+                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">

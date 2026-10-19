@@ -21,6 +21,7 @@ COUNTRY_OFFSETS = {
     'SIEL': 0,
     'SEM': 0,
     'TSE': 0,
+    'SEIB': 0,
 }
 
 SOURCE_DEFINITIONS = tuple(
@@ -41,6 +42,11 @@ SOURCE_COUNTRY_BY_KEY['seg_ldy_dryer'] = 'SEG'
 SOURCE_PRODUCT_BY_KEY['seg_ldy_dryer'] = 'LDY_DRYER'
 SOURCE_COUNTRY_BY_KEY['sea_ldy_dryer'] = 'SEA'
 SOURCE_PRODUCT_BY_KEY['sea_ldy_dryer'] = 'LDY_DRYER'
+
+# SEIB is currently enabled for collection monitoring and NULL validation only.
+for _product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+    SOURCE_COUNTRY_BY_KEY['seib_' + _product] = 'SEIB'
+    SOURCE_PRODUCT_BY_KEY['seib_' + _product] = _product.upper()
 
 _ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 

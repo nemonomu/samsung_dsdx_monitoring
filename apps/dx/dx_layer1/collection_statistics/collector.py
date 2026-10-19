@@ -62,6 +62,11 @@ def refresh_country(country, start, end, *, loader=load_check, today=None):
     """Dates are source dates. Rebuild later medians and lifetime observation progress."""
     if country not in COUNTRIES or start > end or (end - start).days > 119:
         raise ValueError('Invalid statistics refresh range')
+    if country == 'SEIB':
+        from apps.common.seib_retail import FIRST_SOURCE_DATE
+        start = max(start, FIRST_SOURCE_DATE)
+        if start > end:
+            return {'busy': False, 'updated': 0, 'errors': 0}
     owner = acquire_lease(country)
     if owner is None:
         return {'busy': True, 'updated': 0, 'errors': 0}

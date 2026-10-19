@@ -4,10 +4,11 @@ from datetime import date, timedelta
 from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
+from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
 
-COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE')
-OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0}
+COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB')
+OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0, 'SEIB': 0}
 METRICS = ('main', 'bsr', 'total')
 PENDING = {'PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'}
 
@@ -22,12 +23,14 @@ def normalize_check(check, country, inspection_date):
     rows = []
     for category in check.get('categories', []):
         product = str(category.get('name') or category.get('category', '')).upper()
-        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG') and product == 'LDY_DRYER'):
+        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG', 'SEIB') and product == 'LDY_DRYER'):
             continue
         slots = category.get('time_slots') or [{'name': 'daily', 'retailers': category.get('retailers', [])}]
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
+                if country == 'SEIB' and source_day < SEIB_START_DATE:
+                    continue
                 if country == 'SEA' and lowes_dryer.matches(product, name) and not lowes_dryer.enabled(source_day):
                     continue
                 if country == 'SEA' and homedepot_dryer.matches(product, name) and not homedepot_dryer.enabled(source_day):
@@ -44,7 +47,7 @@ def normalize_check(check, country, inspection_date):
                 total = next((retailer[key] for key in ('raw_count', 'actual', 'count', 'total')
                               if retailer.get(key) is not None), 0)
                 collected_count = int(total or 0)
-                if country in ('SEM', 'TSE') and retailer.get('actual') is not None:
+                if country in ('SEM', 'TSE', 'SEIB') and retailer.get('actual') is not None:
                     total = retailer['actual']
                 verification = verification_state(check, slot, retailer)
                 complete = verification == 'ready'
@@ -58,13 +61,15 @@ def normalize_check(check, country, inspection_date):
                     'verification_state': verification,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
-                    'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                    'active_from': (str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
                                     else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, name)
                                     else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, name)
                                     else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, name)
                                     else str(costco.first_source_date(product)) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
+                if country == 'SEIB':
+                    rows[-1]['source_date_basis'] = 'db_original'
                 if country == 'SEA' and (name in ('Costco', 'HomeDepot') or lowes_dryer.matches(product, name)):
                     rows[-1]['source_date_basis'] = 'db_original'
     return sorted(rows, key=row_key)
@@ -99,7 +104,8 @@ def remember_observation(days, rows, source_date):
 def tiered_bsr(row, country):
     retailer = str(row['retailer']).strip().casefold()
     product = row['product']
-    return ((country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY', 'LDY_DRYER'))
+    return ((country == 'SEIB' and retailer == 'mediamarkt')
+            or (country == 'SEA' and retailer == 'lowes' and product in ('REF', 'LDY', 'LDY_DRYER'))
             or (retailer == 'amazon' and product in {
                 'SEA': ('TV',), 'SIEL': ('TV', 'REF', 'LDY'), 'SEG': ('TV', 'REF'),
             }.get(country, ())))

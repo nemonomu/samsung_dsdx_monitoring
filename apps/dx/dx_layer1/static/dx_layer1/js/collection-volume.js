@@ -1,6 +1,6 @@
 // Re-evaluate live MAIN/BSR counts against saved historical bases.
 (function () {
-    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE'};
+    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB'};
     const pending = ['PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'];
     function metrics(row, country) {
         if (row._volumeCounts) return row._volumeCounts;

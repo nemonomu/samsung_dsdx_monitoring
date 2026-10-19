@@ -55,6 +55,10 @@ SELECT s.category_name, 'SEA ' || s.product,
 FROM _lowes_sources s
 WHERE NOT EXISTS (SELECT 1 FROM public.monitoring_null_category c WHERE c.category_name = s.category_name);
 
+UPDATE public.monitoring_null_category c
+SET is_active = TRUE, is_del = FALSE
+FROM _lowes_sources s WHERE c.category_name = s.category_name;
+
 UPDATE public.monitoring_null_group g
 SET display_name = 'Lowes', display_order = 2, table_name = s.table_name, date_column = s.date_column,
     is_active = TRUE, is_del = FALSE, updated_at = NOW(), updated_id = 'setup_lowes_dryer_layer2'
@@ -95,6 +99,23 @@ SELECT n.group_id, n.column_name, 'both', n.display_columns, n.display_columns, 
 FROM _lowes_null n
 WHERE NOT EXISTS (SELECT 1 FROM public.monitoring_null_column t
  WHERE t.group_id = n.group_id AND t.check_column = n.column_name);
+
+-- Abort rather than commit an incomplete or duplicate NULL registration.
+DO $validate$
+BEGIN
+    IF (SELECT COUNT(*)
+        FROM public.monitoring_null_category c
+        JOIN public.monitoring_null_group g ON g.category_id = c.id
+        JOIN public.monitoring_null_column n ON n.group_id = g.id
+        WHERE c.category_name = 'sea_ldy_dryer_retail'
+          AND g.check_name = 'lowes_sea_ldy_dryer'
+          AND c.is_active AND NOT c.is_del
+          AND g.is_active AND NOT g.is_del
+          AND n.is_active AND NOT n.is_del) <> 11 THEN
+        RAISE EXCEPTION 'Lowes dryer: expected exactly 11 active NULL columns';
+    END IF;
+END
+$validate$;
 
 -- Expected: LDY_DRYER 11. No duplicate, format or cross-field rules are registered.
 SELECT s.product, COUNT(*) AS null_columns

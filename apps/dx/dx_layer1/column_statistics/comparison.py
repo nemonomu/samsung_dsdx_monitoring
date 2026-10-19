@@ -18,6 +18,9 @@ def collection_complete(country, product, retailer, source_day, now=None):
             return False
     if source_day > now.date():
         return False
+    if country == 'SEIB':
+        from apps.common.seib_retail import collection_phase
+        return collection_phase(source_day, now) == 'complete'
     if country == 'SEA':
         if lowes_dryer.matches(product, retailer):
             return lowes_dryer.complete(source_day, now)

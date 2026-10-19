@@ -56,7 +56,8 @@ class CalculationTests(SimpleTestCase):
             self.assertEqual(('OK', 'waiting'), (row['status'], row['verification_state']))
             self.assertEqual('OK', check['status'])
             self.assertEqual('OK', category['status'])
-            normalized = calc.normalize_check(check, country, date(2026, 9, 29))[0]
+            inspection = date(2026, 10, 19) if country == 'SEIB' else date(2026, 9, 29)
+            normalized = calc.normalize_check(check, country, inspection)[0]
             self.assertFalse(normalized['complete'])
             self.assertFalse(normalized['baseline_eligible'])
             compared = calc.compare_rows([normalized], [], country=country)[0]

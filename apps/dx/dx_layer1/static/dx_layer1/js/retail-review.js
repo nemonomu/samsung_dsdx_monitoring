@@ -1,6 +1,6 @@
 // Keep automatic verdicts for audit; review decisions never change collected counts.
 (function () {
-    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE'};
+    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB'};
     const reviewStatuses = ['REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH', 'VOLUME_LOW'];
     let records = [], previousRecords = [], loadedDate = '', loadError = '', generation = 0, targets = [];
     const attr = value => esc(String(value)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');

@@ -23,7 +23,7 @@ class ColumnStatisticsTests(unittest.TestCase):
 
     def test_catalog_has_all_countries_and_no_all_selection(self):
         self.assertEqual({s['country'] for s in services.catalog()},
-                         {'SEA', 'SEDA', 'SEG', 'SIEL', 'SEM', 'TSE'})
+                         {'SEA', 'SEDA', 'SEG', 'SIEL', 'SEM', 'TSE', 'SEIB'})
         for country, product, retailer in [('ALL', 'TV', 'Amazon'),
                                            ('SEA', 'TV', "Amazon'; SELECT 1"),
                                            ('SEG', 'LDY', 'Amazon')]:

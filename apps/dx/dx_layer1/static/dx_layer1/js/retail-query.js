@@ -9,6 +9,9 @@
     }
 
     function source(country, product) {
+        if (country === 'SEIB' && ['TV', 'REF', 'LDY', 'LDY_DRYER'].includes(product)) {
+            return { table: 'dx_seib.dx_seib_' + product.toLowerCase() + '_retail_com', dateColumn: 'crawl_datetime' };
+        }
         if (country === 'SEA' && product === 'LDY_DRYER') {
             return { table: 'public.ldy_dryer_retail', dateColumn: 'crawl_datetime' };
         }
@@ -43,7 +46,9 @@
             accountName = 'CasasBahia';
         }
         var dateFilter = config.dateColumn + ' >= ' + literal(day);
-        if (country === 'SEA' && accountName === 'Costco') {
+        if (country === 'SEIB') {
+            dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
+        } else if (country === 'SEA' && accountName === 'Costco') {
             dateFilter = '(' + config.dateColumn + "::timestamptz AT TIME ZONE 'Asia/Seoul')::date = " + literal(day) + '::date';
         } else if (country === 'SEA' && product === 'LDY_DRYER' && accountName === 'Bestbuy') {
             dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);

@@ -14,6 +14,10 @@ const LAYER2_TABLE_DISPLAY_NAMES = {
     seg_ref_retail: 'SEG REF',
     seg_ldy_retail: 'SEG LDY',
     seg_ldy_dryer_retail: 'SEG LDY_DRYER',
+    seib_tv_retail: 'SEIB TV',
+    seib_ref_retail: 'SEIB REF',
+    seib_ldy_retail: 'SEIB LDY',
+    seib_ldy_dryer_retail: 'SEIB LDY_DRYER',
     sem_tv_retail: 'SEM TV',
     sem_ref_retail: 'SEM REF',
     sem_ldy_retail: 'SEM LDY'
@@ -40,6 +44,10 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     tse_tv_retail: 12,
     tse_ref_retail: 13,
     tse_ldy_retail: 14,
+    seib_tv_retail: 14.1,
+    seib_ref_retail: 14.2,
+    seib_ldy_retail: 14.3,
+    seib_ldy_dryer_retail: 14.4,
     youtube: 15
 };
 
@@ -79,7 +87,9 @@ const LAYER2_NULL_TABLE_GROUPS = [
         name: 'TSE Retail',
         description: 'TSE TV/REF/LDY NULL 검증',
         tableCodes: ['tse_tv_retail', 'tse_ref_retail', 'tse_ldy_retail']
-    }
+    },
+    {key: 'seib', name: 'SEIB Retail', description: '스페인 MediaMarkt 당일 NULL 검증',
+     tableCodes: ['seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail']}
 ];
 
 function buildLayer2NullGroups(tables, validationType) {

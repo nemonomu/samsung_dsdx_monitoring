@@ -2,6 +2,8 @@
 from datetime import timedelta
 
 from apps.common.db import dx_connection
+from apps.common.seib_retail import SEIB_SOURCE_CONFIG, FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.source_dates import source_date_sql
 from apps.common.sea_dates import appliance_source_date_sql
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
@@ -33,6 +35,9 @@ def catalog():
 
 
 def _sources():
+    for key, config in SEIB_SOURCE_CONFIG.items():
+        yield _source(key, 'SEIB', config['category'], config['table_name'], 'crawl_datetime', 'text',
+                      (_retailer('MediaMarkt'),), has_page_type=False, collection_scope='all')
     # Layer 1 onboarding must not enable unrequested Layer 4 reports.
     for source in EMAIL_REPORT_SOURCES:
         if source['country'] == 'SEA':
@@ -69,7 +74,10 @@ def query_spec(source, retailer, columns, start, end):
     if is_expert:
         start = max(start, EXPERT_START_DATE)
     col = 'source.' + source['date_column']
-    if source['country'] == 'SEA' and lowes_dryer.matches(source['product'], retailer['name']):
+    if source['country'] == 'SEIB':
+        day = source_date_sql(col)
+        start = max(start, SEIB_START_DATE)
+    elif source['country'] == 'SEA' and lowes_dryer.matches(source['product'], retailer['name']):
         day = lowes_dryer.source_date_sql(col)
         start = max(start, lowes_dryer.FIRST_SOURCE_DATE)
     elif source['country'] == 'SEA' and bestbuy_dryer.matches(source['product'], retailer['name']):
@@ -143,7 +151,9 @@ def daily_counts(country, product, retailer_name, end, days):
         cursor.execute("SET LOCAL statement_timeout = '20s'")
         # A selection must not fail because an unrelated retailer lacks settings.
         selected = {**source, 'retailers': tuple(r for r in source['retailers'] if r['name'] == retailer_name)}
-        retailers = ([{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]
+        retailers = ([{**selected['retailers'][0], 'columns': SEIB_SOURCE_CONFIG[source['key']]['columns']}]
+                     if country == 'SEIB' else
+                     [{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]
                      if country == 'SEG' and retailer_name == 'Expert' else
                      [{**selected['retailers'][0],
                        'columns': costco.COLUMNS[product.lower()]}]
@@ -163,7 +173,7 @@ def daily_counts(country, product, retailer_name, end, days):
                                 'counts': {c: int(v) for c, v in zip(columns, values[2:])}}
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
-            'active_from': (str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
+            'active_from': (str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
                             else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, retailer_name)
                             else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, retailer_name)
                             else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, retailer_name)

@@ -8,7 +8,7 @@ from apps.common.source_dates import source_date_sql
 
 RETAIL_CHECK_TYPES = frozenset({
     'retail', 'seda_retail', 'siel_retail', 'seg_retail',
-    'sem_retail', 'tse_retail',
+    'sem_retail', 'tse_retail', 'seib_retail',
 })
 
 
@@ -26,6 +26,9 @@ def _source(check_type, product_line):
     if check_type == 'seg_retail':
         from apps.dx.dx_layer1.seg_retail.sources import get_seg_source
         return get_seg_source(product_line)
+    if check_type == 'seib_retail':
+        from apps.common.seib_retail import get_seib_source
+        return get_seib_source(product_line)
     if check_type == 'sem_retail':
         from apps.common.sem_retail import get_sem_source
         return get_sem_source(product_line)
@@ -190,6 +193,8 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if row['batch_id'] is not None:
             query_params.append(row['batch_id'])
         copy_date_scope = f'{column} >= %s'
+        if check_type == 'seib_retail':
+            copy_date_scope = f'{source_date_sql(column)} = %s'
         if check_type == 'retail' and (key in ('costco', 'homedepot') or source['product_key'] == 'ldy_dryer'):
             # Reproduce the displayed batch's monitoring date in its copy SQL.
             copy_date_scope = f'{source_date_sql(column)} = %s'

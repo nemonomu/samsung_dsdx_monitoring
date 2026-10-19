@@ -1,7 +1,7 @@
 (function() {
     var categoryPrefixes = {
         retail: 'retail', seda_retail: 'seda', siel_retail: 'siel', seg_retail: 'seg',
-        sem_retail: 'sem', tse_retail: 'tse'
+        sem_retail: 'sem', tse_retail: 'tse', seib_retail: 'seib'
     };
 
     function isMissing(retailer) {

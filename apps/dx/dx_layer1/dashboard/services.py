@@ -15,6 +15,7 @@ from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
 from apps.dx.dx_layer1.youtube import youtube_services as youtube_svc
 from apps.dx.dx_layer1.event_master import services as event_master_svc
 from apps.dx.dx_layer1.siel_retail import siel_retail_services as siel_retail_svc
+from apps.dx.dx_layer1.seib_retail import seib_retail_services as seib_retail_svc
 from apps.dx.dx_layer1.sem_retail import sem_retail_services as sem_retail_svc
 from apps.dx.dx_layer1.seg_retail import seg_retail_services as seg_retail_svc
 from apps.dx.dx_layer1.seda_retail import seda_retail_services as seda_retail_svc
@@ -40,6 +41,7 @@ _SERVICE_MAP = {
     'youtube': youtube_svc,
     'siel_retail': siel_retail_svc,
     'sem_retail': sem_retail_svc,
+    'seib_retail': seib_retail_svc,
     'seg_retail': seg_retail_svc,
     'seda_retail': seda_retail_svc,
     'tse_retail': tse_retail_svc,
@@ -73,6 +75,7 @@ _DISPLAY_CHECK_PRIORITY = {
     'seg_retail': 3,
     'sem_retail': 4,
     'tse_retail': 5,
+    'seib_retail': 5.5,
     'youtube': 6,
 }
 
@@ -382,6 +385,17 @@ def get_dashboard_stats(target_date, check_type_filter=None):
                             'timestamp': str(target_date),
                         })
                         continue
+                elif check_type == 'seib_retail':
+                    cursor.execute('SAVEPOINT layer1_seib')
+                    try:
+                        svc_result = svc.get_layer1_stats(cursor, target_date, datetime.now(_TSE_KST))
+                    except Exception as exc:
+                        cursor.execute('ROLLBACK TO SAVEPOINT layer1_seib')
+                        log_error(exc)
+                        svc_result = {'check': {'name': 'SEIB Retail', 'check_type': 'seib_retail',
+                                               'status': 'ERROR', 'categories': []}, 'failed_items': []}
+                    finally:
+                        cursor.execute('RELEASE SAVEPOINT layer1_seib')
                 elif check_type == 'event_master':
                     svc_result = svc.get_layer1_stats(cursor, target_date, datetime.now(_TSE_KST))
                 elif check_type == 'market_competitor_event':

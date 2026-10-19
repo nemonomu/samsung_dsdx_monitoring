@@ -24,6 +24,7 @@ SECTION_TITLES = {
     'seg_retail': 'SEG Retail',
     'sem_retail': 'SEM Retail',
     'tse_retail': 'TSE Retail',
+    'seib_retail': 'SEIB Retail',
     'sentiment': 'Retail 감성분석',
     'youtube': 'YouTube',
     'market_trend': 'Market Trend',
@@ -50,6 +51,7 @@ _PRIMARY_SECTION_ORDER = {
     'seg_retail': 3,
     'sem_retail': 4,
     'tse_retail': 5,
+    'seib_retail': 5.5,
     'youtube': 6,
 }
 

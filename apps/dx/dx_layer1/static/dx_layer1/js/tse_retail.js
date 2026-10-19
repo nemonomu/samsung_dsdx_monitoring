@@ -54,7 +54,7 @@ function renderTseCategory(cat, checkIdx, catIdx, country) {
         ? retailers.map(renderTseRetailerRow).join('') + renderTseTotalRow(retailers)
         : '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">설정된 리테일러 데이터 없음</td></tr>';
     var hasUnavailableBaseline = retailers.some(function(retailer) {
-        return retailer.status_basis === 'previous_main_average' &&
+        return ['previous_main_average', 'historical_volume'].includes(retailer.status_basis) &&
             retailer.expected === null;
     });
     var countLabel = hasUnavailableBaseline
@@ -107,7 +107,7 @@ function renderTseRetailCheck(check, checkIdx) {
         : 'KST 09:00~10:30';
     var categoriesHtml = categories.map(function(cat, catIdx) {
         return renderTseCategory(cat, checkIdx, catIdx,
-            check.check_type === 'sem_retail' ? 'SEM' : 'TSE');
+            check.country || (check.check_type === 'sem_retail' ? 'SEM' : 'TSE'));
     }).join('');
 
     return '<div class="check-item">' +
@@ -117,7 +117,7 @@ function renderTseRetailCheck(check, checkIdx) {
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +
             '</div>' +
             L1.retailStatus.render(check, checkIdx,
-                check.check_type === 'sem_retail' ? 'sem_retail' : 'tse_retail') +
+                check.check_type || 'tse_retail') +
             '<div class="check-stats">' +
                 '<div class="check-stat">' +
                     '<div class="value">' + actual.toLocaleString() + '</div>' +

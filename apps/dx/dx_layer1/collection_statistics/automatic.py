@@ -4,12 +4,17 @@ from datetime import timedelta
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS
 from .collector import refresh_country
+from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUMNS
 
 
 def history_range(country, last_due):
     start, end = last_due - timedelta(days=111), last_due - timedelta(days=3)
+    if country == 'SEIB':
+        start = max(start, SEIB_START_DATE)
+        if start > end:
+            return None
     stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
         source_date__range=(start, end)).values_list('source_date', 'rows')
         if not any(row.get('bsr') is None for row in rows)
@@ -26,6 +31,9 @@ def history_range(country, last_due):
         and (country != 'SEA' or not costco.enabled(day)
              or {r['product'] for r in rows if r['retailer'] == 'Costco'} ==
                 ({'TV', 'REF', 'LDY', 'LDY_DRYER'} if costco.enabled(day, 'ldy_dryer') else {'TV', 'REF', 'LDY'}))
+        and (country != 'SEIB' or day < SEIB_START_DATE
+             or {r['product'] for r in rows if r['retailer'] == 'MediaMarkt'
+                 and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})
         and (country != 'SEG' or day < EXPERT_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'Expert'} == set(EXPERT_COLUMNS))}
     # Most recent missing history first, so the default page becomes useful early.

@@ -14,6 +14,7 @@ from . import services
 
 
 SEA_TSE_DEFAULT_HISTORY_CATEGORIES = frozenset({
+    'seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail',
     'tv_retail',
     'sea_ref_retail',
     'sea_ldy_retail',
