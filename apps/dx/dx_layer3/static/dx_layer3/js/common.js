@@ -274,7 +274,7 @@ const LAYER3_CROSSFIELD_SIDEBAR_REGIONS = [
     { name: 'SEIB Retail', detailCodes: ['seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer'] },
     { name: 'SIEL Retail', detailCodes: ['siel_tv', 'siel_ref', 'siel_ldy'] },
     { name: 'SEG Retail', detailCodes: ['seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer'] },
-    { name: 'SEM Retail', detailCodes: ['sem_tv', 'sem_ref', 'sem_ldy'] },
+    { name: 'SEM Retail', detailCodes: ['sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer'] },
     { name: 'TSE Retail', detailCodes: ['tse_tv', 'tse_ref', 'tse_ldy'] }
 ];
 
@@ -778,7 +778,7 @@ function renderData(data) {
                         <div class="crossfield-region-children" id="${groupId}">
                             ${groupChecks.map(check => {
                                 const detailCode = String(check.detail_code || '').toLowerCase();
-                                const label = ['seg_ldy_dryer', 'sea_ldy_dryer', 'seib_ldy_dryer'].includes(detailCode) ? 'LDY_DRYER' : detailCode === 'tv' || detailCode === 'seda_tv' || detailCode === 'seib_tv' || detailCode === 'siel_tv' || detailCode === 'seg_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'
+                                const label = ['seg_ldy_dryer', 'sea_ldy_dryer', 'seib_ldy_dryer', 'sem_ldy_dryer'].includes(detailCode) ? 'LDY_DRYER' : detailCode === 'tv' || detailCode === 'seda_tv' || detailCode === 'seib_tv' || detailCode === 'siel_tv' || detailCode === 'seg_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'
                                     ? 'TV'
                                     : (detailCode === 'sea_ref' || detailCode === 'seda_ref' || detailCode === 'seib_ref' || detailCode === 'siel_ref' || detailCode === 'seg_ref' || detailCode === 'sem_ref' || detailCode === 'tse_ref' ? 'REF' : 'LDY');
                                 return renderCheckItem(check, label);
@@ -901,6 +901,7 @@ async function showDetail(category, checkName, detailCode) {
             else if (detailCode === 'seg_ldy' || checkName.includes('SEG LDY')) type = 'seg_ldy';
             else if (detailCode === 'sem_tv' || checkName.includes('SEM TV')) type = 'sem_tv';
             else if (detailCode === 'sem_ref' || checkName.includes('SEM REF')) type = 'sem_ref';
+            else if (detailCode === 'sem_ldy_dryer' || checkName.includes('SEM LDY_DRYER')) type = 'sem_ldy_dryer';
             else if (detailCode === 'sem_ldy' || checkName.includes('SEM LDY')) type = 'sem_ldy';
             else if (detailCode === 'tse_tv' || checkName.includes('TSE TV')) type = 'tse_tv';
             else if (detailCode === 'tse_ref' || checkName.includes('TSE REF')) type = 'tse_ref';
@@ -1588,7 +1589,7 @@ async function showRulesModal(checkName) {
     const isSegCrossfield = /^SEG (TV|REF|LDY|LDY_DRYER) 논리적 일관성$/.test(checkName || '');
     const isSedaCrossfield = /^SEDA (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isSeibCrossfield = /^SEIB (TV|REF|LDY|LDY_DRYER) 논리적 일관성$/.test(checkName || '');
-    const isSemCrossfield = /^SEM (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
+    const isSemCrossfield = /^SEM (TV|REF|LDY|LDY_DRYER) 논리적 일관성$/.test(checkName || '');
     const isTseCrossfield = /^TSE (TV|REF|LDY) 논리적 일관성$/.test(checkName || '');
     const isCrossfield = crossfieldChecks.includes(checkName) || isSeaCrossfield || isSielCrossfield || isSegCrossfield || isSemCrossfield || isTseCrossfield || isSedaCrossfield || isSeibCrossfield;
     const isRetailCrossfield = isCrossfield && !checkName.includes('Sentiment');
@@ -1627,6 +1628,8 @@ async function showRulesModal(checkName) {
             category = 'sem_tv';
         } else if (checkName.includes('SEM REF')) {
             category = 'sem_ref';
+        } else if (checkName.includes('SEM LDY_DRYER')) {
+            category = 'sem_ldy_dryer';
         } else if (checkName.includes('SEM LDY')) {
             category = 'sem_ldy';
         } else if (checkName.includes('TSE TV')) {

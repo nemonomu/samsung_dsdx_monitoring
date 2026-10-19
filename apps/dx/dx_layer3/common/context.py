@@ -70,7 +70,6 @@ def _get_sidebar_items():
     }
     sem_section_codes = {
         source['section_code'] for source in SEM_SOURCE_CONFIG.values()
-        if not source.get('null_only')
     }
     seda_section_codes = {source['section_code'] for source in SEDA_SOURCE_CONFIG.values()}
     seib_section_codes = {source['section_code'] for source in SEIB_SOURCE_CONFIG.values()}
@@ -198,8 +197,7 @@ def _get_sidebar_items():
         'name': source['display_name'],
         'label': source['category'],
         'detail_code': detail_code,
-    } for detail_code, source in SEM_SOURCE_CONFIG.items()
-      if not source.get('null_only')]
+    } for detail_code, source in SEM_SOURCE_CONFIG.items()]
     if sem_children:
         tse_index = next((
             index for index, item in enumerate(crossfield_items)

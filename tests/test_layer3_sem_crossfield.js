@@ -22,7 +22,9 @@ assert(common.includes("detailCode === 'sem_ref' || checkName.includes('SEM REF'
 assert(common.includes("detailCode === 'sem_ldy' || checkName.includes('SEM LDY')"));
 assert(common.includes("detailCode === 'siel_tv' || detailCode === 'seg_tv' || detailCode === 'sem_tv' || detailCode === 'tse_tv'"));
 assert(common.includes("detailCode === 'siel_ref' || detailCode === 'seg_ref' || detailCode === 'sem_ref' || detailCode === 'tse_ref'"));
-assert(common.includes("const isSemCrossfield = /^SEM (TV|REF|LDY)"));
+assert(common.includes("const isSemCrossfield = /^SEM (TV|REF|LDY|LDY_DRYER)"));
+assert(common.includes("detailCodes: ['sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer']"));
+assert(common.includes("detailCode === 'sem_ldy_dryer' || checkName.includes('SEM LDY_DRYER')"));
 assert(common.includes("type=${category.replace(/_retail$/, '')}"));
 assert(common.includes("const loadedRules = isRetailCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));

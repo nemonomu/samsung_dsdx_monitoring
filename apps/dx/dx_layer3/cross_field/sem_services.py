@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from apps.common.crossfield_history import build_detail_history
 from apps.common.null_review_evidence import exclude_page_absent_records
+from apps.common.source_dates import source_date_sql
 from apps.common.sem_retail import (
     SEM_COUNTRY,
     SEM_COPPEL_RETAILER,
@@ -190,7 +191,7 @@ def _coppel_price_rules(row, checks):
 def _result(cursor, target_date, product_line):
     key = product_line_for(product_line)
     source = SEM_SOURCE_CONFIG.get(key)
-    if not source or source.get('null_only'):
+    if not source:
         raise ValueError(f'Unsupported SEM product line: {product_line}')
     definitions = _RULES + (
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in source['retailers'] else ()
@@ -208,7 +209,7 @@ def _result(cursor, target_date, product_line):
             retailer_rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
         retailer_rows, excluded = exclude_page_absent_records(
             cursor, target_date, retailer_rows, table_name=source['table_name'],
-            country='SEM', product_line=key.rsplit('_', 1)[-1],
+            country='SEM', product_line=source['category'],
         )
         page_exclusions.extend(excluded)
         rows.extend(retailer_rows)
@@ -264,9 +265,13 @@ def build_sem_display_query(source, source_date, retailers, days=3, rows=None):
             scope += ' AND (' + ' OR '.join(conditions or ['FALSE']) + ')'
         scopes.append('(' + scope + ')')
     column = source['date_column']
+    date_expression = (
+        source_date_sql(column)
+        if source['source_key'] == 'sem_ldy_dryer' else column
+    )
     return (f"SELECT *\nFROM {source['table_name']}\n"
-            f"WHERE {column} >= '{start}'\n"
-            f"  AND {column} < '{end + timedelta(days=1)}'\n"
+            f"WHERE {date_expression} >= '{start}'\n"
+            f"  AND {date_expression} < '{end + timedelta(days=1)}'\n"
             + '  AND (' + ' OR '.join(scopes or ['FALSE']) + ')\n'
             + f'ORDER BY item, {column};')
 

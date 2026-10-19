@@ -39,7 +39,7 @@ def cross_field_detail(request):
         target_date = (datetime.now() - timedelta(days=1)).date()
 
     is_tse = product_line_key in ('tse_tv', 'tse_ref', 'tse_ldy')
-    is_sem = product_line_key in ('sem_tv', 'sem_ref', 'sem_ldy')
+    is_sem = product_line_key in ('sem_tv', 'sem_ref', 'sem_ldy', 'sem_ldy_dryer')
     is_siel = product_line_key in ('siel_tv', 'siel_ref', 'siel_ldy')
     is_seg = product_line_key in ('seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer')
     is_sea = product_line_key in ('sea_ref', 'sea_ldy', 'sea_ldy_dryer')
