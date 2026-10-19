@@ -44,6 +44,8 @@ function elementText(element) {
 async function testIntegratedBackupPromptAndPost() {
     const button = { disabled: false, textContent: '백업 실행' };
     const confirmMessage = fakeElement('div');
+    const dialogClasses = [];
+    confirmMessage.parentElement = { classList: { add: name => dialogClasses.push(name) } };
     const requests = [];
     const confirms = [];
     const confirmOptions = [];
@@ -137,6 +139,13 @@ async function testIntegratedBackupPromptAndPost() {
     };
     vm.createContext(context);
     vm.runInContext(dashboardSource, context);
+    assert.strictEqual(
+        context.formatBackupSourceDate(
+            { sea_tv: '2026-08-10', sea_ldy_dryer: '2026-08-11' },
+            ['sea_tv', 'sea_ldy_dryer']
+        ),
+        'TV 2026-08-10 · DRY 2026-08-11'
+    );
 
     context.runBackup();
     await flushPromises();
@@ -172,22 +181,25 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(renderedText.indexOf('SEA') < renderedText.indexOf('SEDA'));
     assert.ok(renderedText.indexOf('SEDA') < renderedText.indexOf('SEM'));
     assert.ok(renderedText.indexOf('SEM') < renderedText.indexOf('SIEL'));
-    assert.ok(renderedText.indexOf('SIEL') < renderedText.indexOf('TSE'));
-    assert.strictEqual(confirmMessage.children[2].style.cssText.includes(
-        'grid-template-columns:repeat(2,minmax(0,1fr))'
-    ), true);
+    assert.ok(renderedText.indexOf('SIEL') < renderedText.indexOf('SEIB'));
+    assert.ok(renderedText.indexOf('SEIB') < renderedText.indexOf('TSE'));
+    assert.deepStrictEqual(dialogClasses, ['backup-confirm-dialog']);
+    assert.strictEqual(confirmMessage.children[2].className, 'backup-confirm-grid');
     const cards = confirmMessage.children[2].children;
     assert.strictEqual(cards[0].children[0].children[0].children[0].src, '/static/img/flags/us.svg');
     assert.strictEqual(cards[1].children[0].children[0].children[0].src, '/static/img/flags/br.svg');
     assert.strictEqual(cards[2].children[0].children[0].children[0].src, '/static/img/flags/mx.svg');
     assert.strictEqual(cards[3].children[0].children[0].children[0].src, '/static/img/flags/in.svg');
-    assert.strictEqual(cards[4].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
-    assert.strictEqual(cards[5].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
-    assert.strictEqual(cards[6].children[0].children[0].children[0].src, '/static/img/flags/es.svg');
+    assert.strictEqual(cards[4].children[0].children[0].children[0].src, '/static/img/flags/es.svg');
+    assert.strictEqual(cards[5].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
+    assert.strictEqual(cards[6].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
     assert(renderedText.includes('SEIB'));
-    assert(renderedText.includes('LDY_DRYER'));
+    assert(renderedText.includes('DRY'));
+    assert(!renderedText.includes('LDY_DRYER'));
+    assert(fs.readFileSync(path.join(root, 'apps', 'dx', 'dx_layer1', 'static', 'dx_layer1', 'css', 'collection-status.css'), 'utf8')
+        .includes('grid-template-columns: repeat(3, minmax(0, 1fr))'));
     assert(fs.readFileSync(path.join(root, 'apps', 'dx', 'dx_layer1', 'templates', 'dx_layer1_dashboard.html'), 'utf8')
-        .includes("dx_layer1/js/dashboard.js' %}?v=20261019-dryer-backup"));
+        .includes("dx_layer1/js/dashboard.js' %}?v=20261019-backup-grid"));
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');

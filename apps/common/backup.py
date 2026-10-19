@@ -475,16 +475,18 @@ def backup_all_retail(username='', target_date=None):
 
     conn = get_dx_connection()
     cursor = conn.cursor()
+    active_source = None
     try:
-        results = {
-            source['key']: _backup_source(
+        results = {}
+        for source in _BACKUP_SOURCES:
+            active_source = source
+            results[source['key']] = _backup_source(
                 cursor,
                 source,
                 username,
                 date_mappings[source['key']],
             )
-            for source in _BACKUP_SOURCES
-        }
+        active_source = None
         conn.commit()
         return {
             'success': True,
@@ -500,9 +502,14 @@ def backup_all_retail(username='', target_date=None):
     except Exception as e:
         conn.rollback()
         log_error(e, 'backup')
+        failed_source = active_source['key'] if active_source else None
+        failed_label = active_source['category'] if active_source else 'COMMIT'
+        db_error_code = getattr(e, 'pgcode', None) or getattr(e, 'sqlstate', None)
         return {
             'success': False,
-            'error': '통합 백업 중 오류가 발생했습니다. 전체 백업을 취소했습니다.',
+            'error': f'통합 백업 중 {failed_label} 처리에 실패했습니다. 전체 백업을 취소했습니다.',
+            'failed_source': failed_source,
+            'db_error_code': db_error_code,
             **_date_payload(date_mappings),
         }
     finally:

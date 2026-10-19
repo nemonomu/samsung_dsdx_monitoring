@@ -12,3 +12,30 @@
 #dday-collection-section .retail-rank-wrap table { min-width: 1040px; }
 #dday-collection-section .sentiment-category-header { gap: 12px; flex-wrap: wrap; }
 #dday-collection-section .sentiment-category-info { flex-wrap: wrap; }
+
+#confirmOverlay .backup-confirm-dialog {
+    box-sizing: border-box;
+    width: min(920px, calc(100vw - 32px));
+    min-width: 0 !important;
+    max-width: 920px !important;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+}
+
+#confirmOverlay .backup-confirm-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+}
+
+@media (max-width: 760px) {
+    #confirmOverlay .backup-confirm-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    #confirmOverlay .backup-confirm-grid {
+        grid-template-columns: 1fr;
+    }
+}

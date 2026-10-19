@@ -575,6 +575,8 @@ class BackupTests(unittest.TestCase):
         self.assertFalse(result['success'])
         self.assertEqual(connection.commits, 0)
         self.assertEqual(connection.rollbacks, 1)
+        self.assertEqual(result['failed_source'], 'tse_ref')
+        self.assertIn('TSE REF', result['error'])
         self.assertIn('전체 백업을 취소했습니다', result['error'])
         self.assertFalse(any(
             'INSERT INTO dx_tse.dx_tse_ldy_retail_com_backup' in sql

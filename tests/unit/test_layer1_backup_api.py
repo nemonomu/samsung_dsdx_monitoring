@@ -217,6 +217,8 @@ class Layer1BackupApiTests(unittest.TestCase):
             lambda username, date: {
                 'success': False,
                 'error': '전체 백업을 취소했습니다.',
+                'failed_source': 'sea_ldy_dryer',
+                'db_error_code': '23514',
             },
         )
 
@@ -224,6 +226,8 @@ class Layer1BackupApiTests(unittest.TestCase):
 
         self.assertFalse(response['success'])
         self.assertEqual(response['error'], '전체 백업을 취소했습니다.')
+        self.assertEqual(response['failed_source'], 'sea_ldy_dryer')
+        self.assertEqual(response['db_error_code'], '23514')
 
     def test_missing_or_invalid_inspection_date_returns_http_400(self):
         invalid_result = {

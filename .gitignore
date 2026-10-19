@@ -61,6 +61,8 @@ config/create_admin.py
 !sql/setup_seda_crossfield.sql
 !sql/create_null_review_evidence.sql
 !sql/fix_seib_null_review_evidence_constraints.sql
+!sql/diagnose_integrated_backup.sql
+!sql/fix_integrated_backup_log_product_line.sql
 !sql/seed_amazon_review_body_history.sql
 !sql/update_lowes_pickup_patterns.sql
 

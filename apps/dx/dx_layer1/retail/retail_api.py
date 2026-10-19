@@ -92,6 +92,10 @@ def _backup_error_response(result, default_error):
     }
     if result.get('error_code'):
         payload['error_code'] = result['error_code']
+    if result.get('failed_source'):
+        payload['failed_source'] = result['failed_source']
+    if result.get('db_error_code'):
+        payload['db_error_code'] = result['db_error_code']
     status = 400 if result.get('error_code') == 'invalid_inspection_date' else 200
     return JsonResponse(payload, status=status)
 
