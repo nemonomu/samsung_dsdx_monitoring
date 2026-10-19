@@ -33,6 +33,12 @@ def reviews(request):
                 return response
             return JsonResponse(data)
         action = body.get('action')
+        if action == 'review':
+            event_id = service.apply_direct(
+                data, body.get('keys'), body.get('decision'), body.get('reason'),
+                request.user.get_username(), body.get('evidence'), body.get('snapshots'),
+            )
+            return JsonResponse({'success': True, 'event_id': event_id})
         if action == 'preview':
             return JsonResponse(service.preview(data, body.get('keys'), body.get('decision'), body.get('reason'), body.get('evidence')))
         if action == 'apply':

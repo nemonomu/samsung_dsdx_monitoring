@@ -70,6 +70,12 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     expect(page.locator('#fr-groups')).to_contain_text('final_sku_price')
     group=page.locator('.fr-group').filter(has=page.locator('.fr-value',has_text='Pickup Ready by 9am Tomorrow'))
     expect(group).to_have_count(1)
+    expect(group.locator('.fr-rule')).to_contain_text('검증규칙 허용 패턴')
+    expect(group.locator('.fr-reasons')).to_contain_text('미등록 문구')
+    group.locator('.fr-queries summary').click()
+    expect(group.locator('.fr-query')).to_have_count(2)
+    expect(group.locator('.fr-query').first).to_contain_text('id IN (1, 2, 3)')
+    expect(group.locator('.fr-query').last).to_contain_text("pick_up_availability = 'Pickup Ready by 9am Tomorrow'")
     assert group.locator('.fr-links a').count()==3
     assert group.locator('.fr-links a').first.get_attribute('href')=='https://www.lowes.com/pd/1'
     assert group.locator('.fr-links a').first.get_attribute('rel')=='noopener noreferrer'
@@ -83,8 +89,8 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     expect(checkbox).not_to_be_checked()
     group.locator('label b').click()
     expect(checkbox).to_be_checked()
-    group.locator('summary').click()
-    expect(group.locator('details')).to_have_attribute('open','')
+    group.locator('details').last.locator('summary').click()
+    expect(group.locator('details').last).to_have_attribute('open','')
     expect(checkbox).to_be_checked()
     group.locator('td').first.click()
     expect(checkbox).to_be_checked()
@@ -93,7 +99,7 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
         group.locator('.fr-links a').first.click()
     popup.value.close()
     expect(checkbox).to_be_checked()
-    group.locator('summary').click()
+    group.locator('details').last.locator('summary').click()
     checkbox.uncheck()
     expect(group).to_have_class('fr-group')
     group.locator('.fr-value').click()
@@ -115,17 +121,11 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
         document.querySelector('#fr-reason').dispatchEvent(new ClipboardEvent('paste', {clipboardData, bubbles:true, cancelable:true}));
     }''')
     expect(page.locator('#fr-captures img')).to_have_count(2)
-    page.locator('[data-fr="preview"][data-decision="normal"]').click()
-    expect(page.locator('#fr-preview')).to_contain_text('3건 / 1개 값')
-    expect(page.locator('#fr-preview')).to_contain_text('확인 URL 1개 · 캡처 2장')
-    # A changed source after preview must be rejected, even though group IDs match.
     raw['results'][0]['product_url']='https://www.lowes.com/pd/changed'
-    page.locator('[data-fr="apply"]').click()
+    page.locator('[data-fr="review"][data-decision="normal"]').click()
     expect(page.locator('#fr-message')).to_contain_text('수집 값 또는 대상이 변경')
-    # Refresh the selected URL to match the latest source after the rejected preview.
     raw['results'][0]['product_url']='https://www.lowes.com/pd/1'
-    page.locator('[data-fr="preview"][data-decision="normal"]').click()
-    page.locator('[data-fr="apply"]').click()
+    page.locator('[data-fr="review"][data-decision="normal"]').click()
     expect(page.locator('#fr-message')).to_contain_text('처리 결과를 반영')
     page.locator('[data-tab="registered"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('Pickup Ready by 9am Tomorrow')
@@ -146,7 +146,6 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     page.locator('[data-fr="evidence-back"]').click()
     page.locator('#fr-reason').fill('잘못 등록하여 취소')
     page.locator('[data-fr="revoke"]').click()
-    page.locator('[data-fr="apply"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('등록한 정상 값이 없습니다')
     page.locator('[data-tab="history"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('잘못 등록하여 취소')
@@ -157,8 +156,7 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     baseline=page.locator('.fr-group').filter(has=page.locator('.fr-value',has_text='Pickup Ready Today'))
     baseline.locator('input').check()
     page.locator('#fr-reason').fill('기존 정상 기준의 잘못된 허용 확인')
-    page.locator('[data-fr="preview"][data-decision="error"]').click()
-    page.locator('[data-fr="apply"]').click()
+    page.locator('[data-fr="review"][data-decision="error"]').click()
     page.locator('[data-tab="issues"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('오류 확정')
     assert page.evaluate('FormatReview.safeURL("javascript:alert(1)")')==''
@@ -171,4 +169,4 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     page.screenshot(path=str(output/'mobile.png'),full_page=True)
     assert not errors,errors
     browser.close()
-    print('PASS: real JS/API batch preview/apply, stale source rejection, URL safety, registration revoke, baseline-to-error flow, desktop/mobile.')
+    print('PASS: real JS/API direct batch review, rule reasons, SQL lookup, URL safety, registration revoke, baseline-to-error flow, desktop/mobile.')

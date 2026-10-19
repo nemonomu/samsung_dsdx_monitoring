@@ -87,6 +87,32 @@ class FormatReviewTests(TestCase):
         self.assertEqual(5,data['counts']['baseline_normal'])
         self.assertEqual(1,data['counts']['legacy_normal'])
 
+    def test_direct_review_queries_and_audit(self):
+        data = self.inventory()
+        group = next(g for g in data['groups'] if g['value'] == 'Pickup Ready by 9am Tomorrow')
+        self.assertIn('WHERE id IN (1, 2, 3)', group['queries']['targets'])
+        self.assertIn("pick_up_availability = 'Pickup Ready by 9am Tomorrow'", group['queries']['all_values'])
+        self.assertEqual(['미등록 문구'], group['reasons'])
+        event_id = service.apply_direct(data, [group['key']], 'normal', '상품 페이지와 허용 문구 확인',
+                                        'reviewer', expected_snapshots={group['key']: group['snapshot']})
+        self.assertTrue(event_id)
+        self.assertTrue(any(p['value'] == group['value'] for p in self.inventory()['registrations']))
+
+    def test_direct_review_rejects_changed_source(self):
+        group = next(g for g in self.inventory()['groups'] if g['value'] == 'Pickup Ready by 9am Tomorrow')
+        self.raw['results'][0]['product_url'] = 'https://www.lowes.com/pd/changed'
+        with self.assertRaises(repo.ReviewConflict):
+            service.apply_direct(self.inventory(), [group['key']], 'normal', '상품 확인', 'reviewer',
+                                 expected_snapshots={group['key']: group['snapshot']})
+
+    def test_review_rule_payload_uses_actual_registered_rule(self):
+        rule = {'field': 'pick_up_availability', 'pattern': 'Pickup Ready Today',
+                'description': '허용된 수령 문구'}
+        with patch.object(services, 'get_format_rules', return_value={'rules': [rule]}):
+            data = service.inventory(object(), DAY, 'sea_ref_retail', 'Lowes')
+        group = next(g for g in data['groups'] if g['value'] == 'Pickup Ready by 9am Tomorrow')
+        self.assertEqual(rule['pattern'], group['rule']['pattern'])
+
     def test_baseline_exclusions_do_not_change_validation_or_inventory(self):
         data = self.inventory()
         self.assertIn('final_sku_price', data['baseline_excluded_fields'])

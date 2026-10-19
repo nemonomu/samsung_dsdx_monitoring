@@ -66,6 +66,29 @@ def group_key(field, value):
     return digest([field, value])
 
 
+def _sql_literal(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _review_queries(data, group):
+    """Copyable read-only SQL; identifiers come from the configured source/field list."""
+    table = str(data['actual_table'])
+    field = group['field']
+    if not all(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', part)
+               for part in table.split('.')) or field not in data['validation_fields'] or not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', field):
+        return {'targets': '', 'all_values': ''}
+    ids = sorted({int(row['id']) for row in group['records']})
+    if not ids or any(value < 1 for value in ids):
+        return {'targets': '', 'all_values': ''}
+    target_sql = (f"SELECT * FROM {table}\nWHERE id IN ({', '.join(map(str, ids))})\n"
+                  "ORDER BY id;")
+    all_sql = (f"SELECT * FROM {table}\n"
+               f"WHERE account_name = {_sql_literal(data['retailer'])}\n"
+               f"  AND {field} = {_sql_literal(group['value'])}\n"
+               "ORDER BY id DESC;")
+    return {'targets': target_sql, 'all_values': all_sql}
+
+
 def shared_context(context):
     """Normal approvals span products, but never countries or DB environments."""
     return (context['country'], context['retailer'], context['check'], context['environment'],
@@ -173,7 +196,7 @@ def apply_detail(data, scopes, errors_only=False):
 
 
 def inventory(cursor, day, table, retailer, scopes=None):
-    from .services import _get_format_detail_raw
+    from .services import _get_format_detail_raw, get_format_rules
     if not supported(table) or not retailer:
         raise ValueError('지원하는 Retail 리테일러를 선택하세요.')
     scopes = load_scopes() if scopes is None else scopes
@@ -186,6 +209,19 @@ def inventory(cursor, day, table, retailer, scopes=None):
     fingerprint = digest(context)
     scope = scopes.get(fingerprint)
     data = apply_detail(data, scopes)
+    rule_rows = get_format_rules(cursor, table, data['retailer']).get('rules', []) if cursor is not None else []
+    rules = {}
+    for rule in rule_rows:
+        field = rule.get('field')
+        if not field:
+            continue
+        current = rules.setdefault(field, {'description': [], 'pattern': []})
+        for key in ('description', 'pattern'):
+            value = rule.get(key, '')
+            if value and value not in current[key]:
+                current[key].append(value)
+    rules = {field: {key: '\n'.join(values) for key, values in rule.items()}
+             for field, rule in rules.items()}
     groups = {}
     for row in data['results']:
         if not row['is_review_target']:
@@ -212,6 +248,12 @@ def inventory(cursor, day, table, retailer, scopes=None):
         group['tab'] = 'issues' if states.get('pending', 0) + states.get('error', 0) else (
             'registered' if states.get('registered_normal') else 'baseline'
         )
+        group['rule'] = rules.get(group['field'], {})
+        group['reasons'] = sorted({record['original_error']['reason']
+                                   for record in group['records']
+                                   if record.get('original_error', {}).get('reason')})
+        group['queries'] = _review_queries(data, group)
+        group['snapshot'] = digest(group)
     registrations = [dict(policy) for policy in effective_policies(context, scopes).values()
                      if not policy.get('is_del')]
     history = []
@@ -297,6 +339,28 @@ def commit(data, token, actor, evidence=None):
         raise repository.ReviewConflict('확인 근거가 변경됐습니다. 다시 미리보기 하세요.')
     return repository.save(data['context'], data['fingerprint'], data['revision'], stamp['action'],
                            targets, stamp['reason'], actor, date.fromisoformat(data['date']), evidence,
+                           expected_shared_revision=data['shared_revision'])
+
+
+def apply_direct(data, keys, action, reason, actor, evidence=None, expected_snapshots=None):
+    """Save one reviewed snapshot without a second confirmation request."""
+    if not data['available']:
+        raise ValueError('검토 저장소가 준비되지 않았습니다. dx_layer2 마이그레이션이 필요합니다.')
+    if action not in ('normal', 'error', 'revoke'):
+        raise ValueError('지원하지 않는 처리입니다.')
+    reason = validate_reason(reason)
+    targets = selected_targets(data, keys, action)
+    if action != 'revoke':
+        if not isinstance(expected_snapshots, dict) or any(
+            expected_snapshots.get(target['key']) != target['snapshot'] for target in targets
+        ):
+            raise repository.ReviewConflict('수집 값 또는 대상이 변경됐습니다. 새로 조회하세요.')
+    evidence = review_evidence.validate(evidence, targets)
+    targets = [{key: value for key, value in target.items()
+                if key not in ('rule', 'reasons', 'queries', 'snapshot')}
+               for target in targets]
+    return repository.save(data['context'], data['fingerprint'], data['revision'], action,
+                           targets, reason, actor, date.fromisoformat(data['date']), evidence,
                            expected_shared_revision=data['shared_revision'])
 
 
