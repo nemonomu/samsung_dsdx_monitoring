@@ -266,10 +266,6 @@ class SegCrossfieldScopeTests(unittest.TestCase):
         for section in ('seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail'):
             self.assertIn(section, sql)
         for rule_key in seg_services.SEG_RULE_SPECS:
-            if rule_key == 'savings_rate_match':
-                expert_seed = Path('sql/seed_seg_expert_crossfield.sql').read_text(encoding='utf-8')
-                self.assertIn("'savings_rate_match'", expert_seed)
-                continue
             seed_sql = (Path('sql/seed_amazon_review_body_history.sql').read_text(encoding='utf-8')
                         if rule_key == 'amazon_review_body_history' else sql)
             self.assertIn(f"'{rule_key}'", seed_sql)

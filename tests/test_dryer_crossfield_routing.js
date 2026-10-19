@@ -33,8 +33,11 @@ vm.runInContext(fs.readFileSync(`${root}/static/dx_layer3/js/common.js`, 'utf8')
     for (const file of fs.readdirSync(`${root}/templates`).filter(name => name.endsWith('.html'))) {
         const html = fs.readFileSync(`${root}/templates/${file}`, 'utf8');
         for (const line of html.split('\n')) {
-            if (line.includes('dx_layer3/js/common.js') || line.includes('dx_layer3/js/cross-field.js')) {
-                assert(line.includes('?v=20261019-seib-crossfield'), `${file}: stale script version`);
+            if (line.includes('dx_layer3/js/common.js')) {
+                assert(line.includes('?v=20261019-seib-crossfield'), `${file}: stale common.js version`);
+            }
+            if (line.includes('dx_layer3/js/cross-field.js')) {
+                assert(line.includes('?v=20261019-expert-savings'), `${file}: stale cross-field.js version`);
             }
         }
     }

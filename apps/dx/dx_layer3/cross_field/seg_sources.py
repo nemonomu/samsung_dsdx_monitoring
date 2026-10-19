@@ -8,7 +8,7 @@ from apps.dx.dx_layer2.seg_sources import (
 SEG_RETAILERS = (*legacy.SEG_RETAILERS, 'Expert')
 EXPERT_EDITABLE = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
-    'final_sku_price', 'original_sku_price', 'savings',
+    'final_sku_price', 'original_sku_price',
 )
 
 

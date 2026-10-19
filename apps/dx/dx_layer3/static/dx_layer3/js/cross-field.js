@@ -119,7 +119,13 @@ function _cfEditableColumns(retailer) {
     if (helper && triggers.some(field => helper.isPrice(field))) {
         helper.getPriceColumns().forEach(field => editable.add(field));
     }
+    if (_cfExpertWithoutSavings(retailer)) editable.delete('savings');
     return editable;
+}
+
+function _cfExpertWithoutSavings(retailer) {
+    return String(window.crossfieldProductLine || '').toUpperCase().startsWith('SEG_')
+        && String(retailer || '').trim().toLowerCase() === 'expert';
 }
 
 function _cfOrderReviewDetailKeys(keys) {
@@ -211,7 +217,9 @@ function showRetailerDetail(retailer) {
         'id', 'item', 'account_name', 'page_type', 'finding_level', 'row_role',
         'row_source_date'
     ];
+    const expertWithoutSavings = _cfExpertWithoutSavings(retailer);
     let dynamicKeys = _cfDetailKeys(rows, excludeKeys);
+    if (expertWithoutSavings) dynamicKeys = dynamicKeys.filter(key => key !== 'savings');
     dynamicKeys = _cfOrderReviewDetailKeys(dynamicKeys);
     const urlKey = dynamicKeys.find(k => k === 'product_url');
     const otherKeys = dynamicKeys.filter(k => k !== 'product_url');
@@ -305,7 +313,8 @@ function showRetailerDetail(retailer) {
 
     // 규칙에 정의된 기본 표시 컬럼 결정
     const selectFieldsRaw = window.crossfieldSelectFields || '';
-    const ruleDisplayCols = _cfVisibleDetailKeys(selectFieldsRaw.split('|').map(f => f.trim()).filter(f => f));
+    const ruleDisplayCols = _cfVisibleDetailKeys(selectFieldsRaw.split('|').map(f => f.trim()).filter(f => f))
+        .filter(key => !expertWithoutSavings || key !== 'savings');
 
     // 기본 표시 컬럼: 고정 + 규칙 컬럼 (규칙 없으면 otherKeys 전체)
     const fixedKeys = [
@@ -317,11 +326,12 @@ function showRetailerDetail(retailer) {
         fixedKeys.push('count_of_star_ratings');
     }
     const configuredDisplayKeys = ruleDisplayCols.length > 0 ? ruleDisplayCols : otherKeys;
-    const defaultDisplayKeys = window.RetailReviewColumns
+    let defaultDisplayKeys = window.RetailReviewColumns
         ? window.RetailReviewColumns.expand(
             configuredDisplayKeys, dynamicKeys,
             ruleDisplayCols.concat(window.crossfieldRuleFields || [])
         ) : configuredDisplayKeys;
+    if (expertWithoutSavings) defaultDisplayKeys = defaultDisplayKeys.filter(key => key !== 'savings');
 
     // 전체 컬럼 정의 (기본 표시 + 나머지 수집 컬럼)
     const allColumns = [
@@ -338,7 +348,8 @@ function showRetailerDetail(retailer) {
     }
 
     // 리테일러 전체 수집 컬럼 추가 (컬럼 선택용, 기본 비표시)
-    const retailerCols = (window.crossfieldRetailerColumns || {})[retailer] || [];
+    const retailerCols = ((window.crossfieldRetailerColumns || {})[retailer] || [])
+        .filter(col => !expertWithoutSavings || col !== 'savings');
     const existingKeys = {};
     allColumns.forEach(c => { existingKeys[c.key] = true; });
     retailerCols.forEach(col => {
@@ -355,9 +366,10 @@ function showRetailerDetail(retailer) {
             existingKeys[key] = true;
         }
     });
-    const priceDisplayOrder = window.RetailReviewColumns
+    const priceDisplayOrder = (window.RetailReviewColumns
         ? window.RetailReviewColumns.getPriceColumns()
-        : ['original_sku_price', 'final_sku_price', 'savings'];
+        : ['original_sku_price', 'final_sku_price', 'savings'])
+        .filter(key => !expertWithoutSavings || key !== 'savings');
     if (defaultDisplayKeys.some(key => priceDisplayOrder.includes(key))) {
         const priceIndexes = allColumns
             .map((column, index) => priceDisplayOrder.includes(column.key) ? index : -1)

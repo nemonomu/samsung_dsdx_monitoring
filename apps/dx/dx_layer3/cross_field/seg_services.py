@@ -7,7 +7,7 @@ the exact SEG inspection-day/latest-MAIN-batch scope.
 
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR
+from decimal import Decimal, InvalidOperation
 import re
 
 from apps.common.crossfield_history import build_detail_history
@@ -100,7 +100,7 @@ SEG_RULE_SPECS = OrderedDict((
         'guide_description': (
             '두 가격이 숫자이고 원가 > 최종가인데 savings가 없으면 이상입니다. Amazon은 원가가 0보다 크고 계산 할인율이 '
             '0.5% 이상일 때만 누락으로 판정합니다. 표시된 할인율과 계산값의 일치는 검사하지 않습니다. Mediamarkt는 원가가 0보다 크고 할인율이 '
-            '10% 이하이면 제외합니다. Expert는 두 가격이 숫자인데 savings가 없으면 할인 폭과 관계없이 검수합니다.'
+            '10% 이하이면 제외합니다.'
         ),
         'detail_name': '할인 가격 존재 시 savings 확인',
         'field1': 'savings',
@@ -110,7 +110,7 @@ SEG_RULE_SPECS = OrderedDict((
             'final_sku_price', 'original_sku_price', 'savings',
         ),
         'error_message': (
-            '할인 가격인데 savings가 없습니다. Amazon은 계산 할인율 0.5% 이상, Mediamarkt는 10% 초과일 때 검사합니다. Expert는 두 가격이 있으면 할인율 누락을 검사합니다.'
+            '할인 가격인데 savings가 없습니다. Amazon은 계산 할인율 0.5% 이상, Mediamarkt는 10% 초과일 때 검사합니다.'
         ),
     }),
     ('original_missing', {
@@ -146,14 +146,6 @@ SEG_RULE_SPECS = OrderedDict((
         'retailers': SEG_EQUAL_REVIEW_RETAILERS,
         'display_fields': ('count_of_reviews', 'count_of_star_ratings', 'star_rating'),
         'error_message': 'count_of_reviews와 count_of_star_ratings가 다릅니다.',
-    }),
-    ('savings_rate_match', {
-        'detail_name': 'Expert 계산 할인율과 표시 할인율 일치',
-        'guide_description': '원가가 0보다 클 때 (원가-판매가)/원가×100의 소수점 버림값과 표시 할인율을 비교합니다. 값이 없거나 숫자로 해석할 수 없으면 이 비교에서 제외합니다.',
-        'field1': 'savings', 'field2': 'final_sku_price|original_sku_price',
-        'retailers': ('Expert',),
-        'display_fields': ('final_sku_price', 'original_sku_price', 'savings'),
-        'error_message': '표시 할인율이 가격으로 계산한 할인율의 정수 버림값과 다릅니다.',
     }),
     ('review_body_count', {
         'guide_description': (
@@ -203,6 +195,8 @@ _DISPLAY_QUERY_COLUMNS = {
     'crawl_strdatetime', 'crawl_datetime', 'batch_id', 'product_url',
     'detailed_review_content',
 }
+
+EXPERT_PRICE_RULES = frozenset({'final_original_price', 'final_missing'})
 
 
 def _has_value(value):
@@ -292,17 +286,14 @@ def evaluate_seg_row(row):
     final_price = parse_seg_money(row.get('final_sku_price'))
     original_price = parse_seg_money(row.get('original_sku_price'))
 
+    if retailer == 'Expert':
+        if final_price is not None and original_price is not None and final_price >= original_price:
+            errors.add('final_original_price')
+        if original_present and not final_present:
+            errors.add('final_missing')
+        return errors
+
     if final_price is not None and original_price is not None:
-        if retailer == 'Expert':
-            if not savings_present:
-                errors.add('savings_missing')
-            elif original_price > 0:
-                text = str(row.get('savings')).strip()
-                if re.fullmatch(r'[+-]?\d+(?:[.,]\d+)?\s*%', text):
-                    displayed = Decimal(text.rstrip('%').strip().replace(',', '.'))
-                    expected = ((original_price - final_price) * 100 / original_price).quantize(Decimal('1'), rounding=ROUND_FLOOR)
-                    if displayed != expected:
-                        errors.add('savings_rate_match')
         if final_price >= original_price:
             errors.add('final_original_price')
         if original_price > final_price and not savings_present:
@@ -460,7 +451,7 @@ def _retailer_supported(rule_key, retailer):
     if display_seg_retailer(retailer) == 'Expert':
         return rule_key in {
             'rating_count_presence', 'review_count_match', 'final_original_price',
-            'savings_missing', 'original_missing', 'final_missing', 'savings_rate_match',
+            'final_missing',
         }
     supported = SEG_RULE_SPECS[rule_key]['retailers']
     retailer_key = str(retailer or '').strip().casefold()
@@ -469,6 +460,9 @@ def _retailer_supported(rule_key, retailer):
 
 def _rule_applies_to_retailer(rule, retailer):
     if not _retailer_supported(rule['rule_key'], retailer):
+        return False
+    if (display_seg_retailer(retailer) == 'Expert'
+            and rule.get('_exclude_expert')):
         return False
     if rule.get('_all_retailers'):
         return True
@@ -512,6 +506,7 @@ def load_active_seg_rules(cursor, product_line):
 
         spec = SEG_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
+        expert_rule = display_seg_retailer(configured_retailer) == 'Expert'
         if (
             configured_retailer.upper() != 'ALL'
             and not _retailer_supported(rule_key, configured_retailer)
@@ -527,6 +522,8 @@ def load_active_seg_rules(cursor, product_line):
         for field_group in configured_fields + list(spec['display_fields']):
             for field in str(field_group or '').split('|'):
                 field = field.strip()
+                if expert_rule and field == 'savings':
+                    continue
                 if field and field not in display_fields:
                     display_fields.append(field)
 
@@ -545,12 +542,22 @@ def load_active_seg_rules(cursor, product_line):
                 else [configured_retailer]
             ),
         })
+        if expert_rule and rule_key == 'final_missing':
+            row.update({
+                'detail_name': '원가 존재 시 판매가 확인',
+                'field2': 'original_sku_price',
+                'error_message': '원가가 있는데 final_sku_price가 NULL 또는 빈값입니다.',
+            })
         if rule_key == 'review_body_decrease':
             row['detail_name'] = spec['detail_name']
             row['error_message'] = spec['error_message']
-        existing = rules_by_key.get(rule_key)
+        merge_key = (
+            (rule_key, 'expert' if expert_rule else 'shared')
+            if rule_key in EXPERT_PRICE_RULES else rule_key
+        )
+        existing = rules_by_key.get(merge_key)
         if existing is None:
-            rules_by_key[rule_key] = row
+            rules_by_key[merge_key] = row
             continue
 
         if row['rule_id'] not in existing['_source_rule_ids']:
@@ -568,6 +575,10 @@ def load_active_seg_rules(cursor, product_line):
             if field not in merged_fields:
                 merged_fields.append(field)
         existing['select_fields'] = '|'.join(filter(None, merged_fields))
+
+    for rule_key in EXPERT_PRICE_RULES:
+        if (rule_key, 'expert') in rules_by_key and (rule_key, 'shared') in rules_by_key:
+            rules_by_key[(rule_key, 'shared')]['_exclude_expert'] = True
 
     return list(rules_by_key.values())
 
@@ -891,7 +902,7 @@ def build_seg_crossfield_result(
         retailer_review_records = set()
         retailer_review_count = 0
         for result in rule_results:
-            if not _retailer_supported(result['rule_key'], retailer):
+            if not _rule_applies_to_retailer(result, retailer):
                 continue
             details = [
                 detail for detail in result['error_details']
@@ -965,6 +976,17 @@ def build_seg_display_query(
     if rule['rule_key'] == amazon_review_history.RULE_KEY:
         day_count += amazon_review_history.LOOKBACK_DAYS
 
+    scoped_retailers = (
+        [retailer] if retailer is not None else list(retailers or [])
+    )
+    scoped_retailers.extend(pair[0] for pair in (retailer_item_pairs or [])
+                            if isinstance(pair, (list, tuple)) and len(pair) == 2)
+    if not scoped_retailers and not rule.get('_all_retailers'):
+        scoped_retailers = list(rule.get('_retailers') or [])
+    expert_only = bool(scoped_retailers) and all(
+        display_seg_retailer(value) == 'Expert' for value in scoped_retailers
+    )
+
     select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SEG_RULE_SPECS[rule['rule_key']]
     for field_group in (
@@ -972,6 +994,8 @@ def build_seg_display_query(
     ):
         for column in str(field_group or '').split('|'):
             column = column.strip()
+            if expert_only and column == 'savings':
+                continue
             if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
                 select_columns.append(column)
     select_sql = ',\n'.join(f'    {column}' for column in select_columns)
@@ -1114,7 +1138,12 @@ def get_seg_cross_field_summary(cursor, inspection_date, product_line):
             'validation_type': rule['rule_key'],
             'retailers': applicable_retailers,
             'guide_name': spec['detail_name'],
-            'guide_description': spec.get('guide_description', spec['error_message']),
+            'guide_description': (
+                rule['error_message']
+                if rule['rule_key'] == 'final_missing'
+                and rule.get('_retailers') == ['Expert']
+                else spec.get('guide_description', spec['error_message'])
+            ),
             'error_message': rule['error_message'],
             'error_count': rule['error_count'],
             'review_count': rule['review_count'],

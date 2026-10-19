@@ -1,4 +1,5 @@
--- SEG Expert cross-field rules only (4 products x 7 rules).
+-- SEG Expert cross-field rules: 4 products x 4 active price/review rules.
+-- Savings-based rules remain registered for audit but are inactive.
 -- Apply manually in PostgreSQL after reviewing. No source-data updates.
 BEGIN;
 LOCK TABLE public.monitoring_validation_rules IN SHARE ROW EXCLUSIVE MODE;
@@ -38,12 +39,25 @@ INSERT INTO seg_expert_crossfield_seed VALUES
     ('seg_ldy_dryer_retail', 'SEG LDY_DRYER', 'seg_ldy_dryer_expert_final_missing', '원가·savings 존재 시 판매가 확인', 'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'seg_ldy_dryer', 'Expert', 'final_sku_price', 'original_sku_price|savings', 'final_missing', '원가 또는 savings가 있는데 final_sku_price가 NULL 또는 빈값입니다.', 'final_sku_price|original_sku_price|savings', 205),
     ('seg_ldy_dryer_retail', 'SEG LDY_DRYER', 'seg_ldy_dryer_expert_savings_rate_match', 'Expert 계산 할인율과 표시 할인율 일치', 'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'seg_ldy_dryer', 'Expert', 'savings', 'final_sku_price|original_sku_price', 'savings_rate_match', '표시 할인율이 가격으로 계산한 할인율의 정수 버림값과 다릅니다.', 'final_sku_price|original_sku_price|savings', 206);
 
+UPDATE seg_expert_crossfield_seed
+SET select_fields = 'final_sku_price|original_sku_price'
+WHERE validation_type = 'final_original_price';
+
+UPDATE seg_expert_crossfield_seed
+SET detail_name = '원가 존재 시 판매가 확인',
+    field2 = 'original_sku_price',
+    error_message = '원가가 있는데 final_sku_price가 NULL 또는 빈값입니다.',
+    select_fields = 'final_sku_price|original_sku_price'
+WHERE validation_type = 'final_missing';
+
 UPDATE public.monitoring_validation_rules target
 SET section_name = seed.section_name, detail_name = seed.detail_name,
     date_column = seed.date_column, product_line = seed.product_line,
     field1 = seed.field1, field2 = seed.field2, validation_type = seed.validation_type,
     error_message = seed.error_message, select_fields = seed.select_fields,
-    sort_order = seed.sort_order, is_active = TRUE
+    sort_order = seed.sort_order,
+    is_active = seed.validation_type NOT IN
+        ('savings_missing', 'original_missing', 'savings_rate_match')
 FROM seg_expert_crossfield_seed seed
 WHERE target.rule_type = 'crossfield' AND target.detail_code = seed.detail_code
   AND target.table_name = seed.table_name AND lower(trim(target.retailer)) = 'expert';
@@ -58,21 +72,38 @@ SELECT 'crossfield', s.section_code, s.section_name, s.detail_code, s.detail_nam
        s.table_name, s.date_column, s.product_line, s.retailer, s.field1, s.field2,
        s.validation_type, s.error_message, s.select_fields,
        'Application-enforced SEG Expert cross-field rule.', s.sort_order,
-       TRUE, NOW(), 'seed_seg_expert_crossfield'
+       s.validation_type NOT IN ('savings_missing', 'original_missing', 'savings_rate_match'),
+       NOW(), 'seed_seg_expert_crossfield'
 FROM seg_expert_crossfield_seed s
 WHERE NOT EXISTS (
     SELECT 1 FROM public.monitoring_validation_rules t
     WHERE t.rule_type = 'crossfield' AND t.detail_code = s.detail_code
       AND t.table_name = s.table_name AND lower(trim(t.retailer)) = 'expert'
 );
+UPDATE public.monitoring_validation_rules
+SET is_active = FALSE
+WHERE rule_type = 'crossfield'
+  AND lower(trim(retailer)) = 'expert'
+  AND product_line IN ('seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer')
+  AND validation_type IN ('savings_missing', 'original_missing', 'savings_rate_match');
+
 DO $$
 BEGIN
     IF (SELECT count(*) FROM public.monitoring_validation_rules t
         JOIN seg_expert_crossfield_seed s ON t.detail_code = s.detail_code
           AND t.table_name = s.table_name
         WHERE t.rule_type = 'crossfield' AND lower(trim(t.retailer)) = 'expert'
-          AND t.is_active IS TRUE) <> 28 THEN
-        RAISE EXCEPTION 'Expected exactly 28 active Expert rules; transaction aborted';
+          AND t.is_active IS TRUE) <> 16 THEN
+        RAISE EXCEPTION 'Expected exactly 16 active Expert rules; transaction aborted';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.monitoring_validation_rules
+        WHERE rule_type = 'crossfield' AND lower(trim(retailer)) = 'expert'
+          AND product_line IN ('seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer')
+          AND validation_type IN ('savings_missing', 'original_missing', 'savings_rate_match')
+          AND is_active IS TRUE
+    ) THEN
+        RAISE EXCEPTION 'Expert savings rules must be inactive';
     END IF;
 END $$;
 COMMIT;
