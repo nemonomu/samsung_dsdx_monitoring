@@ -26,8 +26,10 @@ def _mapping(target_date, source):
 
 
 def detail_columns(column):
+    identity_columns = (('item', 'retailer_sku_name', 'sku') if column == 'sku'
+                        else ('item', 'sku', 'retailer_sku_name'))
     return list(dict.fromkeys((
-        'id', 'crawl_datetime', 'item', 'sku', 'retailer_sku_name',
+        'id', 'crawl_datetime', *identity_columns,
         *(_REVIEW_COLUMNS if column in _REVIEW_COLUMNS else (column,)),
         'product_url',
     )))

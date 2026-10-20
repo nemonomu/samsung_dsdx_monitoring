@@ -49,6 +49,34 @@ def current_record(**changes):
 
 
 class NullReviewStateTests(unittest.TestCase):
+    def test_seib_source_keys_reuse_canonical_product_approval(self):
+        from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+
+        for key, source in SEIB_SOURCE_CONFIG.items():
+            with self.subTest(source=key):
+                context = dict(table_name=source['table_name'], country='SEIB',
+                               product_line=source['category'], retailer='MediaMarkt')
+                basis = captured_evidence(context)
+                basis.update(
+                    inspection_date=date(2026, 10, 19),
+                    reviewed_at=datetime(2026, 10, 19, 10, tzinfo=evidence.KOREA),
+                    auto_apply_from=date(2026, 10, 20),
+                )
+                cursor = ScriptedCursor([{'fetchall': [basis]}])
+                reviews, stats, logs = null_review_state.review_state(
+                    cursor, date(2026, 10, 20),
+                    [current_record(), current_record(id=43, retailer_sku_name='Changed product'),
+                     current_record(id=44, sku='restored')],
+                    ['sku'], {}, **dict(context, product_line=key),
+                    is_null=lambda value, _field: value is None,
+                )
+                self.assertEqual(source['category'], cursor.calls[0][1][3])
+                self.assertEqual({'42_sku'}, set(reviews))
+                self.assertEqual(2, stats['raw_null_count'])
+                self.assertEqual(1, stats['auto_reviewed_count'])
+                self.assertEqual(source['category'], logs[0]['product_line'])
+                self.assertEqual(51, logs[0]['correction_id'])
+
     def test_counts_union_actual_null_cells_and_retain_original_reason(self):
         context = dict(table_name='public.ref_retail_com', country='SEA',
                        product_line='REF', retailer='Lowes')
