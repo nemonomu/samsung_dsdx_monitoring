@@ -9,6 +9,7 @@ for (const name of ['layer1-common','collection-volume','retail-review','retail-
     vm.runInContext(fs.readFileSync(`apps/dx/dx_layer1/static/dx_layer1/js/${name}.js`, 'utf8'),context);
 }
 const review = context.L1.retailReview;
+context.getSelectedDate = () => day;
 function fixture(bsr=99, observation='observing', status='OK', retailer='Costco', country='SEA', product='LDY_DRYER') {
     const source = day==='2026-10-13'?'2026-10-12':'2026-10-13';
     const row = {retailer,status,batch_id:'batch-'+day,batch_count:1,main_count:300,bsr_count:bsr,count:300};
@@ -33,6 +34,11 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
         assert.strictEqual(fixture(99,'observing','OK',retailer,country,product).row.status,'VOLUME_REVIEW');
     }
     const otherNew=fixture(100,'observing','OK','Other');
+    assert.strictEqual(otherNew.row.status,'OK');
+    assert.strictEqual(otherNew.check.status,'OK');
+    assert(context.L1.retailStatus.render(otherNew.check,0,'retail').includes('관찰 중'));
+    assert(context.getStatusBadge(otherNew.check.status,otherNew.check).includes('정상'));
+    assert(!context.getStatusBadge(otherNew.check.status,otherNew.check).includes('검증 대기'));
     assert(!otherNew.row._reviewContext,'observation alone must not create review work');
     assert(!otherNew.row.volume_alerts.length);
     let f=fixture();

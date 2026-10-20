@@ -118,8 +118,15 @@
                         row.volume_alerts = decisions.filter(Boolean).map(decision => decision.alert).filter(Boolean);
                         const ready = decisions.every(Boolean);
                         row.volume_comparison_state = ready ? 'ready' : saved ? saved.observation_state === 'observing' ? 'observing' : 'insufficient' : 'unavailable';
-                        row.status = worst(decisions.filter(Boolean).concat(ready ? [] : [{status: 'VERIFYING'}]));
-                        row.verification_state = ready ? 'ready' : 'waiting';
+                        // Observation is a history label, not a collection verdict.
+                        // Use the current source verdict until its median is ready;
+                        // a missing/mismatched snapshot still cannot prove normal.
+                        const observing = row.observation_state === 'observing';
+                        const observedStatus = row._volumeBaseStatus === 'OK' ? 'OK'
+                            : ['CRITICAL', 'VOLUME_LOW'].includes(row._volumeBaseStatus) ? 'CRITICAL' : 'REVIEW';
+                        row.status = worst(decisions.filter(Boolean).concat(ready ? []
+                            : [{status: observing ? observedStatus : 'VERIFYING'}]));
+                        row.verification_state = ready || observing ? 'ready' : 'waiting';
                         if (row.status === 'VERIFYING') {
                             row.verification_reason = !payload ? '수집량 판정을 불러오는 중입니다.'
                                 : payload.load_state === 'error' ? '수집량 판정을 불러오지 못했습니다. 잠시 후 다시 조회해 주세요.'

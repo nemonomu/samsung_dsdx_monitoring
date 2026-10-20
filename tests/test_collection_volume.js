@@ -10,7 +10,7 @@ context.getSelectedDate = () => day;
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-status.js', 'utf8'), context);
 const volume = context.L1.collectionVolume;
 const day = '2026-10-02';
-const types = {SEA:'retail', SEDA:'seda_retail', SIEL:'siel_retail', SEG:'seg_retail', SEM:'sem_retail', TSE:'tse_retail'};
+const types = {SEA:'retail', SEDA:'seda_retail', SIEL:'siel_retail', SEG:'seg_retail', SEM:'sem_retail', TSE:'tse_retail', SEIB:'seib_retail'};
 const median = (baseline=300, extra={}) => ({baseline, days:7, rule:'median_28d', low_percent:30, high_percent:30, review_percent:15, ...extra});
 const fixed = () => ({baseline:100, days:0, rule:'fixed_100', low_percent:30, high_percent:null, review_percent:null});
 function fixture(country='SIEL', product='TV', base='OK') {
@@ -128,9 +128,27 @@ zero.payload=null;assert.equal(apply(zero),'CRITICAL');
 assert(context.L1.retailStatus.rowBadge(zero.row).includes('\uBBF8\uC218\uC9D1'));
 const mainMissing=fixture();mainMissing.row.main_count=0;assert.equal(apply(mainMissing),'CRITICAL');
 const observing=fixture();observing.saved.observation_state='observing';observing.saved.observation_prior_days=4;
-assert.equal(apply(observing),'VERIFYING');assert.equal(observing.row.observation_days,5);
+assert.equal(apply(observing),'OK');assert.equal(observing.row.observation_days,5);
 assert.equal(observing.row.volume_alerts.length,0);
 assert(context.L1.retailStatus.rowBadge(observing.row).includes('(5/5'));
+for (const country of Object.keys(types)) {
+    for (const [base, expected] of [['OK','OK'],['CRITICAL','CRITICAL'],
+        ['WARNING','REVIEW'],['REVIEW','REVIEW'],['UNASSESSED','REVIEW']]) {
+        const f = fixture(country, 'LDY_DRYER', base);
+        f.saved.observation_state = 'observing';
+        f.saved.observation_prior_days = 2;
+        assert.equal(apply(f), expected, country + ' observation keeps its collection verdict');
+        assert.equal(f.cat.status, expected);
+        assert.equal(f.check.status, expected);
+        assert.equal(f.row.verification_state, 'ready');
+        assert.equal(f.row.volume_comparison_state, 'observing');
+        assert(context.L1.retailStatus.render(f.check, 0, types[country]).includes('관찰 중 (3/5일)'));
+    }
+    const f = fixture(country);
+    f.saved.observation_state = 'observing';
+    f.row.main_count = f.row.bsr_count = f.row.actual = f.row.raw_count = 0;
+    assert.equal(apply(f), 'CRITICAL', country + ' missing collection is never normal during observation');
+}
 
 // SEA's separately fetched display counts, including batch identity, take precedence.
 const sea=fixture('SEA','REF');sea.row.main_count=300;
