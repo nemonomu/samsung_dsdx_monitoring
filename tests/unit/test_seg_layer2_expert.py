@@ -84,12 +84,14 @@ class ExpertLayer2Tests(unittest.TestCase):
         self.assertEqual('상품 매핑 충돌', seg.build_duplicate_groups(rows, 'Expert')[0]['duplicate_type'])
         self.assertEqual([], seg.build_duplicate_groups(rows, 'Mediamarkt'))
         self.assertEqual([], seg.build_duplicate_groups([dict(base, item=None), dict(base, item='')], 'Expert'))
-        with patch.object(seg, '_latest_rows', return_value=(rows, {'inspection_date': str(DAY)})):
+        with patch.object(seg, '_latest_rows', return_value=(rows, {'inspection_date': str(DAY), 'source_date': str(DAY)})):
             stats = {'tables': []}
             self.assertEqual(1, seg.append_duplicate_stats(None, DAY, stats, 'seg_ldy_dryer_retail'))
             self.assertEqual(['item'], stats['tables'][0]['duplicate_keys'])
             detail = seg.duplicate_detail(None, DAY, DRYER, 'Expert')
-            self.assertTrue(detail['readonly'])
+            self.assertFalse(detail['readonly'])
+            self.assertFalse(detail['allow_cleanup'])
+            self.assertEqual(['sku'], detail['editable_cols'])
             self.assertNotIn('page_type', detail['select_cols']['group'])
             self.assertIn('crawl_datetime', detail['select_cols']['record'])
 

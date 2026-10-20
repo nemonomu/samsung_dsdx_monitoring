@@ -250,7 +250,7 @@ function getColumnConfig(type, tableParam) {
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_tse_retail;
         }
-        if (/^sem_(tv|ref|ldy)_retail$/.test(tableParam)) {
+        if (/^(sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_sem_retail;
         }
         var key = 'dup_' + tableParam;
@@ -268,7 +268,8 @@ function isTseDuplicateTable(tableParam) {
 
 function isReadOnlyDuplicateTable(tableParam) {
     return isTseDuplicateTable(tableParam)
-        || /^sem_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
+        || /^(sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(String(tableParam || ''))
+        || tableParam === 'sea_ldy_dryer_retail'
         || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^seda_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(String(tableParam || ''));
@@ -930,6 +931,10 @@ function _buildDetailTable() {
         }));
     }
 
+    _bindDetailEditing();
+}
+
+function _bindDetailEditing() {
     // 인라인 NULL 확인 / 편집
     // - NULL 셀 클릭: 정상 확인, Shift+클릭: 같은 컬럼 범위 선택
     // - editable 셀 클릭: 셀 선택 (Ctrl+V 붙여넣기 가능)
@@ -1210,6 +1215,12 @@ function _doSaveEdits(memo) {
         }
         if (failCount > 0) showToast(failCount + '건 저장 실패', 'error');
         _updateSaveButton();
+        var retryButton = document.getElementById('btn-save-edits');
+        if (retryButton) retryButton.disabled = false;
+        if (successCount > 0 && failCount === 0 && detailViewState.type === 'duplicate') {
+            return openDetailModal('duplicate', modalState.tableName,
+                modalState.retailer, modalState.count, 1);
+        }
         if (successCount > 0 && failCount === 0 && detailViewState.type === 'null'
             && detailViewState.supportsNullAutoReview
             && typeof refreshNullReviewDetail === 'function') {

@@ -849,6 +849,7 @@ function renderDXTableDetail(vType, table) {
         const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
         const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(table.table || '');
         const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(table.table || '');
+        const isItemRetail = /^(sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
         html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
@@ -876,6 +877,8 @@ function renderDXTableDetail(vType, table) {
                 detailText = 'batch_id + comp_brand + comp_sku 중복';
             } else if (isTseRetail) {
                 detailText = '완전 중복 및 Item↔Retailer SKU Name 매핑 충돌';
+            } else if (isItemRetail) {
+                detailText = '최신 배치의 Item 중복';
             } else if (isSeaRetail && String(retailer.retailer).toLowerCase() === 'homedepot') {
                 detailText = '최신 배치의 Item 중복 및 상품 매핑 충돌';
             } else if (isSeaRetail || isSegRetail || isSedaRetail) {

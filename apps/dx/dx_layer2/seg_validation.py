@@ -926,11 +926,14 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
                 source['date_column'], 'product_url',
             ],
         },
-        'editable_cols': [],
+        'editable_cols': ['sku'],
         'actual_table': source['table_name'],
-        'readonly': True,
-        'readonly_message': (
-            'SEG 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.'
+        'readonly': False,
+        'allow_cleanup': False,
+        'date_column': source['date_column'],
+        'editable_date': mapping['source_date'],
+        'edit_message': (
+            'SKU 셀을 더블클릭해 수정한 뒤 저장하세요. 저장 후 중복 여부를 다시 검사합니다.'
         ),
         'results': {
             'duplicates': groups[start:start + page_size],

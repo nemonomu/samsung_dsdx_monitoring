@@ -33,6 +33,8 @@ const context = vm.createContext({
     renderDetailWithTable: options => { tableOptions = options; },
     detailViewState: {}, isInlineMode: () => false,
     isTseDuplicateTable: table => table.startsWith('tse_'),
+    isReadOnlyDuplicateTable: table => /^(tse|seg)_/.test(table),
+    _bindDetailEditing: () => {},
     flattenRecords: (_type, groups) => groups.flatMap(group => group.records),
     getCellHtml: (row, col) => '<td>' + escape(row[col.key] || '') + '</td>',
     CommonTable: function() { this.render = () => {}; this.renderBody = (rows, render) => rows.forEach(render); },

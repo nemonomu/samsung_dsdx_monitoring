@@ -132,14 +132,15 @@ class SegDuplicateValidationTests(unittest.TestCase):
             {'id': 1, 'page_type': 'main', 'item': 'item-1', 'sku': 'SKU-1'},
             {'id': 2, 'page_type': 'main', 'item': 'item-1', 'sku': 'SKU-2'},
         ]
-        latest_rows.return_value = (rows, {'inspection_date': '2026-09-09'})
+        latest_rows.return_value = (rows, {'inspection_date': '2026-09-09', 'source_date': '2026-09-09'})
         for product_line in ('seg_tv', 'seg_ref', 'seg_ldy'):
             with self.subTest(product_line=product_line):
                 result = seg_validation.duplicate_detail(
                     None, date(2026, 9, 9), product_line, 'OTTO',
                 )
                 self.assertEqual(0, result['results']['total_groups'])
-                self.assertTrue(result['readonly'])
+                self.assertFalse(result['readonly'])
+                self.assertEqual(['sku'], result['editable_cols'])
         validation = {'tables': []}
         seg_validation.append_duplicate_stats(None, date(2026, 9, 9), validation)
         for table in validation['tables']:
@@ -187,7 +188,7 @@ class SegDuplicateValidationTests(unittest.TestCase):
         self.assertEqual([4, 5], [row['id'] for row in groups[1]['records']])
 
     @patch('apps.dx.dx_layer2.seg_validation._latest_rows')
-    def test_detail_is_latest_batch_readonly_and_uses_page_type_item_key(
+    def test_detail_allows_sku_edit_without_cleanup_and_uses_page_type_item_key(
             self, latest_rows):
         latest_rows.return_value = ([
             {
@@ -211,8 +212,9 @@ class SegDuplicateValidationTests(unittest.TestCase):
             None, date(2026, 9, 9), 'seg_tv_retail', 'Amazon'
         )
 
-        self.assertTrue(result['readonly'])
-        self.assertEqual([], result['editable_cols'])
+        self.assertFalse(result['readonly'])
+        self.assertFalse(result['allow_cleanup'])
+        self.assertEqual(['sku'], result['editable_cols'])
         self.assertEqual(1, result['results']['total_groups'])
         self.assertIn('page_type', result['select_cols']['group'])
         self.assertIn('crawl_strdatetime', result['select_cols']['record'])

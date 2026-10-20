@@ -340,6 +340,7 @@ def _select_seg_edit_record(
               ORDER BY anchor.id DESC
               LIMIT 1
           )
+        FOR UPDATE OF source
     """, (row_id, source_date, SEG_COUNTRY, source_date))
 
 
@@ -357,6 +358,15 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     # correction_type 화이트리스트 검증
     valid_correction_types = {'null': 'null_check', 'format': 'format_check', 'duplicate': 'duplicate_check'}
     correction_type_value = valid_correction_types.get(correction_type, 'null_check')
+
+    if correction_type == 'duplicate' and table_name not in SEG_TABLE_TO_PRODUCT_LINE:
+        from apps.dx.dx_layer2.retail_duplicate_edit import source_for_table, update_sku
+        duplicate_context = source_for_table(table_name)
+        if duplicate_context:
+            return update_sku(
+                cursor, conn, duplicate_context, row_id, column_name, new_value,
+                crawl_date, username, memo,
+            )
 
     # product_line 결정
     tse_context = _get_tse_edit_context(table_name)
@@ -405,7 +415,12 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif seg_context:
         table_name = seg_context['table_name']
         product_line = seg_context['product_line']
-        if correction_type_value not in {'null_check', 'format_check'}:
+        if correction_type_value == 'duplicate_check':
+            if column_name != 'sku':
+                return {'error': 'SEG 중복 검증에서는 SKU만 수정할 수 있습니다', 'status': 403}
+            if not isinstance(new_value, str) or not new_value.strip():
+                return {'error': '수정할 SKU를 입력해주세요', 'status': 400}
+        elif correction_type_value not in {'null_check', 'format_check'}:
             return {
                 'error': 'SEG는 NULL/형식 검증 값만 수정할 수 있습니다',
                 'status': 403,
@@ -556,7 +571,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif sem_context:
         editable_cols = get_sem_editable_columns(product_line, retailer)
     elif seg_context:
-        editable_cols = set(
+        editable_cols = {'sku'} if correction_type_value == 'duplicate_check' else set(
             get_seg_format_columns(product_line, editable_retailer)
             if correction_type_value == 'format_check'
             else get_seg_null_columns(product_line, editable_retailer)

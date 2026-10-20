@@ -21,7 +21,7 @@ class DuplicateLookupQueryTests(unittest.TestCase):
         }}
 
     def test_lookup_selects_only_returned_rows_for_all_country_schemas(self):
-        for schema in ('public', 'dx_seda', 'dx_siel', 'dx_seg', 'dx_sem', 'dx_tse'):
+        for schema in ('public', 'dx_seda', 'dx_siel', 'dx_seg', 'dx_sem', 'dx_tse', 'dx_seib'):
             with self.subTest(schema=schema), sqlite3.connect(':memory:') as db:
                 db.execute(f"ATTACH DATABASE ':memory:' AS {schema}")
                 table = schema + '.retail'

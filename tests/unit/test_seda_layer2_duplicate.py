@@ -102,8 +102,9 @@ class SedaDuplicateTests(unittest.TestCase):
             self.assertEqual((8, 4), (table['total_records'], table['total_issues']))
             for retailer in table['retailers']:
                 result = services.get_anomaly_detail(self.cursor, DAY, table['table'], retailer['retailer'], 99, 2, 1)
-                self.assertTrue(result['readonly'])
-                self.assertEqual([], result['editable_cols'])
+                self.assertFalse(result['readonly'])
+                self.assertFalse(result['allow_cleanup'])
+                self.assertEqual(['sku'], result['editable_cols'])
                 self.assertEqual((2, 2), (result['results']['total_groups'], result['results']['total_pages']))
                 self.assertEqual('002', result['results']['duplicates'][0]['item'])
                 self.assertEqual(4, retailer['duplicate_records'])

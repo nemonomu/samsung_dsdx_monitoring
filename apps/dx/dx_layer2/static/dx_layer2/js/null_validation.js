@@ -347,9 +347,10 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
         .then(data => {
             // 중복 검증: 메타데이터가 data.results 안에 있음
             var dupResults = (type === 'duplicate' && data.results) ? data.results : null;
-            if (dupResults && dupResults.total_pages) {
-                modalState.totalPages = dupResults.total_pages;
-                modalState.totalGroups = dupResults.total_groups;
+            if (dupResults) {
+                modalState.totalPages = Math.max(1, dupResults.total_pages || 0);
+                modalState.totalGroups = dupResults.total_groups || 0;
+                modalState.count = modalState.totalGroups;
                 modalState.currentPage = dupResults.page || 1;
             } else if (data.total_pages) {
                 modalState.totalPages = data.total_pages;

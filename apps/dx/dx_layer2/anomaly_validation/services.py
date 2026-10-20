@@ -21,7 +21,7 @@ from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import seg_validation, sem_validation
-from apps.dx.dx_layer2 import seda_duplicate_validation
+from apps.dx.dx_layer2 import seda_duplicate_validation, seib_duplicate_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -94,6 +94,10 @@ VALID_TABLES_ANOMALY = {
     for source in getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}).values()
 } | {
     source['section_code'] for source in seda_duplicate_validation.SEDA_SOURCE_CONFIG.values()
+} | {
+    source['section_code'] for source in sem_validation.SEM_SOURCE_CONFIG.values()
+} | {
+    source['section_code'] for source in seib_duplicate_validation.SEIB_SOURCE_CONFIG.values()
 }
 _YOUTUBE_VIDEO_DUP_KEYS = (
     'video_id', 'keyword', 'collection_country', 'collection_batch_id'
@@ -1055,6 +1059,18 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
     """Attach a copy-only SELECT for the exact records returned on this page."""
     result = _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size)
     result.update(_duplicate_lookup_query(result, table))
+    select_cols = result.get('select_cols', {})
+    if (isinstance(select_cols, dict) and 'sku' in select_cols.get('record', [])
+            and result.get('actual_table')):
+        result.update({
+            'allow_cleanup': result.get('allow_cleanup', not result.get('readonly', False)),
+            'editable_cols': ['sku'], 'readonly': False, 'readonly_message': '',
+            'editable_date': result.get('source_date', str(target_date)),
+            'date_column': result.get('date_column') or (
+                'crawl_strdatetime' if 'crawl_strdatetime' in select_cols['record']
+                else 'crawl_datetime'),
+            'edit_message': 'SKU 셀을 더블클릭해 수정한 뒤 저장하세요. 저장 후 기존 기준으로 중복 여부를 다시 검사합니다.',
+        })
     return result
 
 
@@ -1085,6 +1101,10 @@ def _duplicate_lookup_query(result, table):
 
 def _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
+    if seib_duplicate_validation.product_line_for(table):
+        return seib_duplicate_validation.duplicate_detail(
+            cursor, target_date, table, retailer, page, page_size,
+        )
     if seda_duplicate_validation.product_line_for(table):
         return seda_duplicate_validation.duplicate_detail(
             cursor, target_date, table, retailer, page, page_size,
@@ -1095,7 +1115,7 @@ def _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_s
         )
     if sem_validation.product_line_for(table):
         return sem_validation.duplicate_detail(
-            cursor, target_date, table, page, page_size
+            cursor, target_date, table, page, page_size, retailer=retailer
         )
     if _sea_duplicate_product_key(table) or (table == 'tv_retail' and is_costco(retailer)):
         return _get_sea_anomaly_detail(
@@ -2065,6 +2085,9 @@ def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None)
         **({"category": category} if category else {})
     )
 
+    total_anomaly_issues += seib_duplicate_validation.append_duplicate_stats(
+        cursor, target_date, anomaly_validation, category=category,
+    )
     anomaly_validation['total_issues'] = total_anomaly_issues
     anomaly_validation['status'] = get_status(total_anomaly_issues)
 

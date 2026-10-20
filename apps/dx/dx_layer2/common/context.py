@@ -161,7 +161,7 @@ def get_sidebar_items():
     return {
         'null': items,
         'format': items,
-        'anomaly': [item for item in items if item['key'] != 'sem_ldy_dryer_retail' and not item['key'].startswith('seib_')],
+        'anomaly': items,
     }
 
 
@@ -260,8 +260,6 @@ def build_sidebar_groups(section, focus=''):
                 children = []
                 for child in SEM_RETAIL_SIDEBAR_CHILDREN:
                     detail_code = child['detail_code']
-                    if detail_code == 'sem_ldy_dryer_retail' and sec == 'anomaly_validation':
-                        continue
                     child_info = config.get(detail_code)
                     if child_info is None:
                         continue
@@ -296,10 +294,10 @@ def build_sidebar_groups(section, focus=''):
     from apps.common.seib_retail import SEIB_SOURCE_CONFIG
     seib_children = [
         {'name': s['display_name'], 'label': s['category'], 'detail_code': s['section_code'],
-         'active': section in ('null_validation', 'format_validation') and focus in (s['display_name'], s['section_code'])}
+         'active': section in ('null_validation', 'format_validation', 'anomaly_validation') and focus in (s['display_name'], s['section_code'])}
         for s in SEIB_SOURCE_CONFIG.values() if s['section_code'] in active_categories]
     if seib_children:
-        for target_section in ('null_validation', 'format_validation'):
+        for target_section in ('null_validation', 'format_validation', 'anomaly_validation'):
             section_items[target_section].append({
                 'name': 'SEIB Retail', 'children': seib_children,
                 'active': section == target_section and any(c['active'] for c in seib_children),

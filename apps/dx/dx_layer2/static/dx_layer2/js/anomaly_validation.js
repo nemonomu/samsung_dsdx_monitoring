@@ -167,13 +167,13 @@ function renderDetailTable(type, data, tableParam) {
         itemQueryHtml: type === 'duplicate' ? buildDuplicateQueryHtml(data) : ''
     });
     body.innerHTML = containerHtml;
-    if (data.readonly) {
+    if (data.readonly || data.edit_message) {
         var readOnlyBar = document.getElementById('detail-action-bar');
         if (readOnlyBar) {
-            var readOnlyMessage = data.readonly_message
+            var readOnlyMessage = data.edit_message || data.readonly_message
                 || 'TSE 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.';
             readOnlyBar.innerHTML = '<div style="padding:8px 12px;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;font-size:12px;">'
-                + readOnlyMessage + '</div>';
+                + esc(readOnlyMessage) + '</div>';
         }
     }
 
@@ -181,7 +181,7 @@ function renderDetailTable(type, data, tableParam) {
     if (isServerPaging) {
         // 서버 사이드 페이징: 전체 데이터를 한 번에 표시, 서버 페이지네이션 별도 표시
         var allCols = getAllColumns(config);
-        var allowCleanup = !data.readonly && !isTseDuplicateTable(tableParam);
+        var allowCleanup = !data.readonly && data.allow_cleanup !== false && !isReadOnlyDuplicateTable(tableParam);
         var ctColumns = [];
         if (allowCleanup) {
             ctColumns.push({ key: '_chk', label: '', width: 40, sortable: false, align: 'center' });
@@ -196,6 +196,10 @@ function renderDetailTable(type, data, tableParam) {
         detailViewState.editableCols = new Set(data.editable_cols || []);
         detailViewState.actualTable = data.actual_table || '';
         detailViewState.crawlDate = data.date || '';
+        detailViewState.editableDate = data.editable_date || data.source_date || data.date || '';
+        detailViewState.dateColumn = data.date_column || '';
+        detailViewState.supportsNullAutoReview = false;
+        detailViewState.normalReviews = {};
 
         var flatData = flattenRecords(type, records, tableParam);
         detailViewState.allData = flatData;
@@ -236,6 +240,7 @@ function renderDetailTable(type, data, tableParam) {
             }
             return tr + '</tr>';
         });
+        _bindDetailEditing();
         if (allowCleanup) {
             _injectDupCheckboxHeader();
             _renderDupActionBar();
@@ -314,6 +319,8 @@ function renderDetailTable(type, data, tableParam) {
             editableCols: data.editable_cols || [],
             actualTable: data.actual_table || '',
             crawlDate: data.date || '',
+            editableDate: data.editable_date || data.source_date || data.date || '',
+            dateColumn: data.date_column || '',
             normalReviews: data.normal_reviews || {}
         });
     }

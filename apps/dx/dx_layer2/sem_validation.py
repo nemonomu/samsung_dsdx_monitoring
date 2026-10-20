@@ -732,47 +732,49 @@ def _duplicate_groups(rows):
 def append_duplicate_stats(cursor, target_date, validation, category=None):
     total_issues = 0
     for _product_line, source in SEM_SOURCE_CONFIG.items():
-        if source.get('null_only'):
-            continue
         if category and category != source['section_code']:
             continue
-        rows, mapping = _latest_rows(cursor, target_date, source)
-        groups = _duplicate_groups(rows)
+        retailers = []
+        for retailer in source['retailers']:
+            rows, mapping = _latest_rows(cursor, target_date, source, retailer)
+            groups = _duplicate_groups(rows)
+            retailers.append({
+                'retailer': retailer, 'total': len(rows),
+                'duplicate_groups': len(groups), 'duplicate_keys': ['item'],
+                'status': 'OK' if not groups else 'CRITICAL', **mapping,
+            })
+        issues = sum(row['duplicate_groups'] for row in retailers)
         validation['tables'].append({
             'table': source['section_code'],
             'table_name': source['display_name'],
-            'total_records': len(rows),
-            'total_issues': len(groups),
-            'duplicate_groups': len(groups),
+            'total_records': sum(row['total'] for row in retailers),
+            'total_issues': issues,
+            'duplicate_groups': issues,
             'duplicate_keys': ['item'],
-            'status': 'OK' if not groups else 'CRITICAL',
-            'retailers': [{
-                'retailer': SEM_RETAILER,
-                'total': len(rows),
-                'duplicate_groups': len(groups),
-                'duplicate_keys': ['item'],
-                'status': 'OK' if not groups else 'CRITICAL',
-            }],
+            'status': 'OK' if not issues else 'CRITICAL',
+            'retailers': retailers,
             **mapping,
         })
-        total_issues += len(groups)
+        total_issues += issues
     return total_issues
 
 
-def duplicate_detail(cursor, target_date, table, page=1, page_size=50):
+def duplicate_detail(cursor, target_date, table, page=1, page_size=50, retailer=None):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
-    if not source or source.get('null_only'):
+    if not source:
         return {'results': {'duplicates': [], 'total_groups': 0}}
-    rows, mapping = _latest_rows(cursor, target_date, source)
+    retailer = normalize_sem_retailer(product_line, retailer)
+    page, page_size = max(1, int(page)), min(200, max(1, int(page_size)))
+    rows, mapping = _latest_rows(cursor, target_date, source, retailer)
     groups = _duplicate_groups(rows)
     start = (page - 1) * page_size
     total_pages = (len(groups) + page_size - 1) // page_size if groups else 0
-    editable = list(get_sem_editable_columns(product_line))
+    editable = ['sku']
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
-        'retailer': SEM_RETAILER,
+        'retailer': retailer,
         'select_cols': {
             'group': ['duplicate_type', 'item', 'retailer_sku_name', 'dup_count', 'reason'],
             'record': ['id', 'sku', 'retailer_sku_name', 'final_sku_price', 'crawl_datetime', 'product_url'],
@@ -780,6 +782,7 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50):
         'editable_cols': editable,
         'actual_table': source['table_name'],
         'readonly': False,
+        'allow_cleanup': False,
         'results': {
             'duplicates': groups[start:start + page_size],
             'total_groups': len(groups),
