@@ -24,6 +24,7 @@
         if (breakdown) breakdown.textContent = '이상·확인 필요 항목을 확인하고 있습니다.';
     }
     function load(date, force = false) {
+        if (window.CollectionIssues) window.CollectionIssues.load({date});
         if (!force && selectedDate === date) return pending;
         if (controller) controller.abort();
         const current = new AbortController();
@@ -41,15 +42,17 @@
             return Promise.resolve();
         }
         spinner.hidden = false;
-        let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0;
+        let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0, missing = 0;
         async function worker() {
             while (next < jobs.length && !current.signal.aborted) {
                 const job = jobs[next++];
                 try {
                     const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force});
                     if (current.signal.aborted) return;
+                    if (data.issue_history_error) failures++;
                     abnormal += data.comparisons.filter(row => row.status === 'abnormal').length;
                     review += data.comparisons.filter(row => row.status === 'review').length;
+                    missing += data.comparisons.some(row => row.status === 'uncollected') ? 1 : 0;
                 } catch (_) {
                     if (current.signal.aborted) return;
                     failures++;
@@ -61,6 +64,7 @@
         }
         pending = Promise.all([worker(), worker()]).then(() => {
             if (current.signal.aborted) return;
+            if (window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
             if (failures || !jobs.length) {
                 if (total) total.textContent = '조회 실패';
@@ -68,14 +72,14 @@
                 if (menu) menu.title = `${date} · 컬럼 수집 상태 조회 실패 · 메뉴에서 다시 확인해주세요.`;
                 return;
             }
-            window.setSidebarIssueBadge(menu, abnormal);
+            window.setSidebarIssueBadge(menu, abnormal + missing);
             const badge = menu && menu.querySelector('.sidebar-issue-badge');
             if (badge) {
-                badge.title = `${date} · 전체 국가·제품군 · 이상 컬럼 ${abnormal}건`;
+                badge.title = `${date} · 전체 국가·제품군 · 이상 컬럼 ${abnormal}건 · 전체 미수집 ${missing}건`;
                 badge.setAttribute('aria-label', badge.title);
             }
-            if (total) { total.textContent = (abnormal + review).toLocaleString('ko-KR'); total.classList.remove('is-loading'); }
-            if (breakdown) breakdown.innerHTML = `<span class="l1-column-alert-abnormal">이상 ${abnormal.toLocaleString('ko-KR')}</span> · <span class="l1-column-alert-review">확인 필요 ${review.toLocaleString('ko-KR')}</span>`;
+            if (total) { total.textContent = (abnormal + review + missing).toLocaleString('ko-KR'); total.classList.remove('is-loading'); }
+            if (breakdown) breakdown.innerHTML = `<span class="l1-column-alert-abnormal">이상 ${abnormal.toLocaleString('ko-KR')}</span> · <span class="l1-column-alert-review">확인 필요 ${review.toLocaleString('ko-KR')}</span> · 전체 미수집 ${missing}`;
         });
         return pending;
     }

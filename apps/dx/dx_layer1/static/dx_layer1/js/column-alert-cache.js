@@ -2,7 +2,7 @@
     'use strict';
     // Only derived comparison counts are retained, never raw product/review data.
     // Per-tab, per-user, date/retailer-specific and short-lived across navigation.
-    const storageKey = 'column-alert-comparisons:v2:' + (window.LAYER1.username || '');
+    const storageKey = 'column-alert-comparisons:v3-source-day:' + (window.LAYER1.username || '');
     const ttl = 60000;
     let entries = {};
     try { entries = JSON.parse(window.sessionStorage.getItem(storageKey) || '{}'); } catch (_) {}
@@ -17,13 +17,13 @@
         try { window.sessionStorage.setItem(storageKey, JSON.stringify(entries)); } catch (_) {}
     }
     function remember(job, date, data) {
-        if (!Array.isArray(data.comparisons)) return;
+        if (!Array.isArray(data.comparisons) || data.issue_history_error) return;
         const comparisons = data.comparisons.map(row => Object.fromEntries(
             ['column', 'status', 'history_days', 'baseline', 'current', 'ratio', 'delta']
                 .filter(key => Object.hasOwn(row, key)).map(key => [key, row[key]])
         ));
         entries[keyFor(job, date)] = {at: Date.now(), data: {
-            comparison_date: data.comparison_date || date, comparisons,
+            comparison_date: data.comparison_date || date, inspection_date: data.inspection_date || date, comparisons,
         }};
         persist();
     }

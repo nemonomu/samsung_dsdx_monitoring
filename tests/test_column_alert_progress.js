@@ -94,5 +94,13 @@ function setup() {
     zero.respond(zero.pending[2], []); await tick();
     assert.equal(zero.badge(), null, 'hide zero abnormal count');
     assert.match(zero.get('cca-progress').textContent, /이상 0건 · 확인 필요 1건/);
+    const whole = setup();
+    whole.respond(whole.pending[0], ['uncollected','uncollected','uncollected']);
+    whole.respond(whole.pending[1], ['pending']); await tick();
+    whole.respond(whole.pending[2], ['normal']); await tick();
+    assert.equal(whole.badge().textContent, '1', 'one missing collection, not one incident per column');
+    assert.match(whole.get('cca-progress').textContent, /전체 미수집 1건/);
+    assert.match(whole.get('cca-body').innerHTML, /조회 SQL/);
+    assert.equal((whole.get('cca-body').innerHTML.match(/<tr>/g)||[]).length, 1);
     console.log('Column alert progress: loading, completion, abnormal-only counts, filters, cancellation, failures and zero passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

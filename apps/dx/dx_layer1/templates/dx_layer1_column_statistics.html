@@ -10,7 +10,7 @@
         <label>제품군<select id="ccs-product" name="product" required></select></label>
         <label>리테일러<select id="ccs-retailer" name="retailer" required></select></label>
         <label>기간<select id="ccs-days" name="days"><option value="5">최근 5일</option><option value="7" selected>최근 1주 (7일)</option><option value="14">최근 2주 (14일)</option><option value="28">최근 4주 (28일)</option><option value="49">최근 7주 (49일)</option></select></label>
-        <label>기준 데이터일<input id="ccs-date" name="date" type="date" required></label>
+        <label>검수일<input id="ccs-date" name="date" type="date" required></label>
         <button class="cs-primary" type="submit">조회</button>
     </form>
     <div id="ccs-message" role="status" aria-live="polite" class="cs-message">컬럼별 수집 건수를 불러오는 중입니다.</div>
@@ -21,10 +21,10 @@
             <div class="ccs-scroll" tabindex="0" role="region" aria-label="날짜별 수집 통계 표"><table class="ccs-table"><thead id="ccs-head"></thead><tbody id="ccs-body"></tbody></table></div>
         </section>
         {% include 'includes/_column_comparison_policy.html' %}
-        <p class="cs-footnote">메일의 수집 대상·배치 기준을 사용합니다. NULL·빈 문자열·공백을 제외하고 숫자 0과 false는 수집값에 포함합니다. 최신 배치를 구분하는 대상은 날짜별 최신 배치로 집계하며 조회 결과는 최대 5분간 재사용합니다.</p>
+        <p class="cs-footnote">DB 원본 수집일로 묶고 기존 수집 대상·배치 범위로 컬럼 건수를 집계합니다. NULL·빈 문자열·공백을 제외하고 숫자 0과 false는 수집값에 포함합니다. 최신 배치를 구분하는 대상은 날짜별 최신 배치로 집계합니다. 전체 미수집 여부는 별도로 모든 배치의 원본 행을 확인하며 조회 결과는 최대 5분간 재사용합니다.</p>
         <p id="ccs-sku-note" class="cs-footnote" hidden>SEA TV의 sku는 <a href="/dx/data/item-master/">데이터 관리 · 아이템 마스터</a>를 기준으로 집계합니다. 수집일별 item과 리테일러를 연결해 sku가 있는 건수를 표시하며, 마스터는 현재 저장된 값을 사용합니다.</p>
     </div>
 </section>
 {{ column_catalog|json_script:'ccs-catalog' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=3-shared-comparisons"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=20261020-source-day"></script><script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=20261020-source-day"></script>{% endblock %}

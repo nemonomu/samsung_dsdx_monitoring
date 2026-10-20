@@ -119,3 +119,32 @@ python tests/preview_collection_statistics.py
 `http://127.0.0.1:8766/dx/layer1/collection-statistics/?date=2026-09-21`에서 확인한다. 임시 메모리 DB만 사용하며 프로세스 종료 시 사라진다.
 
 확인 순서: 통계 메뉴 → 주간 합계/일평균 → 일별 MAIN·BSR 경고 → 국가 필터의 미집계 표시. 운영 적용 후 재수집·삭제 시 남은 배치 건수로 판정하는지, 실제 건수가 회복됐을 때만 경고가 해제되는지, 비교 장애 시 정상으로 바뀌지 않는지 확인한다.
+
+## 컬럼 비교와 과거 미해결 이력
+
+컬럼 통계의 날짜 입력은 **검수일**이다. 공통 `resolve_monitoring_date`로 SEA·SEDA는 D-1, 나머지는 D0 데이터일을 구한다. 컬럼 집계와 미수집 조회는 원본 `crawl_datetime` / `crawl_strdatetime` 날짜를 사용하며 SIEL만 기존 업무 시간대 예외를 유지한다. 기존 조회 도구의 날짜 변환은 변경하지 않는다.
+
+전체 미수집은 최신 배치·page_type·redirect 필터를 적용하지 않은 리테일러 원본 행이 0건인 경우다. 기존 수집 완료 기준을 통과한 날짜만 판정하며, 비교 이력 일수와 무관하게 대상·데이터일별 1건으로 표시한다. MAIN·BSR 수량 판정과 기존 표 아래 NULL 컬럼은 별도로 유지한다.
+
+`CollectionIssue`, `CollectionIssueEvent`, `CollectionIssueScan`은 Django 기본 DB에 저장한다. DEBUG 환경의 이력은 운영과 분리한다. 2026-09-01 또는 등록된 수집 시작일 중 늦은 날짜부터 점검하고, 최초 발견 당시 중앙값·건수·데이터일을 보존한다. 확인 기록만으로 해결하지 않으며, 원래 날짜를 재조회해 복구를 검증하거나 사유를 남겨 예외 처리한다. 컬럼 복구는 발견 당시 중앙값의 정상 범위(60% 초과)를 사용한다. 조회 실패는 기존 이력과 점검 완료 범위를 보존한다.
+
+명시된 시작일이 없는 대상은 DB 최초 관측일부터 점검하며 그 이전은 판정 유보다. 이 기준일을 저장하므로 최초 날짜의 데이터가 나중에 삭제돼도 시작일이 앞으로 이동하지 않는다. 예를 들어 SEM Liverpool의 최초 원본 데이터가 9/6이면 9/1~9/5는 미수집으로 만들지 않는다.
+
+기존 15분 자동 작업(`refresh_collection_statistics --automatic`)에 미해결 점검이 포함된다. 매 실행 시 최근 3일, 순차 과거 28일, 모든 미해결 날짜를 확인한다. 최초 전체 점검 완료까지 화면에 점검 범위를 명시한다. 웹에서 직접 조회한 당일 컬럼 비교도 즉시 이력에 반영하며, 오래된 캐시가 더 최신의 복구 검증을 되돌리지 않는다.
+
+별도로 미해결 점검만 실행하려면:
+
+```console
+python manage.py migrate dx_layer1 --noinput
+python manage.py refresh_collection_issues
+python manage.py refresh_collection_issues --country SEA
+```
+
+화면의 `새로고침`은 저장된 이력 조회이고, 상세의 `원래 날짜 복구 재검증`은 해당 데이터일의 원본을 재조회한다. `조회 SQL`은 전체 건수·원본 행·배치별 건수를 복사하는 기능이며 쿼리를 브라우저에서 실행하지 않는다. 해결·예외 처리 이력도 상태 필터로 확인할 수 있다.
+
+```console
+python tests/test_collection_issues_backend.py
+python tests/test_collection_issues_browser.py
+node tests/test_layer1_column_comparison.js
+node tests/test_column_alert_progress.js
+```

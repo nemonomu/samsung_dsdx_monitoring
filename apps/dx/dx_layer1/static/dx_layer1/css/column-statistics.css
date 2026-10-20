@@ -52,3 +52,4 @@
 @media(prefers-reduced-motion:reduce) {.cca-sidebar-loading {animation:none}}
 @media(max-width:700px) {.ccs-card-heading,.ccs-search-label {flex-wrap:wrap}.ccs-search-label input {width:160px}}
 @media(max-width:700px) {.ccs-table tr>:first-child {min-width:190px;max-width:190px;width:190px}.ccs-table th,.ccs-table td {padding:10px 12px;min-width:90px}}
+.ccs-badge.uncollected{color:#d42d46;background:#ffedf1}.ccs-target.uncollected{color:#d42d46;background:#fff2f4}

@@ -1,18 +1,17 @@
-"""Bounded, read-only aggregation using the email report's collection policy."""
+"""Source-date aggregation with the existing column-count collection scope."""
 from datetime import timedelta
 
 from apps.common.db import dx_connection
-from apps.common.seib_retail import SEIB_SOURCE_CONFIG, FIRST_SOURCE_DATE as SEIB_START_DATE
-from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
-from apps.common.source_dates import source_date_sql
-from apps.common.sea_dates import appliance_source_date_sql
+from apps.common.seib_retail import SEIB_SOURCE_CONFIG
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
-from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS, EXPERT_START_DATE
-from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
+from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS
+from apps.dx.dx_layer1.retail import costco
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
 )
+
+from .dates import active_from, day_sql
 
 FIRST_COLUMNS = (
     'item', 'sku', 'retailer_sku_name', 'count_of_reviews', 'star_rating',
@@ -76,39 +75,10 @@ def query_spec(source, retailer, columns, start, end):
     home_depot = source['key'] in ('sea_ref', 'sea_ldy') and retailer['name'] == 'HomeDepot'
     is_costco = source['country'] == 'SEA' and retailer['name'] == 'Costco'
     is_expert = source['country'] == 'SEG' and retailer['name'] == 'Expert'
-    if is_expert:
-        start = max(start, EXPERT_START_DATE)
-    col = 'source.' + source['date_column']
-    if source['key'] == 'sem_ldy_dryer':
-        day = source_date_sql(col)
-        start = max(start, SEM_DRYER_FIRST_SOURCE_DATE)
-    elif source['country'] == 'SEIB':
-        day = source_date_sql(col)
-        start = max(start, SEIB_START_DATE)
-    elif source['country'] == 'SEA' and lowes_dryer.matches(source['product'], retailer['name']):
-        day = lowes_dryer.source_date_sql(col)
-        start = max(start, lowes_dryer.FIRST_SOURCE_DATE)
-    elif source['country'] == 'SEA' and bestbuy_dryer.matches(source['product'], retailer['name']):
-        day = bestbuy_dryer.source_date_sql(col)
-        start = max(start, bestbuy_dryer.FIRST_SOURCE_DATE)
-    elif source['country'] == 'SEA' and homedepot_dryer.matches(source['product'], retailer['name']):
-        day = homedepot_dryer.source_date_sql(col)
-        start = max(start, homedepot_dryer.FIRST_SOURCE_DATE)
-    elif is_costco:
-        # SEA TV's shared report date is batch_id; Costco uses its recorded crawl date.
-        if source['key'] == 'sea_tv':
-            col = 'source.crawl_datetime'
-        day = costco.source_date_sql(col)
-        start = max(start, costco.first_source_date(source['product']))
-    elif home_depot:
-        day = appliance_source_date_sql(col)
-    elif source['date_mode'] == 'batch':
-        raw = f"substring(CAST({col} AS TEXT) from '([0-9]{{8}})')"
-        day = f"substring({raw}, 1, 4) || '-' || substring({raw}, 5, 2) || '-' || substring({raw}, 7, 2)"
-    elif source.get('business_timezone'):
-        day = f"TO_CHAR({col} AT TIME ZONE '{source['business_timezone']}', 'YYYY-MM-DD')"
-    else:
-        day = f"LEFT(BTRIM(CAST({col} AS TEXT)), 10)"
+    launch = active_from(source, retailer['name'])
+    if launch:
+        start = max(start, launch)
+    day = day_sql(source)
     clauses = [_retailer_condition(source, retailer), f'({day}) BETWEEN %s AND %s']
     params = _retailer_params(retailer) + [str(start), str(end)]
     if retailer.get('exclude_redirect'):
@@ -184,11 +154,7 @@ def daily_counts(country, product, retailer_name, end, days):
                                 'counts': {c: int(v) for c, v in zip(columns, values[2:])}}
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
-            'active_from': (str(SEM_DRYER_FIRST_SOURCE_DATE) if country == 'SEM' and product == 'LDY_DRYER' else str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and retailer_name == 'Expert'
-                            else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, retailer_name)
-                            else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, retailer_name)
-                            else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, retailer_name)
-                            else str(costco.first_source_date(product)) if country == 'SEA' and retailer_name == 'Costco' else None),
+            'active_from': str(active_from(source, retailer_name)) if active_from(source, retailer_name) else None,
             'columns': columns, 'dates': dates,
             'daily': [{'date': day, **by_day.get(day, {'total': 0, 'counts': {c: 0 for c in columns}})} for day in dates],
             'sku_from_master': source['key'] == 'sea_tv' and retailer_name != 'Costco'}

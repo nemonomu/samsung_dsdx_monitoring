@@ -71,10 +71,14 @@ def compare_columns(data, target, completed):
         count = current['counts'][column]
         ratio = count / baseline * 100 if baseline is not None and baseline > 0 else None
         delta = count - baseline if baseline is not None else None
-        if not completed.get(str(target), False):
+        if data.get('active_from') and str(target) < data['active_from']:
+            status = 'not_scheduled'
+        elif not completed.get(str(target), False):
             status = 'pending'
-        elif current['total'] == 0:
+        elif current.get('raw_total', current['total']) == 0:
             status = 'uncollected'
+        elif current['total'] == 0:
+            status = 'no_scoped_rows'
         elif baseline is None:
             status = 'insufficient'
         elif baseline == 0:

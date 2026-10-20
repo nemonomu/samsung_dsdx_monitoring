@@ -44,7 +44,7 @@
     }
     function render(data) {
         loadedData = data;
-        document.getElementById('ccs-selection').textContent = `${data.country} · ${data.product} · ${data.retailer} · ${data.dates[0]} ~ ${data.dates[data.dates.length - 1]} · ${data.columns.length}개 항목`;
+        document.getElementById('ccs-selection').textContent = `${data.country} · ${data.product} · ${data.retailer} · 검수일 ${data.inspection_date} / 판정 데이터일 ${data.comparison_date} · ${data.dates[0]} ~ ${data.dates[data.dates.length - 1]} · ${data.columns.length}개 항목`;
         document.getElementById('ccs-updated').textContent = '집계 ' + new Date(data.updated_at).toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'});
         document.getElementById('ccs-status-filters').innerHTML = comparison.tabs(data.comparisons, selectedStatus, false);
         document.getElementById('ccs-head').innerHTML = '<tr><th scope="col">수집 항목</th><th scope="col">검수 판정</th><th scope="col">평소 기준<small>이전 28일 중앙값</small></th>' + data.dates.map(day => `<th scope="col" class="${day === data.comparison_date ? 'ccs-target' : ''}">${esc(day.slice(5))}<small>${day === data.comparison_date ? '비교일' : '수집 건수'}</small></th>`).join('') + '<th scope="col">기준 대비<small>현재 ÷ 기준</small></th><th scope="col">증감 건수<small>현재 − 기준</small></th></tr>';
@@ -62,6 +62,11 @@
         document.getElementById('ccs-sku-note').hidden = !data.sku_from_master;
         results.hidden = false;
         message.hidden = true;
+        if (data.issue_history_error) {
+            message.hidden = false;
+            message.className = 'cs-message error';
+            message.textContent = '수집 건수는 조회했지만 미해결 이력을 저장하지 못했습니다. 다시 조회해주세요.';
+        }
         const scroll = document.querySelector('.ccs-scroll');
         scroll.scrollLeft = scroll.scrollWidth;
         const focused = document.querySelector('.ccs-focused');
@@ -90,7 +95,7 @@
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || '조회에 실패했습니다.');
             if (!current.signal.aborted) {
-                window.ColumnAlertCache.remember(data, data.comparison_date, data);
+                window.ColumnAlertCache.remember(data, data.inspection_date, data);
                 render(data);
             }
         } catch (error) {

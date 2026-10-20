@@ -117,6 +117,26 @@ class ColumnStatisticsApiTests(unittest.TestCase):
     def setUp(self):
         cache.clear()
         self.factory = RequestFactory()
+        raw = patch.object(api, 'raw_counts', return_value={})
+        raw.start()
+        self.addCleanup(raw.stop)
+
+    def test_inspection_day_maps_once_and_queries_previous_source_day(self):
+        fixture = {'columns': [], 'dates': ['2026-10-19'], 'daily': []}
+        with patch.object(api, 'daily_counts', return_value=fixture) as query, \
+                patch.object(api, 'attach_comparisons', side_effect=lambda data, target: dict(data, comparison_date=str(target))):
+            result = json.loads(api.daily(self.factory.get('/', {'date': '2026-10-20', 'country': 'SEA'})).content)
+        self.assertEqual(query.call_args.args[3], date(2026, 10, 19))
+        self.assertEqual(result['inspection_date'], '2026-10-20')
+        self.assertEqual(result['comparison_date'], '2026-10-19')
+
+    def test_d0_country_keeps_inspection_date(self):
+        fixture = {'columns': [], 'dates': [], 'daily': []}
+        with patch.object(api, 'daily_counts', return_value=fixture) as query, \
+                patch.object(api, 'attach_comparisons', side_effect=lambda data, target: dict(data)):
+            result = json.loads(api.daily(self.factory.get('/', {'date': '2026-10-20', 'country': 'SIEL'})).content)
+        self.assertEqual(query.call_args.args[3], date(2026, 10, 20))
+        self.assertEqual(result['offset_days'], 0)
 
     def test_invalid_selection_and_unbounded_period_do_not_query_database(self):
         with patch.object(api, 'daily_counts') as query:

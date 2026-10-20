@@ -9,6 +9,8 @@ from django.views.decorators.http import require_GET
 from apps.dx.dx_layer1.common.context import build_context
 from .services import catalog, daily_counts, select_source
 from .comparison import attach_comparisons
+from apps.common.inspection_dates import resolve_monitoring_date
+from apps.dx.dx_layer1.collection_issues.queries import raw_counts
 
 
 @require_GET
@@ -31,7 +33,7 @@ def daily(request):
         country = request.GET.get('country', 'SEA')
         product = request.GET.get('product', 'TV')
         retailer = request.GET.get('retailer', 'Amazon')
-        select_source(country, product, retailer)
+        source = select_source(country, product, retailer)
         days = int(request.GET.get('days', '7'))
         if days not in (5, 7, 14, 28, 49):
             raise ValueError('Invalid period')
@@ -42,19 +44,32 @@ def daily(request):
         end = date.fromisoformat(raw_date)
         if end > today:
             raise ValueError('Future date')
+        mapping = resolve_monitoring_date(end, country, source['key'])
+        target = date.fromisoformat(mapping['source_date'])
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·리테일러·기간·날짜를 확인해주세요.'}, status=400)
     query_days = max(days, 29)
-    # v4 excludes Expert savings from previously cached collection comparisons.
-    key = f'column-statistics:v4:{country}:{product}:{retailer}:{end}:{query_days}'
+    key = f'column-statistics:v5-source-day:{country}:{product}:{retailer}:{target}:{query_days}'
     try:
         result = cache.get(key)
         if result is None:
-            result = daily_counts(country, product, retailer, end, query_days)
+            result = daily_counts(country, product, retailer, target, query_days)
+            totals = raw_counts(country, product, retailer, target, target)
+            for row in result['daily']:
+                if row['date'] == str(target):
+                    row['raw_total'] = totals.get(str(target), 0)
             result['updated_at'] = timezone.now().isoformat()
             cache.set(key, result, 300)
         # Recheck completion on each request, even across a cached window boundary.
-        result = attach_comparisons(result, end)
+        result = attach_comparisons(result, target)
+        result.update(mapping)
+        # Persist exactly the decision just observed, before a later day's counts
+        # or a moving median can hide it. Persistence failure is explicitly exposed.
+        try:
+            from .observations import remember_comparison
+            remember_comparison(result, target)
+        except Exception:
+            result['issue_history_error'] = True
         result['daily'] = result['daily'][-days:]
         result['dates'] = result['dates'][-days:]
     except Exception:

@@ -40,3 +40,54 @@ class RetailNormalReview(models.Model):
     active = models.BooleanField(default=False)
     revision = models.PositiveIntegerField(default=0)
     history = models.JSONField(default=list)
+
+
+class CollectionIssue(models.Model):
+    """An original source-day incident; later dates never replace its evidence."""
+    environment = models.CharField(max_length=10)
+    country = models.CharField(max_length=4)
+    product = models.CharField(max_length=12)
+    retailer = models.CharField(max_length=80)
+    source_date = models.DateField()
+    column = models.CharField(max_length=120, blank=True)  # empty = whole collection
+    severity = models.CharField(max_length=20)
+    status = models.CharField(max_length=12, default='open')
+    baseline = models.FloatField(null=True)
+    observed_count = models.PositiveIntegerField()
+    current_count = models.PositiveIntegerField()
+    evidence = models.JSONField(default=dict)
+    first_detected_at = models.DateTimeField()
+    last_checked_at = models.DateTimeField()
+    resolved_at = models.DateTimeField(null=True)
+    revision = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['environment', 'country', 'product', 'retailer', 'source_date', 'column'],
+            name='collection_issue_unique')]
+        indexes = [models.Index(fields=['environment', 'status', 'source_date'], name='collection_issue_open')]
+
+
+class CollectionIssueEvent(models.Model):
+    issue = models.ForeignKey(CollectionIssue, on_delete=models.CASCADE, related_name='events')
+    action = models.CharField(max_length=20)
+    username = models.CharField(max_length=150, blank=True)
+    reason = models.TextField(blank=True)
+    evidence = models.JSONField(default=dict)
+    created_at = models.DateTimeField()
+
+
+class CollectionIssueScan(models.Model):
+    environment = models.CharField(max_length=10)
+    country = models.CharField(max_length=4)
+    product = models.CharField(max_length=12)
+    retailer = models.CharField(max_length=80)
+    coverage_start = models.DateField(null=True)
+    start_basis = models.CharField(max_length=20, blank=True)
+    scanned_through = models.DateField(null=True)
+    last_checked_at = models.DateTimeField(null=True)
+    error = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['environment', 'country', 'product', 'retailer'], name='collection_issue_scan_unique')]

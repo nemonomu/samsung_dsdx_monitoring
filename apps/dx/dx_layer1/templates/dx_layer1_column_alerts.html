@@ -7,8 +7,8 @@
     <div class="cs-intro"><div><p class="cs-eyebrow">column alerts</p><p>평소보다 수집 건수가 줄어든 컬럼을 확인하세요.</p></div></div>
     <form id="cca-filters" class="cs-filters">
         <label>국가<select id="cca-country"><option value="">전체 국가</option></select></label>
-        <label>제품군<select id="cca-product"><option value="">전체 제품군</option><option>TV</option><option>REF</option><option>LDY</option></select></label>
-        <label>기준 데이터일<input id="cca-date" type="date" required></label>
+        <label>제품군<select id="cca-product"><option value="">전체 제품군</option><option>TV</option><option>REF</option><option>LDY</option><option>LDY_DRYER</option></select></label>
+        <label>검수일<input id="cca-date" type="date" required></label>
         <button class="cs-primary" type="submit">조회</button>
     </form>
     <section class="cs-card">
@@ -29,4 +29,4 @@
 </section>
 {{ column_catalog|json_script:'cca-catalog' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/column-alerts.js' %}?v=4-shared-comparisons"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=20261020-source-day"></script><script src="{% static 'dx_layer1/js/column-alerts.js' %}?v=20261020-source-day"></script>{% endblock %}

@@ -25,7 +25,7 @@
     const params = new URLSearchParams(location.search);
     [...new Set(catalog.map(s => s.country))].forEach(value => country.add(new Option(value, value)));
     country.value = [...country.options].some(o => o.value === params.get('country')) ? params.get('country') : '';
-    product.value = ['', 'TV', 'REF', 'LDY'].includes(params.get('product')) ? params.get('product') : '';
+    product.value = ['', 'TV', 'REF', 'LDY', 'LDY_DRYER'].includes(params.get('product')) ? params.get('product') : '';
     day.max = today;
     day.value = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') || '') && params.get('date') <= today ? params.get('date') : today;
     let rows = [], status = 'alerts', page = 1, controller, finished = false;
@@ -47,7 +47,7 @@
         const pages = Math.max(1, Math.ceil(visible.length / pageSize));
         page = Math.min(page, pages);
         const slice = visible.slice((page - 1) * pageSize, page * pageSize);
-        document.getElementById('cca-body').innerHTML = slice.map(row => `<tr><th scope="row"><strong>${c.esc(row.retailer)}</strong><small>${c.esc(row.country)} · ${c.esc(row.product)} · 기준 이력 ${row.history_days}일</small></th><td class="cca-column">${c.esc(row.column)}</td><td>${c.badge(row)}</td><td>${c.number(row.baseline)}</td><td class="ccs-target ${c.esc(row.status)}"><strong>${c.number(row.current)}</strong></td><td class="ccs-verdict ${c.esc(row.status)}">${c.ratio(row)}</td><td class="ccs-verdict ${c.esc(row.status)}">${c.delta(row)}</td><td><a class="ccs-link" href="${c.esc(c.detail(row, row.column))}">보기</a></td></tr>`).join('') || `<tr><td colspan="8">${finished ? '조회된 결과 중 해당 조건의 항목이 없습니다.' : loading.hidden ? '선택한 조건으로 조회해주세요.' : '조회 중입니다. 완료되는 순서대로 표시합니다.'}</td></tr>`;
+        document.getElementById('cca-body').innerHTML = slice.map(row => `<tr><th scope="row"><strong>${c.esc(row.retailer)}</strong><small>${c.esc(row.country)} · ${c.esc(row.product)} · 데이터일 ${c.esc(row.comparison_date)} · 기준 이력 ${row.history_days}일</small></th><td class="cca-column">${c.esc(row.column)}</td><td>${c.badge(row)}</td><td>${c.number(row.baseline)}</td><td class="ccs-target ${c.esc(row.status)}"><strong>${c.number(row.current)}</strong></td><td class="ccs-verdict ${c.esc(row.status)}">${c.ratio(row)}</td><td class="ccs-verdict ${c.esc(row.status)}">${c.delta(row)}</td><td><a class="ccs-link" href="${c.esc(c.detail(row, row.column))}">보기</a>${row.status === 'uncollected' ? ` <button type="button" class="ccs-link" data-collection-sql="${rows.indexOf(row)}">조회 SQL</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="8">${finished ? '조회된 결과 중 해당 조건의 항목이 없습니다.' : loading.hidden ? '선택한 조건으로 조회해주세요.' : '조회 중입니다. 완료되는 순서대로 표시합니다.'}</td></tr>`;
         document.getElementById('cca-pagination').innerHTML = `<span>${c.number(visible.length)}개 항목 · ${page} / ${pages}페이지</span><button type="button" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}>이전</button><button type="button" data-page="${page + 1}" ${page === pages ? 'disabled' : ''}>다음</button>`;
     }
     function invalidate() {
@@ -70,6 +70,13 @@
         const button = event.target.closest('[data-page]');
         if (button && !button.disabled) {page = Number(button.dataset.page); render();}
     });
+    document.getElementById('cca-body').addEventListener('click', event => {
+        const button = event.target.closest('[data-collection-sql]');
+        if (button && window.CollectionIssues) {
+            const row = rows[Number(button.dataset.collectionSql)];
+            window.CollectionIssues.sql({...row, source_date: row.comparison_date});
+        }
+    });
     async function load(force = false) {
         if (!form.reportValidity()) return;
         if (controller) controller.abort();
@@ -77,7 +84,8 @@
         controller = current;
         rows = []; page = 1; finished = false;
         const selection = {country: country.value, product: product.value, date: day.value};
-        comparisonDate.textContent = selection.date;
+        comparisonDate.textContent = '국가별 D-1/D0 · 행의 데이터일 확인';
+        if (window.CollectionIssues) window.CollectionIssues.load(selection);
         history.replaceState(null, '', '?' + new URLSearchParams(selection));
         const jobs = catalog.filter(s => (!selection.country || s.country === selection.country) && (!selection.product || s.product === selection.product))
             .flatMap(s => s.retailers.map(retailer => ({country: s.country, product: s.product, retailer})));
@@ -89,6 +97,7 @@
             finished = completed === jobs.length;
             const abnormal = rows.filter(row => row.status === 'abnormal').length;
             const review = rows.filter(row => row.status === 'review').length;
+            const missing = rows.filter(row => row.status === 'uncollected').length;
             loading.hidden = finished;
             progressBar.max = jobs.length || 1;
             progressBar.value = completed;
@@ -99,8 +108,8 @@
                 progress.textContent = `${selection.date} 기준 · ${jobs.length - failed.length}개 대상 확인 · 조회 실패 ${failed.length}개 (${failed.join(', ')}) — 일부 결과입니다. 다시 조회해주세요.`;
                 sidebar('incomplete');
             } else {
-                progress.textContent = `${selection.date} 기준 · 전체 ${jobs.length}개 대상 확인 완료 · 이상 ${abnormal}건 · 확인 필요 ${review}건`;
-                sidebar('complete', abnormal, `${selection.date} · ${selection.country || '전체 국가'} · ${selection.product || '전체 제품군'} · 이상 컬럼 ${abnormal}건`);
+                progress.textContent = `검수일 ${selection.date} · 전체 ${jobs.length}개 대상 확인 완료 · 이상 ${abnormal}건 · 확인 필요 ${review}건 · 전체 미수집 ${missing}건`;
+                sidebar('complete', abnormal + missing, `${selection.date} · 이상 컬럼 ${abnormal}건 · 전체 미수집 ${missing}건`);
             }
             render();
         }
@@ -110,7 +119,11 @@
                 try {
                     const data = await window.ColumnAlertCache.load(job, selection.date, {signal: current.signal, force});
                     if (current.signal.aborted) return;
-                    rows.push(...data.comparisons.map(row => ({...row, ...job, comparison_date: data.comparison_date})));
+                    if (data.issue_history_error) failed.push(`${job.country} ${job.product} ${job.retailer} (이력 저장 실패)`);
+                    const comparisons = data.comparisons.some(row => row.status === 'uncollected')
+                        ? [{column: '전체 미수집', status: 'uncollected', current: 0, baseline: null, history_days: 0, ratio: null, delta: null}]
+                        : data.comparisons;
+                    rows.push(...comparisons.map(row => ({...row, ...job, comparison_date: data.comparison_date, inspection_date: data.inspection_date || selection.date})));
                 } catch (error) {
                     if (current.signal.aborted) return;
                     failed.push(`${job.country} ${job.product} ${job.retailer}`);
@@ -121,7 +134,10 @@
         }
         update();
         await Promise.all([worker(), worker()]);
-        if (controller === current) form.querySelector('button').disabled = false;
+        if (controller === current) {
+            form.querySelector('button').disabled = false;
+            if (window.CollectionIssues) window.CollectionIssues.load(selection, true);
+        }
     }
     form.addEventListener('submit', event => {event.preventDefault(); load(true);});
     load();

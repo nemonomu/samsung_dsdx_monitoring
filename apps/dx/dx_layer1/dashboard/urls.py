@@ -4,8 +4,13 @@ from . import dashboard_api as api
 from apps.dx.dx_layer1.common.retail_batches_api import batch_details
 from apps.dx.dx_layer1.collection_statistics import api as statistics_api
 from apps.dx.dx_layer1.column_statistics import api as column_statistics_api
+from apps.dx.dx_layer1.collection_issues import api as issues_api
 
 urlpatterns = [
+    path('api/collection-issues/', issues_api.listing, name='api_collection_issues'),
+    path('api/collection-issues/sql/', issues_api.queries, name='api_collection_issue_sql'),
+    path('api/collection-issues/<int:issue_id>/', issues_api.detail, name='api_collection_issue'),
+    path('api/collection-issues/<int:issue_id>/action/', issues_api.action, name='api_collection_issue_action'),
     path('column-alerts/', column_statistics_api.alerts_page, name='column_alerts'),
     path('column-statistics/', column_statistics_api.page, name='column_statistics'),
     path('api/column-statistics/', column_statistics_api.daily, name='api_column_statistics'),

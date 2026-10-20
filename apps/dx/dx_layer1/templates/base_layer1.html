@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="{% static 'dx_layer1/css/retail-review.css' %}?v=20261015-review-dialog">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/layer1.css' %}?v=20261019-compact-retail-status">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/column-alert-summary.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'dx_layer1/css/collection-issues.css' %}?v=20261020">
 <link rel="stylesheet" href="{% static 'dx_layer1/css/collection-statistics.css' %}?v=20261020-baselines">
 <style>
     :root {
@@ -41,6 +42,7 @@
         {% endif %}
 
         <div id="filter-bar-container"></div>
+        <div id="collection-issues-container" hidden></div>
 
         {% block layer1_content %}{% endblock %}
     </div>
@@ -58,8 +60,9 @@
 
 </script>
 {{ column_alert_catalog|json_script:'l1-column-alert-catalog' }}
-<script src="{% static 'dx_layer1/js/column-alert-cache.js' %}?v=20261019-expert-savings"></script>
-<script src="{% static 'dx_layer1/js/column-alert-summary.js' %}?v=2-shared-comparisons"></script>
+<script src="{% static 'dx_layer1/js/collection-issues.js' %}?v=20261020"></script>
+<script src="{% static 'dx_layer1/js/column-alert-cache.js' %}?v=20261020-source-day"></script>
+<script src="{% static 'dx_layer1/js/column-alert-summary.js' %}?v=20261020-source-day"></script>
 <script src="{% static 'dx_layer1/js/layer1-common.js' %}?v=20261019-seib"></script>
 <script src="{% static 'dx_layer1/js/collection-volume.js' %}?v=20261019-seib"></script>
 <script src="{% static 'dx_layer1/js/retail-query.js' %}?v=20261019-sem-dryer"></script>
