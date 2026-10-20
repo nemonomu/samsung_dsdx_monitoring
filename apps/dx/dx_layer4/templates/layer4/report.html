@@ -9,6 +9,14 @@
     <button class="app-btn app-btn-sm app-btn-save" id="saveReportBtn" onclick="saveReportToDocument()">💾 보고서 저장</button>
 </div>
 
+<div id="reportSharePanel" hidden style="margin-bottom:16px;padding:12px 16px;border:1px solid #dce4ef;border-radius:8px;background:#fff;">
+    <p id="reportShareMessage" role="status" style="margin:0 0 8px;"></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="reportShareUrl" type="text" readonly hidden aria-label="저장한 보고서 공유 URL" style="flex:1;min-width:180px;padding:8px;border:1px solid #dce4ef;border-radius:6px;">
+        <button class="app-btn app-btn-sm" id="reportShareRetry" onclick="retryReportShare()">링크 다시 복사</button>
+    </div>
+</div>
+
 <!-- 보고서 영역 -->
 <div class="l4-report-area">
     <div id="report-detail" class="l4-report-content">
@@ -21,5 +29,5 @@
 
 {% block layer4_js %}
 <script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
-<script src="{% static 'dx_layer4/js/report.js' %}?v=20261012-format-review"></script>
+<script src="{% static 'dx_layer4/js/report.js' %}?v=20261020-save-share"></script>
 {% endblock %}

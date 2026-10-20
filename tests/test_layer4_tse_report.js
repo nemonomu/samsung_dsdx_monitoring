@@ -233,6 +233,6 @@ setImmediate(() => {
     assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=20261012-format-review"));
+    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=20261020-save-share"));
     console.log('Layer 4 retail report label tests passed');
 });

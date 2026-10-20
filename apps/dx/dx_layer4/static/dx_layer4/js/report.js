@@ -188,7 +188,86 @@
     // ============================================================
     // 보고서 저장
     // ============================================================
-    window.saveReportToDocument = function() {
+    var savedShare = null;
+
+    async function copyReportShareUrl(url) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(url);
+                return true;
+            } catch (_) { /* HTTP / clipboard permission fallback below. */ }
+        }
+        var input = document.getElementById('reportShareUrl');
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        try {
+            return document.execCommand('copy');
+        } catch (_) {
+            return false;
+        }
+    }
+
+    async function shareSavedReport() {
+        if (!savedShare) return;
+        var saved = savedShare;
+        var panel = document.getElementById('reportSharePanel');
+        var message = document.getElementById('reportShareMessage');
+        var input = document.getElementById('reportShareUrl');
+        var retry = document.getElementById('reportShareRetry');
+        panel.hidden = false;
+        retry.disabled = true;
+        message.textContent = saved.date + ' 보고서 저장 완료 · 공유 링크 준비 중…';
+        try {
+            if (!saved.url) {
+                var response = await fetch('/api/dx/documents/share-token/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+                    body: JSON.stringify({
+                        document_id: saved.documentId,
+                        category_id: saved.categoryId,
+                        memo: saved.date + ' 보고서 공유'
+                    })
+                });
+                var result = await response.json();
+                if (!response.ok || !result.success || !result.token) {
+                    throw new Error(result.error || '공유 링크를 생성하지 못했습니다.');
+                }
+                saved.url = window.location.origin + '/dx-share/' + encodeURIComponent(result.token) + '/';
+            }
+            input.value = saved.url;
+            input.hidden = false;
+            retry.textContent = '링크 다시 복사';
+            var copied = await copyReportShareUrl(saved.url);
+            message.textContent = saved.date + (copied
+                ? ' 보고서 저장 완료 · 공유 링크 복사 완료 (24시간 유효)'
+                : ' 보고서 저장 완료 · 자동 복사가 차단되었습니다. 링크 다시 복사를 누르거나 아래 URL을 직접 복사하세요.');
+            showToast(copied ? '보고서 저장 완료 · 공유 링크 복사 완료 (24시간 유효)'
+                : '보고서는 저장되었습니다. 아래 공유 링크를 직접 복사해주세요.', copied ? 'success' : 'warning');
+        } catch (error) {
+            message.textContent = saved.date + ' 보고서 저장 완료 · ' + error.message + ' 링크 생성 재시도를 눌러주세요.';
+            retry.textContent = '링크 생성 재시도';
+            showToast('보고서는 저장되었지만 공유 링크 생성에 실패했습니다.', 'warning');
+        } finally {
+            retry.disabled = false;
+        }
+    }
+
+    window.retryReportShare = async function() {
+        var btn = document.getElementById('saveReportBtn');
+        var retry = document.getElementById('reportShareRetry');
+        if (btn.disabled || retry.disabled) return;
+        btn.disabled = true;
+        try {
+            await shareSavedReport();
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    window.saveReportToDocument = async function() {
+        var btn = document.getElementById('saveReportBtn');
+        if (btn.disabled) return;
         var el = document.getElementById('report-detail');
         var rawContent = el ? el.innerHTML : '';
         if (!rawContent || rawContent.indexOf('l4-empty-state') >= 0) {
@@ -201,38 +280,44 @@
             .replace(/<div class="report-section-title"/g, '<br><div class="report-section-title"');
 
         var date = getSelectedDate();
+        if (reportCache && reportCache.date !== date) {
+            showToast('선택한 날짜의 보고서를 조회한 후 저장해주세요.', 'warning');
+            return;
+        }
         var title = date + ' DX 검수 보고서';
         var categoryId = '20260207-0002';
 
-        var btn = document.getElementById('saveReportBtn');
         btn.disabled = true;
-
-        fetch('/api/dx/documents/create/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCsrfToken()
-            },
-            body: JSON.stringify({
-                category_id: categoryId,
-                title: title,
-                content: content,
-                crawl_date: date
-            })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(res) {
-            btn.disabled = false;
-            if (res.success) {
-                showToast(res.message || '검수 보고서가 저장되었습니다.', 'success');
+        savedShare = null;
+        document.getElementById('reportSharePanel').hidden = true;
+        document.getElementById('reportShareUrl').value = '';
+        document.getElementById('reportShareUrl').hidden = true;
+        try {
+            var response = await fetch('/api/dx/documents/create/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
+                body: JSON.stringify({
+                    category_id: categoryId,
+                    title: title,
+                    content: content,
+                    crawl_date: date
+                })
+            });
+            var res = await response.json();
+            if (response.ok && res.success && res.document_id) {
+                savedShare = {documentId: res.document_id, categoryId: categoryId, date: date, url: ''};
+                await shareSavedReport();
             } else {
                 showToast(res.error || '보고서 저장에 실패했습니다.', 'info');
             }
-        })
-        .catch(function() {
-            btn.disabled = false;
+        } catch (_) {
             showToast('보고서 저장 중 오류가 발생했습니다.', 'error');
-        });
+        } finally {
+            btn.disabled = false;
+        }
     };
 
     // ============================================================
