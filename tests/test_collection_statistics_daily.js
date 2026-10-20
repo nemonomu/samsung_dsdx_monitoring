@@ -50,7 +50,10 @@ for (let week = 0; week < 8; week++) {
                     : retailer === 'Bestbuy' && date === '2026-09-20' ? 400 : base;
             const alerts = retailer === 'Bestbuy' && date === '2026-09-19' ? [{metric: 'main', status: 'VOLUME_LOW'}]
                 : retailer === 'OTTO' && date === '2026-09-20' ? [{metric: 'main', status: 'VOLUME_HIGH'}] : [];
-            daily.push({date, state, main: Math.max(0, total - 10), bsr: 50, total, comparison_state: 'ready', alerts});
+            daily.push({date, state, main: Math.max(0, total - 10), bsr: 50, total, comparison_state: 'ready', alerts,
+                baselines: {main: {value: date === '2026-09-20' ? 245.5 : 210, days: 20},
+                    bsr: retailer === 'Bestbuy' ? {value: 100, days: 0, rule: 'fixed_100'}
+                        : {value: 95, days: 18, rule: 'median_28d'}}});
         }
         rows.push({country, product, retailer, slot: 'daily', daily});
     }
@@ -89,7 +92,7 @@ async function flush() {
     assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-country-row"/g) || []).length, 2);
     assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-product-row"/g) || []).length, 3);
     assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 22);
-    assert(elements['cs-table-head'].innerHTML.includes('rowspan="2">총수량 하루 평균'));
+    assert(elements['cs-table-head'].innerHTML.includes('rowspan="2">정상 중앙값<br><small>(기준: 28일)</small>'));
     assert(elements['cs-table-head'].innerHTML.includes('>MAIN</th><th scope="col">BSR</th><th scope="col" class="cs-total-heading">총수량</th>'));
     assert.match(elements['cs-table-body'].innerHTML,
         /cs-country-row[^>]*><th[^>]*><span class="cs-group-label">SEA<\/span><\/th>.*cs-product-row[^>]*><th[^>]*><span class="cs-group-label">TV<\/span><\/th>.*Amazon.*Bestbuy.*cs-product-row[^>]*><th[^>]*><span class="cs-group-label">REF<\/span><\/th>.*Lowes.*cs-country-row[^>]*><th[^>]*><span class="cs-group-label">SEG<\/span><\/th>.*OTTO/s);
@@ -97,9 +100,10 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('Bestbuy'));
     assert(elements['cs-table-body'].innerHTML.includes('Lowes'));
     assert(elements['cs-table-body'].innerHTML.includes('OTTO'));
-    assert(elements['cs-table-body'].innerHTML.includes('<td class="cs-average"><strong>233</strong><small>3/5일 집계'),
-        '0건은 평균에 포함하고 미집계는 제외하며 평균은 정수로 표시');
-    assert(elements['cs-table-body'].innerHTML.includes('3/5일 집계'));
+    assert.match(elements['cs-table-body'].innerHTML, /Amazon.*?cs-baseline.*?MAIN<\/span> <strong>245.5<\/strong>.*?BSR<\/span> <strong>95<\/strong>/s,
+        'Normal rows display the selected date historical MAIN and BSR medians, including half counts.');
+    assert.match(elements['cs-table-body'].innerHTML, /Bestbuy.*?cs-baseline.*?BSR<\/span> <strong>100<\/strong> <span class="cs-baseline-note">\(고정 기준\)/s);
+    assert(!elements['cs-table-body'].innerHTML.includes('일 집계'));
     assert.match(elements['cs-table-body'].innerHTML,
         /<td class="cs-day-cell">230<\/td><td class="cs-day-cell">50<\/td><td class="cs-day-cell cs-total"[^>]*><strong>240<\/strong>/);
     assert(elements['cs-table-body'].innerHTML.includes('class="cs-day-cell low cs-main-low"'));
@@ -127,6 +131,7 @@ async function flush() {
     assert.strictEqual(Number(requests.at(-1).searchParams.get('weeks')), 2);
     assert.strictEqual((elements['cs-table-head'].innerHTML.match(/<th /g) || []).length, 58);
     assert(elements['cs-table-head'].innerHTML.includes('09-07'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'), 'Display period does not change the target-date baseline.');
 
     elements['cs-days'].value = '49';
     elements['cs-days'].fire('change');
@@ -137,6 +142,8 @@ async function flush() {
     elements['cs-date'].fire('change');
     await flush();
     assert.strictEqual(Number(requests.at(-1).searchParams.get('weeks')), 8);
+    assert(!elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'), 'Never substitute an older date baseline when the target date is missing.');
+    assert(elements['cs-table-body'].innerHTML.includes('기준값 없음'));
     const fixtureDay = weeks[0].rows.find(row => row.retailer === 'Amazon').daily[6];
     fixtureDay.bsr = 56;
     fixtureDay.alerts = [{metric: 'bsr', status: 'VOLUME_LOW',
@@ -229,7 +236,7 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('검증 대기'));
     assert(elements['cs-table-body'].innerHTML.includes('신규 · 관찰 중 (2/5일)'));
     assert(elements['cs-table-body'].innerHTML.includes('5,000'));
-    assert(elements['cs-table-body'].innerHTML.includes('<strong>240</strong><small>4/5일 집계'));
+    assert.match(elements['cs-table-body'].innerHTML, /cs-baseline.*?MAIN<\/span> <span class="cs-baseline-note">— 관찰 중/s);
     assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
     Object.assign(fixtureDay, {state: 'complete', verification_state: 'ready', main: 60, total: 60,
         observation_state: 'ready', alerts: [{metric: 'main', status: 'VOLUME_LOW'}]});
@@ -237,6 +244,20 @@ async function flush() {
     assert(!elements['cs-table-body'].innerHTML.includes('검증 대기'));
     assert(elements['cs-table-body'].innerHTML.includes('cs-main-low'));
     assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
-    assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong><small>5/5일 집계'));
-    console.log('Daily statistics: verification, averages, observation, missing and error display passed.');
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'), 'Current count changes do not change the historical baseline.');
+    fixtureDay.baselines.main.days = 4;
+    fixtureDay.baselines.bsr.rule = 'fixed_100';
+    fixtureDay.baselines.bsr.value = 95;
+    elements['cs-retailer'].fire('change');
+    assert(!elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'));
+    assert.match(elements['cs-table-body'].innerHTML, /cs-baseline.*?MAIN<\/span> <span class="cs-baseline-note">— 비교 이력 부족/s);
+    assert(!elements['cs-table-body'].innerHTML.includes('(고정 기준)'));
+    const extraSlot = {...weeks[0].rows[0], slot: '오후 <2>', daily: [{...fixtureDay,
+        baselines: {main: {value: 123, days: 8}, bsr: {value: 100, days: 0, rule: 'fixed_100'}}}]};
+    weeks[0].rows.push(extraSlot);
+    elements['cs-retailer'].fire('change');
+    assert(elements['cs-table-body'].innerHTML.includes('오후 &lt;2&gt;'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>123</strong>'), 'Keep distinct slot medians; do not sum them into an invented daily median.');
+    assert(elements['cs-table-body'].innerHTML.includes('(고정 기준)'));
+    console.log('Daily statistics: target-date baselines, fixed rules, slots, verification, observation and alerts passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

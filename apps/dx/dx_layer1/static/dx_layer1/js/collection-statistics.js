@@ -148,6 +148,28 @@
             label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
     }
 
+    function baselineCell(entries) {
+        const active = entries.filter(day => day.state !== 'not_scheduled');
+        if (!active.length) return '<span class="cs-muted">기준값 없음</span>';
+        return active.map(day => {
+            const metrics = ['main', 'bsr'].map(metric => {
+                const basis = day.baselines?.[metric];
+                const fixed = metric === 'bsr' && basis?.rule === 'fixed_100' && basis.value === 100;
+                const valid = basis && Number.isFinite(basis.value) && basis.value > 0
+                    && (fixed || (Number.isFinite(basis.days) && basis.days >= 5
+                        && !['observing', 'unknown'].includes(day.observation_state)
+                        && (metric === 'main' || basis.rule === 'median_28d')))
+                    && !['future', 'unknown'].includes(day.state);
+                const missing = day.observation_state === 'observing' ? '관찰 중'
+                    : ['unknown', 'future'].includes(day.state) ? '기준값 없음' : '비교 이력 부족';
+                return `<div class="cs-baseline-metric"><span>${metric.toUpperCase()}</span> `
+                    + (valid ? `<strong>${number(basis.value)}</strong>${fixed ? ' <span class="cs-baseline-note">(고정 기준)</span>' : ''}`
+                        : `<span class="cs-baseline-note">— ${missing}</span>`) + '</div>';
+            }).join('');
+            return `<div class="cs-baseline-slot">${active.length > 1 ? `<small>${safe(day.slot || 'daily')}</small>` : ''}${metrics}</div>`;
+        }).join('');
+    }
+
     function syncRetailers(preferred = byId('cs-retailer').value) {
         if (!data) return;
         const country = byId('cs-country').value, product = byId('cs-product').value;
@@ -173,7 +195,7 @@
             byId('cs-retailer').value || '전체 리테일러',
             `${dates[0]} ~ ${endDate} · ${groups.length}개 조합`,
         ].join(' · ');
-        byId('cs-table-head').innerHTML = '<tr><th scope="col" rowspan="2">리테일러</th><th scope="col" rowspan="2">총수량 하루 평균</th>'
+        byId('cs-table-head').innerHTML = '<tr><th scope="col" rowspan="2">리테일러</th><th scope="col" rowspan="2">정상 중앙값<br><small>(기준: 28일)</small></th>'
             + dates.map(day => `<th scope="colgroup" colspan="3">${safe(day.slice(5))}</th>`).join('') + '</tr>'
             + '<tr>' + dates.map(() => '<th scope="col">MAIN</th><th scope="col">BSR</th><th scope="col" class="cs-total-heading">총수량</th>').join('') + '</tr>';
         let previousCountry = '', previousProduct = '';
@@ -189,11 +211,8 @@
                 previousProduct = group.product;
             }
             const results = dates.map(day => dayResult(group.daily.get(day) || []));
-            const completed = results.filter(day => day.total != null && !day.provisional);
-            const average = completed.length
-                ? completed.reduce((sum, day) => sum + day.total, 0) / completed.length : null;
             return heading + `<tr class="cs-retailer-row"><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong></th>`
-                + `<td class="cs-average"><strong>${number(average == null ? null : Math.round(average))}</strong><small>${completed.length}/${dates.length}일 집계</small></td>`
+                + `<td class="cs-baseline" title="${safe(endDate)} 데이터일에 적용되는 기준값">${baselineCell(group.daily.get(endDate) || [])}</td>`
                 + results.map((day, index) => {
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;
