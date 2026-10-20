@@ -211,8 +211,9 @@
                 previousProduct = group.product;
             }
             const results = dates.map(day => dayResult(group.daily.get(day) || []));
+            const baselineDate = data.baseline_dates?.[group.country];
             return heading + `<tr class="cs-retailer-row"><th scope="row" class="cs-identity"><strong>${safe(group.retailer)}</strong></th>`
-                + `<td class="cs-baseline" title="${safe(endDate)} 데이터일에 적용되는 기준값">${baselineCell(group.daily.get(endDate) || [])}</td>`
+                + `<td class="cs-baseline">${baselineCell(group.daily.get(baselineDate) || [])}${baselineDate ? `<small>데이터일 ${safe(baselineDate)}</small>` : ''}</td>`
                 + results.map((day, index) => {
                     const title = day.total == null ? day.label
                         : `총 ${number(day.total)} · MAIN ${number(day.main)} · BSR ${number(day.bsr)}${day.label ? ' · ' + day.label : ''}`;

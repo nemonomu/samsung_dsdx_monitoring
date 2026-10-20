@@ -635,6 +635,20 @@ class StoreTests(TestCase):
         self.assertEqual({'SEA', 'SEG'}, {row['country'] for row in payload['weeks'][0]['rows']})
         self.assertEqual(['Lowes'], payload['retailers'])
 
+    def test_baseline_dates_follow_inspection_offsets_across_boundaries(self):
+        for selected, previous in [('2026-10-20', '2026-10-19'),
+                                   ('2026-09-21', '2026-09-20'),
+                                   ('2026-10-01', '2026-09-30'),
+                                   ('2026-01-01', '2025-12-31')]:
+            with self.subTest(selected=selected), self.assertNumQueries(2):
+                response = api.weekly(self.factory.get('/', {'date': selected, 'country': 'ALL'}))
+            self.assertEqual(200, response.status_code)
+            payload = json.loads(response.content)
+            self.assertEqual({code: previous if code in ('SEA', 'SEDA') else selected
+                              for code in calc.COUNTRIES}, payload['baseline_dates'])
+            self.assertEqual('source_date', payload['basis'])
+            self.assertEqual(selected, payload['baseline_dates']['SIEL'])
+
     def test_alert_api_one_query_saved_decision_only(self):
         self.refresh(self.end - timedelta(days=7))
         self.refresh(loader=lambda *_: check_for(400))

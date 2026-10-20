@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET
 
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, CollectionWeeklySnapshot as Weekly
 from apps.dx.dx_layer1.common.context import build_context
-from .calculations import COUNTRIES, MINIMUM_DAYS, MAIN_POLICY_VERSION, comparison_rules, current_volume_decision, week_start
+from .calculations import COUNTRIES, OFFSETS, MINIMUM_DAYS, MAIN_POLICY_VERSION, comparison_rules, current_volume_decision, week_start
 from .reviews import attach_review, review_index
 
 
@@ -37,7 +37,9 @@ def weekly(request):
         weeks = int(request.GET.get('weeks', '8'))
         if not 1 <= weeks <= 12:
             raise ValueError('Invalid weeks')
-        end_week = week_start(selected_date(request.GET.get('date')))
+        reference_date = selected_date(request.GET.get('date'))
+        baseline_dates = {code: str(reference_date - timedelta(days=OFFSETS[code])) for code in COUNTRIES}
+        end_week = week_start(reference_date)
         start_week = end_week - timedelta(weeks=weeks - 1)
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·날짜·기간을 확인해주세요.'}, status=400)
@@ -71,7 +73,8 @@ def weekly(request):
                                          default=None)})
     response = JsonResponse({'country': country, 'product': product, 'retailers': retailers, 'weeks': result,
                          'updated_at': min((s.updated_at for s in snapshots), default=None),
-                         'basis': 'source_date', 'baseline_days': 28, 'minimum_history_days': MINIMUM_DAYS})
+                         'basis': 'source_date', 'baseline_days': 28, 'minimum_history_days': MINIMUM_DAYS,
+                         'baseline_dates': baseline_dates})
     response['Cache-Control'] = 'private, no-store'
     return response
 

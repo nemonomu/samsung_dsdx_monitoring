@@ -51,7 +51,7 @@ for (let week = 0; week < 8; week++) {
             const alerts = retailer === 'Bestbuy' && date === '2026-09-19' ? [{metric: 'main', status: 'VOLUME_LOW'}]
                 : retailer === 'OTTO' && date === '2026-09-20' ? [{metric: 'main', status: 'VOLUME_HIGH'}] : [];
             daily.push({date, state, main: Math.max(0, total - 10), bsr: 50, total, comparison_state: 'ready', alerts,
-                baselines: {main: {value: date === '2026-09-20' ? 245.5 : 210, days: 20},
+                baselines: {main: {value: date === '2026-09-19' ? 245.5 : date === '2026-09-20' ? 888 : 210, days: 20},
                     bsr: retailer === 'Bestbuy' ? {value: 100, days: 0, rule: 'fixed_100'}
                         : {value: 95, days: 18, rule: 'median_28d'}}});
         }
@@ -67,8 +67,16 @@ const context = {
     location: {pathname: '/dx/layer1/collection-statistics/', search: '?date=2026-09-20'},
     history: {replaceState() {}}, URLSearchParams, AbortController, setTimeout, clearTimeout,
     fetch: async url => {
-        requests.push(new URL(url, 'http://local.test'));
-        return {ok: true, json: async () => ({weeks, updated_at: null})};
+        const request = new URL(url, 'http://local.test');
+        requests.push(request);
+        const selected = request.searchParams.get('date');
+        const previous = new Date(new Date(selected + 'T00:00:00Z').getTime() - 86400000).toISOString().slice(0, 10);
+        const monday = new Date(selected + 'T00:00:00Z');
+        monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+        const oldest = new Date(monday.getTime() - (Number(request.searchParams.get('weeks')) - 1) * 7 * 86400000);
+        const visibleWeeks = weeks.filter(week => week.start >= oldest.toISOString().slice(0, 10) && week.start <= monday.toISOString().slice(0, 10));
+        return {ok: true, json: async () => ({weeks: visibleWeeks, updated_at: null,
+            baseline_dates: {SEA: previous, SEDA: previous, SEG: selected, SIEL: selected}})};
     },
 };
 vm.createContext(context);
@@ -101,7 +109,8 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('Lowes'));
     assert(elements['cs-table-body'].innerHTML.includes('OTTO'));
     assert.match(elements['cs-table-body'].innerHTML, /Amazon.*?cs-baseline.*?MAIN<\/span> <strong>245.5<\/strong>.*?BSR<\/span> <strong>95<\/strong>/s,
-        'Normal rows display the selected date historical MAIN and BSR medians, including half counts.');
+        'SEA displays D-1 historical MAIN and BSR medians, including half counts.');
+    assert(elements['cs-table-body'].innerHTML.includes('<small>데이터일 2026-09-19</small>'));
     assert.match(elements['cs-table-body'].innerHTML, /Bestbuy.*?cs-baseline.*?BSR<\/span> <strong>100<\/strong> <span class="cs-baseline-note">\(고정 기준\)/s);
     assert(!elements['cs-table-body'].innerHTML.includes('일 집계'));
     assert.match(elements['cs-table-body'].innerHTML,
@@ -116,6 +125,8 @@ async function flush() {
     assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-retailer-row"/g) || []).length, 1);
     assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-country-row"/g) || []).length, 1);
     assert(elements['cs-table-body'].innerHTML.includes('OTTO'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>888</strong>'), 'D0 countries retain the selected-day baseline.');
+    assert(elements['cs-table-body'].innerHTML.includes('<small>데이터일 2026-09-20</small>'));
 
     elements['cs-country'].value = 'SEA';
     elements['cs-country'].fire('change');
@@ -124,6 +135,23 @@ async function flush() {
     assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-retailer-row"/g) || []).length, 2);
     assert.strictEqual((elements['cs-table-body'].innerHTML.match(/class="cs-product-row"/g) || []).length, 1);
     assert.deepStrictEqual(elements['cs-retailer'].options.map(item => item.value), ['', 'Amazon', 'Bestbuy']);
+
+    const currentDay = weeks[0].rows[0].daily[6];
+    currentDay.state = 'unknown';
+    elements['cs-retailer'].value = 'Amazon';
+    elements['cs-retailer'].fire('change');
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'), 'Missing current-day collection must not hide D-1 medians.');
+    currentDay.state = 'complete';
+    elements['cs-retailer'].value = '';
+    elements['cs-date'].value = '2026-09-21';
+    elements['cs-date'].fire('change');
+    await flush();
+    assert.strictEqual(Number(requests.at(-1).searchParams.get('weeks')), 2);
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>888</strong>'), 'Monday inspection uses the previous Sunday snapshot across the week boundary.');
+    assert(elements['cs-table-body'].innerHTML.includes('<small>데이터일 2026-09-20</small>'));
+    elements['cs-date'].value = '2026-09-20';
+    elements['cs-date'].fire('change');
+    await flush();
 
     elements['cs-days'].value = '14';
     elements['cs-days'].fire('change');
@@ -236,7 +264,7 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('검증 대기'));
     assert(elements['cs-table-body'].innerHTML.includes('신규 · 관찰 중 (2/5일)'));
     assert(elements['cs-table-body'].innerHTML.includes('5,000'));
-    assert.match(elements['cs-table-body'].innerHTML, /cs-baseline.*?MAIN<\/span> <span class="cs-baseline-note">— 관찰 중/s);
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'), 'Current-day observation does not hide D-1 medians.');
     assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
     Object.assign(fixtureDay, {state: 'complete', verification_state: 'ready', main: 60, total: 60,
         observation_state: 'ready', alerts: [{metric: 'main', status: 'VOLUME_LOW'}]});
@@ -245,14 +273,19 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('cs-main-low'));
     assert(!elements['cs-table-body'].innerHTML.includes('cs-total low'));
     assert(elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'), 'Current count changes do not change the historical baseline.');
-    fixtureDay.baselines.main.days = 4;
-    fixtureDay.baselines.bsr.rule = 'fixed_100';
-    fixtureDay.baselines.bsr.value = 95;
+    const baselineDay = weeks[0].rows[0].daily[5];
+    baselineDay.observation_state = 'observing';
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML, /cs-baseline.*?MAIN<\/span> <span class="cs-baseline-note">— 관찰 중/s);
+    baselineDay.observation_state = 'ready';
+    baselineDay.baselines.main.days = 4;
+    baselineDay.baselines.bsr.rule = 'fixed_100';
+    baselineDay.baselines.bsr.value = 95;
     elements['cs-retailer'].fire('change');
     assert(!elements['cs-table-body'].innerHTML.includes('<strong>245.5</strong>'));
     assert.match(elements['cs-table-body'].innerHTML, /cs-baseline.*?MAIN<\/span> <span class="cs-baseline-note">— 비교 이력 부족/s);
     assert(!elements['cs-table-body'].innerHTML.includes('(고정 기준)'));
-    const extraSlot = {...weeks[0].rows[0], slot: '오후 <2>', daily: [{...fixtureDay,
+    const extraSlot = {...weeks[0].rows[0], slot: '오후 <2>', daily: [{...baselineDay,
         baselines: {main: {value: 123, days: 8}, bsr: {value: 100, days: 0, rule: 'fixed_100'}}}]};
     weeks[0].rows.push(extraSlot);
     elements['cs-retailer'].fire('change');
