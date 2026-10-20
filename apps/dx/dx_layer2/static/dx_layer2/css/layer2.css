@@ -387,6 +387,8 @@
 .rule-table th { background: var(--bg-secondary); font-weight: 600; color: var(--text-secondary); }
 .rule-table tr:hover { background: var(--bg-secondary); }
 .rule-field { font-weight: 500; color: var(--text-primary); }
+.rule-table td { overflow-wrap: anywhere; vertical-align: top; }
+.rule-examples code { display: inline-block; padding: 3px 6px; margin-bottom: 4px; border-radius: 4px; background: #edf8f3; color: #17674f; white-space: pre-wrap; }
 .rule-pattern {
     font-family: monospace;
     background: #f1f5f9;

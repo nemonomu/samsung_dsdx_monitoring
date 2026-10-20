@@ -215,12 +215,16 @@ def inventory(cursor, day, table, retailer, scopes=None):
         field = rule.get('field')
         if not field:
             continue
-        current = rules.setdefault(field, {'description': [], 'pattern': []})
+        current = rules.setdefault(field, {'description': [], 'pattern': [], 'examples': []})
         for key in ('description', 'pattern'):
             value = rule.get(key, '')
             if value and value not in current[key]:
                 current[key].append(value)
-    rules = {field: {key: '\n'.join(values) for key, values in rule.items()}
+        for example in rule.get('examples', []):
+            if example not in current['examples']:
+                current['examples'].append(example)
+    rules = {field: {key: values if key == 'examples' else '\n'.join(values)
+                    for key, values in rule.items()}
              for field, rule in rules.items()}
     groups = {}
     for row in data['results']:

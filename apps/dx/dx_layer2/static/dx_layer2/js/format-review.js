@@ -89,10 +89,12 @@
     function groupContext(group) {
         const pattern = group.rule?.pattern;
         const description = group.rule?.description;
+        const examples = group.rule?.examples || [];
         const reasons = group.reasons || [];
         const queries = group.queries || {};
         const queryBlock = (title, sql) => sql ? `<div class="fr-query"><div><b>${title}</b><button data-fr="copy-sql" type="button">SQL 복사</button></div><pre>${escape(sql)}</pre></div>` : '';
-        return `<div class="fr-rule"><b>검증규칙 허용 패턴</b><code>${escape(pattern || '등록된 허용 패턴 없음')}</code>${description ? `<small>${escape(description)}</small>` : ''}</div>
+        return `<div class="fr-rule"><div class="fr-rule-original"><b>검증규칙 허용 패턴</b><code>${escape(pattern || '등록된 허용 패턴 없음')}</code>${description ? `<small>${escape(description)}</small>` : ''}</div>
+            <div class="fr-rule-examples"><b>정상 예시</b>${examples.length ? examples.map(value => `<code>${escape(value)}</code>`).join('') : '<small>표시할 예시가 없습니다. 허용 패턴과 설명을 확인하세요.</small>'}</div></div>
             <div class="fr-reasons"><b>이상 / 확인 필요 이유</b><span>${escape(reasons.join(' · ') || (group.states.error ? '이전에 오류로 확정한 값입니다.' : '기존 기준 통과 값의 재확인 대상입니다.'))}</span></div>
             <details class="fr-queries"><summary>조회 SQL · 이번 처리 대상 / 동일 값 전체 이력</summary>${queryBlock('이번 처리 대상 ID 조회', queries.targets)}${queryBlock('동일 값 전체 이력 조회', queries.all_values)}</details>`;
     }
@@ -219,17 +221,42 @@
         el('groups').innerHTML=`<button data-fr="evidence-back">← 목록으로</button><h3>확인 근거 · ${escape(actionLabels[e.action])} ${e.is_del?'(취소됨)':''}</h3><p>${escape(e.context.country)} / ${escape(e.context.retailer_name)} / ${escape(e.context.product)} · 조회일 ${escape(e.inspection_date)}</p><p>${escape(e.actor)} · ${escape(e.created_at)}</p><div class="fr-evidence-reason">${escape(e.reason)}</div><p class="fr-note">처리 당시 저장한 근거입니다. URL의 현재 페이지 내용은 이후 달라질 수 있습니다. 캡처는 이 일괄 처리에 공통으로 적용한 대표 근거입니다.</p><h4>캡처 ${e.captures.length}장 · 클릭하여 원본 크기로 보기</h4><div class="fr-evidence-images">${e.captures.map(c=>`<a href="${escape(c.url)}" target="_blank" rel="noopener noreferrer"><img src="${escape(c.url)}" alt="${escape(c.name)}"><span>${escape(c.name)}</span></a>`).join('') || '<p>첨부한 캡처가 없습니다.</p>'}</div><p>실제 확인으로 체크한 URL: ${checked.size}개${checked.size?'':' (별도 기록 없음)'}</p>${e.targets.map(t=>`<article class="fr-group"><b>${escape(t.field)}</b><div class="fr-value">${escape(t.value)}</div><p>${t.count}건 · 수집일 ${escape(t.source_date)}</p><details><summary>처리 당시 전체 상품·URL (${t.records.length}건)</summary><div class="fr-scroll"><table><thead><tr><th>상품</th><th>상품 URL</th><th>확인 여부</th></tr></thead><tbody>${t.records.map(r=>`<tr><td>${escape(r.item)}<br>${escape(r.name)}</td><td>${link(r)}</td><td>${checked.has(r.url)?'확인한 URL':'처리 대상'}</td></tr>`).join('')}</tbody></table></div></details></article>`).join('')}`;
     }
     async function copySQL(button) {
-        const sql = button.closest('.fr-query')?.querySelector('pre')?.textContent;
+        const query = button.closest('.fr-query');
+        const sql = query?.querySelector('pre')?.textContent;
         if (!sql) return;
-        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(sql);
-        else {
-            const input = document.createElement('textarea');
-            input.value = sql; input.style.position = 'fixed'; input.style.opacity = '0';
-            document.body.appendChild(input); input.select();
-            const copied = document.execCommand('copy'); input.remove();
-            if (!copied) throw new Error('SQL 복사에 실패했습니다. SQL을 선택해서 복사해 주세요.');
+        let copied = false;
+        if (navigator.clipboard?.writeText) {
+            try { await navigator.clipboard.writeText(sql); copied = true; }
+            catch (_) { /* Permission denial still allows the selection fallback. */ }
         }
-        message('조회 SQL을 복사했습니다.');
+        if (!copied) {
+            const input = document.createElement('textarea');
+            const previousFocus = document.activeElement;
+            input.value = sql; input.readOnly = true;
+            input.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+            // showModal() makes everything outside this dialog inert.
+            (button.closest('dialog') || document.body).appendChild(input);
+            try {
+                input.focus({preventScroll:true});
+                input.select();
+                input.setSelectionRange(0, sql.length);
+                copied = document.execCommand('copy');
+            } catch (_) { copied = false; }
+            finally {
+                input.remove();
+                previousFocus?.focus({preventScroll:true});
+            }
+        }
+        let status = query.querySelector('.fr-copy-status');
+        if (!status) {
+            status = document.createElement('div');
+            status.className = 'fr-copy-status';
+            status.setAttribute('role', 'status');
+            query.appendChild(status);
+        }
+        button.textContent = copied ? '복사 완료' : '다시 복사';
+        status.textContent = copied ? '조회 SQL을 복사했습니다.' : '자동 복사에 실패했습니다. SQL을 직접 선택해서 복사해 주세요.';
+        message(status.textContent);
     }
     async function onClick(event) {
         if (state?.busy) return;

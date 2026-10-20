@@ -107,11 +107,13 @@ class FormatReviewTests(TestCase):
 
     def test_review_rule_payload_uses_actual_registered_rule(self):
         rule = {'field': 'pick_up_availability', 'pattern': 'Pickup Ready Today',
-                'description': '허용된 수령 문구'}
+                'description': '허용된 수령 문구', 'examples': ['Pickup Ready Today']}
         with patch.object(services, 'get_format_rules', return_value={'rules': [rule]}):
             data = service.inventory(object(), DAY, 'sea_ref_retail', 'Lowes')
         group = next(g for g in data['groups'] if g['value'] == 'Pickup Ready by 9am Tomorrow')
         self.assertEqual(rule['pattern'], group['rule']['pattern'])
+        self.assertEqual(rule['description'], group['rule']['description'])
+        self.assertEqual(rule['examples'], group['rule']['examples'])
 
     def test_baseline_exclusions_do_not_change_validation_or_inventory(self):
         data = self.inventory()

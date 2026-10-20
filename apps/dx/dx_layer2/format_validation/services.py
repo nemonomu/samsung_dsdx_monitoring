@@ -2861,31 +2861,37 @@ def get_format_rules(cursor, table_name, retailer):
     형식검증 규칙 조회.
     Returns dict: {rules: [...]}
     """
-    if seib_format_validation.product_line_for(table_name):
-        return {'rules': seib_format_validation.get_format_rule_details(table_name, retailer)}
-    if table_name in TSE_SOURCE_CONFIG:
-        return {
-            'rules': _get_tse_static_format_rules(table_name, retailer)
-        }
-    if table_name in SIEL_SOURCE_CONFIG:
-        return {
-            'rules': _get_siel_static_format_rules(table_name, retailer)
-        }
+    from apps.dx.dx_layer2.format_validation.rule_examples import static_rules, database_examples
+    seib_product_line = seib_format_validation.product_line_for(table_name)
+    if seib_product_line:
+        return static_rules(
+            seib_format_validation.get_format_rule_details(table_name, retailer),
+            lambda row: seib_format_validation.evaluate_format(row, seib_product_line), retailer)
+    tse_product_line = _tse_format_product_line(table_name)
+    if tse_product_line:
+        return static_rules(
+            _get_tse_static_format_rules(tse_product_line, retailer),
+            lambda row: evaluate_tse_format_row(row, tse_product_line, retailer), retailer)
+    siel_source_key = _siel_format_source_key(table_name)
+    if siel_source_key:
+        return static_rules(
+            _get_siel_static_format_rules(siel_source_key, retailer),
+            lambda row: evaluate_siel_format_row(row, siel_source_key, retailer), retailer)
     seda_product_line = seda_format_validation.product_line_for(table_name)
     if seda_product_line:
-        return {'rules': seda_format_validation.get_format_rule_details(seda_product_line, retailer)}
+        return static_rules(
+            seda_format_validation.get_format_rule_details(seda_product_line, retailer),
+            lambda row: seda_format_validation.rules.evaluate(row, seda_product_line, retailer), retailer)
     seg_product_line = seg_validation.product_line_for(table_name)
     if seg_product_line:
-        return {
-            'rules': seg_validation.get_format_rule_details(
-                seg_product_line, retailer
-            )
-        }
+        return static_rules(
+            seg_validation.get_format_rule_details(seg_product_line, retailer),
+            lambda row: seg_validation.evaluate_format_row(row, seg_product_line, retailer), retailer)
     sem_product_line = sem_validation.product_line_for(table_name)
     if sem_product_line:
-        return {
-            'rules': sem_validation.get_format_rule_details(sem_product_line, retailer)
-        }
+        return static_rules(
+            sem_validation.get_format_rule_details(sem_product_line, retailer),
+            lambda row: sem_validation.evaluate_format(row, sem_product_line, retailer), retailer)
 
     sea_product_key = _sea_format_product_key(table_name)
     if sea_product_key:
@@ -2896,7 +2902,7 @@ def get_format_rules(cursor, table_name, retailer):
     cursor.execute(f"""
         SELECT r.column_name, t.check_type, t.pattern,
                r.rule_value, r.extra_allowed,
-               r.error_message
+               r.error_message, r.forbidden_chars
         FROM {tbl_rules} r
         LEFT JOIN {tbl_templates} t ON r.template_id = t.id
         WHERE r.table_name = %s AND r.account_name = %s
@@ -2972,7 +2978,10 @@ def get_format_rules(cursor, table_name, retailer):
             result.append({
                 'field': row['column_name'],
                 'description': description or '형식 검증',
-                'pattern': '\n'.join(patterns)
+                'pattern': '\n'.join(patterns),
+                'examples': database_examples(row),
+                'example_note': ('참조 목록에 실제로 등록된 값만 정상입니다.'
+                                 if check_type == 'fk_check' else ''),
             })
 
     # 필드명 알파벳순 정렬

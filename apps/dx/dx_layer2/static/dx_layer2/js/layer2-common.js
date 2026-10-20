@@ -2023,17 +2023,18 @@ async function openRuleModal(tableName, retailer) {
         const rules = data.rules || [];
 
         let html = '<table class="rule-table"><thead><tr>';
-        html += '<th>필드명</th><th>검증 규칙</th><th>허용 패턴/값</th>';
+        html += '<th>필드명</th><th>검증 규칙</th><th>허용 패턴/값</th><th>정상 예시</th>';
         html += '</tr></thead><tbody>';
 
         if (rules.length === 0) {
-            html += '<tr><td colspan="3" style="text-align: center;">등록된 규칙이 없습니다.</td></tr>';
+            html += '<tr><td colspan="4" style="text-align: center;">등록된 규칙이 없습니다.</td></tr>';
         } else {
             rules.forEach(rule => {
                 html += `<tr>
-                    <td class="rule-field">${rule.field}</td>
-                    <td>${rule.description}</td>
-                    <td><span class="rule-pattern">${rule.pattern}</span></td>
+                    <td class="rule-field">${esc(rule.field)}</td>
+                    <td>${esc(rule.description)}</td>
+                    <td><span class="rule-pattern">${esc(rule.pattern)}</span></td>
+                    <td class="rule-examples">${(rule.examples || []).length ? rule.examples.map(value => `<code>${esc(value)}</code>`).join('<br>') : esc(rule.example_note || '허용 패턴과 설명을 함께 확인하세요.')}</td>
                 </tr>`;
             });
         }

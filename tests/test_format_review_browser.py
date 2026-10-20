@@ -43,7 +43,16 @@ def serve(route):
         route.fulfill(status=response.status_code,headers=dict(response.items()),body=response.content)
         return
     response=review_api.reviews(request)
-    route.fulfill(status=response.status_code,content_type='application/json',body=response.content.decode())
+    body = json.loads(response.content)
+    for group in body.get('groups', []):
+        if group['field'] == 'final_sku_price':
+            group['rule'] = {'pattern': r'^\$[0-9]+(,[0-9]{3})*(\.[0-9]{1,2})?$',
+                             'description': '$ 금액 형식이어야 합니다.',
+                             'examples': ['$999', '$1,299', '$1,299.99']}
+        elif group['field'] == 'pick_up_availability':
+            group['rule'] = {'pattern': 'Pickup Ready Today', 'description': '기존 수령 문구 규칙',
+                             'examples': ['Pickup Ready Today']}
+    route.fulfill(status=response.status_code,content_type='application/json',body=json.dumps(body))
 
 
 with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:raw),patch.object(review_api,'dx_connection',connection_stub),patch.object(review_api.timezone,'localdate',return_value=DAY),sync_playwright() as p:
@@ -68,6 +77,9 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     expect(page.locator('#fr-field option[value="final_sku_price"]')).to_have_count(0)
     page.locator('[data-tab="issues"]').click()
     expect(page.locator('#fr-groups')).to_contain_text('final_sku_price')
+    price_group = page.locator('.fr-group').filter(has=page.locator('.fr-value', has_text='bad'))
+    expect(price_group.locator('.fr-rule-original')).to_contain_text(r'^\$[0-9]+')
+    expect(price_group.locator('.fr-rule-examples')).to_contain_text('$1,299.99')
     group=page.locator('.fr-group').filter(has=page.locator('.fr-value',has_text='Pickup Ready by 9am Tomorrow'))
     expect(group).to_have_count(1)
     expect(group.locator('.fr-rule')).to_contain_text('검증규칙 허용 패턴')
@@ -76,6 +88,14 @@ with patch.object(services,'_get_format_detail_raw',side_effect=lambda *a,**k:ra
     expect(group.locator('.fr-query')).to_have_count(2)
     expect(group.locator('.fr-query').first).to_contain_text('id IN (1, 2, 3)')
     expect(group.locator('.fr-query').last).to_contain_text("pick_up_availability = 'Pickup Ready by 9am Tomorrow'")
+    page.evaluate("""() => Object.defineProperty(navigator, 'clipboard', {
+        configurable:true, value:{writeText:async text=>{window.copiedSQL=text;}}
+    })""")
+    for query in (group.locator('.fr-query').first, group.locator('.fr-query').last):
+        sql = query.locator('pre').text_content()
+        query.locator('[data-fr="copy-sql"]').click()
+        expect(query.locator('[data-fr="copy-sql"]')).to_have_text('복사 완료')
+        assert page.evaluate('window.copiedSQL') == sql
     assert group.locator('.fr-links a').count()==3
     assert group.locator('.fr-links a').first.get_attribute('href')=='https://www.lowes.com/pd/1'
     assert group.locator('.fr-links a').first.get_attribute('rel')=='noopener noreferrer'
