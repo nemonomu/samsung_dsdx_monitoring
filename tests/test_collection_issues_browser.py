@@ -35,7 +35,8 @@ with sync_playwright() as p:
                 if(failed){ok=false;value={error:'조회 실패'};}
                 else {
                     const params=new URLSearchParams(url.split('?')[1]),state=params.get('status');
-                    value={start_date:'2026-09-01',target_count:1,scans:[{scanned_through:'2026-10-19',last_checked_at:'2026-10-20T00:00:00Z',error:false}],issues:(state==='all'||state===issue.status)?[structuredClone(issue)]:[]};
+                    const columnIssue={...structuredClone(issue),id:2,column:'inventory_status',severity:'abnormal',status:'open',baseline:38,observed_count:0};
+                    value={start_date:'2026-09-01',target_count:1,scans:[{scanned_through:'2026-10-19',last_checked_at:'2026-10-20T00:00:00Z',error:false}],issues:[issue,columnIssue].filter(row=>state==='all'||state===row.status).map(row=>structuredClone(row))};
                 }
             }
             return {ok,json:async()=>value};
@@ -44,6 +45,8 @@ with sync_playwright() as p:
     page.add_script_tag(path=str(STATIC/'js/collection-issues.js'))
     page.evaluate("CollectionIssues.load({date:'2026-10-20'})")
     page.wait_for_selector('[data-ci-detail]')
+    assert page.locator('.ci-head h3').inner_text() == '과거 미해결 · 미수집 1건'
+    assert 'inventory_status' not in page.locator('.ci-panel').inner_text()
     assert page.evaluate("""()=>{
         let a=document.querySelector('#filter-bar-container').getBoundingClientRect(),b=document.querySelector('.ci-panel').getBoundingClientRect(),c=document.querySelector('#stats-grid').getBoundingClientRect();return a.bottom<=b.top&&b.bottom<=c.top;
     }""")
@@ -83,6 +86,17 @@ with sync_playwright() as p:
     page.evaluate("failed=true; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_selector('[role="alert"]')
     assert '미해결 없음으로 처리하지 않습니다' in page.locator('[role="alert"]').inner_text()
+    # The same stored column issue remains visible on the column alert page.
+    page.evaluate("""()=>{
+        failed=false;issue.status='open';LAYER1.section='column_alerts';
+        document.querySelector('#collection-issues-container').outerHTML='<div id="collection-issues-container"></div>';
+        document.querySelectorAll('dialog').forEach(dialog=>dialog.remove());
+    }""")
+    page.add_script_tag(path=str(STATIC/'js/collection-issues.js'))
+    page.evaluate("CollectionIssues.load({date:'2026-10-20'})")
+    page.wait_for_selector('[data-ci-detail="2"]')
+    assert page.locator('.ci-head h3').inner_text() == '과거 미해결 · 수집 이상 2건'
+    assert 'inventory_status' in page.locator('.ci-panel').inner_text()
     assert not errors,errors
     browser.close()
 print('PASS: production backlog placement, unchanged original date, SQL tabs/copy, acknowledgement persistence, mandatory exception reason, history, XSS escaping, mobile and query failure.')
