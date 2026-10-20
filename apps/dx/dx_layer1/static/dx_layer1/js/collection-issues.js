@@ -41,6 +41,13 @@
         const deferred = scans.filter(s=>s.start_basis==='first_observed' && s.coverage_start>data.start_date);
         const coverage = `점검 시작 ${data.start_date} · ${through ? '공통 점검 완료 '+through+'까지' : '과거 점검 준비 중'}${unchecked>0?' · 점검 대기 '+unchecked+'개 대상':''}${unavailable?' · 조회 실패 '+unavailable+'개 대상':''}${checked?' · 최근 점검 '+new Date(checked).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):''}`;
         host.innerHTML = `<section class="ci-panel ${rows.length?'':'ci-clear'}" aria-label="과거 미해결 ${issueLabel}"><div class="ci-head"><div><h3>과거 미해결 · ${issueLabel} ${rows.length}건${status!=='open'?' (이력 조회)':''}</h3><p>조회 날짜의 정상 여부와 별개입니다. 원래 누락된 날짜의 복구·검증 전까지 유지합니다.</p></div><div class="ci-controls"><select aria-label="미해결 및 처리 이력" id="ci-status"><option value="open">미해결</option><option value="resolved">복구 완료 이력</option><option value="excepted">예외 처리 이력</option><option value="all">전체 이력</option></select><button type="button" data-ci-refresh>새로고침</button></div></div><p class="ci-note ${unavailable||unchecked?'ci-error':''}">${esc(coverage)}</p>${rows.length?`<div class="ci-scroll"><table><thead><tr><th>국가 · 리테일러</th><th>제품군</th><th>문제 데이터일</th><th>수집 항목</th><th>상태</th><th>상세</th></tr></thead><tbody>${rows.slice((page-1)*size,page*size).map(r=>`<tr><td><b>${esc(r.country)} · ${esc(r.retailer)}</b></td><td>${esc(r.product)}</td><td><b>${esc(r.source_date)}</b></td><td>${esc(r.column||'전체 미수집')}<small>${r.column?'발견 당시 기준 '+esc(r.baseline)+' / 수집 '+r.observed_count+'건':'DB 원본 수집일 · 모든 배치'}</small></td><td><span class="ci-status">${statusText[r.status]||esc(r.status)}</span></td><td><button type="button" data-ci-detail="${r.id}">상세 보기</button> <button type="button" data-ci-sql="${r.id}">조회 SQL</button></td></tr>`).join('')}</tbody></table></div><div class="ci-page"><span>${page} / ${pages}페이지</span><button type="button" data-ci-page="${page-1}" ${page===1?'disabled':''}>이전</button><button type="button" data-ci-page="${page+1}" ${page===pages?'disabled':''}>다음</button></div>`:`<p class="ci-note">${unavailable||unchecked?'아직 전체 점검을 완료하지 못했습니다. 미수집 0건으로 확정하지 않습니다.':'저장된 해당 상태의 이력이 없습니다. 완료 범위 이후의 날짜는 다음 점검에서 확인합니다.'}</p>`}</section>`;
+        if (missingOnly && !rows.length && !unavailable && unchecked <= 0 && !deferred.length) {
+            const panel = host.querySelector('.ci-panel');
+            panel.classList.add('ci-compact');
+            panel.title = coverage;
+            host.querySelector('.ci-head p').remove();
+            host.querySelectorAll('.ci-note').forEach(note => note.remove());
+        }
         document.getElementById('ci-status').value=status;
         if (deferred.length) {
             const note=document.createElement('p');
