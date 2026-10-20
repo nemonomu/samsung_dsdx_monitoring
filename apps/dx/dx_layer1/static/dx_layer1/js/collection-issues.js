@@ -16,7 +16,7 @@
     async function request(url, options = {}) {
         const response = await fetch(url, options);
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || '조회하지 못했습니다.');
+        if (!response.ok) throw new Error([data.error || '조회하지 못했습니다.', data.action].filter(Boolean).join(' '));
         return data;
     }
     function scope(values) {

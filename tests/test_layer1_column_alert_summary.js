@@ -34,7 +34,7 @@ function setup(section = 'dashboard') {
     vm.runInContext(read('static/js/sidebar.js'), sandbox);
     vm.runInContext(read(path + 'column-alert-cache.js'), sandbox);
     vm.runInContext(read(path + 'column-alert-summary.js'), sandbox);
-    const respond = (req, statuses, ok = true) => req.resolve({ok,json:async () => ({comparisons:statuses.map(status => ({status}))})});
+    const respond = (req, statuses, ok = true, extra = {}) => req.resolve({ok,json:async () => ({comparisons:statuses.map(status => ({status})), ...extra})});
     return {sandbox,nodes,menu,pending,respond,events,badge:() => menu.querySelector('.sidebar-issue-badge')};
 }
 (async () => {
@@ -69,13 +69,23 @@ function setup(section = 'dashboard') {
     const retry = s.sandbox.ColumnAlertSummary.load('2026-09-21', true);
     s.respond(s.pending[8], ['abnormal']); s.respond(s.pending[9], [], false); await tick();
     s.respond(s.pending[10], []); await retry;
-    assert.equal(s.nodes.get('l1-column-alert-total').textContent, '조회 실패');
+    assert.equal(s.nodes.get('l1-column-alert-total').textContent, '일부 조회 실패');
+    assert.match(s.nodes.get('l1-column-alert-breakdown').textContent, /2\/3개 대상 조회 완료/);
     assert.equal(s.badge(), null, 'failure cannot look like zero or a complete count');
     const count = s.pending.length;
     await s.sandbox.ColumnAlertSummary.load('2099-01-01');
     assert.equal(s.pending.length, count, 'future inspection dates do not query unsupported API dates');
     assert.equal(s.nodes.get('l1-column-alert-total').textContent, '조회 대기');
     assert.equal(s.nodes.get('l1-column-alert-link').attributes['aria-disabled'], 'true');
+
+    const history = setup();
+    const historyRun = history.sandbox.ColumnAlertSummary.load('2026-09-23');
+    history.respond(history.pending[0], ['abnormal'], true, {issue_history_error:true});
+    history.respond(history.pending[1], ['review']); await tick();
+    history.respond(history.pending[2], []); await historyRun;
+    assert.equal(history.nodes.get('l1-column-alert-total').textContent, '2건 · 이력 저장 실패');
+    assert.equal(history.badge().textContent, '1', 'storage failure must preserve fetched abnormal counts');
+    assert.match(history.nodes.get('l1-column-alert-breakdown').textContent, /현재 통계 조회 완료/);
 
     const detail = setup('retail');
     detail.nodes.delete('l1-column-alert-link'); detail.nodes.delete('l1-column-alert-total'); detail.nodes.delete('l1-column-alert-breakdown');

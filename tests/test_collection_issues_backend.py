@@ -16,6 +16,7 @@ import django
 django.setup()
 from django.test import TestCase, RequestFactory, override_settings
 from django.test.runner import DiscoverRunner
+from django.db import OperationalError
 from apps.dx.dx_layer1.collection_issues import services as s, api
 from apps.dx.dx_layer1.collection_issues.queries import sql_queries
 from apps.dx.dx_layer1.column_statistics.dates import day_sql
@@ -33,6 +34,23 @@ def sample(target=TARGET,count=0,total=300,history=100):
     return data,{d['date']:True for d in daily}
 
 class IssueTests(TestCase):
+    def test_listing_identifies_schema_and_lock_errors_without_exposing_sql(self):
+        req = RequestFactory().get('/')
+        req.user = SimpleNamespace(is_authenticated=True)
+        for error, code in (
+            ('no such table: dx_layer1_collectionissue', 'issue_storage_schema'),
+            ('database is locked', 'issue_storage_busy'),
+            ('private connection detail', 'issue_storage_error'),
+        ):
+            with patch.object(Issue.objects, 'filter', side_effect=OperationalError(error)):
+                with self.assertLogs('apps.dx.dx_layer1.collection_issues.errors', level='ERROR'):
+                    response = api.listing(req)
+            payload = json.loads(response.content)
+            self.assertEqual(503, response.status_code)
+            self.assertEqual(code, payload['code'])
+            self.assertTrue(payload['action'])
+            self.assertNotIn(error, response.content.decode())
+
     def observe(self,*,target=TARGET,count=0,total=300,raw=300,history=100):
         data,complete=sample(target,count,total,history)
         s.reconcile_day(data,target,complete,raw,now=NOW)

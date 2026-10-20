@@ -90,7 +90,7 @@
         const jobs = catalog.filter(s => (!selection.country || s.country === selection.country) && (!selection.product || s.product === selection.product))
             .flatMap(s => s.retailers.map(retailer => ({country: s.country, product: s.product, retailer})));
         let next = 0, completed = 0;
-        const failed = [];
+        const failed = [], historyFailed = [];
         form.querySelector('button').disabled = true;
         sidebar('loading');
         function update() {
@@ -111,6 +111,9 @@
                 progress.textContent = `검수일 ${selection.date} · 전체 ${jobs.length}개 대상 확인 완료 · 이상 ${abnormal}건 · 확인 필요 ${review}건 · 전체 미수집 ${missing}건`;
                 sidebar('complete', abnormal + missing, `${selection.date} · 이상 컬럼 ${abnormal}건 · 전체 미수집 ${missing}건`);
             }
+            if (finished && historyFailed.length) {
+                progress.textContent += ` · 이력 저장 실패 ${historyFailed.length}개 (${historyFailed.join(', ')}) — 현재 조회 결과는 표시했지만 이력 보존은 서버 확인이 필요합니다.`;
+            }
             render();
         }
         async function worker() {
@@ -119,7 +122,7 @@
                 try {
                     const data = await window.ColumnAlertCache.load(job, selection.date, {signal: current.signal, force});
                     if (current.signal.aborted) return;
-                    if (data.issue_history_error) failed.push(`${job.country} ${job.product} ${job.retailer} (이력 저장 실패)`);
+                    if (data.issue_history_error) historyFailed.push(`${job.country} ${job.product} ${job.retailer}`);
                     const comparisons = data.comparisons.some(row => row.status === 'uncollected')
                         ? [{column: '전체 미수집', status: 'uncollected', current: 0, baseline: null, history_days: 0, ratio: null, delta: null}]
                         : data.comparisons;

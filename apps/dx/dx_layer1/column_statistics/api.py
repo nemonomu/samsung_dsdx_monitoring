@@ -11,6 +11,7 @@ from .services import catalog, daily_counts, select_source
 from .comparison import attach_comparisons
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.dx.dx_layer1.collection_issues.queries import raw_counts
+from apps.dx.dx_layer1.collection_issues.errors import storage_error
 
 
 @require_GET
@@ -68,8 +69,9 @@ def daily(request):
         try:
             from .observations import remember_comparison
             remember_comparison(result, target)
-        except Exception:
+        except Exception as exc:
             result['issue_history_error'] = True
+            result['issue_history_diagnostic'] = storage_error(exc, 'remember_comparison')
         result['daily'] = result['daily'][-days:]
         result['dates'] = result['dates'][-days:]
     except Exception:

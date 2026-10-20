@@ -11,6 +11,7 @@ from apps.dx.dx_layer1.column_statistics.services import catalog, daily_counts
 from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, KST
 from .queries import sql_queries, raw_counts
 from .services import START_DATE, environment, serialize, event, reconcile_day
+from .errors import storage_error
 
 
 def reply(data, status=200):
@@ -51,8 +52,8 @@ def listing(request):
                       'scans': scans, 'target_count': len(jobs)})
     except (ValueError, TypeError):
         return reply({'error': '조회 조건을 확인해주세요.'}, 400)
-    except Exception:
-        return reply({'error': '미해결 이력을 조회하지 못했습니다. 다시 조회해주세요.'}, 503)
+    except Exception as exc:
+        return reply(storage_error(exc, 'listing'), 503)
 
 
 @require_GET

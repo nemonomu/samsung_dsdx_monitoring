@@ -42,14 +42,14 @@
             return Promise.resolve();
         }
         spinner.hidden = false;
-        let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0, missing = 0;
+        let next = 0, completed = 0, failures = 0, historyFailures = 0, abnormal = 0, review = 0, missing = 0;
         async function worker() {
             while (next < jobs.length && !current.signal.aborted) {
                 const job = jobs[next++];
                 try {
                     const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force});
                     if (current.signal.aborted) return;
-                    if (data.issue_history_error) failures++;
+                    if (data.issue_history_error) historyFailures++;
                     abnormal += data.comparisons.filter(row => row.status === 'abnormal').length;
                     review += data.comparisons.filter(row => row.status === 'review').length;
                     missing += data.comparisons.some(row => row.status === 'uncollected') ? 1 : 0;
@@ -67,8 +67,8 @@
             if (window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
             if (failures || !jobs.length) {
-                if (total) total.textContent = '조회 실패';
-                if (breakdown) breakdown.textContent = '전체 건수를 확인하지 못했습니다. 눌러서 다시 확인해주세요.';
+                if (total) { total.textContent = '일부 조회 실패'; total.classList.remove('is-loading'); }
+                if (breakdown) breakdown.textContent = `${jobs.length - failures}/${jobs.length}개 대상 조회 완료 · 조회된 이상 ${abnormal}건 · 확인 필요 ${review}건 · 전체 미수집 ${missing}건${historyFailures ? ` · 이력 저장 실패 ${historyFailures}개 대상` : ''}. 전체 건수는 아직 확정할 수 없습니다.`;
                 if (menu) menu.title = `${date} · 컬럼 수집 상태 조회 실패 · 메뉴에서 다시 확인해주세요.`;
                 return;
             }
@@ -80,6 +80,10 @@
             }
             if (total) { total.textContent = (abnormal + review + missing).toLocaleString('ko-KR'); total.classList.remove('is-loading'); }
             if (breakdown) breakdown.innerHTML = `<span class="l1-column-alert-abnormal">이상 ${abnormal.toLocaleString('ko-KR')}</span> · <span class="l1-column-alert-review">확인 필요 ${review.toLocaleString('ko-KR')}</span> · 전체 미수집 ${missing}`;
+            if (historyFailures) {
+                if (total) total.textContent += '건 · 이력 저장 실패';
+                if (breakdown) breakdown.textContent += ` · 현재 통계 조회 완료. ${historyFailures}개 대상의 이력 저장은 서버 확인이 필요합니다.`;
+            }
         });
         return pending;
     }
