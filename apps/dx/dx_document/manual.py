@@ -1,0 +1,260 @@
+"""Authenticated manual viewing, validated edits and append-only version history."""
+from functools import lru_cache, wraps
+import hashlib
+import io
+import json
+import math
+from pathlib import Path
+import re
+from urllib.parse import urlparse
+
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import IntegrityError, transaction
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.shortcuts import render
+from django.views.decorators.cache import never_cache
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.http import require_GET, require_POST
+from PIL import Image, UnidentifiedImageError
+
+from .models import ManualImage, ManualRevision
+
+DATA_DIR = Path(__file__).with_name('manual_data')
+IMAGE_URL = '/dx/documents/manual/images/'
+MAX_DATA_BYTES = 2 * 1024 * 1024
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+def is_manual_category(category):
+    name = re.sub(r'\s+', '', category.get('category_name', '')).lower()
+    return name in {'dx검수매뉴얼', 'dx검수메뉴얼', 'dx매뉴얼', 'dx메뉴얼'}
+
+
+def dx_access(view):
+    @login_required
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        user = request.user
+        allowed = user.is_staff or user.is_superuser
+        if not allowed:
+            try:
+                allowed = user.profile.can_access_dx
+            except (ObjectDoesNotExist, AttributeError):
+                allowed = False
+        if not allowed:
+            return JsonResponse({'error': 'DX 접근 권한이 필요합니다.'}, status=403)
+        return view(request, *args, **kwargs)
+    return wrapped
+
+
+@lru_cache(maxsize=1)
+def seed_data():
+    return json.loads((DATA_DIR / 'seed.json').read_text(encoding='utf-8'))
+
+
+def metadata(revision):
+    return {'version': revision.version if revision else 0,
+            'created_by': revision.created_by if revision else '',
+            'created_at': revision.created_at.isoformat() if revision else None}
+
+
+def current_revision():
+    return ManualRevision.objects.first()
+
+
+@dx_access
+@require_GET
+@never_cache
+def page(request):
+    from .document.document_services import get_categories_list
+    categories = get_categories_list()
+    for category in categories:
+        category['is_manual'] = is_manual_category(category)
+    return render(request, 'dx_document/manual.html', {'categories': categories})
+
+
+@dx_access
+@require_GET
+@never_cache
+@ensure_csrf_cookie
+@xframe_options_sameorigin
+def content(request):
+    revision = current_revision()
+    return render(request, 'dx_document/manual_content.html', {
+        'guide_data': revision.data if revision else seed_data(),
+        'guide_meta': metadata(revision),
+    })
+
+
+def validate_data(data):
+    """Allow text/photo edits only, keeping schema identifiers and source profiles fixed."""
+    seed = seed_data()
+    if not isinstance(data, dict) or set(data) != set(seed):
+        raise ValueError('매뉴얼 데이터 형식이 올바르지 않습니다.')
+    for key in seed.keys() - {'datasets', 'photos'}:
+        if data[key] != seed[key]:
+            raise ValueError('국가·리테일러 및 기준 정의는 변경할 수 없습니다.')
+    rows = data['datasets']
+    if not isinstance(rows, list) or len(rows) != len(seed['datasets']):
+        raise ValueError('제품군 구성이 올바르지 않습니다.')
+    editable = {'label', 'scope', 'page', 'position', 'original', 'example', 'note', 'userEdited', 'images', 'verified'}
+    for row, original in zip(rows, seed['datasets']):
+        if not isinstance(row, dict) or {k: v for k, v in row.items() if k != 'fields'} != {k: v for k, v in original.items() if k != 'fields'}:
+            raise ValueError('제품군 정의는 변경할 수 없습니다.')
+        if not isinstance(row.get('fields'), list) or len(row['fields']) != len(original['fields']):
+            raise ValueError('컬럼 구성이 올바르지 않습니다.')
+        for field, before in zip(row['fields'], original['fields']):
+            if not isinstance(field, dict) or {k: v for k, v in field.items() if k not in editable} != {k: v for k, v in before.items() if k not in editable}:
+                raise ValueError('컬럼 번호와 실제 컬럼명은 변경할 수 없습니다.')
+            for key in ('label', 'scope', 'page', 'position', 'original', 'example', 'note'):
+                text_value(field.get(key), 20000)
+            if not field['label'].strip() or len(field['label']) > 150:
+                raise ValueError('컬럼 이름은 1~150자로 입력하세요.')
+            if not isinstance(field.get('images'), list) or any(not isinstance(v, str) or not re.fullmatch(r'[\w-]+', v, re.ASCII) for v in field['images']):
+                raise ValueError('이미지 참조가 올바르지 않습니다.')
+    photos = data['photos']
+    if not isinstance(photos, list) or not 1 <= len(photos) <= 300:
+        raise ValueError('이미지는 최대 300개까지 저장할 수 있습니다.')
+    names = set()
+    image_refs = set()
+    fields_by_retailer = {}
+    for row in rows:
+        fields_by_retailer.setdefault(row['retailer'], set()).update(f['field'] for f in row['fields'])
+    for photo in photos:
+        if not isinstance(photo, dict):
+            raise ValueError('이미지 구성이 올바르지 않습니다.')
+        name = photo.get('name')
+        if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,150}', name):
+            raise ValueError('이미지 이름이 올바르지 않거나 중복되었습니다.')
+        if photo.get('retailer') not in fields_by_retailer or photo.get('category') not in {'tv', 'ref', 'ldy', 'ldy_dryer', 'all'}:
+            raise ValueError('이미지의 리테일러·제품군을 확인하세요.')
+        identity = (photo['retailer'], photo['category'], name)
+        if identity in names:
+            raise ValueError('같은 제품군의 이미지 이름이 중복되었습니다.')
+        names.add(identity)
+        for key in ('stage', 'region', 'note', 'date', 'url', 'commonExample'):
+            text_value(photo.get(key, ''), 20000)
+        url = photo.get('url', '')
+        if url and (urlparse(url).scheme not in {'http', 'https'} or not urlparse(url).netloc):
+            raise ValueError('출처 URL은 http 또는 https 주소여야 합니다.')
+        for key in ('width', 'height'):
+            finite_number(photo.get(key), 1, 30000)
+        boxes = photo.get('boxes')
+        if not isinstance(boxes, list) or len(boxes) > 300:
+            raise ValueError('번호 박스 구성이 올바르지 않습니다.')
+        for box in boxes:
+            if not isinstance(box, dict):
+                raise ValueError('번호 박스를 확인하세요.')
+            for key in ('x', 'y', 'w', 'h'):
+                finite_number(box.get(key), -100000 if key in ('x', 'y') else 0, 100000)
+            if not isinstance(box.get('fields'), list) or not box['fields'] or any(f not in fields_by_retailer[photo['retailer']] for f in box['fields']):
+                raise ValueError('번호 박스의 연결 컬럼을 확인하세요.')
+        samples = photo.get('sampleValues', {})
+        if not isinstance(samples, dict):
+            raise ValueError('이미지의 예시 값을 확인하세요.')
+        for value in samples.values():
+            text_value(value, 20000)
+        ref = photo.get('customImage') or data['assets'].get(name)
+        if not isinstance(ref, str) or not re.fullmatch(re.escape(IMAGE_URL) + r'[a-f0-9]{64}/', ref):
+            raise ValueError('이미지를 먼저 업로드하세요.')
+        image_refs.add(ref.split('/')[-2])
+    missing = [digest for digest in image_refs if not (DATA_DIR / 'images' / digest).is_file()]
+    if missing and ManualImage.objects.filter(digest__in=missing).count() != len(missing):
+        raise ValueError('저장되지 않은 이미지가 있습니다. 다시 업로드하세요.')
+    return data
+
+
+def text_value(value, limit):
+    if not isinstance(value, str) or len(value) > limit:
+        raise ValueError('문구의 형식 또는 길이를 확인하세요.')
+
+
+def finite_number(value, minimum, maximum):
+    if type(value) not in (int, float) or not math.isfinite(value) or not minimum <= value <= maximum:
+        raise ValueError('이미지 크기와 번호 박스 좌표를 확인하세요.')
+
+
+@dx_access
+@require_POST
+@never_cache
+def save(request):
+    if len(request.body) > MAX_DATA_BYTES:
+        return JsonResponse({'error': '매뉴얼 데이터가 너무 큽니다.'}, status=413)
+    try:
+        payload = json.loads(request.body)
+        if not isinstance(payload, dict) or type(payload.get('version')) is not int or payload['version'] < 0:
+            raise ValueError('저장 버전이 올바르지 않습니다.')
+        data = validate_data(payload.get('data'))
+        version = payload['version']
+        with transaction.atomic():
+            latest = current_revision()
+            if version != (latest.version if latest else 0):
+                return JsonResponse({'error': '다른 사용자가 먼저 저장했습니다. 현재 변경을 확인한 뒤 새로고침하여 최신 버전에서 다시 수정하세요.'}, status=409)
+            revision = ManualRevision.objects.create(version=version + 1, data=data, created_by=request.user.username)
+        return JsonResponse({'success': True, **metadata(revision)})
+    except IntegrityError:
+        return JsonResponse({'error': '다른 사용자가 먼저 저장했습니다. 최신 버전을 확인하세요.'}, status=409)
+    except (ValueError, TypeError, KeyError) as exc:
+        return JsonResponse({'error': str(exc) or '저장 내용을 확인하세요.'}, status=400)
+
+
+@dx_access
+@require_GET
+@never_cache
+def history(request):
+    version = request.GET.get('version')
+    if version is not None:
+        if not version.isdigit():
+            return JsonResponse({'error': '버전이 올바르지 않습니다.'}, status=400)
+        if int(version) == 0:
+            return JsonResponse({'data': seed_data(), **metadata(None)})
+        revision = ManualRevision.objects.filter(version=int(version)).first()
+        if not revision:
+            raise Http404
+        return JsonResponse({'data': revision.data, **metadata(revision)})
+    revisions = ManualRevision.objects.defer('data')[:30]
+    return JsonResponse({'revisions': [metadata(r) for r in revisions] + [metadata(None)]})
+
+
+@dx_access
+@require_POST
+def upload(request):
+    file = request.FILES.get('image')
+    if not file or file.size > MAX_IMAGE_BYTES:
+        return JsonResponse({'error': '15MB 이하의 PNG, JPG, WEBP 이미지를 선택하세요.'}, status=400)
+    raw = file.read()
+    try:
+        with Image.open(io.BytesIO(raw)) as picture:
+            mime = {'PNG': 'image/png', 'JPEG': 'image/jpeg', 'WEBP': 'image/webp'}.get(picture.format)
+            if not mime or picture.width * picture.height > 40_000_000:
+                raise ValueError
+            picture.verify()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        return JsonResponse({'error': '유효한 PNG, JPG, WEBP 이미지가 아닙니다.'}, status=400)
+    digest = hashlib.sha256(raw).hexdigest()
+    ManualImage.objects.get_or_create(digest=digest, defaults={
+        'content': raw, 'content_type': mime, 'created_by': request.user.username,
+    })
+    return JsonResponse({'url': IMAGE_URL + digest + '/'})
+
+
+@dx_access
+@require_GET
+def image(request, digest):
+    if not re.fullmatch(r'[a-f0-9]{64}', digest):
+        raise Http404
+    path = DATA_DIR / 'images' / digest
+    if path.is_file():
+        with Image.open(path) as picture:
+            mime = Image.MIME[picture.format]
+        response = FileResponse(path.open('rb'), content_type=mime)
+    else:
+        stored = ManualImage.objects.filter(digest=digest).first()
+        if not stored:
+            raise Http404
+        response = HttpResponse(bytes(stored.content), content_type=stored.content_type)
+    response['Cache-Control'] = 'private, max-age=86400'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response

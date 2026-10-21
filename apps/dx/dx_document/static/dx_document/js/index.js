@@ -107,6 +107,10 @@ function initTable() {
 }
 
 function selectCategory(categoryId, element) {
+    if (element.dataset.manualUrl) {
+        window.location.assign(element.dataset.manualUrl);
+        return;
+    }
     currentCategoryId = categoryId;
     currentCategoryType = parseInt(element.getAttribute('data-type')) || 1;
     document.querySelectorAll('.category-item').forEach(item => item.classList.remove('active'));

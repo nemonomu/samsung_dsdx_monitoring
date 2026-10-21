@@ -81,6 +81,7 @@ def deploy(root, username, groupname, run=subprocess.run):
     command(python, manage, 'check')
     command(python, manage, 'migrate', 'dx_layer1', '--noinput')
     command(python, manage, 'migrate', 'dx_layer2', '--noinput')
+    command(python, manage, 'migrate', 'dx_document', '--noinput')
     command(python, manage, 'collectstatic', '--noinput')
 
     with TemporaryDirectory(prefix='dsdx-deploy-') as temp:

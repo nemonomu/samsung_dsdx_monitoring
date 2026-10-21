@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}dx 메뉴얼 · Trusted Data{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'dx_document/css/index.css' %}">
+<style>
+.manual-frame{border:0;width:100%;height:calc(100vh - 170px);min-height:580px;display:block;background:#f7f9fc}
+.manual-title-note{font-size:12px;color:var(--text-secondary);margin:5px 0 0}
+.category-item{text-decoration:none}.category-item:hover{text-decoration:none}
+@media(max-width:850px){.documents-sidebar{width:170px;min-width:170px}.manual-frame{min-height:650px}.category-item{padding:12px 8px;font-size:12px}}
+@media(max-width:600px){.documents-layout{display:block}.documents-sidebar{width:100%;min-width:0}.sidebar-header{display:none}.category-list{display:flex;padding:6px}.category-item{margin:0}.manual-frame{height:calc(100vh - 180px)}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="documents-layout">
+    <aside class="documents-sidebar">
+        <div class="sidebar-header"><span class="sidebar-title">카테고리</span></div>
+        <nav class="category-list" aria-label="Document 카테고리">
+            {% for cat in categories %}
+            <a class="category-item {% if cat.is_manual %}active{% endif %}" {% if cat.is_manual %}aria-current="page"{% endif %}
+               href="{% if cat.is_manual %}{% url 'dx_document:manual' %}{% else %}{% url 'dx_document:index' %}?category={{ cat.category_id|urlencode }}{% endif %}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span class="category-item-text">{{ cat.category_name }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+    </aside>
+    <section class="documents-content">
+        <div class="content-header"><span class="content-title">dx 메뉴얼</span><p class="manual-title-note">국가·쇼핑몰·제품군별 컬럼 확인 가이드</p></div>
+        <iframe class="manual-frame" src="{% url 'dx_document:manual_content' %}" title="dx 메뉴얼 가이드 및 편집"></iframe>
+    </section>
+</div>
+{% endblock %}

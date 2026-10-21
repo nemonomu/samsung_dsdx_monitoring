@@ -1,0 +1,12 @@
+/* The approved guide layout, isolated from the application's global styles. */
+:root{--blue:#243c65;--soft:#edf2f8;--bg:#f7f9fc;--line:#dfe6f0;--radius:12px}
+.layout{display:block;min-height:0;padding:22px 26px 0}
+.sidebar{position:static;height:auto;overflow:visible;display:flex;flex-direction:row;align-items:flex-start;gap:14px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:14px 18px;box-shadow:0 2px 5px #1e355509}
+.sidebar .brand,.sidebar-bottom,.sidebar .navlabel{display:none}
+.countries{flex-direction:row;gap:5px;flex-wrap:wrap}.country{padding:8px 12px;font-size:12px;border-radius:6px;gap:7px}.country .count{display:none}.country .countrycode{font-size:9px}
+.retailers{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;border-left:1px solid var(--line);margin:0;padding:0 0 0 14px;gap:4px}.retailer{padding:9px 12px;font-size:12px}.retailer.on{background:var(--soft)}
+.main{padding:20px 0 28px;max-width:none}.topline{margin-bottom:16px}.hero{margin-bottom:18px}.hero h1{font-size:27px;letter-spacing:-.7px}.hero .eyebrow{font-size:10px;color:#7f8da2}.hero p{font-size:12px}.workspace{grid-template-columns:220px minmax(0,1fr);gap:22px}.fieldpane{top:18px}.fieldlist{max-height:calc(100vh - 175px);min-height:260px}.canvas{min-height:300px;padding:18px}.canvas svg{max-height:390px}.editorbar{border-radius:10px}.facts{gap:20px}
+.manual-history-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);font-size:12px}.manual-history-row button{border:1px solid var(--line);border-radius:6px;padding:6px 12px;white-space:nowrap}
+@media(min-width:1450px){.workspace{grid-template-columns:245px minmax(0,1fr)}.canvas svg{max-height:440px}}
+@media(max-width:1000px){.layout{padding:18px}.workspace{grid-template-columns:195px minmax(0,1fr)}.retailers{border-left:0;padding-left:0}.facts{grid-template-columns:1fr 1fr}.facts>div:last-child{grid-column:1/-1}}
+@media(max-width:650px){.workspace{grid-template-columns:1fr}.fieldpane{position:static}.fieldlist{max-height:200px;min-height:0}.hero{flex-direction:column;align-items:flex-start;gap:12px}.hero h1{font-size:23px}.facts{grid-template-columns:1fr}.facts>div:last-child{grid-column:auto}.topline{align-items:flex-start}.topline-actions{flex-wrap:wrap;justify-content:flex-end;gap:10px}.sidebar{padding:10px}.country{padding:7px}.country .countrycode{display:none}.layout{padding:12px}.routebar{flex-wrap:wrap}}

@@ -16,7 +16,7 @@
         </div>
         <div class="category-list" id="categoryList">
             {% for cat in categories %}
-            <div class="category-item {% if forloop.first %}active{% endif %}" data-id="{{ cat.category_id }}" data-type="{{ cat.category_type|default:1 }}" onclick="selectCategory('{{ cat.category_id }}', this)">
+            <div class="category-item {% if forloop.first %}active{% endif %}" data-id="{{ cat.category_id }}" data-type="{{ cat.category_type|default:1 }}" {% if cat.is_manual %}data-manual-url="{% url 'dx_document:manual' %}"{% endif %} onclick="selectCategory('{{ cat.category_id }}', this)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                 </svg>
@@ -128,5 +128,5 @@
         initialCategoryType: parseInt("{% if categories %}{{ categories.0.category_type|default:1 }}{% else %}1{% endif %}")
     };
 </script>
-<script src="{% static 'dx_document/js/index.js' %}"></script>
+<script src="{% static 'dx_document/js/index.js' %}?v=20261021-manual"></script>
 {% endblock %}

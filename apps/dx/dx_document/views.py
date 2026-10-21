@@ -3,7 +3,7 @@ DX Document 뷰
 DX 문서 관리 (이슈보고서, 검수 보고서, 검수 매뉴얼 등)
 """
 
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.core.signing import TimestampSigner, SignatureExpired, BadSignature
 from django.http import HttpResponse, HttpResponseNotFound
 from apps.common.response import log_error
@@ -27,6 +27,13 @@ def index(request):
     except Exception as e:
         categories = []
         log_error(e, 'db')
+
+    from .manual import is_manual_category
+    for category in categories:
+        category['is_manual'] = is_manual_category(category)
+    selected_id = request.GET.get('category') or (categories[0]['category_id'] if categories else '')
+    if any(cat['is_manual'] and cat['category_id'] == selected_id for cat in categories):
+        return redirect('dx_document:manual')
 
     context = {
         'data_source': {

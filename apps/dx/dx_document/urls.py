@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, manual
 from apps.dx.dx_document.document import document_api
 
 app_name = 'dx_document'
@@ -8,6 +8,12 @@ urlpatterns = [
     # Pages
     path('dx/documents/', views.index, name='index'),
     path('dx/documents/new/', views.edit, name='new'),
+    path('dx/documents/manual/', manual.page, name='manual'),
+    path('dx/documents/manual/content/', manual.content, name='manual_content'),
+    path('dx/documents/manual/save/', manual.save, name='manual_save'),
+    path('dx/documents/manual/history/', manual.history, name='manual_history'),
+    path('dx/documents/manual/upload/', manual.upload, name='manual_upload'),
+    path('dx/documents/manual/images/<str:digest>/', manual.image, name='manual_image'),
     path('dx/documents/<str:document_id>/edit/', views.edit, name='edit'),
     path('dx-share/file/<path:token>/<str:file_name>', views.share_file, name='share_file'),
     path('dx-share/<path:token>/', views.share, name='share'),
