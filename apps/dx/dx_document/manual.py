@@ -20,10 +20,12 @@ from django.views.decorators.http import require_GET, require_POST
 from PIL import Image, UnidentifiedImageError
 
 from . import manual_storage as storage
+from .manual_catalog import prepare_data, configured_columns
+from .manual_schema import validate_structure
 
 DATA_DIR = Path(__file__).with_name('manual_data')
 IMAGE_URL = '/dx/documents/manual/images/'
-MAX_DATA_BYTES = 2 * 1024 * 1024
+MAX_DATA_BYTES = 8 * 1024 * 1024
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
@@ -82,41 +84,20 @@ def page(request):
 @xframe_options_sameorigin
 def content(request):
     revision = current_revision()
+    catalog, warning = configured_columns()
     return render(request, 'dx_document/manual_content.html', {
-        'guide_data': revision.data if revision else seed_data(),
-        'guide_meta': metadata(revision),
+        'guide_data': prepare_data(revision.data if revision else seed_data(), catalog),
+        'guide_meta': {**metadata(revision), 'catalogWarning': warning},
     })
 
 
 def validate_data(data):
-    """Allow text/photo edits only, keeping schema identifiers and source profiles fixed."""
-    seed = seed_data()
-    if not isinstance(data, dict) or set(data) != set(seed):
-        raise ValueError('매뉴얼 데이터 형식이 올바르지 않습니다.')
-    for key in seed.keys() - {'datasets', 'photos'}:
-        if data[key] != seed[key]:
-            raise ValueError('국가·리테일러 및 기준 정의는 변경할 수 없습니다.')
+    """Validate manual additions and edits without changing source identifiers."""
+    validate_structure(data, seed_data())
     rows = data['datasets']
-    if not isinstance(rows, list) or len(rows) != len(seed['datasets']):
-        raise ValueError('제품군 구성이 올바르지 않습니다.')
-    editable = {'label', 'scope', 'page', 'position', 'original', 'example', 'note', 'userEdited', 'images', 'verified'}
-    for row, original in zip(rows, seed['datasets']):
-        if not isinstance(row, dict) or {k: v for k, v in row.items() if k != 'fields'} != {k: v for k, v in original.items() if k != 'fields'}:
-            raise ValueError('제품군 정의는 변경할 수 없습니다.')
-        if not isinstance(row.get('fields'), list) or len(row['fields']) != len(original['fields']):
-            raise ValueError('컬럼 구성이 올바르지 않습니다.')
-        for field, before in zip(row['fields'], original['fields']):
-            if not isinstance(field, dict) or {k: v for k, v in field.items() if k not in editable} != {k: v for k, v in before.items() if k not in editable}:
-                raise ValueError('컬럼 번호와 실제 컬럼명은 변경할 수 없습니다.')
-            for key in ('label', 'scope', 'page', 'position', 'original', 'example', 'note'):
-                text_value(field.get(key), 20000)
-            if not field['label'].strip() or len(field['label']) > 150:
-                raise ValueError('컬럼 이름은 1~150자로 입력하세요.')
-            if not isinstance(field.get('images'), list) or any(not isinstance(v, str) or not re.fullmatch(r'[\w-]+', v, re.ASCII) for v in field['images']):
-                raise ValueError('이미지 참조가 올바르지 않습니다.')
     photos = data['photos']
-    if not isinstance(photos, list) or not 1 <= len(photos) <= 300:
-        raise ValueError('이미지는 최대 300개까지 저장할 수 있습니다.')
+    if not isinstance(photos, list) or not 0 <= len(photos) <= 2000:
+        raise ValueError('이미지는 최대 2000개까지 저장할 수 있습니다.')
     names = set()
     image_refs = set()
     fields_by_retailer = {}
@@ -128,7 +109,7 @@ def validate_data(data):
         name = photo.get('name')
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,150}', name):
             raise ValueError('이미지 이름이 올바르지 않거나 중복되었습니다.')
-        if photo.get('retailer') not in fields_by_retailer or photo.get('category') not in {'tv', 'ref', 'ldy', 'ldy_dryer', 'all'}:
+        if photo.get('retailer') not in fields_by_retailer or photo.get('category') not in {'tv', 'ref', 'ldy', 'ldy_dryer', 'dryer', 'hhp', 'all'}:
             raise ValueError('이미지의 리테일러·제품군을 확인하세요.')
         identity = (photo['retailer'], photo['category'], name)
         if identity in names:
@@ -205,11 +186,11 @@ def history(request):
         if not version.isdigit():
             return JsonResponse({'error': '버전이 올바르지 않습니다.'}, status=400)
         if int(version) == 0:
-            return JsonResponse({'data': seed_data(), **metadata(None)})
+            return JsonResponse({'data': prepare_data(seed_data()), **metadata(None)})
         revision = storage.revisions().filter(version=int(version)).first()
         if not revision:
             raise Http404
-        return JsonResponse({'data': revision.data, **metadata(revision)})
+        return JsonResponse({'data': prepare_data(revision.data), **metadata(revision)})
     revisions = storage.revisions().defer('data')[:30]
     return JsonResponse({'revisions': [metadata(r) for r in revisions] + [metadata(None)]})
 

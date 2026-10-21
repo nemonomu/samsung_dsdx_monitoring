@@ -1,0 +1,5242 @@
+[
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "country"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "product"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "hhp_carrier"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "hhp_storage"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "hhp_color"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "bundle"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "trade_in"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "page_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "item"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "page_type"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "crawl_strdatetime"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "offer"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "promotion_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "country"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "product"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "hhp_carrier"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "hhp_storage"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "hhp_color"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "trade_in"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "offer"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "promotion_type"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "trend_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "page_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "item"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "page_type"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "bestbuy",
+    "column_name": "crawl_strdatetime"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "number_of_ppl_purchased_yesterday"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "number_of_ppl_added_to_carts"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "hhp_carrier"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "hhp_storage"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "hhp_color"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "offer"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "number_of_ppl_purchased_yesterday"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "number_of_ppl_added_to_carts"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "page_type"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "walmart",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "item"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "page_type"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "crawl_strdatetime"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "country"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "walmart",
+    "column_name": "product"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "promotion_position"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "bestbuy",
+    "column_name": "trend_rank"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "hhp",
+    "retailer": "amazon",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "country"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "country"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "country"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tse_tv",
+    "retailer": "homepro",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "ldy_color"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "available_quantity_for_purchase_pickup"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "sku_short_version"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "sku_assurance"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "number_of_units_purchased_past_week"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "available_quantity_for_purchase_pickup"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "sku_assurance"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "number_of_units_purchased_past_week"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "available_quantity_for_purchase_delivery"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "offer"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "available_quantity_for_purchase_fastdelivery"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "sku_short_version"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "available_quantity_for_purchase_delivery"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "inventory_status"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "mediamarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "offer"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "discount_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "mediamarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "amazon",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "summarized_review_content"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "magalu",
+    "column_name": "estimated_annual_electricity_use"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "amazon",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "number_of_units_purchased_past_month"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "sku_popularity"
+  },
+  {
+    "product_line": "seg_ldy",
+    "retailer": "otto",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "lowes",
+    "column_name": "available_quantity_for_purchase_fastdelivery"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "otto",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "recommendation_intent"
+  },
+  {
+    "product_line": "seg_ref",
+    "retailer": "otto",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "pick_up_availability"
+  },
+  {
+    "product_line": "seg_tv",
+    "retailer": "mediamarkt",
+    "column_name": "sku_status"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "lowes",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "fastest_delivery"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "detailed_review_content"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "magalu",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "casas bahia",
+    "column_name": "delivery_availability"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tse_ref",
+    "retailer": "homepro",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seda_ldy",
+    "retailer": "magalu",
+    "column_name": "ldy_color"
+  },
+  {
+    "product_line": "tse_ldy",
+    "retailer": "homepro",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "model_year"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "bestbuy",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_ref",
+    "retailer": "casas bahia",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "bestbuy",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seda_tv",
+    "retailer": "casas bahia",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "flipkart",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "flipkart",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "siel_ref",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "siel_ldy",
+    "retailer": "amazon",
+    "column_name": "available_quantity_for_purchase"
+  },
+  {
+    "product_line": "siel_tv",
+    "retailer": "flipkart",
+    "column_name": "retailer_sku_name_similar"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Liverpool",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Liverpool",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sem_tv",
+    "retailer": "Liverpool",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "HomeDepot",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "crawl_strdatetime"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "crawl_strdatetime"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "HomeDepot",
+    "column_name": "product"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "HomeDepot",
+    "column_name": "product"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy",
+    "retailer": "Coppel",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ref",
+    "retailer": "Coppel",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "item"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "ldy_capacity"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "country"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "tv",
+    "retailer": "Costco",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "product"
+  },
+  {
+    "product_line": "sea_ref",
+    "retailer": "Costco",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "ldy_loading_type"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "product"
+  },
+  {
+    "product_line": "sea_ldy",
+    "retailer": "Costco",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Costco",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Bestbuy",
+    "column_name": "loading_type"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "loading_type"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sea_ldy_dryer",
+    "retailer": "Lowes",
+    "column_name": "loading_type"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "id"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "batch_id"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "country"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "item"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "seib_tv",
+    "retailer": "MediaMarkt",
+    "column_name": "screen_size"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "id"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "batch_id"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "country"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "item"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "ref_capacity"
+  },
+  {
+    "product_line": "seib_ref",
+    "retailer": "MediaMarkt",
+    "column_name": "ref_refrigerator_type"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "id"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "batch_id"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "country"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "item"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "seib_ldy",
+    "retailer": "MediaMarkt",
+    "column_name": "loading_type"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "id"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "batch_id"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "country"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "item"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "product_url"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "seib_ldy_dryer",
+    "retailer": "MediaMarkt",
+    "column_name": "loading_type"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_reviews"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "item"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "crawl_datetime"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "country"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "sku"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "account_name"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "capacity"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "original_sku_price"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "retailer_sku_name"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "bsr_rank"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "count_of_star_ratings"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "calendar_week"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "savings"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "main_rank"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "loading_type"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "star_rating"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "final_sku_price"
+  },
+  {
+    "product_line": "sem_ldy_dryer",
+    "retailer": "HomeDepot",
+    "column_name": "product_url"
+  }
+]

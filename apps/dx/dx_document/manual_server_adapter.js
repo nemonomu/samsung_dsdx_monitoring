@@ -1,5 +1,11 @@
 // Appended to the imported editor by scripts/import_dx_manual.py.
 const serverMeta = JSON.parse($('guide-meta').textContent);
+if (serverMeta.catalogWarning) {
+    const notice = document.createElement('p');
+    notice.className = 'commonnote';
+    notice.textContent = serverMeta.catalogWarning;
+    document.querySelector('.main').prepend(notice);
+}
 let serverVersion = serverMeta.version;
 const manualApi = '/dx/documents/manual/';
 const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;

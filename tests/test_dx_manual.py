@@ -45,6 +45,7 @@ from apps.dx.dx_document import manual_storage as storage
 from django.db import connections
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from apps.dx.dx_document.manual_catalog import prepare_data, blank_field, blank_profile, configured_columns
 
 
 class ManualTestRunner(DiscoverRunner):
@@ -87,6 +88,81 @@ class ManualTests(TestCase):
             self.assertEqual(200, response.status_code)
             self.assertTrue(response['Content-Type'].startswith('image/'))
             response.close()
+
+    def test_catalog_adds_exact_registered_columns_and_preserves_manual_content(self):
+        rows = [{'product_line': 'seg_tv', 'retailer': 'Amazon', 'column_name': 'custom_registered_column'},
+                {'product_line': 'seib_ldy_dryer', 'retailer': 'MediaMarkt', 'column_name': 'capacity'}]
+        original = copy.deepcopy(self.data)
+        original['datasets'][0]['fields'][5]['note'] = '이미 작성된 설명'
+        upgraded = prepare_data(original, rows)
+        amazon = next(d for d in upgraded['datasets'] if d['key'] == 'SEG/amazon/tv')
+        self.assertEqual(['custom_registered_column'], [f['field'] for f in amazon['fields']])
+        self.assertEqual('이미 작성된 설명', upgraded['datasets'][0]['fields'][5]['note'])
+        self.assertEqual(original['photos'], upgraded['photos'])
+        self.assertNotIn('SEIB/mediamarkt', upgraded['profiles'])
+        self.assertFalse(any(d['key'] == 'SEIB/mmkt/ldy_dryer' for d in upgraded['datasets']))
+        self.assertEqual(upgraded, prepare_data(upgraded, rows))
+        manual.validate_data(upgraded)
+
+    def test_common_manual_has_one_editable_field_and_preserves_different_legacy_text(self):
+        upgraded = prepare_data(self.data, [])
+        common = next(d for d in upgraded['datasets'] if d['key'] == 'SEA/costco/all')
+        field = next(f for f in common['fields'] if f['field'] == 'retailer_sku_name')
+        self.assertEqual(4, len(field['legacyVariants']))
+        field['note'] = '한 번만 작성하는 공통 설명'
+        field['userEdited'] = True
+        self.assertEqual(200, self.save(data=upgraded).status_code)
+        loaded = self.client.get(PREFIX + 'history/?version=1').json()['data']
+        current = next(d for d in loaded['datasets'] if d['key'] == 'SEA/costco/all')
+        actual = next(f for f in current['fields'] if f['field'] == field['field'])
+        self.assertEqual(field, actual)
+        saved_fields = {f['field']: f for f in loaded['datasets'][1]['fields']}
+        for original in self.data['datasets'][1]['fields']:
+            self.assertEqual(original, saved_fields[original['field']])
+
+    def test_new_retailer_columns_and_multiple_images_save_reload(self):
+        data = prepare_data(self.data, [])
+        key = 'SEA/manual_test'
+        data['profiles'][key] = blank_profile('미국', '테스트 쇼핑몰')
+        for category in ('all', 'tv'):
+            fields = [blank_field('test_shared' if category == 'all' else 'test_screen', 1)]
+            data['datasets'].append(dict(key=key+'/'+category, retailer=key, category=category,
+                                         title=category, fields=fields))
+            for index in range(2):
+                photo = copy.deepcopy(self.data['photos'][0])
+                photo.update(retailer=key, category=category, name=f'test_{category}_{index}',
+                             customImage=next(iter(self.data['assets'].values())))
+                photo['boxes'][0]['fields'] = [fields[0]['field']]
+                data['photos'].append(photo)
+        response = self.save(data=data)
+        self.assertEqual(200, response.status_code, response.content)
+        saved = storage.revisions().first().data
+        self.assertEqual(4, len([p for p in saved['photos'] if p['retailer'] == key]))
+        self.assertEqual('테스트 쇼핑몰', saved['profiles'][key]['name'])
+
+    def test_expanded_structure_rejects_duplicate_fields_bad_urls_and_foreign_links(self):
+        data = prepare_data(self.data, [])
+        common = next(d for d in data['datasets'] if d['category'] == 'all')
+        common['fields'].append(copy.deepcopy(common['fields'][0]))
+        self.assertEqual(400, self.save(data=data).status_code)
+        data = prepare_data(self.data, [])
+        data['profiles']['SEA/new_store'] = blank_profile('미국', 'New store')
+        data['profiles']['SEA/new_store']['mainBase'] = 'javascript:alert(1)'
+        self.assertEqual(400, self.save(data=data).status_code)
+        data = prepare_data(self.data, [])
+        data['photos'][0]['boxes'][0]['fields'] = ['not_registered_here']
+        self.assertEqual(400, self.save(data=data).status_code)
+
+    def test_snapshot_catalog_covers_registered_shops_without_merging_countries(self):
+        catalog, warning = configured_columns()
+        data = prepare_data(self.data, catalog)
+        self.assertFalse(warning)
+        self.assertIn('SEA/amazon', data['profiles'])
+        self.assertIn('SEG/amazon', data['profiles'])
+        self.assertIn('SIEL/amazon', data['profiles'])
+        self.assertIn('SEDA/magalu', data['profiles'])
+        self.assertEqual(19, len(data['profiles']))
+        manual.validate_data(data)
 
     def test_save_reload_audit_and_restore(self):
         self.data['datasets'][0]['fields'][0]['note'] = '수정한 설명'

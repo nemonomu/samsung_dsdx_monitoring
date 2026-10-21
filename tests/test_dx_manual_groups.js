@@ -18,19 +18,29 @@ test('every retailer/product field appears exactly once across common and produc
       const common = manualFieldsForScope(datasets, ds.category, 'common');
       const specific = manualFieldsForScope(datasets, ds.category, ds.category);
       const all = [...common, ...specific];
-      assert.equal(new Set(all.map(f => f.field)).size, ds.fields.length, ds.key);
-      assert.equal(all.length, ds.fields.length, ds.key);
+      const expected = ds.fields.filter(f => !['id','country','account_name','product_url','main_rank','bsr_rank'].includes(f.field));
+      assert.equal(new Set(all.map(f => f.field)).size, expected.length, ds.key);
+      assert.equal(all.length, expected.length, ds.key);
       for (const field of all) assert.ok(ds.fields.includes(field), 'must retain editable original objects');
     }
   }
   assert.equal(JSON.stringify(data), before, 'grouping must not mutate saved data');
 });
 
-test('Costco has 17 common fields; capacity and schema-specific fields stay in their product', () => {
+test('Costco excludes six management fields; capacity stays in its product', () => {
   const datasets = data.datasets.filter(ds => ds.retailer === 'SEA/costco');
-  assert.equal(manualCommonKeys(datasets).size, 17);
+  assert.equal(manualCommonKeys(datasets).size, 11);
   assert.deepEqual(Array.from(manualFieldsForScope(datasets, 'ref', 'ref'), f => f.field), ['ref_capacity', 'ref_refrigerator_type']);
   assert.ok(manualFieldsForScope(datasets, 'ldy_dryer', 'ldy_dryer').some(f => f.field === 'batch_id'));
+});
+
+test('canonical common records are returned once, using their own editable objects', () => {
+  const common = {field:'sku', n:1};
+  const rows = [{category:'all',fields:[common,{field:'id'}]},
+    {category:'tv',fields:[{field:'sku'},{field:'screen_size'},{field:'product_url'}]}];
+  assert.equal(manualFieldsForScope(rows,'tv','common')[0],common);
+  assert.deepEqual(Array.from(manualFieldsForScope(rows,'tv','common'),f=>f.field),['sku']);
+  assert.deepEqual(Array.from(manualFieldsForScope(rows,'tv','tv'),f=>f.field),['screen_size']);
 });
 
 test('missing, unknown or differently sourced fields are never merged by name', () => {

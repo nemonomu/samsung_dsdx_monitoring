@@ -6,6 +6,15 @@
 <style>
 .manual-frame{border:0;width:100%;height:calc(100vh - 170px);min-height:580px;display:block;background:#f7f9fc}
 .manual-title-note{font-size:12px;color:var(--text-secondary);margin:5px 0 0}
+.manual-country-header{gap:16px;flex-wrap:wrap}
+.manual-country-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:38px}
+.manual-country-tabs .country{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid transparent;border-radius:7px;background:transparent;color:#64748b;font-size:13px;cursor:pointer;white-space:nowrap}
+.manual-country-tabs .country.on{background:#eaf0f9;border-color:#d7e2f1;color:#243c65;font-weight:700}
+.manual-country-tabs .country:hover{background:#f0f4fa;color:#243c65}
+.manual-country-tabs .country:focus-visible{outline:2px solid #527db9;outline-offset:2px}
+.manual-country-tabs .countrycode{font-size:10px;border:1px solid #acb9cd;border-radius:3px;padding:1px 4px}
+.manual-country-tabs .count{display:none}
+.manual-country-loading{font-size:13px;color:#64748b}
 .category-item{text-decoration:none}.category-item:hover{text-decoration:none}
 @media(max-width:850px){.documents-sidebar{width:170px;min-width:170px}.manual-frame{min-height:650px}.category-item{padding:12px 8px;font-size:12px}}
 @media(max-width:600px){.documents-layout{display:block}.documents-sidebar{width:100%;min-width:0}.sidebar-header{display:none}.category-list{display:flex;padding:6px}.category-item{margin:0}.manual-frame{height:calc(100vh - 180px)}}
@@ -26,8 +35,8 @@
         </nav>
     </aside>
     <section class="documents-content">
-        <div class="content-header"><span class="content-title">dx 메뉴얼</span><p class="manual-title-note">국가·쇼핑몰·제품군별 컬럼 확인 가이드</p></div>
-        <iframe class="manual-frame" src="{% url 'dx_document:manual_content' %}" title="dx 메뉴얼 가이드 및 편집"></iframe>
+        <div class="content-header manual-country-header"><nav id="manualCountryNav" class="manual-country-tabs" aria-label="국가 선택" aria-busy="true"><span class="manual-country-loading">국가 선택을 불러오는 중입니다.</span></nav><p class="manual-title-note">국가·쇼핑몰·제품군별 컬럼 확인 가이드</p></div>
+        <iframe id="manualGuideFrame" class="manual-frame" src="{% url 'dx_document:manual_content' %}" title="dx 메뉴얼 가이드 및 편집"></iframe>
     </section>
 </div>
 {% endblock %}
