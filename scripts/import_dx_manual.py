@@ -47,8 +47,8 @@ def build(source):
     template = '''{% load static %}
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>dx 메뉴얼</title>
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-readable">
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-readable">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-grouped">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-grouped">
 </head><body><form hidden>{% csrf_token %}</form>
 '''
     template += body
@@ -56,7 +56,7 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-readable"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-grouped"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')
@@ -64,6 +64,7 @@ def build(source):
     fields_start = code.index('function renderFields()')
     fields_end = code.index('\nfunction svg(', fields_start)
     fields_code = code[fields_start:fields_end]
+    fields_code = fields_code.replace('rows=ds().fields.filter', 'rows=manualScopedFields().filter')
     fields_code = fields_code.replace(
         "'<details class=\"fieldgroup\" '+(g!=='수집 관리 · 기타'||q||fs.some(f=>f.field===S.field)?'open':'')+'><summary>'",
         "'<section class=\"fieldgroup\"><h3 class=\"fieldgroup-title\">'",
@@ -71,6 +72,10 @@ def build(source):
     if '<details' in fields_code or 'fieldgroup-title' not in fields_code:
         raise ValueError('Source field-list structure changed; review the always-visible groups.')
     code = code[:fields_start] + fields_code + code[fields_end:]
+    lesson_anchor = "$('sceneTabs').setAttribute('aria-label','이미지 보기 방식');"
+    if code.count(lesson_anchor) != 1:
+        raise ValueError('Source lesson structure changed; review the image-free field display.')
+    code = code.replace(lesson_anchor, 'if(renderFieldWithoutImage(f,p,photo))return;\n' + lesson_anchor)
     # Keep the original viewing and editing behavior; replace local file persistence.
     start = code.index('function createExportHtml()')
     end = code.index("window.addEventListener('beforeunload'", start)
@@ -83,6 +88,10 @@ def build(source):
     code = code.replace('파일에 저장하세요.', '서버에 저장하세요.')
     code = code.replace('이미지와 동작 코드는 로컬 폴더에 포함되어 있습니다.', '변경 내용은 저장 버튼을 눌러 서버에 보관합니다.')
     code = code.replace("+photo.date;", "+esc(photo.date);")
+    code = code.replace('국가 → 리테일러 → 제품군 순으로 선택합니다.', '국가 → 리테일러를 선택하고, 공통 컬럼 또는 제품군별 탭을 선택합니다. 공통 컬럼의 화면 예시는 제품군별로 바꿀 수 있습니다.')
+    code += '\n' + (root / 'manual_field_info.js').read_text(encoding='utf-8')
+    code += '\n' + (root / 'manual_column_groups.js').read_text(encoding='utf-8')
+    code += '\n' + (root / 'manual_grouped_view.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_server_adapter.js').read_text(encoding='utf-8')
     code += '\n})();\n'
     (static / 'js/manual-guide.js').write_text(code, encoding='utf-8')

@@ -25,7 +25,7 @@ $('retailerNav').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.r=b.data
 $('categoryNav').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.c=b.dataset.category;selectDataset()});
 }
 function render(){navigation();const p=profile();$('breadcrumb').textContent='dx 메뉴얼 / '+S.country+' / '+p.name;$('heading').innerHTML=esc(p.name)+'<span>/</span>'+shortCat[S.c];$('mainMode').classList.toggle('on',S.mode==='main');$('bsrMode').classList.toggle('on',S.mode==='bsr');$('mainMode').setAttribute('aria-pressed',S.mode==='main');$('bsrMode').setAttribute('aria-pressed',S.mode==='bsr');$('entryLink').href=entry();$('routeSummary').innerHTML=p.blocked?'<span class="blocked">현재 페이지 접근 제한 · 확인 방법 안내</span>':'<strong>'+esc(S.mode==='main'?'검색 목록에서 시작':'카테고리·정렬 기준에서 시작')+'</strong> · '+esc(p.queries[S.c]);$('fieldCount').textContent=ds().fields.length+'개';$('footerStatus').textContent='확인일 '+D.date+' · '+S.r;renderFields();renderLesson();}
-function renderFields(){const q=S.q.toLowerCase(),rows=ds().fields.filter(f=>!q||[f.field,f.label,f.position,f.original].join(' ').toLowerCase().includes(q));const groups=['상품 정보','크기 · 용량 · 유형','가격','리뷰','수집 관리 · 기타'];$('fieldList').innerHTML=groups.map(g=>{const fs=rows.filter(f=>group(f)===g);return fs.length?'<section class="fieldgroup"><h3 class="fieldgroup-title">'+g+'<span>'+fs.length+'</span></h3>'+fs.map(f=>'<button class="fieldbtn '+(f.field===S.field?'on':'')+'" data-field="'+f.field+'" aria-pressed="'+(f.field===S.field)+'"><span class="fieldnum">'+f.n+'</span><span><strong>'+esc(f.label)+'</strong><code>'+esc(f.field)+'</code></span>'+(f.images?.length?'<span class="photo-dot" title="번호 캡처 있음"></span>':'')+'</button>').join('')+'</section>':''}).join('')||'<div class="notfound">찾는 컬럼이 없어요.<br>다른 이름으로 검색해 보세요.</div>';$('fieldList').querySelectorAll('[data-field]').forEach(b=>b.onclick=()=>setField(b.dataset.field))}
+function renderFields(){const q=S.q.toLowerCase(),rows=manualScopedFields().filter(f=>!q||[f.field,f.label,f.position,f.original].join(' ').toLowerCase().includes(q));const groups=['상품 정보','크기 · 용량 · 유형','가격','리뷰','수집 관리 · 기타'];$('fieldList').innerHTML=groups.map(g=>{const fs=rows.filter(f=>group(f)===g);return fs.length?'<section class="fieldgroup"><h3 class="fieldgroup-title">'+g+'<span>'+fs.length+'</span></h3>'+fs.map(f=>'<button class="fieldbtn '+(f.field===S.field?'on':'')+'" data-field="'+f.field+'" aria-pressed="'+(f.field===S.field)+'"><span class="fieldnum">'+f.n+'</span><span><strong>'+esc(f.label)+'</strong><code>'+esc(f.field)+'</code></span>'+(f.images?.length?'<span class="photo-dot" title="번호 캡처 있음"></span>':'')+'</button>').join('')+'</section>':''}).join('')||'<div class="notfound">찾는 컬럼이 없어요.<br>다른 이름으로 검색해 보세요.</div>';$('fieldList').querySelectorAll('[data-field]').forEach(b=>b.onclick=()=>setField(b.dataset.field))}
 function svg(p,full=false){
 const all=p.boxes.map(b=>({...b,ns:b.fields.map(f=>ds().fields.find(r=>r.field===f)?.n).filter(Boolean)})).filter(b=>b.ns.length),sel=all.filter(b=>b.fields.includes(S.field));let vb=[0,0,p.width,p.height];
 
@@ -42,6 +42,7 @@ const clipId='crop-'+p.name+'-'+field().n;return '<svg viewBox="'+[vb[0],vb[1]-4
 }
 function renderLesson(){const f=field(),p=profile(),all=photos(),a=shownPhotos(),photo=currentPhoto();$('lessonNumber').textContent=f.n;$('lessonTitle').textContent=f.label;$('lessonCode').textContent=f.field;const ix=ds().fields.indexOf(f);$('prevField').disabled=ix===0;$('nextField').disabled=ix===ds().fields.length-1;
 
+if(renderFieldWithoutImage(f,p,photo))return;
 $('sceneTabs').setAttribute('aria-label','이미지 보기 방식');
 $('sceneTabs').innerHTML=photo?[['full','전체 화면'],['data','수집데이터']].map(([v,label])=>'<button class="scene-tab '+(S.view===v?'on':'')+'" data-view="'+v+'" aria-pressed="'+(S.view===v)+'">'+label+'</button>').join(''):'<span class="scene-tab on">'+(f.direct?'확인 위치 안내':'화면에 직접 표시되지 않는 값')+'</span>';
 $('sceneTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.view=b.dataset.view;renderLesson()});
@@ -56,7 +57,7 @@ function openInfo(title,content){$('infoTitle').textContent=title;$('infoBody').
 function routeInfo(){const p=profile();openInfo(profile().name+' 방문 방법','<h3>'+S.mode+' · '+shortCat[S.c]+'</h3><p><a href="'+esc(entry())+'" target="_blank" rel="noopener">쇼핑몰에서 시작하기 ↗</a></p><p>검색어 <strong>'+esc(p.queries[S.c])+'</strong><br>정렬 · '+esc(S.mode==='main'?p.mainSort:p.bsrSort)+'</p><h3>목록과 상세에서 확인할 것</h3><p>'+esc(p.summary)+'</p><h3>사용한 지역</h3><p>'+esc(p.region)+'</p><h3>확인할 때 주의하세요</h3><p>'+esc(p.warning)+'</p>'+(p.blocked?'<p>'+esc(p.blocked)+'</p>':''))}
 function renderTable(){const q=$('tableSearch').value.toLowerCase();$('tableTitle').textContent=profile().name+' · '+shortCat[S.c]+' 전체 '+ds().fields.length+'개 컬럼';$('tableRows').innerHTML=ds().fields.filter(f=>!q||[f.field,f.label,f.position,f.original].join(' ').toLowerCase().includes(q)).map(f=>'<tr><td><button class="tablelink" data-jump="'+f.field+'">'+f.n+' →</button></td><td><code>'+esc(f.field)+'</code><br><strong>'+esc(f.label)+'</strong></td><td>'+esc(f.scope)+'</td><td><strong>'+esc(f.page)+'</strong><br>'+esc(f.position)+'<small>'+esc(f.original)+'</small></td><td>'+esc(f.example)+'<small>'+esc(f.note)+'</small></td></tr>').join('');$('tableRows').querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>{$('tableDialog').close();setField(b.dataset.jump)})}
 function coverage(){openInfo('참고 자료와 확인 범위','<p>실제 수집 컬럼 515개 · 24개 제품군 조합. 표와 화면의 번호는 각 데이터셋 안에서 유지됩니다. 사진과 값은 '+D.date+' 확인 표본이며 조회 시점·지역·옵션에 따라 바뀔 수 있습니다.</p><div class="covergrid">'+Object.entries(D.profiles).map(([r,p])=>'<article><strong>'+esc(p.country+' · '+p.name)+'</strong>'+D.datasets.filter(d=>d.retailer===r).map(d=>shortCat[d.category]).join(' · ')+'<p>'+esc(p.blocked||'목록·상세 표본 확인. 일부 가격·리뷰는 냉장고 공통 위치 예시로 구분했습니다.')+'</p></article>').join('')+'</div><h3>별도로 확인해야 하는 차이</h3><p>Expert 냉장고 TSK5O881ES의 제목 124 l와 사양 142가 다릅니다. 현재 수집은 제목 우선입니다. Kühlschränke 검색은 일반 목록 대신 안내 페이지로 이동했습니다. Liverpool 세탁 용량 보완 후보에 Capacidad de secado도 포함되어 있어 세탁·건조 라벨을 구분해야 합니다.</p><h3>확인하지 못한 항목</h3><p>접근이 제한된 사이트의 현재 가격·사양·리뷰, Costco 로그인 전 숨겨진 회원 가격은 확인하지 못했습니다. 제품별 캡처가 없는 컬럼은 위치 안내 또는 명시된 공통 예시로 구분했습니다. Expert의 같은 모델 PDF 보완 경로는 안내만 포함하며 PDF 내용 자체는 검증하지 않았습니다.</p><details class="reference"><summary>참고 엑셀의 원래 번호 보기 · 92개 행</summary><p>미국 참고 엑셀의 데이터셋은 컬럼 정의 표입니다. BestBuy 냉장고 1–21, Lowe’s 냉장고 31–55, BestBuy 세탁기 61–81, Lowe’s 세탁기 91–115를 보존했습니다. 현재 프로젝트의 다른 리테일러에 이 컬럼을 그대로 적용하지 않았으며 각 실제 스키마 순서로 번호를 부여했습니다.</p><div class="tablewrap"><table><thead><tr><th>번호</th><th>대상</th><th>화면 구분</th><th>컬럼</th><th>설명</th></tr></thead><tbody>'+D.reference.map(r=>'<tr><td>'+esc(r.B)+'</td><td>'+esc(r.C+' / '+r.F+' / '+r.D)+'</td><td>'+esc(r.G)+'</td><td><code>'+esc(r.H)+'</code></td><td>'+esc(r.I)+'</td></tr>').join('')+'</tbody></table></div></details><p>허용된 코드·참고 엑셀은 읽기 전용으로 사용했습니다. 프로젝트 및 DB를 변경하지 않았습니다. 변경 내용은 저장 버튼을 눌러 서버에 보관합니다.</p>')}
-function help(){openInfo('세 단계면 충분해요.','<div class="helpsteps"><article><b>01</b><h3>어디를 볼지 고르세요.</h3><p>국가 → 리테일러 → 제품군 순으로 선택합니다. main과 bsr의 방문 링크·정렬은 상단에서 바꿀 수 있어요.</p></article><article><b>02</b><h3>궁금한 컬럼을 누르세요.</h3><p>한국어 이름이나 실제 컬럼명으로 찾을 수 있어요. 용량·가격·리뷰처럼 묶인 목록에서 하나씩 살펴보세요.</p></article><article><b>03</b><h3>전체 위치와 수집할 값을 확인하세요.</h3><p>전체 화면에서 빨간 번호 박스로 위치를 확인하고, 수집데이터에서 박스 주변을 확대해 값을 읽으세요. 캡처 선택에서 목록·상세 사진을 바꿀 수 있습니다.</p></article></div><p>전체 컬럼 표와 관리값도 그대로 보존되어 있습니다. 현재 확인하지 못한 항목은 그 상태를 함께 안내합니다.</p>')}
+function help(){openInfo('세 단계면 충분해요.','<div class="helpsteps"><article><b>01</b><h3>어디를 볼지 고르세요.</h3><p>국가 → 리테일러를 선택하고, 공통 컬럼 또는 제품군별 탭을 선택합니다. 공통 컬럼의 화면 예시는 제품군별로 바꿀 수 있습니다. main과 bsr의 방문 링크·정렬은 상단에서 바꿀 수 있어요.</p></article><article><b>02</b><h3>궁금한 컬럼을 누르세요.</h3><p>한국어 이름이나 실제 컬럼명으로 찾을 수 있어요. 용량·가격·리뷰처럼 묶인 목록에서 하나씩 살펴보세요.</p></article><article><b>03</b><h3>전체 위치와 수집할 값을 확인하세요.</h3><p>전체 화면에서 빨간 번호 박스로 위치를 확인하고, 수집데이터에서 박스 주변을 확대해 값을 읽으세요. 캡처 선택에서 목록·상세 사진을 바꿀 수 있습니다.</p></article></div><p>전체 컬럼 표와 관리값도 그대로 보존되어 있습니다. 현재 확인하지 못한 항목은 그 상태를 함께 안내합니다.</p>')}
 $('brandIcon').innerHTML=icon('grid');$('searchIcon').innerHTML=icon('search');$('externalIcon').innerHTML=icon('external');$('prevField').innerHTML=icon('left');$('nextField').innerHTML=icon('right');$('zoomOpen').innerHTML=icon('zoom')+'크게 보기';
 $('fieldSearch').oninput=e=>{S.q=e.target.value;renderFields()};$('mainMode').onclick=()=>{S.mode='main';render()};$('bsrMode').onclick=()=>{S.mode='bsr';render()};$('prevField').onclick=()=>setField(ds().fields[ds().fields.indexOf(field())-1].field);$('nextField').onclick=()=>setField(ds().fields[ds().fields.indexOf(field())+1].field);$('routeDetails').onclick=routeInfo;$('coverageOpen').onclick=coverage;document.querySelectorAll('[data-help]').forEach(b=>b.onclick=help);document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());$('tableOpen').onclick=()=>{$('tableSearch').value='';renderTable();$('tableDialog').showModal()};$('tableSearch').oninput=renderTable;$('zoomOpen').onclick=()=>{const p=currentPhoto();if(!p)return;$('zoomTitle').textContent=field().n+' · '+field().label;$('zoomBody').innerHTML=svg(p,S.view==='full')+'<p class="zoomcaption">'+esc(p.note)+'</p>';$('zoomDialog').showModal()};
 /* Local editor. No upload or network service is used for user images. */
@@ -103,6 +104,222 @@ $('applyImage').onclick=()=>{boxInputsToDraft();photoMetadataToDraft();const p=w
 /* Server persistence is appended below. */
 window.addEventListener('beforeunload',e=>{if(revision!==downloadedRevision){e.preventDefault();e.returnValue=''}});
 
+
+// Fields without a screen location use text guidance instead of an image viewer.
+function renderFieldWithoutImage(f, p, photo) {
+  const withoutImage = !f.direct || !photo;
+  $('canvas').closest('.viewer').hidden = withoutImage;
+  $('inspector').classList.toggle('field-info', withoutImage);
+  if (!withoutImage) return false;
+
+  // Clear the previous field's image and controls when navigating between fields.
+  $('canvas').replaceChildren();
+  $('sceneTabs').replaceChildren();
+  $('zoomOpen').hidden = true;
+  $('originalLink').hidden = true;
+  $('commonNote').hidden = true;
+  const example = String(f.example ?? '');
+  const exampleHtml = f.field === 'product_url' && /^https?:\/\//i.test(example)
+    ? '<a target="_blank" rel="noopener" href="' + esc(example) + '">표본 상품 열기 ↗</a>'
+    : esc(example || '등록된 예시가 없습니다.');
+  const fact = (title, content) => '<div class="field-info-fact"><dt>' + title + '</dt><dd>' + content + '</dd></div>';
+  const notice = f.direct
+    ? '화면에서 확인하는 값입니다. 아직 등록된 캡처가 없어 아래 위치 안내를 참고해 주세요.'
+    : '쇼핑몰 화면에 직접 표시되지 않는 값입니다. 아래에서 값의 출처와 예시를 확인하세요.';
+
+  $('inspector').innerHTML =
+    '<div class="field-info-heading"><span class="field-info-badge">' + (f.direct ? '캡처 미등록' : '화면 미표시 값') + '</span><p>' + notice + '</p></div>' +
+    (f.direct && p.blocked ? '<p class="field-info-warning">현재 사이트 화면 미확인 · ' + esc(p.blocked) + '</p>' : '') +
+    '<dl class="field-info-grid">' +
+    fact(f.direct ? '어디서 찾나요?' : '값의 출처', '<span class="sourcepill">' + esc(f.page) + '</span><div class="where">' + esc(f.position) + '</div>') +
+    fact('값 예시', '<div class="example long">' + exampleHtml + '</div>') +
+    fact(f.direct ? '화면의 원문 항목' : '관련 항목', esc(f.original)) +
+    fact('수집 구분', esc(f.scope)) +
+    '</dl>' +
+    (f.note ? '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p>' + esc(f.note) + '</p></div>' : '');
+  return true;
+}
+
+// Reviewed shared meanings. Never group an unknown field solely by its name.
+const manualCommonDefinitions = {
+  retailer_sku_name: '쇼핑몰이 상품에 표시한 이름입니다. 실제 상품명과 표시 위치는 제품군별 예시를 확인하세요.',
+  sku: '제조사가 상품을 구분하는 모델명입니다. 쇼핑몰 자체 상품 번호와 구별합니다.',
+  final_sku_price: '현재 선택한 상품의 판매가격입니다. 실제 금액과 확인 위치는 제품군별 예시를 확인하세요.',
+  original_sku_price: '판매가격과 함께 표시된 비교가격입니다. 화면에 비교가격이 없으면 임의로 만들지 않습니다.',
+  savings: '쇼핑몰에 표시된 할인 정보입니다. 금액·비율·문구 등 실제 표시 형태를 확인합니다.',
+  count_of_reviews: '상품에 등록된 리뷰의 개수입니다. 별점 평가 개수와 구별합니다.',
+  star_rating: '상품의 평균 별점입니다. 평점 척도와 표시값을 함께 확인합니다.',
+  count_of_star_ratings: '상품에 별점을 남긴 평가의 개수입니다. 글로 작성된 리뷰 개수와 다를 수 있습니다.',
+  id: '수집 행을 구분하는 관리 식별자입니다. 쇼핑몰 상품 번호와 다른 값입니다.',
+  country: '프로젝트에서 사용하는 시장 코드입니다.',
+  account_name: '데이터를 수집한 쇼핑몰을 구분하는 값입니다.',
+  item: '쇼핑몰에서 상품을 구분하는 식별값입니다. 제조사 모델명과 구별합니다.',
+  product_url: '수집한 상품의 상세 페이지 주소입니다.',
+  main_rank: 'MAIN 수집 목록에서 상품이 나타난 순서입니다. 쇼핑몰의 정렬 방식도 함께 확인합니다.',
+  bsr_rank: 'BSR 수집 목록에서 상품이 나타난 순서입니다. 쇼핑몰의 정렬 방식도 함께 확인합니다.',
+  calendar_week: '수집 시점에 해당하는 주차를 나타내는 관리값입니다.',
+  crawl_datetime: '상품 데이터를 수집한 시각입니다. 상품 출시일이나 리뷰 작성일이 아닙니다.',
+};
+
+function manualCommonKeys(datasets) {
+  if (datasets.length < 2) return new Set();
+  return new Set(datasets[0].fields.filter(first =>
+    Object.hasOwn(manualCommonDefinitions, first.field) &&
+    datasets.every(dataset => dataset.fields.some(candidate =>
+      candidate.field === first.field && candidate.direct === first.direct
+    ))
+  ).map(field => field.field));
+}
+
+function manualFieldsForScope(datasets, category, scope) {
+  const common = manualCommonKeys(datasets);
+  const fields = datasets.find(dataset => dataset.category === category)?.fields || [];
+  return fields.filter(field => scope === 'common' ? common.has(field.field) : !common.has(field.field));
+}
+
+// Keep the original dataset objects as the source for viewing, editing and saving.
+// S.c is always a real product; S.scope controls only which fields are listed.
+const manualCategoryCodes = {tv: 'TV', ref: 'REF', ldy: 'LDY', ldy_dryer: 'DRYER', dryer: 'DRYER'};
+const manualDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r);
+const manualScopedFields = () => manualFieldsForScope(manualDatasets(), S.c, S.scope);
+const manualCategoryLabel = category => manualCategoryCodes[category] || shortCat[category] || category;
+S.scope = 'common';
+S.field = 'retailer_sku_name';
+
+const manualHero = document.querySelector('.hero');
+manualHero.after($('categoryNav'));
+$('categoryNav').classList.add('manual-scope-tabs');
+$('categoryNav').setAttribute('aria-label', '컬럼 범위');
+const manualScopeNote = document.createElement('p');
+manualScopeNote.id = 'manualScopeNote';
+$('categoryNav').after(manualScopeNote);
+manualHero.querySelector('p').textContent = '공통 기준은 한곳에서, 제품군별 확인 방법은 따로 확인하세요.';
+const manualScopeBadge = document.createElement('span');
+manualScopeBadge.className = 'manual-scope-badge';
+document.querySelector('.lessonhead-left').append(manualScopeBadge);
+const manualDefinition = document.createElement('section');
+manualDefinition.className = 'manual-definition';
+manualDefinition.id = 'manualDefinition';
+document.querySelector('.lessonhead').after(manualDefinition);
+const manualExample = document.createElement('section');
+manualExample.id = 'manualExample';
+manualExample.className = 'manual-example';
+manualExample.innerHTML = '<header class="manual-example-head" id="manualExampleHead"></header><div class="manual-example-body"></div>';
+manualDefinition.after(manualExample);
+manualExample.lastElementChild.append(document.querySelector('.viewer'), $('inspector'));
+
+function normalizeManualScope() {
+  const datasets = manualDatasets();
+  if (!datasets.some(dataset => dataset.category === S.c)) S.c = datasets[0].category;
+  if (S.scope !== 'common') S.scope = S.c;
+  if (S.scope === 'common' && !manualCommonKeys(datasets).size) S.scope = S.c;
+  const fields = manualScopedFields();
+  if (!fields.some(f => f.field === S.field)) {
+    S.field = (fields.find(f => f.field === 'retailer_sku_name') || fields[0])?.field || '';
+    S.photo = 0;
+  }
+}
+
+const manualBaseNavigation = navigation;
+navigation = function() {
+  manualBaseNavigation();
+  const datasets = manualDatasets(), common = manualCommonKeys(datasets);
+  const scopes = [...(common.size ? ['common'] : []), ...datasets.map(dataset => dataset.category)];
+  $('categoryNav').innerHTML = scopes.map(scope => {
+    const count = scope === 'common' ? common.size : manualFieldsForScope(datasets, scope, scope).length;
+    return '<button class="category ' + (S.scope === scope ? 'on' : '') + '" data-scope="' + esc(scope) + '" aria-pressed="' + (S.scope === scope) + '">' +
+      (scope === 'common' ? '공통 컬럼' : esc(manualCategoryLabel(scope))) + '<span class="manual-tab-count">' + count + '</span></button>';
+  }).join('');
+  $('categoryNav').querySelectorAll('button').forEach(button => button.onclick = () => {
+    S.scope = button.dataset.scope;
+    if (S.scope !== 'common') S.c = S.scope;
+    S.field = '';
+    S.q = '';
+    $('fieldSearch').value = '';
+    S.photo = 0;
+    render();
+  });
+};
+
+const manualBaseRender = render;
+render = function() {
+  normalizeManualScope();
+  manualBaseRender();
+  const common = S.scope === 'common';
+  $('heading').innerHTML = esc(profile().name) + '<span>/</span>' + (common ? '공통 컬럼' : esc(shortCat[S.c]));
+  $('fieldCount').textContent = manualScopedFields().length + '개';
+  document.querySelector('.fieldpane-head h2').firstChild.textContent = common ? '공통 컬럼 ' : manualCategoryLabel(S.c) + ' 제품군별 ';
+  $('manualScopeNote').textContent = common
+    ? manualDatasets().map(dataset => manualCategoryLabel(dataset.category)).join(' · ') + ' 공통 컬럼입니다. 제품군별 예시에서 화면과 확인 방법을 선택하세요.'
+    : manualCategoryLabel(S.c) + '의 제품군별 컬럼입니다. 공통 컬럼은 공통 탭에서 확인하세요.';
+  $('routeSummary').insertAdjacentHTML('afterbegin', '<strong class="manual-route-product">' + esc(manualCategoryLabel(S.c)) + ' · </strong>');
+};
+
+const manualBaseSetField = setField;
+setField = function(key) {
+  // The all-fields table can jump to a field outside the current scope.
+  if (!manualScopedFields().some(f => f.field === key)) {
+    S.scope = manualCommonKeys(manualDatasets()).has(key) ? 'common' : S.c;
+    S.field = key;
+    S.photo = 0;
+    render();
+  } else manualBaseSetField(key);
+};
+
+const manualBaseRenderLesson = renderLesson;
+renderLesson = function() {
+  const fields = manualScopedFields(), common = S.scope === 'common';
+  manualDefinition.hidden = !common || !fields.length;
+  manualExample.hidden = !fields.length;
+  manualScopeBadge.textContent = common ? '공통 컬럼' : manualCategoryLabel(S.c) + ' 제품군별';
+  if (!fields.length) {
+    $('lessonTitle').textContent = '제품군별 컬럼이 없습니다.';
+    $('lessonCode').textContent = '공통 탭에서 컬럼을 확인하세요.';
+    $('lessonNumber').textContent = '–';
+    $('prevField').disabled = $('nextField').disabled = true;
+    renderEditorStatus();
+    return;
+  }
+  manualBaseRenderLesson();
+  const f = field(), index = fields.indexOf(f);
+  $('prevField').disabled = index <= 0;
+  $('nextField').disabled = index >= fields.length - 1;
+  if (common) {
+    manualDefinition.innerHTML = '<strong>공통 설명</strong><p>' + esc(manualCommonDefinitions[f.field]) + '</p><div class="manual-product-chips">' +
+      manualDatasets().map(dataset => '<span>' + esc(manualCategoryLabel(dataset.category)) + '</span>').join('') + '</div>';
+  } else {
+    const appliesTo = manualDatasets().filter(dataset => dataset.fields.some(candidate => candidate.field === f.field));
+    manualScopeBadge.textContent = appliesTo.length > 1 ? appliesTo.map(dataset => manualCategoryLabel(dataset.category)).join(' · ') + ' 적용' : manualCategoryLabel(S.c) + ' 전용';
+  }
+  $('manualExampleHead').innerHTML = '<h3>' + (common ? '제품군별 확인 방법' : esc(shortCat[S.c]) + ' 확인 방법') + '</h3>' +
+    '<p>' + (common ? '공통 의미는 같아도 화면·예시·주의사항은 제품군마다 다를 수 있습니다.' : '이 제품군의 화면과 수집 기준을 확인하세요.') + '</p>' +
+    (common ? '<nav class="manual-example-tabs" aria-label="제품군별 예시">' + manualDatasets().map(dataset =>
+      '<button data-example="' + esc(dataset.category) + '" class="' + (S.c === dataset.category ? 'on' : '') + '" aria-pressed="' + (S.c === dataset.category) + '">' +
+      esc(manualCategoryLabel(dataset.category)) + (dataset.category === 'tv' ? '' : ' · ' + esc(shortCat[dataset.category])) + '</button>'
+    ).join('') + '</nav>' : '') + '<p id="manualEditHint" class="manual-edit-hint"' + (editing ? '' : ' hidden') + '>' + esc(manualCategoryLabel(S.c)) + ' 예시의 문구·이미지를 수정합니다. 다른 제품군의 내용은 각각 수정할 수 있습니다.</p>';
+  $('manualExampleHead').querySelectorAll('[data-example]').forEach(button => button.onclick = () => {
+    S.c = button.dataset.example;
+    S.photo = 0;
+    render();
+  });
+};
+
+function manualStepField(direction) {
+  const fields = manualScopedFields(), index = fields.findIndex(f => f.field === S.field);
+  const target = fields[index + direction];
+  if (target) setField(target.field);
+}
+$('prevField').onclick = () => manualStepField(-1);
+$('nextField').onclick = () => manualStepField(1);
+
+const manualBaseEditorStatus = renderEditorStatus;
+renderEditorStatus = function() {
+  manualBaseEditorStatus();
+  if ($('manualEditHint')) $('manualEditHint').hidden = !editing;
+  $('editText').textContent = manualCategoryLabel(S.c) + ' · 문구 수정';
+  $('editImage').textContent = manualCategoryLabel(S.c) + ' · 이미지 수정';
+  if (!manualScopedFields().length) $('editText').disabled = $('editImage').disabled = true;
+};
 
 // Appended to the imported editor by scripts/import_dx_manual.py.
 const serverMeta = JSON.parse($('guide-meta').textContent);
