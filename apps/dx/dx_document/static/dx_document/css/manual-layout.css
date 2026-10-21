@@ -1,4 +1,16 @@
 /* The approved guide layout, isolated from the application's global styles. */
+dialog .close{display:grid;place-items:center;position:relative;flex:0 0 32px;width:32px;height:32px;min-width:32px;padding:0;border:0;font-size:0;line-height:1;color:#63748f}
+dialog .close::before,dialog .close::after{content:"";position:absolute;left:50%;top:50%;width:14px;height:1.5px;border-radius:1px;background:currentColor;transform:translate(-50%,-50%) rotate(45deg)}
+dialog .close::after{transform:translate(-50%,-50%) rotate(-45deg)}
+dialog .close:hover{background:#e7edf5;color:#243c65}
+.manual-inline-editable{min-height:40px;padding:8px 10px;border:1px dashed #c6d3e6;border-radius:7px;cursor:text;white-space:pre-wrap}
+.manual-inline-editable:hover,.manual-inline-editable:focus-visible{border-color:#6c8ab8;background:#f7faff;outline:none}
+.manual-inline-empty{color:#7b8da8!important;font-size:13px!important;font-weight:400!important}
+.manual-inline-active{border-color:#527db9;background:#f7faff}
+.manual-inline-input{display:block;box-sizing:border-box;width:100%;min-height:70px;padding:8px;border:1px solid #9eb4d4;border-radius:5px;resize:vertical;color:#243c65;background:white;font:14px/1.7 "Malgun Gothic",sans-serif;letter-spacing:normal}
+.manual-inline-help{display:block;margin-top:6px;color:#64748b;font-size:11px;line-height:1.5;font-weight:400;letter-spacing:normal}
+.manual-add-capture{border:1px dashed #8da6ca;color:#243c65;cursor:pointer}
+.manual-add-capture:hover{background:#e3ebf8}
 :root{--blue:#243c65;--soft:#edf2f8;--bg:#f7f9fc;--line:#dfe6f0;--radius:12px}
 .layout{display:block;min-height:0;padding:22px 26px 0}
 .sidebar{position:static;height:auto;overflow:visible;display:flex;flex-direction:row;align-items:flex-start;gap:14px;flex-wrap:wrap;border:1px solid var(--line);border-radius:12px;padding:14px 18px;box-shadow:0 2px 5px #1e355509}

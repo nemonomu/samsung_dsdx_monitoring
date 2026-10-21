@@ -9,7 +9,7 @@ from django.db import connections, DatabaseError, transaction
 COUNTRIES = {'SEA': '미국', 'SEG': '독일', 'SEIB': '스페인', 'SEM': '멕시코',
              'TSE': '태국', 'SEDA': '브라질', 'SIEL': '인도'}
 PRODUCTS = {'tv': 'TV', 'ref': '냉장고', 'ldy': '세탁기', 'ldy_dryer': '건조기', 'dryer': '건조기', 'hhp': 'HHP'}
-EXCLUDED = {'id', 'country', 'account_name', 'product_url', 'main_rank', 'bsr_rank'}
+EXCLUDED = {'id', 'country', 'account_name', 'product_url', 'main_rank', 'bsr_rank', 'batch_id', 'product'}
 COMMON = {'sku', 'retailer_sku_name', 'item', 'final_sku_price', 'original_sku_price',
           'savings', 'count_of_reviews', 'star_rating', 'count_of_star_ratings',
           'calendar_week', 'crawl_datetime', 'crawl_strdatetime', 'page_type', 'batch_id',

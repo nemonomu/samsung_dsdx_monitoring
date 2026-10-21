@@ -6,7 +6,15 @@
 <style>
 .manual-frame{border:0;width:100%;height:calc(100vh - 170px);min-height:580px;display:block;background:#f7f9fc}
 .manual-title-note{font-size:12px;color:var(--text-secondary);margin:5px 0 0}
-.manual-country-header{gap:16px;flex-wrap:wrap}
+.manual-country-header{gap:16px;flex-wrap:wrap;position:sticky;top:64px;z-index:20;background:#f7f9fc}
+.manual-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-left:auto}
+.manual-header-actions button{border:1px solid #cbd8e9;border-radius:7px;padding:9px 14px;background:#fff;color:#243c65;font-family:inherit;font-size:13px;font-weight:600;line-height:1.4;cursor:pointer;white-space:nowrap}
+.manual-header-actions[hidden],.manual-header-actions [hidden]{display:none}
+.manual-header-actions button[aria-pressed=true],.manual-header-actions .manual-header-save{background:#243c65;color:#fff;border-color:#243c65}
+.manual-header-actions button:disabled{opacity:.5;cursor:default}
+.manual-header-actions button:focus-visible{outline:2px solid #527db9;outline-offset:2px}
+.manual-header-status{font-size:12px;color:#687b95;max-width:180px}
+.manual-header-status.dirty{color:#a25a19}
 .manual-country-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:38px}
 .manual-country-tabs .country{display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid transparent;border-radius:7px;background:transparent;color:#64748b;font-size:13px;cursor:pointer;white-space:nowrap}
 .manual-country-tabs .country.on{background:#eaf0f9;border-color:#d7e2f1;color:#243c65;font-weight:700}
@@ -35,7 +43,7 @@
         </nav>
     </aside>
     <section class="documents-content">
-        <div class="content-header manual-country-header"><nav id="manualCountryNav" class="manual-country-tabs" aria-label="국가 선택" aria-busy="true"><span class="manual-country-loading">국가 선택을 불러오는 중입니다.</span></nav><p class="manual-title-note">국가·쇼핑몰·제품군별 컬럼 확인 가이드</p></div>
+        <div class="content-header manual-country-header"><nav id="manualCountryNav" class="manual-country-tabs" aria-label="국가 선택" aria-busy="true"><span class="manual-country-loading">국가 선택을 불러오는 중입니다.</span></nav><div id="manualHeaderActions" class="manual-header-actions" aria-label="매뉴얼 편집" hidden><span id="manualHeaderStatus" class="manual-header-status" role="status"></span><button id="manualHeaderEdit" type="button" aria-pressed="false">편집 모드</button><button id="manualHeaderSave" class="manual-header-save" type="button" hidden>저장</button></div></div>
         <iframe id="manualGuideFrame" class="manual-frame" src="{% url 'dx_document:manual_content' %}" title="dx 메뉴얼 가이드 및 편집"></iframe>
     </section>
 </div>

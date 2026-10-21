@@ -30,3 +30,40 @@ function renderManualCountryHeader() {
     $('retailerNav').before(label);
   }
 }
+
+function renderManualHeaderActions() {
+  let parent;
+  try {
+    if (window.frameElement?.id !== 'manualGuideFrame') return;
+    parent = window.parent.document;
+  } catch { return; }
+  const actions = parent.getElementById('manualHeaderActions');
+  if (!actions) return;
+  if (!actions.dataset.shortcutsReady) {
+    actions.dataset.shortcutsReady = 'true';
+    parent.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        void saveManual();
+      }
+    });
+  }
+  actions.hidden = false;
+  const edit = parent.getElementById('manualHeaderEdit');
+  const save = parent.getElementById('manualHeaderSave');
+  const status = parent.getElementById('manualHeaderStatus');
+  const modalOpen = !!document.querySelector('dialog[open]');
+  edit.textContent = editing ? '편집 종료' : '편집 모드';
+  edit.setAttribute('aria-pressed', String(editing));
+  edit.disabled = saveBusy || modalOpen;
+  edit.onclick = () => {manualFinishInlineEdit(); $('editModeToggle').click();};
+  save.hidden = !editing && revision === downloadedRevision;
+  save.disabled = $('saveGuide').disabled || modalOpen;
+  save.textContent = saveBusy ? '저장 중…' : '저장';
+  save.onclick = () => {manualFinishInlineEdit(); $('saveGuide').click();};
+  const dirty = revision !== downloadedRevision || !!manualInlineEdit;
+  status.textContent = saveBusy ? '저장 중' : dirty ? '저장하지 않은 변경' : editing ? '저장됨' : '';
+  status.classList.toggle('dirty', dirty);
+  $('editModeToggle').hidden = true;
+  parent.querySelectorAll('#manualCountryNav button').forEach(button => button.disabled = modalOpen || saveBusy);
+}

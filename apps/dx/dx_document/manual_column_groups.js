@@ -37,4 +37,4 @@ function manualFieldsForScope(datasets, category, scope) {
   const fields = (scope === 'common' && shared ? shared : datasets.find(dataset => dataset.category === category))?.fields || [];
   return fields.filter(field => !manualExcludedFields.has(field.field) && (scope === 'common' ? common.has(field.field) : !common.has(field.field)));
 }
-const manualExcludedFields = new Set(['id', 'country', 'account_name', 'product_url', 'main_rank', 'bsr_rank']);
+const manualExcludedFields = new Set(['id', 'country', 'account_name', 'product_url', 'main_rank', 'bsr_rank', 'batch_id', 'product']);

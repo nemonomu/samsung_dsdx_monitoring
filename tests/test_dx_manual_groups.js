@@ -18,7 +18,7 @@ test('every retailer/product field appears exactly once across common and produc
       const common = manualFieldsForScope(datasets, ds.category, 'common');
       const specific = manualFieldsForScope(datasets, ds.category, ds.category);
       const all = [...common, ...specific];
-      const expected = ds.fields.filter(f => !['id','country','account_name','product_url','main_rank','bsr_rank'].includes(f.field));
+      const expected = ds.fields.filter(f => !['id','country','account_name','product_url','main_rank','bsr_rank','batch_id','product'].includes(f.field));
       assert.equal(new Set(all.map(f => f.field)).size, expected.length, ds.key);
       assert.equal(all.length, expected.length, ds.key);
       for (const field of all) assert.ok(ds.fields.includes(field), 'must retain editable original objects');
@@ -27,17 +27,17 @@ test('every retailer/product field appears exactly once across common and produc
   assert.equal(JSON.stringify(data), before, 'grouping must not mutate saved data');
 });
 
-test('Costco excludes six management fields; capacity stays in its product', () => {
+test('Costco excludes management fields; capacity stays in its product', () => {
   const datasets = data.datasets.filter(ds => ds.retailer === 'SEA/costco');
   assert.equal(manualCommonKeys(datasets).size, 11);
   assert.deepEqual(Array.from(manualFieldsForScope(datasets, 'ref', 'ref'), f => f.field), ['ref_capacity', 'ref_refrigerator_type']);
-  assert.ok(manualFieldsForScope(datasets, 'ldy_dryer', 'ldy_dryer').some(f => f.field === 'batch_id'));
+  assert.ok(!manualFieldsForScope(datasets, 'ldy_dryer', 'ldy_dryer').some(f => f.field === 'batch_id'));
 });
 
 test('canonical common records are returned once, using their own editable objects', () => {
   const common = {field:'sku', n:1};
-  const rows = [{category:'all',fields:[common,{field:'id'}]},
-    {category:'tv',fields:[{field:'sku'},{field:'screen_size'},{field:'product_url'}]}];
+  const rows = [{category:'all',fields:[common,{field:'id'},{field:'batch_id'},{field:'product'}]},
+    {category:'tv',fields:[{field:'sku'},{field:'screen_size'},{field:'product_url'},{field:'batch_id'},{field:'product'}]}];
   assert.equal(manualFieldsForScope(rows,'tv','common')[0],common);
   assert.deepEqual(Array.from(manualFieldsForScope(rows,'tv','common'),f=>f.field),['sku']);
   assert.deepEqual(Array.from(manualFieldsForScope(rows,'tv','tv'),f=>f.field),['screen_size']);
