@@ -34,6 +34,7 @@ def build(source):
             photo['customImage'] = image_url(photo['customImage'])
     (private / 'seed.json').write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     styles = '\n'.join(re.findall(r'<style[^>]*>(.*?)</style>', html, re.S))
+    styles = styles.replace('.fieldgroup:not([open]) .fieldbtn', 'details.fieldgroup:not([open]) .fieldbtn')
     static = root / 'static/dx_document'
     (static / 'css/manual-guide.css').write_text(styles, encoding='utf-8')
     body = html.split('<body', 1)[1].split('>', 1)[1].split('<script id="guide-data"', 1)[0]
@@ -46,8 +47,8 @@ def build(source):
     template = '''{% load static %}
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>dx 메뉴얼</title>
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021">
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-readable">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-readable">
 </head><body><form hidden>{% csrf_token %}</form>
 '''
     template += body
@@ -55,11 +56,21 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-readable"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')
     code = re.findall(r'<script>(.*?)</script>', html, re.S)[-1]
+    fields_start = code.index('function renderFields()')
+    fields_end = code.index('\nfunction svg(', fields_start)
+    fields_code = code[fields_start:fields_end]
+    fields_code = fields_code.replace(
+        "'<details class=\"fieldgroup\" '+(g!=='수집 관리 · 기타'||q||fs.some(f=>f.field===S.field)?'open':'')+'><summary>'",
+        "'<section class=\"fieldgroup\"><h3 class=\"fieldgroup-title\">'",
+    ).replace('</summary>', '</h3>').replace('</details>', '</section>')
+    if '<details' in fields_code or 'fieldgroup-title' not in fields_code:
+        raise ValueError('Source field-list structure changed; review the always-visible groups.')
+    code = code[:fields_start] + fields_code + code[fields_end:]
     # Keep the original viewing and editing behavior; replace local file persistence.
     start = code.index('function createExportHtml()')
     end = code.index("window.addEventListener('beforeunload'", start)

@@ -10,3 +10,38 @@
 @media(min-width:1450px){.workspace{grid-template-columns:245px minmax(0,1fr)}.canvas svg{max-height:440px}}
 @media(max-width:1000px){.layout{padding:18px}.workspace{grid-template-columns:195px minmax(0,1fr)}.retailers{border-left:0;padding-left:0}.facts{grid-template-columns:1fr 1fr}.facts>div:last-child{grid-column:1/-1}}
 @media(max-width:650px){.workspace{grid-template-columns:1fr}.fieldpane{position:static}.fieldlist{max-height:200px;min-height:0}.hero{flex-direction:column;align-items:flex-start;gap:12px}.hero h1{font-size:23px}.facts{grid-template-columns:1fr}.facts>div:last-child{grid-column:auto}.topline{align-items:flex-start}.topline-actions{flex-wrap:wrap;justify-content:flex-end;gap:10px}.sidebar{padding:10px}.country{padding:7px}.country .countrycode{display:none}.layout{padding:12px}.routebar{flex-wrap:wrap}}
+
+/* Keep navigation readable and every field group permanently visible. */
+.workspace{grid-template-columns:260px minmax(0,1fr)}
+.routebar{padding:14px 16px;gap:16px;border-color:#cbd5e4}
+.segmented{background:#e9eef5;padding:4px;border-radius:9px}
+.segmented button{min-width:78px;min-height:42px;padding:9px 18px;font-size:14px;font-weight:600;color:#47566e;text-transform:uppercase}
+.segmented button.on{background:#243c65;color:#fff;box-shadow:0 2px 5px #20365d20}
+.segmented button:not(.on):hover{background:#dbe4f0;color:#20365d}
+.routecopy{display:block;font-size:13px;color:#52617a;line-height:1.7}
+.routecopy strong{color:#283d5b;font-weight:600}
+#routeDetails,.route-link{font-size:13px;font-weight:600;padding:9px 12px;border:1px solid #cbd5e4;border-radius:7px;color:#243c65;white-space:nowrap;background:#fff}
+#routeDetails:hover,.route-link:hover{background:#edf2f8}
+.route-link .icon{width:16px;height:16px}
+.fieldpane-head h2{font-size:15px;color:#253752}
+.counter{font-size:12px;color:#5e6e86}
+.searchbox{padding:10px;border-color:#cbd5e4;background:#fff}
+.searchbox input{font-size:12px;color:#263955}
+.searchbox input::placeholder{color:#64748b}
+.fieldlist{display:block;scrollbar-color:#a9b8cc #f2f5f9}
+.fieldgroup{display:block;margin:0 0 12px}
+.fieldgroup-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 4px 5px;padding:10px 6px 8px;border-bottom:1px solid #e0e6ef;font-size:12px;font-weight:700;color:#445875;line-height:1.5}
+.fieldgroup-title span{font-size:11px;color:#526581;background:#edf2f8;border-radius:5px;padding:1px 7px}
+.fieldlist .fieldgroup .fieldbtn{display:flex;width:100%;padding:11px 9px;gap:10px}
+.fieldbtn>span:nth-child(2){min-width:0}
+.fieldbtn strong{font-size:14px;color:#2d3e59;font-weight:500;line-height:1.5}
+.fieldbtn code{font-size:11px;color:#5c6e89;line-height:1.6;overflow-wrap:anywhere}
+.fieldbtn.on{background:#e7eef8;box-shadow:inset 3px 0 #243c65}
+.fieldbtn.on strong{color:#1e365e;font-weight:700}
+.fieldbtn.on code{color:#445e85}
+.fieldnum{width:28px;height:28px;font-size:11px;color:#51637d;background:#edf1f7}
+.photo-dot{background:#8ca0bd}
+.fieldpane-foot button{font-size:12px;font-weight:500;color:#475e7f}
+@media(min-width:1450px){.workspace{grid-template-columns:280px minmax(0,1fr)}}
+@media(max-width:1000px){.workspace{grid-template-columns:230px minmax(0,1fr)}.routebar{flex-wrap:wrap}.routecopy{flex:1 1 200px}}
+@media(max-width:650px){.workspace{grid-template-columns:1fr}.fieldpane-head{display:block}.fieldpane-head h2{margin-bottom:10px}.counter{display:inline}.fieldlist{max-height:290px}.routecopy{flex-basis:calc(100% - 190px);font-size:12px}.route-link{margin-left:0}#routeDetails,.route-link{font-size:12px}.segmented button{min-width:70px}}
