@@ -1,0 +1,17 @@
+{% extends 'base_layer1.html' %}
+{% load static %}
+{% block page_title %}과거 확인필요{% endblock %}
+{% block collection_issues_panel %}{% endblock %}
+{% block layer1_content %}
+<section class="cs-page" aria-label="과거 확인필요">
+    <div class="cs-intro"><div><p class="cs-eyebrow">과거 수집 이력</p><p>과거에 발생한 미수집·컬럼 수집 이상 중 아직 복구 검증이 끝나지 않은 항목을 확인하세요.</p></div></div>
+    <form id="past-review-filters" class="cs-filters">
+        <label>국가<select id="past-review-country"><option value="">전체 국가</option></select></label>
+        <label>제품군<select id="past-review-product"><option value="">전체 제품군</option></select></label>
+        <label>리테일러<select id="past-review-retailer"><option value="">전체 리테일러</option></select></label>
+        <button class="cs-primary" type="submit">조회</button>
+    </form>
+    <div id="collection-issues-container" hidden></div>
+</section>
+{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/past-review.js' %}?v=20261021"></script>{% endblock %}

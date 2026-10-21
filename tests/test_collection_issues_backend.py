@@ -34,6 +34,25 @@ def sample(target=TARGET,count=0,total=300,history=100):
     return data,{d['date']:True for d in daily}
 
 class IssueTests(TestCase):
+    def test_past_review_page_uses_separate_section(self):
+        req = RequestFactory().get('/dx/layer1/past-review/')
+        req.user = SimpleNamespace(is_authenticated=True)
+        with patch('apps.dx.dx_layer1.common.context.build_context', return_value={'section': 'past_review'}) as context, \
+             patch.object(api, 'render') as render:
+            api.page(req)
+        context.assert_called_once_with('past_review', req)
+        render.assert_called_once_with(req, 'dx_layer1_past_review.html', {'section': 'past_review'})
+
+    def test_past_review_menu_follows_column_alerts_and_is_independent(self):
+        from apps.dx.dx_layer1.common.context import _build_sidebar_groups
+        with patch('apps.dx.dx_layer1.common.context.load_collection_schedules', return_value=[]):
+            groups = _build_sidebar_groups('past_review')
+        keys = [group['key'] for group in groups]
+        self.assertEqual(keys.index('past_review'), keys.index('column_alerts') + 1)
+        selected = [group for group in groups if group['active']]
+        self.assertEqual([group['key'] for group in selected], ['past_review'])
+        self.assertEqual(selected[0]['href'], '/dx/layer1/past-review/')
+
     def test_listing_identifies_schema_and_lock_errors_without_exposing_sql(self):
         req = RequestFactory().get('/')
         req.user = SimpleNamespace(is_authenticated=True)

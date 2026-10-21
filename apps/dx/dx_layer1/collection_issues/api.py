@@ -3,6 +3,8 @@ from datetime import date
 
 from django.db import transaction
 from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
@@ -22,6 +24,13 @@ def reply(data, status=200):
 
 def authenticated(request):
     return getattr(request, 'user', None) and request.user.is_authenticated
+
+
+@login_required
+@require_GET
+def page(request):
+    from apps.dx.dx_layer1.common.context import build_context
+    return render(request, 'dx_layer1_past_review.html', build_context('past_review', request))
 
 
 @require_GET

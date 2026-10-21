@@ -7,6 +7,7 @@ from apps.dx.dx_layer1.column_statistics import api as column_statistics_api
 from apps.dx.dx_layer1.collection_issues import api as issues_api
 
 urlpatterns = [
+    path('past-review/', issues_api.page, name='past_review'),
     path('api/collection-issues/', issues_api.listing, name='api_collection_issues'),
     path('api/collection-issues/sql/', issues_api.queries, name='api_collection_issue_sql'),
     path('api/collection-issues/<int:issue_id>/', issues_api.detail, name='api_collection_issue'),
