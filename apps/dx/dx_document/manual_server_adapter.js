@@ -43,7 +43,7 @@ async function manualRequest(path, options = {}) {
 async function saveManual() {
     manualFinishInlineEdit();
     if (saveBusy || revision === downloadedRevision) return;
-    if ($('imageEditor').open || $('textEditor').open) {
+    if ($('imageEditor').open || $('textEditor').open || $('manualDetailEditor').open) {
         showToast('수정 창의 적용 버튼을 누른 뒤 저장하세요.');
         return;
     }

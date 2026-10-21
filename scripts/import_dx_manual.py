@@ -47,8 +47,8 @@ def build(source):
     template = '''{% load static %}
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>dx 메뉴얼</title>
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-inline-edit">
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-inline-edit">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-original-15px">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-original-15px">
 </head><body><form hidden>{% csrf_token %}</form>
 '''
     template += body
@@ -56,7 +56,7 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-inline-edit"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-original-15px"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')
@@ -112,6 +112,7 @@ def build(source):
     for name in ('page', 'position', 'original', 'scope', 'note'):
         info = info.replace('esc(f.' + name + ')', 'esc(infoField.' + name + ')')
     code = code[:info_start] + info + code[info_end:]
+    code = code.replace('<span class="sourcepill">\'+esc(infoField.page)+\'</span>', '')
     code = code.replace("+esc(item.stage)+'</option>'", "+esc((S.scope==='common'?manualCategoryLabel(item.category)+' · ':'')+item.stage)+'</option>'")
     code += '\n' + (root / 'manual_field_info.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_column_groups.js').read_text(encoding='utf-8')
@@ -119,6 +120,7 @@ def build(source):
     code += '\n' + (root / 'manual_grouped_view.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_expansion.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_inline_edit.js').read_text(encoding='utf-8')
+    code += '\n' + (root / 'manual_details.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_server_adapter.js').read_text(encoding='utf-8')
     code += '\n})();\n'
     (static / 'js/manual-guide.js').write_text(code, encoding='utf-8')

@@ -31,7 +31,7 @@ function manualStartInlineEdit(node, key) {
   input.className = 'manual-inline-input';
   input.rows = key === 'position' ? 3 : 2;
   input.maxLength = 20000;
-  input.setAttribute('aria-label', key === 'position' ? '어디서 찾나요? 내용 입력' : '값 예시 입력');
+  input.setAttribute('aria-label', {position:'어디서 찾나요? 내용 입력', example:'값 예시 입력', original:'화면의 원문 항목 입력'}[key]);
   input.value = original;
   const help = document.createElement('small');
   help.className = 'manual-inline-help';
@@ -58,7 +58,7 @@ function manualStartInlineEdit(node, key) {
 function renderManualInlineControls() {
   const f = field();
   if (!f) return;
-  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시']]) {
+  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시'],['.origin','original','화면의 원문 항목']]) {
     const node = $('inspector').querySelector(selector);
     if (!node || manualInlineEdit?.node === node) continue;
     node.classList.toggle('manual-inline-editable', editing);

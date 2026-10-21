@@ -51,7 +51,7 @@ $('zoomOpen').hidden=!photo;$('originalLink').hidden=!photo;$('commonNote').hidd
 if(photo){$('canvas').innerHTML='<div class="view-caption">'+(S.view==='full'?'이미지 전체에서 <strong>'+f.n+'번 박스</strong>의 위치를 확인하세요.':'같은 캡처의 <strong>'+f.n+'번 박스 주변</strong>을 확대했습니다.')+'</div>'+svg(photo,S.view==='full');$('originalLink').href=photoSrc(photo);$('photoSource').innerHTML=esc(photo.stage)+(photo.url?' · <a href="'+esc(photo.url)+'" target="_blank" rel="noopener">출처 페이지 ↗</a>':' · 제공된 캡처')+'<br>'+esc(photo.region)+' · '+esc(photo.date);$('photoPager').innerHTML='<button id="prevPhoto" aria-label="이전 캡처" '+(S.photo===0?'disabled':'')+'>‹</button><select id="captureSelect" aria-label="캡처 선택">'+a.map((item,i)=>'<option value="'+i+'" '+(i===S.photo?'selected':'')+'>'+(i+1)+' / '+a.length+' · '+esc((S.scope==='common'?manualCategoryLabel(item.category)+' · ':'')+item.stage)+'</option>').join('')+'</select><button id="nextPhoto" aria-label="다음 캡처" '+(S.photo===a.length-1?'disabled':'')+'>›</button>';$('captureSelect').onchange=e=>{S.photo=Number(e.target.value);renderLesson()};$('prevPhoto').onclick=()=>{S.photo--;renderLesson()};$('nextPhoto').onclick=()=>{S.photo++;renderLesson()};}
 else{$('canvas').innerHTML='<div class="empty"><div class="emptyicon">'+icon(p.blocked?'lock':f.direct?'image':'info')+'</div><strong>'+esc(p.blocked?'현재 사이트 화면을 확인하지 못했어요.':f.direct?'이번 표본에는 번호 캡처가 없어요.':'쇼핑몰에 직접 표시되는 값이 아니에요.')+'</strong><p>'+esc(p.blocked?p.blocked:f.direct?'아래의 확인 위치와 원문 항목명을 따라 찾아보세요. 확인하지 않은 화면을 예시로 만들지 않았습니다.':'상품 화면의 숫자를 찾는 대신, 아래에서 이 컬럼의 의미와 출처를 확인하세요.')+'</p></div>';$('photoSource').textContent=p.region;$('photoPager').textContent=p.blocked?'현재 화면 미확인':'위치 · 의미 안내';}
 const infoField=manualDisplayField(f,photo),shownExample=manualShownExample(f,photo);
-$('inspector').innerHTML='<div class="facts"><div class="fact"><div class="facttitle">'+(photo?.commonExample?'선택 제품의 값 · 확인 상태':'확인하는 값')+'</div><div class="example '+(shownExample.length>24?'long':'')+'">'+(f.field==='product_url'&&shownExample.startsWith('http')?'<a target="_blank" rel="noopener" href="'+esc(shownExample)+'">표본 상품 열기 ↗</a>':esc(shownExample))+'</div></div><div class="fact"><div class="facttitle">어디서 찾나요?</div><span class="sourcepill">'+esc(infoField.page)+'</span><div class="where">'+esc(infoField.position)+'</div></div><div class="fact"><div class="facttitle">화면의 원문 항목</div><div class="origin">'+esc(infoField.original)+'</div><div class="facttitle" style="margin-top:12px">수집 구분 · '+esc(infoField.scope)+'</div></div></div><details class="attention" '+(/capacity|screen_size/.test(f.field)?'open':'')+'><summary>'+icon('info')+'헷갈리기 쉬운 부분</summary><p>'+esc(infoField.note)+'</p>'+(photo?'<p>'+esc(photo.note)+'</p>':'')+'</details>';
+$('inspector').innerHTML='<div class="facts"><div class="fact"><div class="facttitle">'+(photo?.commonExample?'선택 제품의 값 · 확인 상태':'확인하는 값')+'</div><div class="example '+(shownExample.length>24?'long':'')+'">'+(f.field==='product_url'&&shownExample.startsWith('http')?'<a target="_blank" rel="noopener" href="'+esc(shownExample)+'">표본 상품 열기 ↗</a>':esc(shownExample))+'</div></div><div class="fact"><div class="facttitle">어디서 찾나요?</div><div class="where">'+esc(infoField.position)+'</div></div><div class="fact"><div class="facttitle">화면의 원문 항목</div><div class="origin">'+esc(infoField.original)+'</div><div class="facttitle" style="margin-top:12px">수집 구분 · '+esc(infoField.scope)+'</div></div></div><details class="attention" '+(/capacity|screen_size/.test(f.field)?'open':'')+'><summary>'+icon('info')+'헷갈리기 쉬운 부분</summary><p>'+esc(infoField.note)+'</p>'+(photo?'<p>'+esc(photo.note)+'</p>':'')+'</details>';
 }
 function openInfo(title,content){$('infoTitle').textContent=title;$('infoBody').innerHTML=content;$('infoDialog').showModal()}
 function routeInfo(){const p=profile();openInfo(profile().name+' 방문 방법','<h3>'+S.mode+' · '+shortCat[S.c]+'</h3><p><a href="'+esc(entry())+'" target="_blank" rel="noopener">쇼핑몰에서 시작하기 ↗</a></p><p>검색어 <strong>'+esc(p.queries[S.c])+'</strong><br>정렬 · '+esc(S.mode==='main'?p.mainSort:p.bsrSort)+'</p><h3>목록과 상세에서 확인할 것</h3><p>'+esc(p.summary)+'</p><h3>사용한 지역</h3><p>'+esc(p.region)+'</p><h3>확인할 때 주의하세요</h3><p>'+esc(p.warning)+'</p>'+(p.blocked?'<p>'+esc(p.blocked)+'</p>':''))}
@@ -131,9 +131,9 @@ function renderFieldWithoutImage(f, p, photo) {
     '<div class="field-info-heading"><span class="field-info-badge">' + (f.direct ? '캡처 미등록' : '화면 미표시 값') + '</span><p>' + notice + '</p></div>' +
     (f.direct && p.blocked ? '<p class="field-info-warning">현재 사이트 화면 미확인 · ' + esc(p.blocked) + '</p>' : '') +
     '<dl class="field-info-grid">' +
-    fact(f.direct ? '어디서 찾나요?' : '값의 출처', '<span class="sourcepill">' + esc(f.page) + '</span><div class="where">' + esc(f.position) + '</div>') +
+    fact(f.direct ? '어디서 찾나요?' : '값의 출처', '<div class="where">' + esc(f.position) + '</div>') +
     fact('값 예시', '<div class="example long">' + exampleHtml + '</div>') +
-    fact(f.direct ? '화면의 원문 항목' : '관련 항목', esc(f.original)) +
+    fact(f.direct ? '화면의 원문 항목' : '관련 항목', '<div class="origin">' + esc(f.original) + '</div>') +
     fact('수집 구분', esc(f.scope)) +
     '</dl>' +
     (f.note ? '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p>' + esc(f.note) + '</p></div>' : '');
@@ -573,7 +573,7 @@ function manualStartInlineEdit(node, key) {
   input.className = 'manual-inline-input';
   input.rows = key === 'position' ? 3 : 2;
   input.maxLength = 20000;
-  input.setAttribute('aria-label', key === 'position' ? '어디서 찾나요? 내용 입력' : '값 예시 입력');
+  input.setAttribute('aria-label', {position:'어디서 찾나요? 내용 입력', example:'값 예시 입력', original:'화면의 원문 항목 입력'}[key]);
   input.value = original;
   const help = document.createElement('small');
   help.className = 'manual-inline-help';
@@ -600,7 +600,7 @@ function manualStartInlineEdit(node, key) {
 function renderManualInlineControls() {
   const f = field();
   if (!f) return;
-  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시']]) {
+  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시'],['.origin','original','화면의 원문 항목']]) {
     const node = $('inspector').querySelector(selector);
     if (!node || manualInlineEdit?.node === node) continue;
     node.classList.toggle('manual-inline-editable', editing);
@@ -672,6 +672,86 @@ $('photoFile').onchange = async event => {
   }
 };
 
+// Additional title/content pairs belong to the selected column, independently of its original guidance.
+const manualDetailEditor = document.createElement('dialog');
+manualDetailEditor.id = 'manualDetailEditor';
+manualDetailEditor.className = 'editdialog manual-detail-editor';
+manualDetailEditor.setAttribute('aria-labelledby', 'manualDetailHeading');
+manualDetailEditor.innerHTML = '<form id="manualDetailForm"><div class="dialoghead"><h2 id="manualDetailHeading">상세내용 추가</h2><button type="button" class="close" aria-label="닫기">×</button></div><div class="dialogbody"><label>제목<input id="manualDetailTitle" required maxlength="150" placeholder="예: 옵션 선택 시 주의사항"></label><label>상세내용<textarea id="manualDetailContent" required maxlength="20000" rows="6" placeholder="추가로 안내할 내용을 입력하세요."></textarea></label><p>기존 ‘어디서 찾나요?’ 내용 아래에 추가됩니다. 적용 후 저장을 눌러 보관하세요.</p><p id="manualDetailError" class="formerror" role="alert"></p></div><div class="editactions"><button type="button" id="manualDetailCancel">취소</button><button type="submit" class="primary">적용</button></div></form>';
+document.body.append(manualDetailEditor);
+manualDetailEditor.querySelector('.close').onclick = $('manualDetailCancel').onclick = () => manualDetailEditor.close();
+let manualDetailTarget = null;
+
+function openManualDetail(index = -1) {
+  if (!editing || saveBusy) return;
+  manualFinishInlineEdit();
+  const f = field(), details = f.details || [];
+  if (index < 0 && details.length >= 20) {showToast('상세내용은 최대 20개까지 추가할 수 있습니다.');return;}
+  manualDetailTarget = {field:f, index};
+  $('manualDetailHeading').textContent = index < 0 ? '상세내용 추가' : '상세내용 수정';
+  $('manualDetailTitle').value = details[index]?.title || '';
+  $('manualDetailContent').value = details[index]?.content || '';
+  $('manualDetailError').textContent = '';
+  manualDetailEditor.showModal();
+  $('manualDetailTitle').focus();
+}
+$('manualDetailForm').onsubmit = event => {
+  event.preventDefault();
+  const title = $('manualDetailTitle').value.trim(), content = $('manualDetailContent').value.trim();
+  if (!title || !content) {$('manualDetailError').textContent = '제목과 상세내용을 모두 입력하세요.';return;}
+  const {field:f, index} = manualDetailTarget;
+  const details = f.details || [];
+  if (index < 0 && details.length >= 20) return;
+  pushUndo({kind:'field', target:f, before:cloneValue(f)});
+  f.details = [...details];
+  if (index < 0) f.details.push({title, content});
+  else f.details[index] = {title, content};
+  f.userEdited = true;
+  changed(); renderLesson(); manualDetailEditor.close();
+  showToast('상세내용을 적용했습니다. 저장을 눌러 보관하세요.');
+};
+
+function renderManualDetails() {
+  const f = field(), where = $('inspector').querySelector('.where');
+  const previous = $('manualDetails');
+  const signature = JSON.stringify([editing, saveBusy, f?.details || []]);
+  if (previous && previous.previousElementSibling === where && previous.manualField === f && previous.manualSignature === signature) return;
+  previous?.remove();
+  if (!f || !where || (!editing && !f.details?.length)) return;
+  const container = document.createElement('div');
+  container.manualField = f;
+  container.manualSignature = signature;
+  container.id = 'manualDetails';
+  container.className = 'manual-details';
+  (f.details || []).forEach((detail, index) => {
+    const article = document.createElement('section');
+    article.className = 'manual-detail-item';
+    const heading = document.createElement('h4');heading.textContent = detail.title;
+    const body = document.createElement('p');body.textContent = detail.content;
+    article.append(heading, body);
+    if (editing) {
+      const edit = document.createElement('button');
+      edit.type = 'button';edit.className = 'manual-detail-edit';edit.textContent = '수정';
+      edit.setAttribute('aria-label', detail.title + ' 상세내용 수정');edit.disabled = saveBusy;
+      edit.onclick = () => openManualDetail(index);
+      heading.ondblclick = body.ondblclick = () => openManualDetail(index);
+      article.append(edit);
+    }
+    container.append(article);
+  });
+  if (editing) {
+    const add = document.createElement('button');
+    add.type = 'button';add.className = 'manual-add-button';add.textContent = '＋ 상세내용 추가';
+    add.disabled = saveBusy || (f.details?.length || 0) >= 20;
+    add.onclick = () => openManualDetail();container.append(add);
+  }
+  where.after(container);
+}
+const detailsRenderLesson = renderLesson;
+renderLesson = function() {detailsRenderLesson();renderManualDetails();};
+const detailsEditorStatus = renderEditorStatus;
+renderEditorStatus = function() {detailsEditorStatus();renderManualDetails();};
+
 // Appended to the imported editor by scripts/import_dx_manual.py.
 const serverMeta = JSON.parse($('guide-meta').textContent);
 if (serverMeta.catalogWarning) {
@@ -717,7 +797,7 @@ async function manualRequest(path, options = {}) {
 async function saveManual() {
     manualFinishInlineEdit();
     if (saveBusy || revision === downloadedRevision) return;
-    if ($('imageEditor').open || $('textEditor').open) {
+    if ($('imageEditor').open || $('textEditor').open || $('manualDetailEditor').open) {
         showToast('수정 창의 적용 버튼을 누른 뒤 저장하세요.');
         return;
     }

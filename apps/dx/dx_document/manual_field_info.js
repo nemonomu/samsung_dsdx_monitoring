@@ -24,9 +24,9 @@ function renderFieldWithoutImage(f, p, photo) {
     '<div class="field-info-heading"><span class="field-info-badge">' + (f.direct ? '캡처 미등록' : '화면 미표시 값') + '</span><p>' + notice + '</p></div>' +
     (f.direct && p.blocked ? '<p class="field-info-warning">현재 사이트 화면 미확인 · ' + esc(p.blocked) + '</p>' : '') +
     '<dl class="field-info-grid">' +
-    fact(f.direct ? '어디서 찾나요?' : '값의 출처', '<span class="sourcepill">' + esc(f.page) + '</span><div class="where">' + esc(f.position) + '</div>') +
+    fact(f.direct ? '어디서 찾나요?' : '값의 출처', '<div class="where">' + esc(f.position) + '</div>') +
     fact('값 예시', '<div class="example long">' + exampleHtml + '</div>') +
-    fact(f.direct ? '화면의 원문 항목' : '관련 항목', esc(f.original)) +
+    fact(f.direct ? '화면의 원문 항목' : '관련 항목', '<div class="origin">' + esc(f.original) + '</div>') +
     fact('수집 구분', esc(f.scope)) +
     '</dl>' +
     (f.note ? '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p>' + esc(f.note) + '</p></div>' : '');

@@ -180,6 +180,40 @@ class ManualTests(TestCase):
         self.assertEqual([3, 2, 1, 0], [r['version'] for r in history])
         self.assertEqual('editor', history[0]['created_by'])
 
+    def test_additional_details_preserve_guidance_and_survive_save_reload(self):
+        data = prepare_data(self.data, [])
+        common = next(d for d in data['datasets'] if d['category'] == 'all')
+        field = common['fields'][0]
+        original = copy.deepcopy(field)
+        field['details'] = [dict(title='Options', content='Check the selected option.'),
+                            dict(title='Price', content='First line\nSecond line')]
+        self.assertEqual(200, self.save(data=data).status_code)
+        loaded = self.client.get(PREFIX + 'history/?version=1').json()['data']
+        saved = next(d for d in loaded['datasets'] if d['key'] == common['key'])['fields'][0]
+        self.assertEqual(field['details'], saved['details'])
+        for key in ('position', 'label', 'page', 'example', 'legacyVariants'):
+            self.assertEqual(original.get(key), saved.get(key))
+        self.assertFalse(any(f.get('details') for row in loaded['datasets']
+                             for f in row['fields'] if f is not saved))
+        saved['details'][0]['content'] = 'Updated detail only.'
+        self.assertEqual(200, self.save(1, loaded).status_code)
+        old = self.client.get(PREFIX + 'history/?version=1').json()['data']
+        old_field = next(d for d in old['datasets'] if d['key'] == common['key'])['fields'][0]
+        self.assertEqual('Check the selected option.', old_field['details'][0]['content'])
+
+    def test_additional_details_reject_invalid_shape_and_limits(self):
+        for details in (None, {}, [dict(title='', content='Text')],
+                        [dict(title='Title', content=123)],
+                        [dict(title='x' * 151, content='Text')],
+                        [dict(title='Title', content='x' * 20001)],
+                        [dict(title='Title', content='Text', extra=True)],
+                        [dict(title='Title', content='Text')] * 21):
+            with self.subTest(details_type=type(details).__name__):
+                data = copy.deepcopy(self.data)
+                data['datasets'][0]['fields'][0]['details'] = details
+                self.assertEqual(400, self.save(data=data).status_code)
+        self.assertEqual(0, storage.revisions().count())
+
     def test_stale_save_does_not_overwrite(self):
         self.assertEqual(200, self.save().status_code)
         self.data['datasets'][0]['fields'][0]['note'] = 'stale overwrite'

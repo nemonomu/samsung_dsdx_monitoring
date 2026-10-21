@@ -90,6 +90,16 @@ def validate_structure(data, seed):
                     raise ValueError('컬럼 편집 상태가 올바르지 않습니다.')
             for prop in TEXT_KEYS:
                 text(field.get(prop))
+            details = field.get('details', [])
+            if not isinstance(details, list) or len(details) > 20:
+                raise ValueError('상세내용은 컬럼별로 최대 20개까지 추가할 수 있습니다.')
+            for detail in details:
+                if not isinstance(detail, dict) or set(detail) != {'title', 'content'}:
+                    raise ValueError('상세내용의 제목과 내용을 확인하세요.')
+                text(detail['title'], 150)
+                text(detail['content'])
+                if not detail['title'].strip() or not detail['content'].strip():
+                    raise ValueError('상세내용의 제목과 내용을 모두 입력하세요.')
             if not field['label'].strip() or len(field['label']) > 150:
                 raise ValueError('컬럼 이름은 1~150자로 입력하세요.')
             if field['field'] == 'product_url' and field['example'].startswith(('http', 'javascript:', 'data:')):
