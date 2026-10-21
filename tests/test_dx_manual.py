@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import subprocess
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from django.conf import settings
@@ -14,7 +15,7 @@ if not settings.configured:
     settings.configure(
         SECRET_KEY='manual-isolated-test',
         INSTALLED_APPS=['django.contrib.auth', 'django.contrib.contenttypes',
-                        'django.contrib.sessions', 'django.contrib.staticfiles', 'apps.dx.dx_document'],
+                        'django.contrib.sessions', 'django.contrib.staticfiles', 'apps.dx.dx_document', 'apps.dx.dx_layer1'],
         DATABASES={
             'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'},
             'dx': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'},
@@ -35,7 +36,7 @@ import django
 django.setup()
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.test.runner import DiscoverRunner
 from django.urls import path
 from PIL import Image
@@ -46,6 +47,9 @@ from django.db import connections
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from apps.dx.dx_document.manual_catalog import prepare_data, blank_field, blank_profile, configured_columns
+from apps.dx.dx_document.manual_links import requested_target, guide_urls
+from apps.dx.dx_layer1.column_statistics.links import links as column_links
+from apps.dx.dx_layer1.models import ColumnCheckLink
 
 
 class ManualTestRunner(DiscoverRunner):
@@ -58,6 +62,7 @@ class ManualTestRunner(DiscoverRunner):
         return result
 
 urlpatterns = [
+    path('dx/layer1/api/column-alert-links/', column_links),
     path('dx/documents/manual/content/', manual.content),
     path('dx/documents/manual/save/', manual.save),
     path('dx/documents/manual/history/', manual.history),
@@ -249,6 +254,61 @@ class ManualTests(TestCase):
             self.data['profiles'][key]['routeNotes'] = notes
             self.assertEqual(400, self.save().status_code)
         self.assertFalse(storage.revisions().exists())
+
+    def test_column_urls_persist_without_date_and_reject_stale_updates(self):
+        endpoint = '/dx/layer1/api/column-alert-links/'
+        payload = dict(country='SEA', product='TV', retailer='Costco', column='original_sku_price',
+                       url='https://www.costco.com/item.html', revision=0)
+        post = lambda body: self.client.post(endpoint, json.dumps(body), content_type='application/json')
+        response = post(payload)
+        self.assertEqual(200, response.status_code, response.content)
+        self.assertEqual('SEA|TV|costco|original_sku_price', response.json()['link']['key'])
+        for day in ('2026-10-21', '2026-10-22'):
+            self.assertEqual(payload['url'], self.client.get(endpoint, {'date': day}).json()['links'][0]['url'])
+        self.assertEqual(409, post(payload).status_code)
+        self.assertEqual(200, post({**payload, 'retailer': 'COSTCO', 'revision': 1, 'url': 'https://www.costco.com/new.html'}).status_code)
+        record = ColumnCheckLink.objects.get()
+        self.assertEqual(2, record.revision)
+        self.assertEqual(2, len(record.history))
+        self.assertEqual(payload['url'], record.history[0]['url'])
+        with override_settings(DEBUG=True):
+            self.assertEqual([], self.client.get(endpoint).json()['links'])
+        self.assertEqual(200, post({**payload, 'product': 'REF'}).status_code)
+        self.assertEqual(2, ColumnCheckLink.objects.count())
+
+    def test_column_urls_validate_urls_auth_and_csrf(self):
+        endpoint = '/dx/layer1/api/column-alert-links/'
+        payload = dict(country='SEA', product='TV', retailer='Costco', column='sku', url='https://www.costco.com/', revision=0)
+        for bad in ('javascript:alert(1)', '//evil.test', 'https://user:pass@example.com/', 'https://example.com/\nfoo'):
+            response = self.client.post(endpoint, json.dumps({**payload, 'url':bad}), content_type='application/json')
+            self.assertEqual(400, response.status_code)
+        self.assertEqual(400, self.client.post(endpoint, json.dumps({**payload, 'retailer':'unknown'}), content_type='application/json').status_code)
+        self.assertEqual(302, Client().get(endpoint).status_code)
+        denied = Client();denied.force_login(get_user_model().objects.create_user(username='no-dx'))
+        self.assertEqual(403, denied.get(endpoint).status_code)
+        csrf = Client(enforce_csrf_checks=True);csrf.force_login(self.user)
+        self.assertEqual(403, csrf.post(endpoint, json.dumps(payload), content_type='application/json').status_code)
+        self.assertFalse(ColumnCheckLink.objects.exists())
+
+    def test_manual_deep_links_resolve_common_product_and_aliases(self):
+        data = prepare_data(self.data, [])
+        common, error = requested_target(data, dict(country='SEA', retailer='Costco', product='TV', column='original_sku_price'))
+        self.assertFalse(error)
+        self.assertEqual(('SEA/costco', 'common', 'original_sku_price'), (common['retailer'], common['scope'], common['field']))
+        specific, _ = requested_target(data, dict(country='SEA', retailer='Costco', product='REF', column='ref_capacity'))
+        self.assertEqual('ref', specific['scope'])
+        spanish = next(row for row in data['datasets'] if row['retailer'] == 'SEIB/mmkt' and row['category'] == 'dryer')
+        field = next(f['field'] for f in spanish['fields'] if f['field'] == 'final_sku_price')
+        target, error = requested_target(data, dict(country='SEIB', retailer='MediaMarkt', product='LDY_DRYER', column=field))
+        self.assertFalse(error)
+        self.assertEqual('SEIB/mmkt', target['retailer'])
+        for column in ('missing_column', 'id'):
+            self.assertTrue(requested_target(data, dict(country='SEA', retailer='Costco', product='TV', column=column))[1])
+        url = guide_urls(data)['SEA|TV|costco|original_sku_price']
+        self.assertIn('column=original_sku_price', url)
+        response = self.client.get(PREFIX + 'content/?' + url.split('?', 1)[1])
+        self.assertContains(response, '"scope": "common"')
+        self.assertContains(response, '"field": "original_sku_price"')
 
     def test_stale_save_does_not_overwrite(self):
         self.assertEqual(200, self.save().status_code)

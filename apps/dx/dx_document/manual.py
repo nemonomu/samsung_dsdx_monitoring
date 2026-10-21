@@ -6,7 +6,7 @@ import json
 import math
 from pathlib import Path
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist
@@ -22,6 +22,7 @@ from PIL import Image, UnidentifiedImageError
 from . import manual_storage as storage
 from .manual_catalog import prepare_data, configured_columns
 from .manual_schema import validate_structure
+from .manual_links import requested_target
 
 DATA_DIR = Path(__file__).with_name('manual_data')
 IMAGE_URL = '/dx/documents/manual/images/'
@@ -74,7 +75,8 @@ def page(request):
     categories = get_categories_list()
     for category in categories:
         category['is_manual'] = is_manual_category(category)
-    return render(request, 'dx_document/manual.html', {'categories': categories})
+    query = urlencode({k: request.GET[k] for k in ('country', 'product', 'retailer', 'column') if k in request.GET})
+    return render(request, 'dx_document/manual.html', {'categories': categories, 'manual_query': query})
 
 
 @dx_access
@@ -85,9 +87,11 @@ def page(request):
 def content(request):
     revision = current_revision()
     catalog, warning = configured_columns()
+    data = prepare_data(revision.data if revision else seed_data(), catalog)
+    target, target_error = requested_target(data, request.GET)
     return render(request, 'dx_document/manual_content.html', {
-        'guide_data': prepare_data(revision.data if revision else seed_data(), catalog),
-        'guide_meta': {**metadata(revision), 'catalogWarning': warning},
+        'guide_data': data,
+        'guide_meta': {**metadata(revision), 'catalogWarning': warning, 'target': target, 'targetError': target_error},
     })
 
 

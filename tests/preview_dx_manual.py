@@ -1,5 +1,6 @@
 """Run an isolated local manual UI with a disposable DB; never uses production data."""
 from pathlib import Path
+from datetime import date, timedelta
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -7,12 +8,13 @@ from tests import test_dx_manual as test_config
 from django.conf import settings
 from django.core.management import call_command
 from django.contrib.auth import get_user_model, login
-from django.http import HttpResponse
-from django.shortcuts import redirect
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import redirect, render
 from django.urls import include, path
 from unittest.mock import patch
 from django.db import connections
 from apps.dx.dx_document.models import PostgresManualRevision, PostgresManualImage
+from apps.dx.dx_layer1.column_statistics.links import links as column_links
 
 root = Path(__file__).resolve().parents[1]
 settings.DATABASES['default']['NAME'] = str(root / 'tmp/manual-preview.sqlite3')
@@ -34,8 +36,29 @@ def entry(request):
     return redirect('/dx/documents/')
 
 
+preview_catalog = [dict(country='SEA', product=p, retailers=['Costco']) for p in ('TV', 'REF')]
+
+
+def alert_preview(request):
+    return render(request, 'dx_layer1_column_alerts.html', {
+        'section': 'column_alerts', 'section_title': '컬럼 수집 이상',
+        'layer': dict(name='Layer 1 검증', color='#243c65', number=1),
+        'column_catalog': preview_catalog, 'column_alert_catalog': preview_catalog,
+    })
+
+
+def alert_counts(request):
+    day = request.GET.get('date', '2026-10-21')
+    fields = ['original_sku_price', 'savings', 'missing_guide_example'] if request.GET.get('product') == 'TV' else ['ref_capacity']
+    return JsonResponse(dict(inspection_date=day, comparison_date=str(date.fromisoformat(day) - timedelta(days=1)),
+        comparisons=[dict(column=field, status='abnormal', current=0, baseline=100, history_days=28, ratio=0, delta=-100) for field in fields]))
+
+
 urlpatterns = [
     path('', entry),
+    path('dx/layer1/column-alerts/', alert_preview),
+    path('dx/layer1/api/column-alert-links/', column_links),
+    path('dx/layer1/api/column-statistics/', alert_counts),
     path('', include('apps.dx.dx_document.urls')),
     path('accounts/', include(([
         path('admin/', lambda request: HttpResponse('Local preview'), name='admin_dashboard'),

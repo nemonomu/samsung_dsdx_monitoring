@@ -59,7 +59,7 @@
         const pages = Math.max(1, Math.ceil(visible.length / pageSize));
         page = Math.min(page, pages);
         const slice = visible.slice((page - 1) * pageSize, page * pageSize);
-        document.getElementById('cca-body').innerHTML = slice.map(row => `<tr><th scope="row"><strong>${c.esc(row.retailer)}</strong><small>${c.esc(row.country)} · ${c.esc(row.product)} · 데이터일 ${c.esc(row.comparison_date)} · 기준 이력 ${row.history_days}일</small></th><td>${c.esc(row.inspection_date)}</td><td class="cca-column">${c.esc(row.column)}</td><td>${c.badge(row)}</td><td>${c.number(row.baseline)}</td><td class="ccs-target ${c.esc(row.status)}"><strong>${c.number(row.current)}</strong></td><td class="ccs-verdict ${c.esc(row.status)}">${c.ratio(row)}</td><td class="ccs-verdict ${c.esc(row.status)}">${c.delta(row)}</td><td><a class="ccs-link" href="${c.esc(c.detail(row, row.column))}">보기</a>${row.status === 'uncollected' ? ` <button type="button" class="ccs-link" data-collection-sql="${rows.indexOf(row)}">조회 SQL</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="9">${finished ? '조회된 결과 중 해당 조건의 항목이 없습니다.' : loading.hidden ? '선택한 조건으로 조회해주세요.' : '조회 중입니다. 완료되는 순서대로 표시합니다.'}</td></tr>`;
+        document.getElementById('cca-body').innerHTML = slice.map(row => `<tr><th scope="row"><strong>${c.esc(row.retailer)}</strong><small>${c.esc(row.country)} · ${c.esc(row.product)} · 데이터일 ${c.esc(row.comparison_date)} · 기준 이력 ${row.history_days}일</small></th><td>${c.esc(row.inspection_date)}</td><td class="cca-column">${c.esc(row.column)}${row.status === 'uncollected' ? ` <button type="button" class="ccs-link" data-collection-sql="${rows.indexOf(row)}">조회 SQL</button>` : ''}</td><td>${c.badge(row)}</td><td>${c.number(row.baseline)}</td><td class="ccs-target ${c.esc(row.status)}"><strong>${c.number(row.current)}</strong></td><td class="ccs-verdict ${c.esc(row.status)}">${c.ratio(row)}</td><td class="ccs-verdict ${c.esc(row.status)}">${c.delta(row)}</td>${window.ColumnCheckLinks ? window.ColumnCheckLinks.cells(row, rows.indexOf(row)) : '<td colspan="2">링크 확인 중…</td>'}</tr>`).join('') || `<tr><td colspan="10">${finished ? '조회된 결과 중 해당 조건의 항목이 없습니다.' : loading.hidden ? '선택한 조건으로 조회해주세요.' : '조회 중입니다. 완료되는 순서대로 표시합니다.'}</td></tr>`;
         document.getElementById('cca-pagination').innerHTML = `<span>${c.number(visible.length)}개 항목 · ${page} / ${pages}페이지</span><button type="button" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}>이전</button><button type="button" data-page="${page + 1}" ${page === pages ? 'disabled' : ''}>다음</button>`;
     }
     function invalidate() {
@@ -164,5 +164,6 @@
         }
     }
     form.addEventListener('submit', event => {event.preventDefault(); load(true);});
+    if (window.ColumnCheckLinks) window.ColumnCheckLinks.init(render, () => rows);
     load();
 })();

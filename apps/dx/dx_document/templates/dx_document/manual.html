@@ -44,7 +44,7 @@
     </aside>
     <section class="documents-content">
         <div class="content-header manual-country-header"><nav id="manualCountryNav" class="manual-country-tabs" aria-label="국가 선택" aria-busy="true"><span class="manual-country-loading">국가 선택을 불러오는 중입니다.</span></nav><div id="manualHeaderActions" class="manual-header-actions" aria-label="매뉴얼 편집" hidden><span id="manualHeaderStatus" class="manual-header-status" role="status"></span><button id="manualHeaderEdit" type="button" aria-pressed="false">편집 모드</button><button id="manualHeaderSave" class="manual-header-save" type="button" hidden>저장</button></div></div>
-        <iframe id="manualGuideFrame" class="manual-frame" src="{% url 'dx_document:manual_content' %}" title="dx 메뉴얼 가이드 및 편집"></iframe>
+        <iframe id="manualGuideFrame" class="manual-frame" src="{% url 'dx_document:manual_content' %}{% if manual_query %}?{{ manual_query }}{% endif %}" title="dx 메뉴얼 가이드 및 편집"></iframe>
     </section>
 </div>
 {% endblock %}

@@ -39,6 +39,11 @@ with sync_playwright() as p:
     def route(request):
         url = request.request.url
         if '/api/' in url:
+            if '/api/column-alert-links/' in url:
+                request.fulfill(json={'links': [], 'manual_error': False, 'guides': {
+                    f'SEA|TV|{retailer.lower()}|sku_status': '/dx/documents/manual/?country=SEA&product=TV&retailer=' + retailer.lower() + '&column=sku_status'
+                    for retailer in ('Amazon', 'Bestbuy')}})
+                return
             assert '/api/column-statistics/' in url, url
             query = parse_qs(urlparse(url).query)
             requests.append(query)
@@ -58,13 +63,14 @@ with sync_playwright() as p:
     page.route('**/*', route)
     page.goto('http://column-alerts.test/?start_date=2026-09-30&end_date=2026-10-02')
     page.evaluate("window.LAYER1={section:'column_alerts'}; window.setSidebarIssueBadge=()=>{}")
-    for script in ['collection-issues.js', 'column-alert-cache.js', 'column-comparison.js', 'column-alerts.js']:
+    for script in ['collection-issues.js', 'column-alert-cache.js', 'column-comparison.js', 'column-check-links.js', 'column-alerts.js']:
         page.add_script_tag(path=str(STATIC / 'js' / script))
     page.wait_for_function("document.querySelector('#cca-progress').textContent.includes('확인 완료')")
     assert len(requests) == 6
     assert page.locator('#cca-body tr').count() == 6
     assert page.locator('#cca-body tr').first.locator('td').first.inner_text() == '2026-10-02'
-    assert 'date=2026-10-02' in page.locator('#cca-body a').first.get_attribute('href')
+    assert 'column=sku_status' in page.locator('#cca-body a').first.get_attribute('href')
+    assert page.locator('#cca-body a').first.get_attribute('target') == '_blank'
     assert page.locator('.ci-panel').count() == 0
     assert '미해결' not in page.locator('body').inner_text()
     assert page.locator('#cca-start-date').input_value() == '2026-09-30'
@@ -89,4 +95,4 @@ with sync_playwright() as p:
     page.screenshot(path=str(ROOT / 'output/column-alert-range-mobile.png'), full_page=True)
     assert not errors, errors
     browser.close()
-print('PASS: range boundaries, source/detail dates, backlog removal, invalid-range recovery, search, desktop and mobile layout.')
+print('PASS: range boundaries, source dates, manual links, backlog removal, invalid-range recovery, search, desktop and mobile layout.')

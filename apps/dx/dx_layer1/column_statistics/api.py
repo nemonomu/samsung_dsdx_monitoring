@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 from apps.dx.dx_layer1.common.context import build_context
 from .services import catalog, daily_counts, select_source
@@ -22,6 +23,7 @@ def page(request):
 
 
 @require_GET
+@ensure_csrf_cookie
 def alerts_page(request):
     return render(request, 'dx_layer1_column_alerts.html', {
         **build_context('column_alerts', request), 'column_catalog': catalog(),

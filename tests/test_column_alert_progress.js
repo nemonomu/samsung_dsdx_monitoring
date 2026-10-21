@@ -125,7 +125,7 @@ function setup(query = '?date=2026-09-23') {
     const html = range.get('cca-body').innerHTML;
     assert.match(html, /<td>2026-09-30<\/td>/);
     assert.match(html, /데이터일 2026-09-29/);
-    assert.match(html, /date=2026-09-30/,'details use inspection day, not source day');
+    assert.doesNotMatch(html, />보기<\/a>/, 'legacy detail action is replaced by check links');
     assert(html.indexOf('<td>2026-10-02</td>') < html.indexOf('<td>2026-09-30</td>'));
     assert.match(range.get('cca-progress').textContent, /2026-09-30 ~ 2026-10-02/);
     assert.match(range.sandbox.location.search, /start_date=2026-09-30&end_date=2026-10-02/);

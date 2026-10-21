@@ -56,7 +56,7 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-exclude-hhp"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-guide-links"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')

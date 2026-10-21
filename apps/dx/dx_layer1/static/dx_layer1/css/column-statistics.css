@@ -53,3 +53,15 @@
 @media(max-width:700px) {.ccs-page .cs-card-heading,.ccs-search-label {flex-wrap:wrap}.ccs-search-label input {width:160px}}
 @media(max-width:700px) {.ccs-table tr>:first-child {min-width:190px;max-width:190px;width:190px}.ccs-table th,.ccs-table td {padding:10px 12px;min-width:90px}}
 .ccs-badge.uncollected{color:#d42d46;background:#ffedf1}.ccs-target.uncollected{color:#d42d46;background:#fff2f4}
+.cca-link-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:180px}
+.cca-table button.ccs-link{border:0;font:inherit;font-size:12px;cursor:pointer}
+.cca-table td:last-child{min-width:130px}
+.cca-link-status{padding:0 20px}.cca-link-status:empty{display:none}
+.cca-url-dialog{width:min(620px,94vw);border:1px solid #ccd9e3;border-radius:12px;padding:24px;color:#294452}
+.cca-url-dialog::backdrop{background:#14263866}
+.cca-url-dialog h3{margin:0 0 12px}.cca-url-dialog label{display:block;font-weight:600;margin:18px 0 8px}
+.cca-url-dialog input{box-sizing:border-box;width:100%;padding:10px;border:1px solid #bbcbd8;border-radius:6px;font:inherit}
+.cca-url-dialog p{font-size:13px;line-height:1.7;overflow-wrap:anywhere}
+.cca-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.cca-dialog-actions button{padding:9px 18px;border:1px solid #ccd9e3;border-radius:6px;cursor:pointer}
+#cca-url-error{color:#b3263a}

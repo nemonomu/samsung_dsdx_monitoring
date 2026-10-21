@@ -132,4 +132,15 @@ $('manualHistory').onclick = async () => {
         $('historyList').textContent = error.message;
     }
 };
+if (serverMeta.target) {
+    const target = serverMeta.target;
+    Object.assign(S, {country:target.country, r:target.retailer, c:target.category,
+        scope:target.scope, field:target.field, photo:0, q:''});
+}
 render();
+if (serverMeta.targetError) {
+    const notice = document.createElement('p');
+    notice.className = 'commonnote';notice.setAttribute('role','alert');
+    notice.textContent = serverMeta.targetError;
+    document.querySelector('.main').prepend(notice);
+}

@@ -5,6 +5,7 @@ from apps.dx.dx_layer1.common.retail_batches_api import batch_details
 from apps.dx.dx_layer1.collection_statistics import api as statistics_api
 from apps.dx.dx_layer1.column_statistics import api as column_statistics_api
 from apps.dx.dx_layer1.collection_issues import api as issues_api
+from apps.dx.dx_layer1.column_statistics.links import links as column_links
 
 urlpatterns = [
     path('past-review/', issues_api.page, name='past_review'),
@@ -13,6 +14,7 @@ urlpatterns = [
     path('api/collection-issues/<int:issue_id>/', issues_api.detail, name='api_collection_issue'),
     path('api/collection-issues/<int:issue_id>/action/', issues_api.action, name='api_collection_issue_action'),
     path('column-alerts/', column_statistics_api.alerts_page, name='column_alerts'),
+    path('api/column-alert-links/', column_links, name='column_alert_links'),
     path('column-statistics/', column_statistics_api.page, name='column_statistics'),
     path('api/column-statistics/', column_statistics_api.daily, name='api_column_statistics'),
     path('collection-statistics/', statistics_api.page, name='collection_statistics'),

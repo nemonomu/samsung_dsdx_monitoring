@@ -1,6 +1,24 @@
 from django.db import models
 
 
+class ColumnCheckLink(models.Model):
+    environment = models.CharField(max_length=10)
+    country = models.CharField(max_length=4)
+    product = models.CharField(max_length=12)
+    retailer = models.CharField(max_length=80)
+    column = models.CharField(max_length=120, blank=True)
+    url = models.URLField(max_length=4000)
+    revision = models.PositiveIntegerField(default=1)
+    updated_by = models.CharField(max_length=150)
+    updated_at = models.DateTimeField()
+    history = models.JSONField(default=list)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['environment', 'country', 'product', 'retailer', 'column'],
+            name='column_check_link_unique')]
+
+
 class CollectionDailySnapshot(models.Model):
     country = models.CharField(max_length=4)
     inspection_date = models.DateField()
