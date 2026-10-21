@@ -80,7 +80,7 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 4
+BSR_POLICY_VERSION = 5
 MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
 MAIN_REVIEW_PERCENT = 15
@@ -117,7 +117,7 @@ def tiered_bsr(row, country):
 
 
 def variable_bsr(row, country):
-    if country == 'SEA' and homedepot_dryer.matches(row['product'], row['retailer']):
+    if country == 'SEA' and str(row['retailer']).strip().casefold() == 'homedepot':
         return True
     return (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
             and str(row['product']).upper() == 'TV') or tiered_bsr(row, country) or (

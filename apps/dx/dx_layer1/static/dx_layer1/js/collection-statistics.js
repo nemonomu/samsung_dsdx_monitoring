@@ -160,7 +160,11 @@
                         && !['observing', 'unknown'].includes(day.observation_state)
                         && (metric === 'main' || basis.rule === 'median_28d')))
                     && !['future', 'unknown'].includes(day.state);
-                const missing = day.observation_state === 'observing' ? '관찰 중'
+                const missing = day.state === 'pending'
+                    ? day.verification_state === 'waiting' ? '검증 대기'
+                        : day.verification_state === 'pending' ? '수집 대기' : '수집 중'
+                    : day.state === 'error' || day.refresh_error || day.base_status === 'ERROR' ? '갱신 실패'
+                    : day.observation_state === 'observing' ? '관찰 중'
                     : ['unknown', 'future'].includes(day.state) ? '기준값 없음' : '비교 이력 부족';
                 return `<div class="cs-baseline-metric"><span>${metric.toUpperCase()}</span> `
                     + (valid ? `<strong>${number(basis.value)}</strong>${fixed ? ' <span class="cs-baseline-note">(고정 기준)</span>' : ''}`

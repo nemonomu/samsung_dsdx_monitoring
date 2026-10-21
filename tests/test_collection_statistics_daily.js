@@ -292,5 +292,30 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('오후 &lt;2&gt;'));
     assert(elements['cs-table-body'].innerHTML.includes('<strong>123</strong>'), 'Keep distinct slot medians; do not sum them into an invented daily median.');
     assert(elements['cs-table-body'].innerHTML.includes('(고정 기준)'));
+    // Pending SEG rows may retain a MAIN median but no BSR basis. Do not
+    // describe collection/verification progress as missing comparison history.
+    weeks[0].rows.pop();
+    baselineDay.baselines = {main: {value: 300, days: 28}};
+    baselineDay.bsr_comparison_state = 'pending';
+    baselineDay.state = 'pending';
+    for (const [verification, label] of [['collecting', '수집 중'], ['pending', '수집 대기'], ['waiting', '검증 대기']]) {
+        baselineDay.verification_state = verification;
+        elements['cs-retailer'].fire('change');
+        const baseline = elements['cs-table-body'].innerHTML.match(/<td class="cs-baseline">(.*?)<\/td>/s)[1];
+        assert(baseline.includes('<strong>300</strong>'), 'Keep a valid historical MAIN basis while collecting.');
+        assert(baseline.includes(`— ${label}`));
+        assert(!baseline.includes('비교 이력 부족'));
+    }
+    baselineDay.state = 'complete';
+    baselineDay.verification_state = 'ready';
+    baselineDay.bsr_comparison_state = 'insufficient';
+    elements['cs-retailer'].fire('change');
+    assert.match(elements['cs-table-body'].innerHTML, /cs-baseline.*?BSR<\/span> <span class="cs-baseline-note">— 비교 이력 부족/s);
+    baselineDay.baselines.bsr = {value: 100, days: 28, rule: 'median_28d'};
+    baselineDay.bsr_comparison_state = 'ready';
+    elements['cs-retailer'].fire('change');
+    const readyBaseline = elements['cs-table-body'].innerHTML.match(/<td class="cs-baseline">(.*?)<\/td>/s)[1];
+    assert(readyBaseline.includes('<strong>100</strong>'));
+    assert(!readyBaseline.includes('고정 기준'));
     console.log('Daily statistics: target-date baselines, fixed rules, slots, verification, observation and alerts passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
