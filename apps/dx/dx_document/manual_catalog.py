@@ -24,6 +24,9 @@ def retailer_token(value):
 
 def source_identity(product_line, retailer):
     line = product_line.lower()
+    # HHP is outside the manual scope; retain old saved data for compatibility.
+    if line == 'hhp' or line.endswith('_hhp'):
+        return None
     if line in ('tv', 'hhp'):
         country, product = 'SEA', line
     else:
@@ -102,7 +105,7 @@ def prepare_data(data, catalog=None):
             fields.append(blank_field(name, max((f['n'] for f in fields), default=0) + 1,
                                       labels.get(name), name not in EXCLUDED | {'batch_id', 'calendar_week', 'crawl_datetime', 'crawl_strdatetime', 'page_type'}))
     for retailer in profiles:
-        datasets = [ds for ds in rows if ds['retailer'] == retailer and ds['category'] != 'all']
+        datasets = [ds for ds in rows if ds['retailer'] == retailer and ds['category'] not in ('all', 'hhp')]
         if not datasets:
             continue
         shared = by_key.get((retailer, 'all'))

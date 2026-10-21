@@ -1,8 +1,8 @@
 // Keep the original dataset objects as the source for viewing, editing and saving.
 // S.c is always a real product; S.scope controls only which fields are listed.
 const manualCategoryCodes = {tv: 'TV', ref: 'REF', ldy: 'LDY', ldy_dryer: 'DRYER', dryer: 'DRYER', hhp: 'HHP', all: '공통'};
-const manualDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r && dataset.category !== 'all');
-const manualAllDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r);
+const manualDatasets = () => manualAllDatasets().filter(dataset => dataset.category !== 'all');
+const manualAllDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r && dataset.category !== 'hhp');
 const manualScopedFields = () => manualFieldsForScope(manualAllDatasets(), S.c, S.scope);
 const manualCategoryLabel = category => manualCategoryCodes[category] || shortCat[category] || category;
 S.scope = 'common';
@@ -28,7 +28,7 @@ manualExample.lastElementChild.append(document.querySelector('.viewer'), $('insp
 
 function normalizeManualScope() {
   const datasets = manualDatasets();
-  if (!datasets.some(dataset => dataset.category === S.c)) S.c = datasets[0].category;
+  if (!datasets.some(dataset => dataset.category === S.c)) S.c = datasets[0]?.category || 'tv';
   if (S.scope !== 'common') S.scope = S.c;
   const fields = manualScopedFields();
   if (!fields.some(f => f.field === S.field)) {

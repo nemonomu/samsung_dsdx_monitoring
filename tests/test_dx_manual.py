@@ -104,6 +104,21 @@ class ManualTests(TestCase):
         self.assertEqual(upgraded, prepare_data(upgraded, rows))
         manual.validate_data(upgraded)
 
+    def test_hhp_catalog_is_excluded_but_saved_hhp_data_remains_valid(self):
+        rows = [dict(product_line=line, retailer='Amazon', column_name='sku')
+                for line in ('tv', 'hhp', 'sea_hhp', 'seg_hhp')]
+        data = prepare_data(self.data, rows)
+        self.assertFalse(any(d['category'] == 'hhp' for d in data['datasets']))
+        self.assertTrue(any(d['key'] == 'SEA/amazon/tv' for d in data['datasets']))
+        data['datasets'].append(dict(key='SEA/amazon/hhp', retailer='SEA/amazon',
+                                     category='hhp', title='HHP', fields=[blank_field('sku', 1)]))
+        upgraded = prepare_data(data, rows)
+        old = next(d for d in upgraded['datasets'] if d['key'] == 'SEA/amazon/hhp')
+        self.assertEqual(data['datasets'][-1], old)
+        common = next(d for d in upgraded['datasets'] if d['key'] == 'SEA/amazon/all')
+        self.assertFalse(common['fields'])
+        self.assertEqual(200, self.save(data=upgraded).status_code)
+
     def test_common_manual_has_one_editable_field_and_preserves_different_legacy_text(self):
         upgraded = prepare_data(self.data, [])
         common = next(d for d in upgraded['datasets'] if d['key'] == 'SEA/costco/all')

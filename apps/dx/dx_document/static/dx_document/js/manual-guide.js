@@ -254,8 +254,8 @@ function renderManualHeaderActions() {
 // Keep the original dataset objects as the source for viewing, editing and saving.
 // S.c is always a real product; S.scope controls only which fields are listed.
 const manualCategoryCodes = {tv: 'TV', ref: 'REF', ldy: 'LDY', ldy_dryer: 'DRYER', dryer: 'DRYER', hhp: 'HHP', all: '공통'};
-const manualDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r && dataset.category !== 'all');
-const manualAllDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r);
+const manualDatasets = () => manualAllDatasets().filter(dataset => dataset.category !== 'all');
+const manualAllDatasets = () => D.datasets.filter(dataset => dataset.retailer === S.r && dataset.category !== 'hhp');
 const manualScopedFields = () => manualFieldsForScope(manualAllDatasets(), S.c, S.scope);
 const manualCategoryLabel = category => manualCategoryCodes[category] || shortCat[category] || category;
 S.scope = 'common';
@@ -281,7 +281,7 @@ manualExample.lastElementChild.append(document.querySelector('.viewer'), $('insp
 
 function normalizeManualScope() {
   const datasets = manualDatasets();
-  if (!datasets.some(dataset => dataset.category === S.c)) S.c = datasets[0].category;
+  if (!datasets.some(dataset => dataset.category === S.c)) S.c = datasets[0]?.category || 'tv';
   if (S.scope !== 'common') S.scope = S.c;
   const fields = manualScopedFields();
   if (!fields.some(f => f.field === S.field)) {
@@ -413,12 +413,12 @@ function manualShownExample(f, photo) {
 }
 photos = function() {
   if (!S.field) return [];
-  return D.photos.filter(p => p.retailer === S.r &&
+  return D.photos.filter(p => p.retailer === S.r && p.category !== 'hhp' &&
     (S.scope === 'common' || p.category === S.c || p.category === 'all') &&
     p.boxes.some(b => b.fields.includes(S.field))).sort((a,b) => Number(!!a.commonExample)-Number(!!b.commonExample) || score(b)-score(a));
 };
 availableEditorPhotos = function() {
-  return D.photos.map((p,i)=>({p,i})).filter(({p})=>p.retailer===S.r &&
+  return D.photos.map((p,i)=>({p,i})).filter(({p})=>p.retailer===S.r && p.category!=='hhp' &&
     (S.scope==='common' || p.category===S.c || p.category==='all'));
 };
 
@@ -474,7 +474,7 @@ $('manualStructureForm').onsubmit=event=>{
 addRetailer.onclick=()=>{
   const country=S.country,prefix=S.r.split('/')[0];
   manualOpenStructure(country+' 쇼핑몰 추가',
-    '<p>매뉴얼에 새 쇼핑몰을 등록합니다. 실제 수집 설정은 변경하지 않습니다.</p><label>쇼핑몰 이름<input id="manualRetailerName" required maxlength="100" placeholder="쇼핑몰 이름"></label><label>홈페이지 주소<input id="manualRetailerUrl" type="url" placeholder="https://"></label><fieldset><legend>제품군</legend>'+['tv','ref','ldy','ldy_dryer','hhp'].map(c=>'<label class="manual-check"><input type="checkbox" name="manualProducts" value="'+c+'" '+(c!=='hhp'?'checked':'')+'>'+manualCategoryLabel(c)+'</label>').join('')+'</fieldset>',()=>{
+    '<p>매뉴얼에 새 쇼핑몰을 등록합니다. 실제 수집 설정은 변경하지 않습니다.</p><label>쇼핑몰 이름<input id="manualRetailerName" required maxlength="100" placeholder="쇼핑몰 이름"></label><label>홈페이지 주소<input id="manualRetailerUrl" type="url" placeholder="https://"></label><fieldset><legend>제품군</legend>'+['tv','ref','ldy','ldy_dryer'].map(c=>'<label class="manual-check"><input type="checkbox" name="manualProducts" value="'+c+'" checked>'+manualCategoryLabel(c)+'</label>').join('')+'</fieldset>',()=>{
       const name=$('manualRetailerName').value.trim(),url=$('manualRetailerUrl').value.trim();
       const products=[...structureDialog.querySelectorAll('[name="manualProducts"]:checked')].map(input=>input.value);
       const normalize=value=>value.replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();

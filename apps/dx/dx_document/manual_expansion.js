@@ -30,12 +30,12 @@ function manualShownExample(f, photo) {
 }
 photos = function() {
   if (!S.field) return [];
-  return D.photos.filter(p => p.retailer === S.r &&
+  return D.photos.filter(p => p.retailer === S.r && p.category !== 'hhp' &&
     (S.scope === 'common' || p.category === S.c || p.category === 'all') &&
     p.boxes.some(b => b.fields.includes(S.field))).sort((a,b) => Number(!!a.commonExample)-Number(!!b.commonExample) || score(b)-score(a));
 };
 availableEditorPhotos = function() {
-  return D.photos.map((p,i)=>({p,i})).filter(({p})=>p.retailer===S.r &&
+  return D.photos.map((p,i)=>({p,i})).filter(({p})=>p.retailer===S.r && p.category!=='hhp' &&
     (S.scope==='common' || p.category===S.c || p.category==='all'));
 };
 
@@ -91,7 +91,7 @@ $('manualStructureForm').onsubmit=event=>{
 addRetailer.onclick=()=>{
   const country=S.country,prefix=S.r.split('/')[0];
   manualOpenStructure(country+' 쇼핑몰 추가',
-    '<p>매뉴얼에 새 쇼핑몰을 등록합니다. 실제 수집 설정은 변경하지 않습니다.</p><label>쇼핑몰 이름<input id="manualRetailerName" required maxlength="100" placeholder="쇼핑몰 이름"></label><label>홈페이지 주소<input id="manualRetailerUrl" type="url" placeholder="https://"></label><fieldset><legend>제품군</legend>'+['tv','ref','ldy','ldy_dryer','hhp'].map(c=>'<label class="manual-check"><input type="checkbox" name="manualProducts" value="'+c+'" '+(c!=='hhp'?'checked':'')+'>'+manualCategoryLabel(c)+'</label>').join('')+'</fieldset>',()=>{
+    '<p>매뉴얼에 새 쇼핑몰을 등록합니다. 실제 수집 설정은 변경하지 않습니다.</p><label>쇼핑몰 이름<input id="manualRetailerName" required maxlength="100" placeholder="쇼핑몰 이름"></label><label>홈페이지 주소<input id="manualRetailerUrl" type="url" placeholder="https://"></label><fieldset><legend>제품군</legend>'+['tv','ref','ldy','ldy_dryer'].map(c=>'<label class="manual-check"><input type="checkbox" name="manualProducts" value="'+c+'" checked>'+manualCategoryLabel(c)+'</label>').join('')+'</fieldset>',()=>{
       const name=$('manualRetailerName').value.trim(),url=$('manualRetailerUrl').value.trim();
       const products=[...structureDialog.querySelectorAll('[name="manualProducts"]:checked')].map(input=>input.value);
       const normalize=value=>value.replace(/[^\p{L}\p{N}]/gu,'').toLowerCase();
