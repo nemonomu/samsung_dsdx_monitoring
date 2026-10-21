@@ -214,6 +214,27 @@ class ManualTests(TestCase):
                 self.assertEqual(400, self.save(data=data).status_code)
         self.assertEqual(0, storage.revisions().count())
 
+    def test_route_guidance_saves_modes_separately_without_changing_source_profile(self):
+        key = next(iter(self.data['profiles']))
+        original = copy.deepcopy(self.data['profiles'][key])
+        self.data['profiles'][key]['routeNotes'] = {'main': 'Main guidance', 'bsr': 'BSR guidance'}
+        self.assertEqual(200, self.save().status_code)
+        loaded = self.client.get(PREFIX + 'history/?version=1').json()['data']
+        self.assertEqual({'main': 'Main guidance', 'bsr': 'BSR guidance'}, loaded['profiles'][key]['routeNotes'])
+        for prop, value in original.items():
+            self.assertEqual(value, loaded['profiles'][key][prop])
+        self.assertTrue(all('routeNotes' not in p for k, p in loaded['profiles'].items() if k != key))
+        loaded['profiles'][key]['routeNotes']['bsr'] = ''
+        self.assertEqual(200, self.save(1, loaded).status_code)
+        self.assertEqual('Main guidance', storage.revisions().first().data['profiles'][key]['routeNotes']['main'])
+
+    def test_route_guidance_rejects_invalid_modes_and_values(self):
+        key = next(iter(self.data['profiles']))
+        for notes in ([], {'other': 'text'}, {'main': 1}, {'bsr': 'x' * 20001}):
+            self.data['profiles'][key]['routeNotes'] = notes
+            self.assertEqual(400, self.save().status_code)
+        self.assertFalse(storage.revisions().exists())
+
     def test_stale_save_does_not_overwrite(self):
         self.assertEqual(200, self.save().status_code)
         self.data['datasets'][0]['fields'][0]['note'] = 'stale overwrite'

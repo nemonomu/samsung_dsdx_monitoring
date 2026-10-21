@@ -42,7 +42,12 @@ def validate_structure(data, seed):
             raise ValueError('같은 국가에 같은 이름의 쇼핑몰이 있습니다.')
         seen.add(identity)
         for prop, value in profile.items():
-            if prop in ('queries', 'bsr'):
+            if prop == 'routeNotes':
+                if not isinstance(value, dict) or set(value) - {'main', 'bsr'}:
+                    raise ValueError('MAIN·BSR 안내 문구 형식이 올바르지 않습니다.')
+                for entry in value.values():
+                    text(entry)
+            elif prop in ('queries', 'bsr'):
                 if not isinstance(value, dict):
                     raise ValueError('쇼핑몰 방문 정보가 올바르지 않습니다.')
                 for category, entry in value.items():

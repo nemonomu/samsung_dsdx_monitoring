@@ -4,8 +4,10 @@
 #inspector .field-info-note,#inspector .field-info-note strong,#inspector .field-info-note p,
 #inspector .attention p,#inspector .attention summary,#inspector .manual-legacy-notes,
 #inspector .manual-detail-item h4,#inspector .manual-detail-item p,
-#inspector .manual-inline-input{font-size:15px;line-height:1.8}
-.manual-detail-editor #manualDetailTitle,.manual-detail-editor #manualDetailContent{font-size:15px}
+#inspector .manual-inline-input{font-size:13px;line-height:1.8}
+.manual-detail-editor #manualDetailTitle,.manual-detail-editor #manualDetailContent{font-size:13px}
+.manual-detail-editor #manualRouteText,#routeSummary{font-size:13px}
+#routeSummary .manual-route-text{white-space:pre-wrap;overflow-wrap:anywhere}
 #inspector .origin{white-space:pre-wrap;overflow-wrap:anywhere}
 #inspector .manual-field-note,#inspector .manual-photo-note{white-space:pre-wrap;overflow-wrap:anywhere}
 .manual-details{display:grid;gap:14px;margin-top:18px}

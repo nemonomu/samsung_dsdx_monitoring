@@ -48,7 +48,7 @@ def build(source):
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>dx 메뉴얼</title>
 <link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-notes-edit">
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-notes-edit">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261021-route-edit">
 </head><body><form hidden>{% csrf_token %}</form>
 '''
     template += body
@@ -56,7 +56,7 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-notes-edit"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-route-edit"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')
@@ -122,6 +122,7 @@ def build(source):
     code += '\n' + (root / 'manual_grouped_view.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_expansion.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_inline_edit.js').read_text(encoding='utf-8')
+    code += '\n' + (root / 'manual_route_edit.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_details.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_server_adapter.js').read_text(encoding='utf-8')
     code += '\n})();\n'

@@ -63,7 +63,7 @@ render=function(){
   if (!D.profiles[S.r]) {S.r=Object.keys(D.profiles)[0];S.country=D.profiles[S.r].country;}
   expandedRender();
   $('entryLink').hidden=!/^https?:\/\//i.test(entry());
-  $('routeSummary').innerHTML='<strong>'+esc(S.mode.toUpperCase())+' 목록</strong> · '+esc((S.mode==='main'?profile().mainSort:profile().bsrSort)||'상품 순서와 확인 위치는 방문 방법을 참고하세요.');
+  renderManualRoute();
   if(!manualScopedFields().length&&!S.q)$('fieldList').innerHTML='<div class="notfound">등록된 컬럼이 없습니다.<br>편집 모드에서 컬럼을 추가하세요.</div>';
 };
 
