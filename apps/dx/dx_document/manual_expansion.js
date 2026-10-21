@@ -39,22 +39,6 @@ availableEditorPhotos = function() {
     (S.scope==='common' || p.category===S.c || p.category==='all'));
 };
 
-function renderManualLegacyNotes(f) {
-  if (!f.legacyVariants?.length) return;
-  const unique = new Map();
-  for (const v of f.legacyVariants) {
-    const signature = JSON.stringify([v.page,v.position,v.original,v.example,v.note]);
-    if (!unique.has(signature)) unique.set(signature, {value:v, categories:[]});
-    unique.get(signature).categories.push(manualCategoryLabel(v.category));
-  }
-  if (unique.size < 2) return;
-  const details = document.createElement('details');
-  details.className = 'manual-legacy-notes';
-  details.innerHTML = '<summary>기존 설명 참고 · ' + unique.size + '개</summary><p>기존에 등록된 서로 다른 설명을 보존했습니다. 공통 본문은 문구 수정에서 작성하세요.</p>' +
-    [...unique.values()].map(({value:v,categories})=>'<article><strong>'+esc(categories.join(' · '))+'</strong><p>'+esc(v.position)+'</p><p>'+esc(v.original)+'</p><p>'+esc(v.example)+'</p><p>'+esc(v.note)+'</p></article>').join('');
-  $('inspector').append(details);
-}
-
 renderTable = function() {
   const q=$('tableSearch').value.toLowerCase();
   const all=manualAllDatasets();

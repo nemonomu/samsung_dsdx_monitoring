@@ -51,7 +51,7 @@ $('zoomOpen').hidden=!photo;$('originalLink').hidden=!photo;$('commonNote').hidd
 if(photo){$('canvas').innerHTML='<div class="view-caption">'+(S.view==='full'?'이미지 전체에서 <strong>'+f.n+'번 박스</strong>의 위치를 확인하세요.':'같은 캡처의 <strong>'+f.n+'번 박스 주변</strong>을 확대했습니다.')+'</div>'+svg(photo,S.view==='full');$('originalLink').href=photoSrc(photo);$('photoSource').innerHTML=esc(photo.stage)+(photo.url?' · <a href="'+esc(photo.url)+'" target="_blank" rel="noopener">출처 페이지 ↗</a>':' · 제공된 캡처')+'<br>'+esc(photo.region)+' · '+esc(photo.date);$('photoPager').innerHTML='<button id="prevPhoto" aria-label="이전 캡처" '+(S.photo===0?'disabled':'')+'>‹</button><select id="captureSelect" aria-label="캡처 선택">'+a.map((item,i)=>'<option value="'+i+'" '+(i===S.photo?'selected':'')+'>'+(i+1)+' / '+a.length+' · '+esc((S.scope==='common'?manualCategoryLabel(item.category)+' · ':'')+item.stage)+'</option>').join('')+'</select><button id="nextPhoto" aria-label="다음 캡처" '+(S.photo===a.length-1?'disabled':'')+'>›</button>';$('captureSelect').onchange=e=>{S.photo=Number(e.target.value);renderLesson()};$('prevPhoto').onclick=()=>{S.photo--;renderLesson()};$('nextPhoto').onclick=()=>{S.photo++;renderLesson()};}
 else{$('canvas').innerHTML='<div class="empty"><div class="emptyicon">'+icon(p.blocked?'lock':f.direct?'image':'info')+'</div><strong>'+esc(p.blocked?'현재 사이트 화면을 확인하지 못했어요.':f.direct?'이번 표본에는 번호 캡처가 없어요.':'쇼핑몰에 직접 표시되는 값이 아니에요.')+'</strong><p>'+esc(p.blocked?p.blocked:f.direct?'아래의 확인 위치와 원문 항목명을 따라 찾아보세요. 확인하지 않은 화면을 예시로 만들지 않았습니다.':'상품 화면의 숫자를 찾는 대신, 아래에서 이 컬럼의 의미와 출처를 확인하세요.')+'</p></div>';$('photoSource').textContent=p.region;$('photoPager').textContent=p.blocked?'현재 화면 미확인':'위치 · 의미 안내';}
 const infoField=manualDisplayField(f,photo),shownExample=manualShownExample(f,photo);
-$('inspector').innerHTML='<div class="facts"><div class="fact"><div class="facttitle">'+(photo?.commonExample?'선택 제품의 값 · 확인 상태':'확인하는 값')+'</div><div class="example '+(shownExample.length>24?'long':'')+'">'+(f.field==='product_url'&&shownExample.startsWith('http')?'<a target="_blank" rel="noopener" href="'+esc(shownExample)+'">표본 상품 열기 ↗</a>':esc(shownExample))+'</div></div><div class="fact"><div class="facttitle">어디서 찾나요?</div><div class="where">'+esc(infoField.position)+'</div></div><div class="fact"><div class="facttitle">화면의 원문 항목</div><div class="origin">'+esc(infoField.original)+'</div><div class="facttitle" style="margin-top:12px">수집 구분 · '+esc(infoField.scope)+'</div></div></div><details class="attention" '+(/capacity|screen_size/.test(f.field)?'open':'')+'><summary>'+icon('info')+'헷갈리기 쉬운 부분</summary><p>'+esc(infoField.note)+'</p>'+(photo?'<p>'+esc(photo.note)+'</p>':'')+'</details>';
+$('inspector').innerHTML='<div class="facts"><div class="fact"><div class="facttitle">'+(photo?.commonExample?'선택 제품의 값 · 확인 상태':'확인하는 값')+'</div><div class="example '+(shownExample.length>24?'long':'')+'">'+(f.field==='product_url'&&shownExample.startsWith('http')?'<a target="_blank" rel="noopener" href="'+esc(shownExample)+'">표본 상품 열기 ↗</a>':esc(shownExample))+'</div></div><div class="fact"><div class="facttitle">어디서 찾나요?</div><div class="where">'+esc(infoField.position)+'</div></div><div class="fact"><div class="facttitle">화면의 원문 항목</div><div class="origin">'+esc(infoField.original)+'</div><div class="facttitle" style="margin-top:12px">수집 구분 · '+esc(infoField.scope)+'</div></div></div><details class="attention" '+(/capacity|screen_size/.test(f.field)?'open':'')+'><summary>'+icon('info')+'헷갈리기 쉬운 부분</summary><p class="manual-field-note">'+esc(infoField.note)+'</p>'+(photo?'<p class="manual-photo-note">'+esc(photo.note)+'</p>':'')+'</details>';
 }
 function openInfo(title,content){$('infoTitle').textContent=title;$('infoBody').innerHTML=content;$('infoDialog').showModal()}
 function routeInfo(){const p=profile();openInfo(profile().name+' 방문 방법','<h3>'+S.mode+' · '+shortCat[S.c]+'</h3><p><a href="'+esc(entry())+'" target="_blank" rel="noopener">쇼핑몰에서 시작하기 ↗</a></p><p>검색어 <strong>'+esc(p.queries[S.c])+'</strong><br>정렬 · '+esc(S.mode==='main'?p.mainSort:p.bsrSort)+'</p><h3>목록과 상세에서 확인할 것</h3><p>'+esc(p.summary)+'</p><h3>사용한 지역</h3><p>'+esc(p.region)+'</p><h3>확인할 때 주의하세요</h3><p>'+esc(p.warning)+'</p>'+(p.blocked?'<p>'+esc(p.blocked)+'</p>':''))}
@@ -136,7 +136,7 @@ function renderFieldWithoutImage(f, p, photo) {
     fact(f.direct ? '화면의 원문 항목' : '관련 항목', '<div class="origin">' + esc(f.original) + '</div>') +
     fact('수집 구분', esc(f.scope)) +
     '</dl>' +
-    (f.note ? '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p>' + esc(f.note) + '</p></div>' : '');
+    '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p class="manual-field-note">' + esc(f.note) + '</p></div>';
   return true;
 }
 
@@ -359,7 +359,6 @@ renderLesson = function() {
     manualScopeBadge.textContent = appliesTo.length > 1 ? appliesTo.map(dataset => manualCategoryLabel(dataset.category)).join(' · ') + ' 적용' : manualCategoryLabel(S.c) + ' 전용';
   }
   $('manualExampleHead').innerHTML = '<h3>' + (common ? '확인 방법 · 이미지' : esc(shortCat[S.c]) + ' 확인 방법') + '</h3><p>같은 컬럼의 여러 화면은 캡처 선택에서 바꿔 볼 수 있습니다.</p>';
-  renderManualLegacyNotes(f);
   const photo = currentPhoto();
   if (photo && common) $('photoSource').insertAdjacentHTML('afterbegin', '<strong>' + esc(photo.category === 'all' ? '공통' : manualCategoryLabel(photo.category)) + ' 캡처</strong> · ');
 
@@ -422,22 +421,6 @@ availableEditorPhotos = function() {
   return D.photos.map((p,i)=>({p,i})).filter(({p})=>p.retailer===S.r &&
     (S.scope==='common' || p.category===S.c || p.category==='all'));
 };
-
-function renderManualLegacyNotes(f) {
-  if (!f.legacyVariants?.length) return;
-  const unique = new Map();
-  for (const v of f.legacyVariants) {
-    const signature = JSON.stringify([v.page,v.position,v.original,v.example,v.note]);
-    if (!unique.has(signature)) unique.set(signature, {value:v, categories:[]});
-    unique.get(signature).categories.push(manualCategoryLabel(v.category));
-  }
-  if (unique.size < 2) return;
-  const details = document.createElement('details');
-  details.className = 'manual-legacy-notes';
-  details.innerHTML = '<summary>기존 설명 참고 · ' + unique.size + '개</summary><p>기존에 등록된 서로 다른 설명을 보존했습니다. 공통 본문은 문구 수정에서 작성하세요.</p>' +
-    [...unique.values()].map(({value:v,categories})=>'<article><strong>'+esc(categories.join(' · '))+'</strong><p>'+esc(v.position)+'</p><p>'+esc(v.original)+'</p><p>'+esc(v.example)+'</p><p>'+esc(v.note)+'</p></article>').join('');
-  $('inspector').append(details);
-}
 
 renderTable = function() {
   const q=$('tableSearch').value.toLowerCase();
@@ -542,6 +525,10 @@ $('applyText').onclick=()=>{
 
 // Direct editing uses the same undo stack and explicit server save as the toolbar.
 let manualInlineEdit = null;
+function manualInlineValue(f, photo, key) {
+  if (key === 'photoNote') return photo?.note ?? '';
+  return key === 'example' ? manualShownExample(f, photo) ?? '' : manualDisplayField(f, photo)[key] ?? '';
+}
 function manualFinishInlineEdit(cancel = false) {
   const draft = manualInlineEdit;
   if (!draft) return;
@@ -550,10 +537,13 @@ function manualFinishInlineEdit(cancel = false) {
   if (!cancel && value !== draft.original) {
     const f = draft.field;
     const samplePhoto = draft.key === 'example' && !draft.common && draft.photo?.sampleValues?.[f.field] !== undefined ? draft.photo : null;
-    pushUndo({kind:'field', target:f, before:cloneValue(f), samplePhoto, beforeSamples:samplePhoto ? cloneValue(samplePhoto.sampleValues) : null});
-    f[draft.key] = value;
-    f.userEdited = true;
-    if (draft.common) f.commonEdited = true;
+    const target = draft.key === 'photoNote' ? draft.photo : f;
+    pushUndo({kind:'field', target, before:cloneValue(target), samplePhoto, beforeSamples:samplePhoto ? cloneValue(samplePhoto.sampleValues) : null});
+    target[draft.key === 'photoNote' ? 'note' : draft.key] = value;
+    if (draft.key !== 'photoNote') {
+      f.userEdited = true;
+      if (draft.common) f.commonEdited = true;
+    }
     if (samplePhoto) samplePhoto.sampleValues[f.field] = value;
     changed();
   }
@@ -568,12 +558,12 @@ function manualStartInlineEdit(node, key) {
   if (!editing || saveBusy || manualInlineEdit?.node === node) return;
   manualFinishInlineEdit();
   const f = field(), photo = currentPhoto();
-  const original = String(key === 'example' ? manualShownExample(f, photo) ?? '' : manualDisplayField(f, photo)[key] ?? '');
+  const original = String(manualInlineValue(f, photo, key));
   const input = document.createElement('textarea');
   input.className = 'manual-inline-input';
-  input.rows = key === 'position' ? 3 : 2;
+  input.rows = ['position','note','photoNote'].includes(key) ? 3 : 2;
   input.maxLength = 20000;
-  input.setAttribute('aria-label', {position:'어디서 찾나요? 내용 입력', example:'값 예시 입력', original:'화면의 원문 항목 입력'}[key]);
+  input.setAttribute('aria-label', {position:'어디서 찾나요? 내용 입력', example:'값 예시 입력', original:'화면의 원문 항목 입력', note:'헷갈리기 쉬운 부분 내용 입력', photoNote:'캡처 주의사항 입력'}[key]);
   input.value = original;
   const help = document.createElement('small');
   help.className = 'manual-inline-help';
@@ -600,7 +590,9 @@ function manualStartInlineEdit(node, key) {
 function renderManualInlineControls() {
   const f = field();
   if (!f) return;
-  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시'],['.origin','original','화면의 원문 항목']]) {
+  const noteSection = $('inspector').querySelector('.field-info-note');
+  if (noteSection) noteSection.hidden = !editing && !manualInlineValue(f,currentPhoto(),'note');
+  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시'],['.origin','original','화면의 원문 항목'],['.manual-field-note','note','헷갈리기 쉬운 부분'],['.manual-photo-note','photoNote','캡처 주의사항']]) {
     const node = $('inspector').querySelector(selector);
     if (!node || manualInlineEdit?.node === node) continue;
     node.classList.toggle('manual-inline-editable', editing);
@@ -609,7 +601,7 @@ function renderManualInlineControls() {
       node.setAttribute('role', 'button');
       node.setAttribute('aria-label', label + ' · 더블클릭 또는 Enter로 수정');
       node.title = '더블클릭하여 수정';
-      const value = key === 'example' ? manualShownExample(f,currentPhoto()) : manualDisplayField(f,currentPhoto())[key];
+      const value = manualInlineValue(f,currentPhoto(),key);
       node.classList.toggle('manual-inline-empty', !value);
       if (!value) node.textContent = '더블클릭하여 입력';
       node.ondblclick = () => manualStartInlineEdit(node,key);

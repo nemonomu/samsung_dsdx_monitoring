@@ -1,5 +1,9 @@
 // Direct editing uses the same undo stack and explicit server save as the toolbar.
 let manualInlineEdit = null;
+function manualInlineValue(f, photo, key) {
+  if (key === 'photoNote') return photo?.note ?? '';
+  return key === 'example' ? manualShownExample(f, photo) ?? '' : manualDisplayField(f, photo)[key] ?? '';
+}
 function manualFinishInlineEdit(cancel = false) {
   const draft = manualInlineEdit;
   if (!draft) return;
@@ -8,10 +12,13 @@ function manualFinishInlineEdit(cancel = false) {
   if (!cancel && value !== draft.original) {
     const f = draft.field;
     const samplePhoto = draft.key === 'example' && !draft.common && draft.photo?.sampleValues?.[f.field] !== undefined ? draft.photo : null;
-    pushUndo({kind:'field', target:f, before:cloneValue(f), samplePhoto, beforeSamples:samplePhoto ? cloneValue(samplePhoto.sampleValues) : null});
-    f[draft.key] = value;
-    f.userEdited = true;
-    if (draft.common) f.commonEdited = true;
+    const target = draft.key === 'photoNote' ? draft.photo : f;
+    pushUndo({kind:'field', target, before:cloneValue(target), samplePhoto, beforeSamples:samplePhoto ? cloneValue(samplePhoto.sampleValues) : null});
+    target[draft.key === 'photoNote' ? 'note' : draft.key] = value;
+    if (draft.key !== 'photoNote') {
+      f.userEdited = true;
+      if (draft.common) f.commonEdited = true;
+    }
     if (samplePhoto) samplePhoto.sampleValues[f.field] = value;
     changed();
   }
@@ -26,12 +33,12 @@ function manualStartInlineEdit(node, key) {
   if (!editing || saveBusy || manualInlineEdit?.node === node) return;
   manualFinishInlineEdit();
   const f = field(), photo = currentPhoto();
-  const original = String(key === 'example' ? manualShownExample(f, photo) ?? '' : manualDisplayField(f, photo)[key] ?? '');
+  const original = String(manualInlineValue(f, photo, key));
   const input = document.createElement('textarea');
   input.className = 'manual-inline-input';
-  input.rows = key === 'position' ? 3 : 2;
+  input.rows = ['position','note','photoNote'].includes(key) ? 3 : 2;
   input.maxLength = 20000;
-  input.setAttribute('aria-label', {position:'어디서 찾나요? 내용 입력', example:'값 예시 입력', original:'화면의 원문 항목 입력'}[key]);
+  input.setAttribute('aria-label', {position:'어디서 찾나요? 내용 입력', example:'값 예시 입력', original:'화면의 원문 항목 입력', note:'헷갈리기 쉬운 부분 내용 입력', photoNote:'캡처 주의사항 입력'}[key]);
   input.value = original;
   const help = document.createElement('small');
   help.className = 'manual-inline-help';
@@ -58,7 +65,9 @@ function manualStartInlineEdit(node, key) {
 function renderManualInlineControls() {
   const f = field();
   if (!f) return;
-  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시'],['.origin','original','화면의 원문 항목']]) {
+  const noteSection = $('inspector').querySelector('.field-info-note');
+  if (noteSection) noteSection.hidden = !editing && !manualInlineValue(f,currentPhoto(),'note');
+  for (const [selector, key, label] of [['.where','position','어디서 찾나요?'],['.example','example','값 예시'],['.origin','original','화면의 원문 항목'],['.manual-field-note','note','헷갈리기 쉬운 부분'],['.manual-photo-note','photoNote','캡처 주의사항']]) {
     const node = $('inspector').querySelector(selector);
     if (!node || manualInlineEdit?.node === node) continue;
     node.classList.toggle('manual-inline-editable', editing);
@@ -67,7 +76,7 @@ function renderManualInlineControls() {
       node.setAttribute('role', 'button');
       node.setAttribute('aria-label', label + ' · 더블클릭 또는 Enter로 수정');
       node.title = '더블클릭하여 수정';
-      const value = key === 'example' ? manualShownExample(f,currentPhoto()) : manualDisplayField(f,currentPhoto())[key];
+      const value = manualInlineValue(f,currentPhoto(),key);
       node.classList.toggle('manual-inline-empty', !value);
       if (!value) node.textContent = '더블클릭하여 입력';
       node.ondblclick = () => manualStartInlineEdit(node,key);

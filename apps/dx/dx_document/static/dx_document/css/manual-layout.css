@@ -7,6 +7,7 @@
 #inspector .manual-inline-input{font-size:15px;line-height:1.8}
 .manual-detail-editor #manualDetailTitle,.manual-detail-editor #manualDetailContent{font-size:15px}
 #inspector .origin{white-space:pre-wrap;overflow-wrap:anywhere}
+#inspector .manual-field-note,#inspector .manual-photo-note{white-space:pre-wrap;overflow-wrap:anywhere}
 .manual-details{display:grid;gap:14px;margin-top:18px}
 .manual-details>.manual-add-button{justify-self:start}
 .manual-detail-item{position:relative;padding:15px 0 0;border-top:1px solid #e1e8f1}

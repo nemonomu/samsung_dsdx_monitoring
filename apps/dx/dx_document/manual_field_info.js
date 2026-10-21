@@ -29,6 +29,6 @@ function renderFieldWithoutImage(f, p, photo) {
     fact(f.direct ? '화면의 원문 항목' : '관련 항목', '<div class="origin">' + esc(f.original) + '</div>') +
     fact('수집 구분', esc(f.scope)) +
     '</dl>' +
-    (f.note ? '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p>' + esc(f.note) + '</p></div>' : '');
+    '<div class="field-info-note"><strong>확인 방법 · 주의사항</strong><p class="manual-field-note">' + esc(f.note) + '</p></div>';
   return true;
 }
