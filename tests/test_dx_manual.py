@@ -15,7 +15,10 @@ if not settings.configured:
         SECRET_KEY='manual-isolated-test',
         INSTALLED_APPS=['django.contrib.auth', 'django.contrib.contenttypes',
                         'django.contrib.sessions', 'django.contrib.staticfiles', 'apps.dx.dx_document'],
-        DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}},
+        DATABASES={
+            'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'},
+            'dx': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'},
+        },
         ROOT_URLCONF=__name__, USE_TZ=True, STATIC_URL='/static/',
         LOGIN_URL='/login/', ALLOWED_HOSTS=['testserver', 'localhost', '127.0.0.1'],
         MIDDLEWARE=['django.contrib.sessions.middleware.SessionMiddleware',
@@ -37,7 +40,21 @@ from django.test.runner import DiscoverRunner
 from django.urls import path
 from PIL import Image
 from apps.dx.dx_document import manual
-from apps.dx.dx_document.models import ManualRevision
+from apps.dx.dx_document.models import ManualRevision, ManualImage, PostgresManualRevision, PostgresManualImage
+from apps.dx.dx_document import manual_storage as storage
+from django.db import connections
+from django.core.management import call_command
+from django.core.management.base import CommandError
+
+
+class ManualTestRunner(DiscoverRunner):
+    def setup_databases(self, **kwargs):
+        result = super().setup_databases(**kwargs)
+        # Unmanaged production tables are created only in the isolated test DX DB.
+        with connections['dx'].schema_editor() as editor:
+            editor.create_model(PostgresManualRevision)
+            editor.create_model(PostgresManualImage)
+        return result
 
 urlpatterns = [
     path('dx/documents/manual/content/', manual.content),
@@ -50,6 +67,7 @@ PREFIX = '/dx/documents/manual/'
 
 
 class ManualTests(TestCase):
+    databases = {'default', 'dx'}
     def setUp(self):
         self.user = get_user_model().objects.create_user(username='editor', is_staff=True)
         self.client.force_login(self.user)
@@ -90,8 +108,9 @@ class ManualTests(TestCase):
         self.assertEqual(200, self.save().status_code)
         self.data['datasets'][0]['fields'][0]['note'] = 'stale overwrite'
         self.assertEqual(409, self.save().status_code)
-        self.assertEqual(1, ManualRevision.objects.count())
-        self.assertNotEqual('stale overwrite', ManualRevision.objects.first().data['datasets'][0]['fields'][0]['note'])
+        self.assertEqual(1, storage.revisions().count())
+        self.assertEqual(0, ManualRevision.objects.using('default').count())
+        self.assertNotEqual('stale overwrite', storage.revisions().first().data['datasets'][0]['fields'][0]['note'])
 
     def test_content_requires_login_and_dx_access(self):
         anonymous = Client()
@@ -125,7 +144,7 @@ class ManualTests(TestCase):
         bad['photos'][0]['url'] = ''
         bad['photos'][0]['width'] = '<script>'
         self.assertEqual(400, self.save(data=bad).status_code)
-        self.assertEqual(0, ManualRevision.objects.count())
+        self.assertEqual(0, storage.revisions().count())
 
     def test_text_is_embedded_as_safe_json(self):
         self.data['datasets'][0]['fields'][0]['note'] = '</script><script>alert(1)</script>'
@@ -153,6 +172,31 @@ class ManualTests(TestCase):
         self.assertTrue(manual.is_manual_category({'category_name': 'DX 검수 메뉴얼'}))
         self.assertFalse(manual.is_manual_category({'category_name': '검수 보고서'}))
 
+    def test_legacy_import_dry_run_apply_and_repeat(self):
+        legacy = ManualRevision.objects.using('default').create(version=1, data=self.data, created_by='legacy')
+        ManualImage.objects.using('default').create(digest='a' * 64, content=b'legacy-image', content_type='image/png', created_by='legacy')
+        call_command('migrate_dx_manual_to_postgres', stdout=io.StringIO())
+        self.assertFalse(storage.revisions().exists())
+        self.assertFalse(storage.images().exists())
+        for _ in range(2):
+            call_command('migrate_dx_manual_to_postgres', apply=True, stdout=io.StringIO())
+        self.assertEqual(1, storage.revisions().count())
+        self.assertEqual(legacy.created_at, storage.revisions().first().created_at)
+        self.assertEqual(self.data, storage.revisions().first().data)
+        self.assertEqual(b'legacy-image', bytes(storage.images().first().content))
+        self.assertEqual(1, ManualRevision.objects.using('default').count())
+        self.assertEqual(200, self.save(1).status_code)
+
+    def test_import_conflict_rolls_back_and_preserves_both_histories(self):
+        ManualRevision.objects.using('default').create(version=1, data=self.data, created_by='legacy')
+        ManualImage.objects.using('default').create(digest='b' * 64, content=b'legacy', content_type='image/png', created_by='legacy')
+        self.assertEqual(200, self.save().status_code)
+        with self.assertRaises(CommandError):
+            call_command('migrate_dx_manual_to_postgres', apply=True, stdout=io.StringIO())
+        self.assertEqual('editor', storage.revisions().first().created_by)
+        self.assertFalse(storage.images().exists())
+        self.assertEqual(1, ManualImage.objects.using('default').count())
+
     def test_deployment_creates_manual_storage_before_web_restart(self):
         from scripts.deploy_monitoring import deploy
         with TemporaryDirectory() as directory:
@@ -169,10 +213,15 @@ class ManualTests(TestCase):
             deploy(root, 'preview', 'preview', run=fake_run)
             migration = next(i for i, args in enumerate(calls) if args[-3:] == ['migrate', 'dx_document', '--noinput'])
             static = next(i for i, args in enumerate(calls) if 'collectstatic' in args)
+            transfer = next(i for i, args in enumerate(calls) if args[-2:] == ['migrate_dx_manual_to_postgres', '--apply'])
+            stop = next(i for i, args in enumerate(calls) if args[-2:] == ['stop', 'gunicorn'])
             restart = next(i for i, args in enumerate(calls) if args[-2:] == ['restart', 'gunicorn'])
             self.assertLess(migration, static)
+            self.assertLess(migration, transfer)
+            self.assertLess(stop, transfer)
+            self.assertLess(transfer, restart)
             self.assertLess(migration, restart)
 
 
 if __name__ == '__main__':
-    sys.exit(bool(DiscoverRunner(verbosity=2).run_tests(['__main__'])))
+    sys.exit(bool(ManualTestRunner(verbosity=2).run_tests(['__main__'])))

@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
@@ -19,7 +19,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 from PIL import Image, UnidentifiedImageError
 
-from .models import ManualImage, ManualRevision
+from . import manual_storage as storage
 
 DATA_DIR = Path(__file__).with_name('manual_data')
 IMAGE_URL = '/dx/documents/manual/images/'
@@ -61,7 +61,7 @@ def metadata(revision):
 
 
 def current_revision():
-    return ManualRevision.objects.first()
+    return storage.revisions().first()
 
 
 @dx_access
@@ -161,7 +161,7 @@ def validate_data(data):
             raise ValueError('이미지를 먼저 업로드하세요.')
         image_refs.add(ref.split('/')[-2])
     missing = [digest for digest in image_refs if not (DATA_DIR / 'images' / digest).is_file()]
-    if missing and ManualImage.objects.filter(digest__in=missing).count() != len(missing):
+    if missing and storage.images().filter(digest__in=missing).count() != len(missing):
         raise ValueError('저장되지 않은 이미지가 있습니다. 다시 업로드하세요.')
     return data
 
@@ -188,13 +188,9 @@ def save(request):
             raise ValueError('저장 버전이 올바르지 않습니다.')
         data = validate_data(payload.get('data'))
         version = payload['version']
-        with transaction.atomic():
-            latest = current_revision()
-            if version != (latest.version if latest else 0):
-                return JsonResponse({'error': '다른 사용자가 먼저 저장했습니다. 현재 변경을 확인한 뒤 새로고침하여 최신 버전에서 다시 수정하세요.'}, status=409)
-            revision = ManualRevision.objects.create(version=version + 1, data=data, created_by=request.user.username)
+        revision = storage.save_revision(version, data, request.user.username)
         return JsonResponse({'success': True, **metadata(revision)})
-    except IntegrityError:
+    except (IntegrityError, storage.RevisionConflict):
         return JsonResponse({'error': '다른 사용자가 먼저 저장했습니다. 최신 버전을 확인하세요.'}, status=409)
     except (ValueError, TypeError, KeyError) as exc:
         return JsonResponse({'error': str(exc) or '저장 내용을 확인하세요.'}, status=400)
@@ -210,11 +206,11 @@ def history(request):
             return JsonResponse({'error': '버전이 올바르지 않습니다.'}, status=400)
         if int(version) == 0:
             return JsonResponse({'data': seed_data(), **metadata(None)})
-        revision = ManualRevision.objects.filter(version=int(version)).first()
+        revision = storage.revisions().filter(version=int(version)).first()
         if not revision:
             raise Http404
         return JsonResponse({'data': revision.data, **metadata(revision)})
-    revisions = ManualRevision.objects.defer('data')[:30]
+    revisions = storage.revisions().defer('data')[:30]
     return JsonResponse({'revisions': [metadata(r) for r in revisions] + [metadata(None)]})
 
 
@@ -234,7 +230,7 @@ def upload(request):
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         return JsonResponse({'error': '유효한 PNG, JPG, WEBP 이미지가 아닙니다.'}, status=400)
     digest = hashlib.sha256(raw).hexdigest()
-    ManualImage.objects.get_or_create(digest=digest, defaults={
+    storage.images().get_or_create(digest=digest, defaults={
         'content': raw, 'content_type': mime, 'created_by': request.user.username,
     })
     return JsonResponse({'url': IMAGE_URL + digest + '/'})
@@ -251,7 +247,7 @@ def image(request, digest):
             mime = Image.MIME[picture.format]
         response = FileResponse(path.open('rb'), content_type=mime)
     else:
-        stored = ManualImage.objects.filter(digest=digest).first()
+        stored = storage.images().filter(digest=digest).first()
         if not stored:
             raise Http404
         response = HttpResponse(bytes(stored.content), content_type=stored.content_type)

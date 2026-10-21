@@ -11,13 +11,21 @@ from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import include, path
 from unittest.mock import patch
+from django.db import connections
+from apps.dx.dx_document.models import PostgresManualRevision, PostgresManualImage
 
 root = Path(__file__).resolve().parents[1]
 settings.DATABASES['default']['NAME'] = str(root / 'tmp/manual-preview.sqlite3')
+settings.DATABASES['dx']['NAME'] = str(root / 'tmp/manual-preview-dx.sqlite3')
 settings.STATICFILES_DIRS = [str(root / 'static')]
 settings.DEBUG = True
 settings.ROOT_URLCONF = __name__
 call_command('migrate', verbosity=0)
+with connections['dx'].schema_editor() as editor:
+    existing = connections['dx'].introspection.table_names()
+    for model in (PostgresManualRevision, PostgresManualImage):
+        if model._meta.db_table not in existing:
+            editor.create_model(model)
 user, _ = get_user_model().objects.get_or_create(username='manual-preview', defaults={'is_staff': True})
 
 

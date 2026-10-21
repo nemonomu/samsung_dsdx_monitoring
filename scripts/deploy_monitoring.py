@@ -83,6 +83,9 @@ def deploy(root, username, groupname, run=subprocess.run):
     command(python, manage, 'migrate', 'dx_layer2', '--noinput')
     command(python, manage, 'migrate', 'dx_document', '--noinput')
     command(python, manage, 'collectstatic', '--noinput')
+    # Check conflicts before stopping the web service. Drain old workers so no
+    # SQLite edits can arrive between copying the legacy history and restart.
+    command(python, manage, 'migrate_dx_manual_to_postgres')
 
     with TemporaryDirectory(prefix='dsdx-deploy-') as temp:
         for name, content in unit_files(root, username, groupname).items():
@@ -90,6 +93,8 @@ def deploy(root, username, groupname, run=subprocess.run):
             source.write_text(content, encoding='utf-8', newline='\n')
             command('sudo', 'install', '-m', '0644', source, f'/etc/systemd/system/{name}')
     command('sudo', 'systemctl', 'daemon-reload')
+    command('sudo', 'systemctl', 'stop', 'gunicorn')
+    command(python, manage, 'migrate_dx_manual_to_postgres', '--apply')
     command('sudo', 'systemctl', 'restart', 'gunicorn')
     command('systemctl', 'is-active', '--quiet', 'gunicorn')
     command('sudo', 'systemctl', 'enable', '--now', f'{UNIT}.timer')
