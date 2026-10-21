@@ -1,9 +1,9 @@
 {% extends 'base_layer1.html' %}
 {% load static %}
 {% block page_title %}컬럼 수집 이상{% endblock %}
-{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=20261021-check-links">{% endblock %}
+{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=20261021-alert-compact">{% endblock %}
 {% block layer1_content %}
-<section class="cs-page ccs-page" aria-label="컬럼 수집 이상">
+<section class="cs-page ccs-page cca-page" aria-label="컬럼 수집 이상">
     <div class="cs-intro"><div><p class="cs-eyebrow">column alerts</p><p>평소보다 수집 건수가 줄어든 컬럼을 확인하세요.</p></div></div>
     <form id="cca-filters" class="cs-filters">
         <label>국가<select id="cca-country"><option value="">전체 국가</option></select></label>

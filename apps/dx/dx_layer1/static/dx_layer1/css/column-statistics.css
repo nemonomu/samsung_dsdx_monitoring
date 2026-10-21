@@ -1,4 +1,10 @@
 .ccs-page {width:100%;min-width:0}
+.cca-page {max-width:none}
+.cca-page .cs-intro {margin-bottom:12px;gap:12px}
+.cca-page .cs-filters {padding:14px 16px;gap:12px;margin-bottom:12px}
+.cca-page .cs-card {margin-bottom:12px}
+.cca-page .cs-card-heading {padding:14px 16px;gap:12px}
+.cca-page .ccs-status-filters {padding:0 16px 12px}
 .ccs-scroll {max-height:70vh;overflow:auto}
 .ccs-table {border-collapse:separate;border-spacing:0;min-width:100%;width:max-content;font-size:13px;font-variant-numeric:tabular-nums}
 .ccs-table th {text-transform:none;letter-spacing:normal}
