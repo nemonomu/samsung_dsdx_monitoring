@@ -86,17 +86,21 @@ with sync_playwright() as p:
     page.evaluate("failed=true; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_selector('[role="alert"]')
     assert '미해결 없음으로 처리하지 않습니다' in page.locator('[role="alert"]').inner_text()
-    # The same stored column issue remains visible on the column alert page.
+    # Alert pages use inspection ranges, with no backlog request or panel.
     page.evaluate("""()=>{
         failed=false;issue.status='open';LAYER1.section='column_alerts';
-        document.querySelector('#collection-issues-container').outerHTML='<div id="collection-issues-container"></div>';
+        calls.length=0;
+        document.querySelector('#collection-issues-container').outerHTML='<div id="collection-issues-container" hidden></div>';
         document.querySelectorAll('dialog').forEach(dialog=>dialog.remove());
     }""")
     page.add_script_tag(path=str(STATIC/'js/collection-issues.js'))
     page.evaluate("CollectionIssues.load({date:'2026-10-20'})")
-    page.wait_for_selector('[data-ci-detail="2"]')
-    assert page.locator('.ci-head h3').inner_text() == '과거 미해결 · 수집 이상 2건'
-    assert 'inventory_status' in page.locator('.ci-panel').inner_text()
+    assert page.evaluate('calls.length') == 0
+    assert page.locator('.ci-panel').count() == 0
+    # SQL for a selected source date still works without the backlog panel.
+    page.evaluate("CollectionIssues.sql({country:'SEA',product:'REF',retailer:'Costco',source_date:'2026-10-14'})")
+    page.wait_for_selector('#ci-sql-text')
+    assert "'2026-10-14'" in page.locator('#ci-sql-text').input_value()
     assert not errors,errors
     browser.close()
 print('PASS: production backlog placement, unchanged original date, SQL tabs/copy, acknowledgement persistence, mandatory exception reason, history, XSS escaping, mobile and query failure.')

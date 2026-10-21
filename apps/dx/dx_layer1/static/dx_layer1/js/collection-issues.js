@@ -6,7 +6,7 @@
     const missingOnly = section === 'dashboard';
     const issueLabel = missingOnly ? '미수집' : '수집 이상';
     const countries = {retail:'SEA', seda_retail:'SEDA', seg_retail:'SEG', siel_retail:'SIEL', sem_retail:'SEM', tse_retail:'TSE', seib_retail:'SEIB'};
-    const enabled = section === 'dashboard' || section === 'column_alerts' || Object.hasOwn(countries, section);
+    const enabled = section === 'dashboard' || Object.hasOwn(countries, section);
     const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const statusText = {open:'미해결', resolved:'복구 검증 완료', excepted:'예외 처리'};
     let selection = {}, status = 'open', rows = [], page = 1, controller, lastKey, selectedIssue, queries, kind = 'count';
@@ -65,9 +65,6 @@
         if (controller) controller.abort();
         controller = new AbortController();
         const current = controller;
-        // On the alert page its own query form is the relevant date control.
-        const filters = document.getElementById('cca-filters');
-        if (filters && host.previousElementSibling !== filters) filters.after(host);
         host.hidden = false;
         host.innerHTML='<section class="ci-panel ci-clear"><p class="ci-note" role="status">과거 미해결 이력을 확인하고 있습니다.</p></section>';
         try {

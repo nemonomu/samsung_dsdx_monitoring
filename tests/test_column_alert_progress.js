@@ -12,6 +12,7 @@ class Element {
     appendChild(child) { this.children.push(child); }
     insertBefore(child) { this.appendChild(child); child.remove = () => { this.children = this.children.filter(c => c !== child); }; }
     setAttribute(name, value) { this.attributes[name] = value; }
+    setCustomValidity(message) { this.validationMessage = message; }
     addEventListener(name, fn) { this.listeners[name] = fn; }
     querySelector(selector) {
         if (selector === 'button') return this.button;
@@ -23,10 +24,11 @@ class Element {
 const read = path => fs.readFileSync(path, 'utf8');
 const base = 'apps/dx/dx_layer1/static/dx_layer1/js/';
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function setup() {
+function setup(query = '?date=2026-09-23') {
     const nodes = new Map();
     const get = id => { if (!nodes.has(id)) nodes.set(id, new Element()); return nodes.get(id); };
     get('cca-filters').button = new Element();
+    get('cca-filters').reportValidity = () => !get('cca-end-date').validationMessage;
     get('cca-country').options.push({value: ''});
     get('cca-catalog').textContent = JSON.stringify([{country:'SEA', product:'TV', retailers:['Amazon','Bestbuy','Walmart']}]);
     get('cca-loading').hidden = true;
@@ -34,7 +36,7 @@ function setup() {
     const sandbox = {
         console, URLSearchParams, AbortController, Intl, Date, structuredClone, LAYER1: {},
         Option: function(label, value) { return {label, value}; },
-        location: {search:'?date=2026-09-23'}, history:{replaceState(){}},
+        location: {search:query}, history:{replaceState(_state, _title, url){sandbox.location.search = url;}},
         document: {getElementById:get, querySelector:() => link, createElement:() => new Element(), addEventListener(){}},
         fetch: (url, options) => new Promise(resolve => pending.push({url, options, resolve})),
     };
@@ -48,7 +50,7 @@ function setup() {
     const badge = () => link.querySelector('.sidebar-issue-badge');
     const spinner = () => link.children.find(c => c.className === 'cca-sidebar-loading');
     const submit = () => get('cca-filters').listeners.submit({preventDefault(){}});
-    return {get, pending, respond, badge, spinner, submit};
+    return {get, pending, respond, badge, spinner, submit, sandbox};
 }
 (async () => {
     const s = setup();
@@ -69,12 +71,12 @@ function setup() {
     s.get('cca-search').value = 'nonexistent'; s.get('cca-search').listeners.input();
     assert.equal(s.badge().textContent, '2', 'search does not change the completed query count');
 
-    s.get('cca-date').listeners.change();
+    s.get('cca-start-date').listeners.change();
     assert.equal(s.badge(), null, 'changing criteria clears stale counts');
     assert.equal(s.get('cca-loading').hidden, true);
     s.submit();
     const stale = s.pending.slice(3);
-    s.get('cca-date').listeners.change();
+    s.get('cca-end-date').listeners.change();
     assert(stale.every(r => r.options.signal.aborted));
     stale.forEach(r => s.respond(r, ['abnormal'])); await tick();
     assert.equal(s.badge(), null, 'aborted results cannot restore a count');
@@ -102,5 +104,39 @@ function setup() {
     assert.match(whole.get('cca-progress').textContent, /전체 미수집 1건/);
     assert.match(whole.get('cca-body').innerHTML, /조회 SQL/);
     assert.equal((whole.get('cca-body').innerHTML.match(/<tr>/g)||[]).length, 1);
+    assert.equal(s.get('cca-start-date').value, '2026-09-23');
+    assert.equal(s.get('cca-end-date').value, '2026-09-23', 'legacy date links select one day');
+
+    const range = setup('?country=SEA&product=TV&start_date=2026-09-30&end_date=2026-10-02');
+    for (let i = 0; i < 9; i++) {
+        const request = range.pending[i];
+        assert(request, 'each day/retailer is queried with bounded concurrency');
+        const date = new URL(request.url, 'http://test').searchParams.get('date');
+        const sourceDate = new Date(date + 'T00:00:00Z');
+        sourceDate.setUTCDate(sourceDate.getUTCDate() - 1);
+        request.resolve({ok: true, json: async () => ({inspection_date: date, comparison_date: sourceDate.toISOString().slice(0, 10), comparisons: [{column:'sku_status',status:'abnormal',history_days:7,baseline:10,current:1,ratio:10,delta:-9}]})});
+        await tick();
+    }
+    assert.equal(range.pending.length, 9, 'three dates including both boundaries, three retailers each');
+    assert.deepEqual(range.pending.map(r => new URL(r.url, 'http://test').searchParams.get('date')), [
+        '2026-10-02','2026-10-02','2026-10-02','2026-10-01','2026-10-01','2026-10-01','2026-09-30','2026-09-30','2026-09-30',
+    ]);
+    assert.equal(range.badge().textContent, '9', 'same column on different inspection dates is counted separately');
+    const html = range.get('cca-body').innerHTML;
+    assert.match(html, /<td>2026-09-30<\/td>/);
+    assert.match(html, /데이터일 2026-09-29/);
+    assert.match(html, /date=2026-09-30/,'details use inspection day, not source day');
+    assert(html.indexOf('<td>2026-10-02</td>') < html.indexOf('<td>2026-09-30</td>'));
+    assert.match(range.get('cca-progress').textContent, /2026-09-30 ~ 2026-10-02/);
+    assert.match(range.sandbox.location.search, /start_date=2026-09-30&end_date=2026-10-02/);
+
+    const invalid = setup('?start_date=2026-10-02&end_date=2026-09-30');
+    assert.equal(invalid.pending.length, 0, 'reversed ranges do not query');
+    assert.match(invalid.get('cca-end-date').validationMessage, /시작일/);
+    invalid.get('cca-end-date').value = '2026-10-02';
+    invalid.get('cca-end-date').listeners.input();
+    assert.equal(invalid.get('cca-end-date').validationMessage, '');
+    invalid.submit();
+    assert.equal(invalid.pending.length, 2, 'corrected range can be submitted');
     console.log('Column alert progress: loading, completion, abnormal-only counts, filters, cancellation, failures and zero passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});
