@@ -21,7 +21,7 @@ class Element {
 }
 function setup(section = 'dashboard') {
     const nodes = new Map();
-    for (const id of ['l1-column-alert-catalog','l1-column-alert-link','l1-column-alert-total','l1-column-alert-breakdown']) nodes.set(id, new Element());
+    for (const id of ['l1-column-alert-catalog','l1-column-alert-link','l1-column-alert-total','l1-column-alert-breakdown','l1-column-alert-history','l1-column-alert-history-detail']) nodes.set(id, new Element());
     nodes.get('l1-column-alert-catalog').textContent = JSON.stringify([{country:'SEA',product:'TV',retailers:['Amazon','Bestbuy','Walmart']}]);
     const menu = new Element(), pending = [], events = {};
     const sandbox = {
@@ -83,9 +83,13 @@ function setup(section = 'dashboard') {
     history.respond(history.pending[0], ['abnormal'], true, {issue_history_error:true});
     history.respond(history.pending[1], ['review']); await tick();
     history.respond(history.pending[2], []); await historyRun;
-    assert.equal(history.nodes.get('l1-column-alert-total').textContent, '2건 · 이력 저장 실패');
+    assert.equal(history.nodes.get('l1-column-alert-total').textContent, '2');
     assert.equal(history.badge().textContent, '1', 'storage failure must preserve fetched abnormal counts');
-    assert.match(history.nodes.get('l1-column-alert-breakdown').textContent, /현재 통계 조회 완료/);
+    assert.match(history.nodes.get('l1-column-alert-breakdown').innerHTML, /확인 필요 1/);
+    assert.equal(history.nodes.get('l1-column-alert-history').hidden, false);
+    assert.match(history.nodes.get('l1-column-alert-history-detail').textContent, /1개 대상 · 서버 확인 필요/);
+    await history.sandbox.ColumnAlertSummary.load('2099-01-01');
+    assert.equal(history.nodes.get('l1-column-alert-history').hidden, true, 'date changes clear stale storage warnings');
 
     const detail = setup('retail');
     detail.nodes.delete('l1-column-alert-link'); detail.nodes.delete('l1-column-alert-total'); detail.nodes.delete('l1-column-alert-breakdown');

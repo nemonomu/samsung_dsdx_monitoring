@@ -9,6 +9,8 @@
     const link = document.getElementById('l1-column-alert-link');
     const total = document.getElementById('l1-column-alert-total');
     const breakdown = document.getElementById('l1-column-alert-breakdown');
+    const historyNotice = document.getElementById('l1-column-alert-history');
+    const historyDetail = document.getElementById('l1-column-alert-history-detail');
     const spinner = document.createElement('span');
     spinner.className = 'l1-column-alert-spinner';
     spinner.setAttribute('role', 'status');
@@ -22,6 +24,8 @@
         window.setSidebarIssueBadge(menu, 0);
         if (total) { total.textContent = '조회 중'; total.classList.add('is-loading'); }
         if (breakdown) breakdown.textContent = '이상·확인 필요 항목을 확인하고 있습니다.';
+        if (historyNotice) historyNotice.hidden = true;
+        if (historyDetail) historyDetail.textContent = '';
     }
     function load(date, force = false) {
         if (window.CollectionIssues) window.CollectionIssues.load({date});
@@ -66,9 +70,13 @@
             if (current.signal.aborted) return;
             if (window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
+            if (historyFailures && historyNotice && historyDetail) {
+                historyNotice.hidden = false;
+                historyDetail.textContent = `${historyFailures}개 대상 · 서버 확인 필요. 조회된 통계는 표시됩니다.`;
+            }
             if (failures || !jobs.length) {
-                if (total) { total.textContent = '일부 조회 실패'; total.classList.remove('is-loading'); }
-                if (breakdown) breakdown.textContent = `${jobs.length - failures}/${jobs.length}개 대상 조회 완료 · 조회된 이상 ${abnormal}건 · 확인 필요 ${review}건 · 전체 미수집 ${missing}건${historyFailures ? ` · 이력 저장 실패 ${historyFailures}개 대상` : ''}. 전체 건수는 아직 확정할 수 없습니다.`;
+                if (total) { total.textContent = '일부 조회 실패'; }
+                if (breakdown) breakdown.textContent = `${jobs.length - failures}/${jobs.length}개 대상 조회 완료 · 조회된 이상 ${abnormal}건 · 확인 필요 ${review}건 · 전체 미수집 ${missing}건. 전체 건수는 아직 확정할 수 없습니다.`;
                 if (menu) menu.title = `${date} · 컬럼 수집 상태 조회 실패 · 메뉴에서 다시 확인해주세요.`;
                 return;
             }
@@ -79,11 +87,7 @@
                 badge.setAttribute('aria-label', badge.title);
             }
             if (total) { total.textContent = (abnormal + review + missing).toLocaleString('ko-KR'); total.classList.remove('is-loading'); }
-            if (breakdown) breakdown.innerHTML = `<span class="l1-column-alert-abnormal">이상 ${abnormal.toLocaleString('ko-KR')}</span> · <span class="l1-column-alert-review">확인 필요 ${review.toLocaleString('ko-KR')}</span> · 전체 미수집 ${missing}`;
-            if (historyFailures) {
-                if (total) total.textContent += '건 · 이력 저장 실패';
-                if (breakdown) breakdown.textContent += ` · 현재 통계 조회 완료. ${historyFailures}개 대상의 이력 저장은 서버 확인이 필요합니다.`;
-            }
+            if (breakdown) breakdown.innerHTML = `<span class="l1-column-alert-abnormal">이상 ${abnormal.toLocaleString('ko-KR')}</span><span class="l1-column-alert-review">확인 필요 ${review.toLocaleString('ko-KR')}</span><span>전체 미수집 ${missing}</span>`;
         });
         return pending;
     }
