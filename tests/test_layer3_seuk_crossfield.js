@@ -16,7 +16,7 @@ print(json.dumps([fixture(product) for product in SEUK_SOURCE_CONFIG]))
         const context = {
             console, document:{addEventListener(){},querySelector:()=>container},
             esc:value=>String(value == null ? '' : value),escJs:String,
-            getSelectedDate:()=> '2026-10-24',
+            getSelectedDate:()=> '2026-10-26',
             fetchAPI:async url=>{urls.push(url); return fixture.detail;},
         };
         context.window=context;

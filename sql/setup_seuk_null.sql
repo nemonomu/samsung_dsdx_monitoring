@@ -1,7 +1,7 @@
 -- SEUK Currys NULL 검증: 4개 제품군 × 11개 컬럼.
 -- setup_seuk_layer1.sql 실행 후 이 파일 전체를 DX PostgreSQL에서 실행하세요.
 -- prefix='' 운영, prefix='test_' 테스트 설정. 원본 수집 데이터는 변경하지 않습니다.
--- 현재 10/23 데이터 미리보기이며, 최종 운영 시작일은 추후 10/25로 복원합니다.
+-- 운영 시작일은 2026-10-25이며, 이전 시험 수집분은 검수 대상에서 제외합니다.
 -- 검수 이력은 기존 공통 public.monitoring_null_review_evidence 테이블을 사용합니다.
 -- 실행 후 웹 프로세스를 재시작하여 설정 캐시를 갱신하세요.
 BEGIN;

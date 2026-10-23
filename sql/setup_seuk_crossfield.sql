@@ -1,6 +1,6 @@
 -- SEUK Currys: 4개 제품군 × 7개 크로스필드 규칙. savings는 GBP 할인 금액입니다.
 -- setup_seuk_layer1.sql 및 setup_seuk_null.sql 실행 후 적용하세요.
--- 원본 수집 데이터를 변경하지 않습니다. 현재 앱 시작일은 10/23 미리보기입니다.
+-- 원본 수집 데이터를 변경하지 않습니다. 앱 운영 시작일은 2026-10-25입니다.
 -- prefix='' 운영, prefix='test_' DEBUG 규칙 설정. 배포 후 웹 프로세스를 재시작하세요.
 BEGIN;
 DO $seuk_crossfield$

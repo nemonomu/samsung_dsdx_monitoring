@@ -129,7 +129,9 @@ class SeukNullTests(unittest.TestCase):
             {'fetchone':None},{'fetchone':(51,)},{'fetchone':(101,)},
         ])
         conn=Mock()
-        with patch.object(evidence,'_korean_time',return_value=datetime(2026,10,23,16,tzinfo=evidence.KOREA)):
+        with patch.object(evidence,'_korean_time',return_value=datetime(2026,10,25,16,tzinfo=evidence.KOREA)), \
+             patch.object(nulls,'datetime',wraps=datetime) as clock:
+            clock.now.return_value=datetime(2026,10,25,16,tzinfo=evidence.KOREA)
             result=nulls.save_null_review(cursor,conn,source['table_name'],42,'capacity','normal','',
                 '해당값 정상 확인',str(DAY),'null','tester')
         self.assertTrue(result['success'],result)

@@ -5,8 +5,8 @@ from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql, source_date_value
 
 SEUK_COUNTRY = 'SEUK'
-# Temporary preview requested by the user. Restore to October 25 at final rollout.
-FIRST_SOURCE_DATE = date(2026, 10, 23)
+# Production monitoring starts with the original October 25 collection date.
+FIRST_SOURCE_DATE = date(2026, 10, 25)
 RETAILER = 'Currys'
 COMMON_REQUIRED = (
     'country', 'account_name', 'item', 'sku', 'retailer_sku_name', 'product_url',

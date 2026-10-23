@@ -56,6 +56,7 @@ config/create_admin.py
 !sql/setup_seuk_null.sql
 !sql/setup_seuk_crossfield.sql
 !sql/setup_seuk_format_duplicate.sql
+!sql/set_seuk_start_20261025.sql
 !sql/setup_sea_homedepot_layer2.sql
 !sql/setup_homedepot_dryer_layer2.sql
 !sql/setup_lowes_dryer_layer2.sql

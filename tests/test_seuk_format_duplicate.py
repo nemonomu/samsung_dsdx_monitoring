@@ -90,8 +90,8 @@ class SeukFormatDuplicateTests(unittest.TestCase):
             self.assertEqual(0,dup.append_duplicate_stats(Mock(),DAY,stats,'seuk_tv_retail'))
             self.assertEqual('PENDING',stats['tables'][0]['status'])
 
-    def test_source_scope_is_latest_original_day_and_start_date_is_unchanged(self):
-        self.assertEqual(date(2026,10,23),DAY)
+    def test_source_scope_is_latest_original_day_and_production_start_date(self):
+        self.assertEqual(date(2026,10,25),DAY)
         source=policy.SEUK_SOURCE_CONFIG['seuk_tv']
         cursor=Mock(description=[('id',)])
         cursor.fetchall.return_value=[]

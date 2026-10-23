@@ -21,12 +21,12 @@ from apps.dx.dx_layer3.dashboard import api as dashboard_api
 from apps.dx.dx_layer3.data_edit import services as edits
 
 
-DAY=date(2026,10,24)
+DAY=date(2026,10,26)
 
 
 def row(**changes):
     result=dict(id=2,item='A',sku='SKU',retailer_sku_name='Product A',account_name='Currys',
-        crawl_datetime='2026-10-24T23:59:59-04:00',batch_id='current',
+        crawl_datetime='2026-10-26T23:59:59-04:00',batch_id='current',
         final_sku_price='£1399.00',original_sku_price='£1799.99',savings='£400.99',
         star_rating='4.5',count_of_reviews='8',count_of_star_ratings='8',product_url='https://example.test/a')
     result.update(changes)
@@ -47,9 +47,9 @@ class Cursor:
         if 'monitoring_validation_rules' in self.query:
             return [(i,self.product+'_'+key,key,'Currys') for i,key in enumerate(svc.RULES,1)]
         if 'SELECT source.*' in self.query:
-            return [row(id=1,crawl_datetime='2026-10-23T23:59:59-04:00'),row(savings='£400.00')]
+            return [row(id=1,crawl_datetime='2026-10-25T23:59:59-04:00'),row(savings='£400.00')]
         if 'monitoring_corrections' in self.query and self.confirmed:
-            return [(2,7,'savings','checked','normal','tester','2026-10-24')]
+            return [(2,7,'savings','checked','normal','tester','2026-10-26')]
         return []
 
 
@@ -94,7 +94,7 @@ class SeukCrossfieldTests(unittest.TestCase):
             self.assertEqual(7,len(summary['rule_summary']))
             self.assertEqual((1,1,1),(summary['total_checked'],summary['failed_records'],summary['total_anomalies']))
             self.assertEqual(['comparison_history','target'],[r['row_role'] for r in detail['anomalies']])
-            self.assertEqual('2026-10-24',detail['source_date'])
+            self.assertEqual('2026-10-26',detail['source_date'])
             self.assertEqual(product.upper(),detail['product_line'])
             query=svc.display_query(source,DAY,30,["A'B"])
             self.assertIn(str(FIRST_SOURCE_DATE),query)
@@ -111,7 +111,7 @@ class SeukCrossfieldTests(unittest.TestCase):
 
     def test_prelaunch_never_reads_source_and_rules_are_test_isolated(self):
         cursor=Mock()
-        self.assertEqual([],svc._load_rows(cursor,SEUK_SOURCE_CONFIG['seuk_tv'],'2026-10-01','2026-10-22'))
+        self.assertEqual([],svc._load_rows(cursor,SEUK_SOURCE_CONFIG['seuk_tv'],'2026-10-01','2026-10-24'))
         cursor.execute.assert_not_called()
         cursor.fetchall.return_value=[]
         with override_settings(DEBUG=True): svc.load_active_rules(cursor,SEUK_SOURCE_CONFIG['seuk_tv'])
@@ -148,7 +148,7 @@ class SeukCrossfieldTests(unittest.TestCase):
         self.assertTrue(result['success'])
         self.assertIn('FOR UPDATE OF source',cursor.calls[0][0])
         self.assertIn('source.batch_id',cursor.calls[0][0])
-        self.assertEqual(['2026-10-24','2026-10-24','currys','currys',2],cursor.calls[0][1])
+        self.assertEqual(['2026-10-26','2026-10-26','currys','currys',2],cursor.calls[0][1])
         cursor=ScriptedCursor([{'fetchone':('£400.00','Currys','A')},{'fetchone':None},{'rowcount':1}])
         with patch.object(svc,'load_active_rules',return_value=[{'rule_id':7}]):
             result=edits.save_review(cursor,Mock(),table,2,'savings','normal','','checked',str(DAY),'cross_field','tester',7)

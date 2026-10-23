@@ -22,7 +22,7 @@ from apps.dx.dx_layer1.common import retail_batches
 
 
 class SeukLayer1Tests(TestCase):
-    day = date(2026, 10, 23)
+    day = date(2026, 10, 25)
 
     def check(self, day=None, total=309, main=290, bsr=100, now=None):
         cursor = Mock()
@@ -33,30 +33,39 @@ class SeukLayer1Tests(TestCase):
     def test_original_source_day_and_four_tables(self):
         self.assertFalse(any(country == 'SEUK' for _, country, _ in SOURCE_DEFINITIONS))
         for key, source in policy.SEUK_SOURCE_CONFIG.items():
-            self.assertEqual('2026-10-23', resolve_monitoring_date(self.day, 'SEUK', key)['source_date'])
-            cte, scope, params = policy.latest_scope(source, '2026-10-21', '2026-10-23')
-            self.assertEqual(['2026-10-23', '2026-10-23', 'currys', 'currys'], params)
+            self.assertEqual('2026-10-25', resolve_monitoring_date(self.day, 'SEUK', key)['source_date'])
+            cte, scope, params = policy.latest_scope(source, '2026-10-21', '2026-10-25')
+            self.assertEqual(['2026-10-25', '2026-10-25', 'currys', 'currys'], params)
             self.assertIn('anchor.id DESC', cte)
             self.assertIn(source_date_sql('anchor.crawl_datetime'), cte)
             self.assertIn('latest.source_date', scope)
             self.assertNotIn('AT TIME ZONE', cte + scope)
             self.assertNotIn('page_type', cte + scope)
-        self.assertEqual('2026-10-23', source_date_value('2026-10-23T23:59:59-04:00'))
-        self.assertEqual('2026-10-22', source_date_value('2026-10-22T23:59:59+09:00'))
+        self.assertEqual('2026-10-25', source_date_value('2026-10-25T23:59:59-04:00'))
+        self.assertEqual('2026-10-24', source_date_value('2026-10-24T23:59:59+09:00'))
 
     def test_schedule_boundaries_and_start_date(self):
+        self.assertEqual(date(2026,10,25), policy.FIRST_SOURCE_DATE)
         for hour, minute, phase in ((0,59,'pending'),(1,0,'collecting'),(3,59,'collecting'),(4,0,'complete')):
-            now = datetime(2026,10,23,hour,minute,tzinfo=policy.KST)
+            now = datetime(2026,10,25,hour,minute,tzinfo=policy.KST)
             self.assertEqual(phase, policy.collection_phase(self.day, now))
             self.assertEqual(phase, policy.collection_phase(self.day, now.astimezone(timezone.utc)))
             self.assertEqual(phase == 'complete', collection_complete('SEUK','TV','Currys',self.day,now))
         cursor = Mock()
-        before = get_layer1_stats(cursor, date(2026,10,22), datetime(2026,10,24,5,tzinfo=policy.KST))['check']
+        before = get_layer1_stats(cursor, date(2026,10,24), datetime(2026,10,24,5,tzinfo=policy.KST))['check']
         cursor.execute.assert_not_called()
         self.assertEqual('PENDING', before['status'])
-        self.assertEqual([], calc.normalize_check(before, 'SEUK', date(2026,10,22)))
-        self.assertEqual({}, queries.raw_counts('SEUK','TV','Currys',date(2026,10,21),date(2026,10,22)))
+        self.assertEqual([], calc.normalize_check(before, 'SEUK', date(2026,10,24)))
+        self.assertEqual({}, queries.raw_counts('SEUK','TV','Currys',date(2026,10,21),date(2026,10,24)))
         self.assertEqual((self.day, 'registered'), issues.coverage_start('SEUK','TV','Currys'))
+        for day in (date(2026,10,23), date(2026,10,24)):
+            cursor = Mock()
+            result = get_layer1_stats(cursor, day, datetime(2026,10,26,5,tzinfo=policy.KST))
+            cursor.execute.assert_not_called()
+            self.assertEqual([], result['failed_items'])
+            self.assertEqual('PENDING', result['check']['status'])
+            self.assertEqual('2026-10-25', result['check']['active_from'])
+            self.assertIn('2026-10-25 시작', result['check']['description'])
 
     def test_total_is_not_main_plus_bsr_and_missing_after_deadline(self):
         check = self.check()
@@ -75,10 +84,10 @@ class SeukLayer1Tests(TestCase):
         from apps.common import dx_schedules
         schedules=[dict(check_type='seuk_retail',schedule_type='daily')]
         with patch.object(dx_schedules,'load_collection_schedules',return_value=schedules):
-            self.assertEqual(0, get_target_sections('2026-10-22'))
-            self.assertEqual(1, get_target_sections('2026-10-23'))
+            self.assertEqual(0, get_target_sections('2026-10-24'))
+            self.assertEqual(1, get_target_sections('2026-10-25'))
         with patch.object(services,'load_collection_schedules',return_value=schedules):
-            before=services._get_active_services(date(2026,10,22))
+            before=services._get_active_services(date(2026,10,24))
             after=services._get_active_services(self.day)
         self.assertIn('seuk_retail',dict(before[0]))
         self.assertNotIn('seuk_retail',before[2])
@@ -110,7 +119,7 @@ class SeukLayer1Tests(TestCase):
             fields = columns.ordered_columns(config['columns'])
             self.assertEqual(11 if key=='seuk_tv' else 12,len(fields))
             sql, params = columns.query_spec(source,source['retailers'][0],fields,date(2026,10,1),self.day)
-            self.assertEqual(['currys','2026-10-23','2026-10-23','currys'],params)
+            self.assertEqual(['currys','2026-10-25','2026-10-25','currys'],params)
             self.assertIn('latest.chosen_batch',sql)
             self.assertIn(source_date_sql('source.crawl_datetime'),sql)
             self.assertNotIn('AT TIME ZONE',sql)
@@ -120,34 +129,35 @@ class SeukLayer1Tests(TestCase):
             if key=='seuk_ref': self.assertIn('ref_refrigerator_type',fields)
         cursor=Mock()
         fields=columns.ordered_columns(policy.SEUK_SOURCE_CONFIG['seuk_tv']['columns'])
-        cursor.fetchall.return_value=[('2026-10-23',300,*([300]*len(fields)))]
+        cursor.fetchall.return_value=[('2026-10-25',300,*([300]*len(fields)))]
         @contextmanager
         def connection(): yield None,cursor
         with patch.object(columns,'dx_connection',connection):
             result=columns.daily_counts('SEUK','TV','Currys',self.day,5)
         self.assertEqual([0,0,0,0,300],[day['total'] for day in result['daily']])
-        self.assertEqual('2026-10-23',result['active_from'])
-        completed={day['date']:day['date']>='2026-10-23' for day in result['daily']}
-        self.assertTrue(all(r['status']=='not_scheduled' for r in compare_columns(result,date(2026,10,22),completed)))
+        self.assertEqual('2026-10-25',result['active_from'])
+        completed={day['date']:day['date']>='2026-10-25' for day in result['daily']}
+        self.assertTrue(all(r['status']=='not_scheduled' for r in compare_columns(result,date(2026,10,24),completed)))
 
     def test_batch_detail_sql_uses_exact_date(self):
         cursor=Mock()
         cursor.fetchall.return_value=[('old','t1','t1',200,80,False,210),('new','t2','t2',290,100,True,309)]
         cursor.mogrify.return_value=b'SELECT *;'
-        result=retail_batches.fetch_batch_details(cursor,'seuk_retail','seuk_ldy','2026-10-23','Currys')
+        result=retail_batches.fetch_batch_details(cursor,'seuk_retail','seuk_ldy','2026-10-25','Currys')
         self.assertEqual([False,True],[r['applied'] for r in result['batches']])
         self.assertIn(source_date_sql('crawl_datetime'),cursor.execute.call_args.args[0])
         self.assertIn(source_date_sql('crawl_datetime')+' = %s',cursor.mogrify.call_args.args[0])
 
     def test_collector_live_and_backlog_never_use_trial_days(self):
         loader=Mock(side_effect=lambda country,day:self.check(day))
-        before=collector.refresh_country('SEUK',date(2026,10,18),date(2026,10,22),loader=loader,today=date(2026,10,22))
+        before=collector.refresh_country('SEUK',date(2026,10,18),date(2026,10,24),loader=loader,today=date(2026,10,24))
         self.assertEqual(0,before['updated'])
         loader.assert_not_called()
-        self.assertIsNone(automatic.history_range('SEUK',date(2026,10,22)))
+        self.assertIsNone(automatic.history_range('SEUK',date(2026,10,24)))
         trial=[sample(retailer='Currys',product='TV',observation_state='ready',observation_days=5)]
-        Daily.objects.create(country='SEUK',inspection_date=date(2026,10,21),source_date=date(2026,10,21),rows=trial,digest='trial',updated_at=datetime.now(timezone.utc))
-        result=collector.refresh_country('SEUK',date(2026,10,21),date(2026,10,23),loader=loader,today=self.day)
+        for trial_day in (date(2026,10,23), date(2026,10,24)):
+            Daily.objects.create(country='SEUK',inspection_date=trial_day,source_date=trial_day,rows=trial,digest='trial',updated_at=datetime.now(timezone.utc))
+        result=collector.refresh_country('SEUK',date(2026,10,21),date(2026,10,25),loader=loader,today=self.day)
         self.assertEqual(0,result['errors'])
         self.assertEqual([self.day],[c.args[1] for c in loader.call_args_list])
         with patch.object(live,'load_current_check',return_value=self.check()):
@@ -167,6 +177,11 @@ class SeukLayer1Tests(TestCase):
         self.assertNotIn('DELETE FROM',sql)
         self.assertNotIn('monitoring_null_column',sql)
         self.assertEqual(79,sum(len(c['columns']) for c in policy.SEUK_SOURCE_CONFIG.values()))
+        update_sql=(Path(__file__).resolve().parents[1]/'sql/set_seuk_start_20261025.sql').read_text(encoding='utf-8')
+        self.assertTrue(parse_sql(update_sql))
+        self.assertTrue(parse_plpgsql(update_sql))
+        self.assertNotIn('UPDATE dx_seuk.',update_sql)
+        self.assertNotIn('DELETE FROM',update_sql)
 
 
 if __name__=='__main__':
