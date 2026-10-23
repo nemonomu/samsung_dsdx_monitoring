@@ -298,7 +298,9 @@ function formatBackupPrompt(data) {
             Number(data.seib_tv_count || 0) +
             Number(data.seib_ref_count || 0) +
             Number(data.seib_ldy_count || 0) +
-            Number(data.seib_ldy_dryer_count || 0);
+            Number(data.seib_ldy_dryer_count || 0) +
+            Number(data.seuk_tv_count || 0) + Number(data.seuk_ref_count || 0) +
+            Number(data.seuk_ldy_count || 0) + Number(data.seuk_ldy_dryer_count || 0);
     }
 
     return [
@@ -358,6 +360,13 @@ function formatBackupPrompt(data) {
             '  ·  REF ' + formatBackupCount(data.seib_ref_count) +
             '  ·  LDY ' + formatBackupCount(data.seib_ldy_count) +
             '  ·  DRY ' + formatBackupCount(data.seib_ldy_dryer_count),
+        'SEUK · D 데이터 · ' + formatBackupSourceDate(
+            sourceDates, ['seuk_tv', 'seuk_ref', 'seuk_ldy', 'seuk_ldy_dryer']
+        ),
+        'TV ' + formatBackupCount(data.seuk_tv_count) +
+            '  ·  REF ' + formatBackupCount(data.seuk_ref_count) +
+            '  ·  LDY ' + formatBackupCount(data.seuk_ldy_count) +
+            '  ·  DRY ' + formatBackupCount(data.seuk_ldy_dryer_count),
         '',
         '총 ' + formatBackupCount(totalCount),
         '',
@@ -396,7 +405,9 @@ function renderBackupConfirmContent(data) {
             Number(data.seib_tv_count || 0) +
             Number(data.seib_ref_count || 0) +
             Number(data.seib_ldy_count || 0) +
-            Number(data.seib_ldy_dryer_count || 0);
+            Number(data.seib_ldy_dryer_count || 0) +
+            Number(data.seuk_tv_count || 0) + Number(data.seuk_ref_count || 0) +
+            Number(data.seuk_ldy_count || 0) + Number(data.seuk_ldy_dryer_count || 0);
     }
 
     function element(tagName, text, styles) {
@@ -407,7 +418,7 @@ function renderBackupConfirmContent(data) {
     }
 
     function countryCard(country, offsetLabel, sourceDate, counts) {
-        var flagCodes = { SEA: 'us', SEDA: 'br', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th', SEIB: 'es' };
+        var flagCodes = { SEA: 'us', SEDA: 'br', SEM: 'mx', SIEL: 'in', SEG: 'de', TSE: 'th', SEIB: 'es', SEUK: 'gb' };
         var card = element('div', null,
             'border:1px solid #e2e8f0;border-radius:10px;padding:13px 14px;background:#fff;');
         var header = element('div', null,
@@ -512,6 +523,16 @@ function renderBackupConfirmContent(data) {
             { label: 'REF', value: data.seib_ref_count },
             { label: 'LDY', value: data.seib_ldy_count },
             { label: 'DRY', value: data.seib_ldy_dryer_count }
+        ]
+    ));
+    cards.appendChild(countryCard(
+        'SEUK', 'D',
+        formatBackupSourceDate(sourceDates, ['seuk_tv', 'seuk_ref', 'seuk_ldy', 'seuk_ldy_dryer']),
+        [
+            { label: 'TV', value: data.seuk_tv_count },
+            { label: 'REF', value: data.seuk_ref_count },
+            { label: 'LDY', value: data.seuk_ldy_count },
+            { label: 'DRY', value: data.seuk_ldy_dryer_count }
         ]
     ));
     cards.appendChild(countryCard(

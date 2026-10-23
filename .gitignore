@@ -136,3 +136,5 @@ _backup/
 !/AGENTS.md
 !docs/collection_statistics.md
 !CLAUDE.md
+
+!sql/setup_seuk_backup.sql

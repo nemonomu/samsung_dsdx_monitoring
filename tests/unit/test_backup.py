@@ -3,6 +3,7 @@ from apps.common import sea_dates
 from apps.common.source_dates import source_date_value
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
+from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from datetime import date, timedelta
 
 from tests.unit.support import load_module, module_stub, package_stub
@@ -229,6 +230,9 @@ def load_backup(connection, errors=None):
             'apps.common.seib_retail': module_stub(
                 'apps.common.seib_retail', SEIB_SOURCE_CONFIG=SEIB_SOURCE_CONFIG,
             ),
+            'apps.common.seuk_retail': module_stub(
+                'apps.common.seuk_retail', SEUK_SOURCE_CONFIG=SEUK_SOURCE_CONFIG,
+            ),
             'apps.common.source_dates': module_stub(
                 'apps.common.source_dates',
                 source_date_sql=lambda column: f'LEFT(BTRIM(CAST({column} AS TEXT)), 10)',
@@ -366,6 +370,38 @@ class BackupTests(unittest.TestCase):
                 self.assertEqual(('2026-10-18',), params)
 
 
+    def test_seuk_backup_covers_four_sources_on_original_same_day(self):
+        self.assertEqual(
+            '2026-10-23', source_date_value('2026-10-23T23:37:34-04:00'),
+        )
+        cursor = BackupCursor(
+            pending={'dx_seuk_ldy_dryer_retail_com_backup': 2},
+            inserted={'dx_seuk_ldy_dryer_retail_com_backup': [11, 12]},
+        )
+        connection = BackupConnection(cursor)
+        backup = load_backup(connection)
+
+        counts = backup.get_backup_count('2026-10-23')
+        self.assertEqual(2, counts['seuk_ldy_dryer_count'])
+        self.assertEqual('2026-10-23', counts['source_dates']['seuk_ldy_dryer'])
+        self.assertEqual(2, counts['total_count'])
+
+        result = backup.backup_all_retail('tester', '2026-10-23')
+        self.assertTrue(result['success'])
+        self.assertEqual(2, result['seuk_ldy_dryer']['count'])
+        self.assertEqual(1, connection.commits)
+        for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+            source_table = f'dx_seuk.dx_seuk_{product}_retail_com'
+            backup_table = source_table + '_backup'
+            scoped = [(sql, params) for sql, params in cursor.calls
+                      if source_table + ' a' in sql]
+            self.assertEqual(2, len(scoped))
+            for sql, params in scoped:
+                self.assertIn(backup_table, sql)
+                self.assertIn('LEFT(BTRIM(CAST(a.crawl_datetime AS TEXT)), 10) = %s', sql)
+                self.assertEqual(('2026-10-23',), params)
+
+
     def test_pending_count_includes_all_retail_sources(self):
         cursor = BackupCursor(pending={
             'tv_retail_com_backup_all': 5,
@@ -417,7 +453,7 @@ class BackupTests(unittest.TestCase):
             for sql, params in cursor.calls
             if 'SELECT COUNT(*)' in sql
         ]
-        self.assertEqual(len(count_calls), 25)
+        self.assertEqual(len(count_calls), 29)
         self.assertIn(
             'FROM public.tv_retail_com a',
             count_calls[0][0],
@@ -476,7 +512,7 @@ class BackupTests(unittest.TestCase):
             [('2026-08-10',)] * 7 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 12,
+            [('2026-08-11',)] * 16,
         )
         self.assertTrue(cursor.closed)
         self.assertTrue(connection.closed)
@@ -549,7 +585,7 @@ class BackupTests(unittest.TestCase):
             if sql.startswith('INSERT INTO')
             and 'monitoring_backup_log' not in sql
         ]
-        self.assertEqual(len(insert_calls), 25)
+        self.assertEqual(len(insert_calls), 29)
         self.assertTrue(all(
             'ON CONFLICT DO NOTHING' in sql
             for sql, _ in insert_calls
@@ -560,7 +596,7 @@ class BackupTests(unittest.TestCase):
             [('2026-08-10',)] * 7 +
             [('2026-08-11',)] * 3 +
             [('2026-08-11', '2026-08-11')] * 3 +
-            [('2026-08-11',)] * 12,
+            [('2026-08-11',)] * 16,
         )
         log_calls = [
             params for sql, params in cursor.calls

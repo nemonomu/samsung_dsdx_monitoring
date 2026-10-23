@@ -71,7 +71,11 @@ async function testIntegratedBackupPromptAndPost() {
         tse_tv_count: 2,
         tse_ref_count: 3,
         tse_ldy_count: 4,
-        total_count: 176,
+        seuk_tv_count: 11,
+        seuk_ref_count: 12,
+        seuk_ldy_count: 13,
+        seuk_ldy_dryer_count: 10,
+        total_count: 222,
         inspection_date: '2026-08-11',
         source_dates: {
             sea_tv: '2026-08-10',
@@ -98,7 +102,11 @@ async function testIntegratedBackupPromptAndPost() {
             seib_tv: '2026-08-11',
             seib_ref: '2026-08-11',
             seib_ldy: '2026-08-11',
-            seib_ldy_dryer: '2026-08-11'
+            seib_ldy_dryer: '2026-08-11',
+            seuk_tv: '2026-08-11',
+            seuk_ref: '2026-08-11',
+            seuk_ldy: '2026-08-11',
+            seuk_ldy_dryer: '2026-08-11'
         }
     };
     const postResult = {
@@ -165,7 +173,9 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(confirms[0].includes('TV 7건  ·  REF 8건  ·  LDY 9건'));
     assert.ok(confirms[0].includes('TSE · D 데이터 · 2026-08-11'));
     assert.ok(confirms[0].includes('TV 2건  ·  REF 3건  ·  LDY 4건'));
-    assert.ok(confirms[0].includes('총 176건'));
+    assert.ok(confirms[0].includes('SEUK · D 데이터 · 2026-08-11'));
+    assert.ok(confirms[0].includes('TV 11건  ·  REF 12건  ·  LDY 13건  ·  DRY 10건'));
+    assert.ok(confirms[0].includes('총 222건'));
     const renderedText = elementText(confirmMessage);
     assert.ok(renderedText.includes('백업 대상 확인'));
     assert.ok(renderedText.includes('검수일'));
@@ -177,7 +187,7 @@ async function testIntegratedBackupPromptAndPost() {
     assert.ok(renderedText.includes('SIEL'));
     assert.ok(renderedText.includes('TSE'));
     assert.ok(renderedText.includes('총 백업 대상'));
-    assert.ok(renderedText.includes('176건'));
+    assert.ok(renderedText.includes('222건'));
     assert.ok(renderedText.includes('SEG'));
     assert.ok(confirms[0].includes('SEG · D 데이터 · 2026-08-11'));
     assert.ok(confirms[0].includes('DRY 5건'));
@@ -194,17 +204,25 @@ async function testIntegratedBackupPromptAndPost() {
     assert.strictEqual(cards[2].children[0].children[0].children[0].src, '/static/img/flags/mx.svg');
     assert.strictEqual(cards[3].children[0].children[0].children[0].src, '/static/img/flags/in.svg');
     assert.strictEqual(cards[4].children[0].children[0].children[0].src, '/static/img/flags/es.svg');
-    assert.strictEqual(cards[5].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
-    assert.strictEqual(cards[6].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
-    assert.strictEqual(cards[6].children[1].children.length, 4);
-    assert.strictEqual(elementText(cards[6].children[1].children[3]).trim(), 'DRY 5건');
+    assert.strictEqual(cards[6].children[0].children[0].children[0].src, '/static/img/flags/th.svg');
+    assert.strictEqual(cards[7].children[0].children[0].children[0].src, '/static/img/flags/de.svg');
+    assert.strictEqual(cards[7].children[1].children.length, 4);
+    assert.strictEqual(elementText(cards[7].children[1].children[3]).trim(), 'DRY 5건');
+    assert.strictEqual(cards[5].children[0].children[0].children[0].src, '/static/img/flags/gb.svg');
+    assert.strictEqual(cards[5].children[1].children.length, 4);
+    assert(elementText(cards[5]).includes('2026-08-11'));
+    assert(elementText(cards[5]).includes('D'));
+    ['TV 11건','REF 12건','LDY 13건','DRY 10건'].forEach((expected,index) => {
+        assert.strictEqual(elementText(cards[5].children[1].children[index]).trim(), expected);
+    });
+    assert(renderedText.includes('SEUK'));
     assert(renderedText.includes('SEIB'));
     assert(renderedText.includes('DRY'));
     assert(!renderedText.includes('LDY_DRYER'));
     assert(fs.readFileSync(path.join(root, 'apps', 'dx', 'dx_layer1', 'static', 'dx_layer1', 'css', 'collection-status.css'), 'utf8')
         .includes('grid-template-columns: repeat(3, minmax(0, 1fr))'));
     assert(fs.readFileSync(path.join(root, 'apps', 'dx', 'dx_layer1', 'templates', 'dx_layer1_dashboard.html'), 'utf8')
-        .includes("dx_layer1/js/dashboard.js' %}?v=20261019-seg-dryer-backup"));
+        .includes("dx_layer1/js/dashboard.js' %}?v=20261023-seuk-backup"));
     assert.strictEqual(confirmOptions.length, 1);
     assert.strictEqual(confirmOptions[0].type, 'info');
     assert.strictEqual(confirmOptions[0].options.okText, '백업 실행');

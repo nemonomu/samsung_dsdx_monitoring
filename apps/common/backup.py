@@ -18,6 +18,7 @@ from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from apps.common.source_dates import source_date_sql
 
 
@@ -139,6 +140,21 @@ def _seib_backup_source(source_key):
     }
 
 
+def _seuk_backup_source(source_key):
+    source = SEUK_SOURCE_CONFIG[source_key]
+    return {
+        'key': source_key,
+        'source_key': source_key,
+        'country': 'SEUK',
+        'category': source['display_name'],
+        'product_line': source_key,
+        'source_table': source['table_name'],
+        'backup_table': source['table_name'] + '_backup',
+        'date_column': 'a.crawl_datetime',
+        'date_mode': 'raw_source_text',
+    }
+
+
 _BACKUP_SOURCES = tuple(
     _sea_backup_source(product_key)
     for product_key in ('tv', 'ref', 'ldy')
@@ -191,6 +207,9 @@ _BACKUP_SOURCES = tuple(
 ) + (_seg_dryer_backup_source(),) + tuple(
     _seib_backup_source(source_key)
     for source_key in ('seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer')
+) + tuple(
+    _seuk_backup_source(source_key)
+    for source_key in ('seuk_tv', 'seuk_ref', 'seuk_ldy', 'seuk_ldy_dryer')
 )
 _BACKUP_SOURCE_BY_KEY = {source['key']: source for source in _BACKUP_SOURCES}
 _INVALID_DATE_ERROR_CODE = 'invalid_inspection_date'

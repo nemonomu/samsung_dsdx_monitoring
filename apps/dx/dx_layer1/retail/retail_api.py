@@ -139,9 +139,13 @@ def backup_retail_data(request):
                 'tse_ref_count': result['tse_ref_count'],
                 'tse_ldy_count': result['tse_ldy_count'],
                 'seib_tv_count': result.get('seib_tv_count', 0),
+                'seuk_tv_count': result.get('seuk_tv_count', 0),
                 'seib_ref_count': result.get('seib_ref_count', 0),
+                'seuk_ref_count': result.get('seuk_ref_count', 0),
                 'seib_ldy_count': result.get('seib_ldy_count', 0),
+                'seuk_ldy_count': result.get('seuk_ldy_count', 0),
                 'seib_ldy_dryer_count': result.get('seib_ldy_dryer_count', 0),
+                'seuk_ldy_dryer_count': result.get('seuk_ldy_dryer_count', 0),
                 'hhp_count': 0,
                 'total_count': result['total_count'],
                 'inspection_date': result['inspection_date'],
@@ -180,9 +184,13 @@ def backup_retail_data(request):
                 'tse_ref_count': result['tse_ref']['count'],
                 'tse_ldy_count': result['tse_ldy']['count'],
                 'seib_tv_count': result.get('seib_tv', {}).get('count', 0),
+                'seuk_tv_count': result.get('seuk_tv', {}).get('count', 0),
                 'seib_ref_count': result.get('seib_ref', {}).get('count', 0),
+                'seuk_ref_count': result.get('seuk_ref', {}).get('count', 0),
                 'seib_ldy_count': result.get('seib_ldy', {}).get('count', 0),
+                'seuk_ldy_count': result.get('seuk_ldy', {}).get('count', 0),
                 'seib_ldy_dryer_count': result.get('seib_ldy_dryer', {}).get('count', 0),
+                'seuk_ldy_dryer_count': result.get('seuk_ldy_dryer', {}).get('count', 0),
             }
             message = (
                 f"백업 완료 - SEA TV: {counts['tv_count']}건, "
@@ -209,7 +217,11 @@ def backup_retail_data(request):
                 f"SEIB TV: {counts['seib_tv_count']}건, "
                 f"SEIB REF: {counts['seib_ref_count']}건, "
                 f"SEIB LDY: {counts['seib_ldy_count']}건, "
-                f"SEIB LDY_DRYER: {counts['seib_ldy_dryer_count']}건"
+                f"SEIB LDY_DRYER: {counts['seib_ldy_dryer_count']}건, "
+                f"SEUK TV: {counts['seuk_tv_count']}건, "
+                f"SEUK REF: {counts['seuk_ref_count']}건, "
+                f"SEUK LDY: {counts['seuk_ldy_count']}건, "
+                f"SEUK LDY_DRYER: {counts['seuk_ldy_dryer_count']}건"
             )
             return JsonResponse({
                 'success': True,
