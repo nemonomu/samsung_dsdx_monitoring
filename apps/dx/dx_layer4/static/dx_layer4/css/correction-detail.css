@@ -58,6 +58,6 @@
 .audit-current-row .audit-badge { color:#278d7c; background:#e7f6f0; }
 .audit-group-table td[rowspan] { background:white; color:var(--text-primary); }
 .audit-pagination { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-top:16px; font-size:12px; color:var(--text-secondary); }
-#correction-inline-detail { margin-top:24px; scroll-margin-top:80px; }
+#modal-corr-detail .audit-detail { min-width:0; }
 .audit-saved-log>summary { cursor:pointer; color:var(--layer-color); padding:10px 0; }
 @media(max-width:760px) { .audit-section-heading,.audit-list-toolbar { align-items:flex-start; flex-direction:column; } }

@@ -47,7 +47,7 @@
         var date = getSelectedDate(); if (!date) return;
         if (lastDate !== date) { page = 1; lastDate = date; }
         var ticket = ++sequence;
-        if (window.CorrectionAudit && window.CorrectionAudit.closeInline) window.CorrectionAudit.closeInline();
+        if (window.CorrectionAudit) window.CorrectionAudit.close();
         var params = new URLSearchParams({date:date,type:selectedType,status:status(),page:page,page_size:50,days:el('correction-compare-days').value,
             country:el('corr-country').value,product:el('corr-product').value,retailer:el('corr-retailer').value,reviewer:el('corr-reviewer').value,
             search_field:'item_column',search_value:el('corr-search').value.trim()});

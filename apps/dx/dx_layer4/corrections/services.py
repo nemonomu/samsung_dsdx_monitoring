@@ -80,12 +80,34 @@ def _enrich_crawl_time(cursor, items):
         item['crawl_time'] = crawl_time_map.get(key, '')
 
 
+# Select the current state before applying reviewer/status filters. Older events
+# remain in monitoring_corrections and are available in the detail audit trail.
+_CURRENT_CORRECTIONS_SQL = """
+    SELECT * FROM (
+        SELECT c.*, ROW_NUMBER() OVER (
+            PARTITION BY
+                CASE WHEN SUBSTR(c.table_name, 1, 7) = 'public.'
+                     THEN SUBSTR(c.table_name, 8) ELSE c.table_name END,
+                c.record_id,
+                CASE WHEN c.record_id IS NULL THEN c.id END,
+                c.column_name, c.correction_type,
+                CASE WHEN c.correction_type = 'cross_field' THEN c.rule_id END
+            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
+        ) AS current_rank
+        FROM monitoring_corrections c
+        WHERE c.crawl_date = %s AND c.status IS NOT NULL
+          AND c.table_name <> 'hhp_retail_com'
+    ) ranked WHERE current_rank = 1
+"""
+
+
 def get_corrections(target_date, correction_type='all', status='all',
                     search_field='', search_value='', page=1, page_size=50,
                     country='all', product='all', retailer='all', reviewer='all', days=3):
     """검수기록 목록 조회"""
     with dx_connection() as (conn, cursor):
-        base_clauses = ["c.crawl_date = %s", "c.status IS NOT NULL", "c.table_name <> 'hhp_retail_com'"]
+        current_source = f'({_CURRENT_CORRECTIONS_SQL}) c'
+        base_clauses = ['TRUE']
         base_params = [str(target_date)]
 
         from .detail import _sources
@@ -105,8 +127,7 @@ def get_corrections(target_date, correction_type='all', status='all',
             base_clauses.append('c.created_id = %s')
             base_params.append(reviewer)
 
-        cursor.execute('''SELECT DISTINCT retailer, created_id FROM monitoring_corrections
-                          WHERE crawl_date = %s AND status IS NOT NULL AND table_name <> 'hhp_retail_com' ''',
+        cursor.execute(f'''SELECT DISTINCT c.retailer, c.created_id FROM {current_source}''',
                        (str(target_date),))
         options = cursor.fetchall()
 
@@ -132,7 +153,7 @@ def get_corrections(target_date, correction_type='all', status='all',
                 base_params.append(f'%{search_value}%')
 
         base_where_sql = " AND ".join(base_clauses)
-        cursor.execute(f'''SELECT c.correction_type, COUNT(*) FROM monitoring_corrections c
+        cursor.execute(f'''SELECT c.correction_type, COUNT(*) FROM {current_source}
                            WHERE {base_where_sql} GROUP BY c.correction_type''', base_params)
         type_counts = {row[0]: row[1] for row in cursor.fetchall()}
         if correction_type != 'all':
@@ -140,7 +161,7 @@ def get_corrections(target_date, correction_type='all', status='all',
             base_params.append(correction_type)
             base_where_sql = ' AND '.join(base_clauses)
         cursor.execute(f"""
-            SELECT c.status, COUNT(*) FROM monitoring_corrections c
+            SELECT c.status, COUNT(*) FROM {current_source}
             WHERE {base_where_sql}
             GROUP BY c.status
         """, base_params)
@@ -156,7 +177,7 @@ def get_corrections(target_date, correction_type='all', status='all',
 
         where_sql = " AND ".join(where_clauses)
 
-        cursor.execute(f"SELECT COUNT(*) FROM monitoring_corrections c WHERE {where_sql}", params)
+        cursor.execute(f"SELECT COUNT(*) FROM {current_source} WHERE {where_sql}", params)
         total_count = cursor.fetchone()[0]
 
         offset = (page - 1) * page_size
@@ -166,10 +187,10 @@ def get_corrections(target_date, correction_type='all', status='all',
                    c.status, c.memo, c.created_id, c.created_at, c.reason,
                    c.retailer, c.item, c.rule_id, r.detail_name,
                    c.updated_id, c.updated_at, c.cancel_memo
-            FROM monitoring_corrections c
+            FROM {current_source}
             LEFT JOIN monitoring_validation_rules r ON c.rule_id = r.id
             WHERE {where_sql}
-            ORDER BY c.created_at DESC
+            ORDER BY c.created_at DESC NULLS LAST, c.id DESC
             LIMIT %s OFFSET %s
         """, params + [page_size, offset])
 
@@ -204,11 +225,11 @@ def get_corrections(target_date, correction_type='all', status='all',
 
         rule_options = []
         if correction_type == 'cross_field':
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT DISTINCT r.detail_name
-                FROM monitoring_corrections c
+                FROM {current_source}
                 LEFT JOIN monitoring_validation_rules r ON c.rule_id = r.id
-                WHERE c.crawl_date = %s AND c.correction_type = 'cross_field'
+                WHERE c.correction_type = 'cross_field'
                   AND c.status IS NOT NULL AND c.rule_id IS NOT NULL
                 ORDER BY r.detail_name
             """, [str(target_date)])

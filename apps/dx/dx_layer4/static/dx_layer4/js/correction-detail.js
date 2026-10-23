@@ -3,6 +3,8 @@
     'use strict';
     var sequence = 0;
     var state = null;
+    var modalReady = false;
+    var opener = null;
     var esc = function (v) { return L4.escapeHtml(String(v == null ? '' : v)); };
     function value(v) {
         if (v === null) return '<span class="audit-null">NULL</span>';
@@ -42,25 +44,43 @@
         return '<table class="corr-detail-table">' + rows + '</table>';
     }
     function open(item) {
+        if (!modalReady) {
+            AppModal.create('corr-detail', { style: 'wide', closeOnOverlay: true });
+            var modal = document.getElementById('modal-corr-detail');
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.querySelector('.app-modal__title').id = 'correction-detail-title';
+            modal.setAttribute('aria-labelledby', 'correction-detail-title');
+            modal.querySelector('.app-modal__close').setAttribute('aria-label', '검수기록 상세 닫기');
+            new MutationObserver(function () {
+                if (!modal.classList.contains('show')) {
+                    state = null; sequence++;
+                    AppModal.setBody('corr-detail', '');
+                    if (opener && opener.isConnected) opener.focus({preventScroll:true});
+                }
+            }).observe(modal, {attributes:true,attributeFilter:['class']});
+            modal.addEventListener('keydown', function (event) {
+                if (event.key !== 'Tab') return;
+                var focusable = Array.from(modal.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex="0"]')).filter(function (node) { return node.getClientRects().length && !node.disabled; });
+                var first = focusable[0], last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            });
+            modalReady = true;
+        }
+        opener = document.activeElement;
         state = { item: item, days: 3, ticket: ++sequence };
-        var inline = document.getElementById('correction-inline-detail');
         var content = '<div class="audit-detail"><details class="audit-saved-log"><summary>검수 당시 저장 기록 · 사유 · 메모</summary>' + logHtml(item)
             + '</details><section id="audit-source"><p class="audit-muted">상품 URL과 수집 이력을 조회 중입니다.</p></section></div>';
-        if (inline) {
-            inline.hidden = false;
-            inline.innerHTML = '<div class="audit-section-heading"><h3>선택한 검수기록 상세</h3><button class="app-btn app-btn-sm app-btn-outline" id="audit-inline-close">닫기</button></div>' + content;
-            document.getElementById('audit-inline-close').onclick = closeInline;
-            inline.scrollIntoView({behavior:'smooth',block:'start'});
-        } else {
-            AppModal.setTitle('corr-detail', '검수기록 상세');
-            AppModal.setBody('corr-detail', content);
-            AppModal.open('corr-detail');
-        }
+        AppModal.setTitle('corr-detail', '검수기록 상세');
+        AppModal.setBody('corr-detail', content);
+        AppModal.open('corr-detail');
+        AppModal.getBody('corr-detail').scrollTop = 0;
+        document.querySelector('#modal-corr-detail .app-modal__close').focus({preventScroll:true});
         load();
     }
-    function closeInline() {
-        var inline = document.getElementById('correction-inline-detail');
-        if (inline) { inline.hidden = true; inline.innerHTML = ''; }
+    function close() {
+        if (modalReady) AppModal.close('corr-detail');
         state = null; sequence++;
     }
     function load() {
@@ -142,5 +162,5 @@
         var ok = document.execCommand('copy'); area.remove();
         showToast(ok ? '조회 SQL을 복사했습니다.' : '쿼리 텍스트를 직접 선택해 복사하세요.', ok ? 'success' : 'warning');
     }
-    window.CorrectionAudit = { open: open, closeInline: closeInline };
+    window.CorrectionAudit = { open: open, close: close };
 }());

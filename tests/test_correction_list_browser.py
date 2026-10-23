@@ -14,7 +14,7 @@ def main():
     style=template.split('{% block layer4_css %}')[1].split('{% endblock %}')[0]
     style=re.sub(r'<link[^>]+>','',style)
     styles='\n'.join((ROOT/path).read_text(encoding='utf-8') for path in [
-        'static/css/common.css','static/css/buttons.css','apps/dx/dx_layer4/static/dx_layer4/css/layer4.css',
+        'static/css/common.css','static/css/buttons.css','static/css/modal.css','apps/dx/dx_layer4/static/dx_layer4/css/layer4.css',
         'apps/dx/dx_layer4/static/dx_layer4/css/correction-detail.css'])
     records=[]
     for i in range(3):
@@ -36,7 +36,6 @@ def main():
         page.set_content('<style>'+styles+'</style>'+style+'<style>:root{--layer-color:#764ba2;--page-color:#764ba2}body{display:block}main{padding:24px}</style><main>'+content+'</main>')
         page.evaluate('''() => {
             window.L4={_sectionHandler:{},_sectionInit:{},escapeHtml:s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),TYPE_NAMES:{cross_field:'크로스필드'},STATUS_NAMES:{corrected:'수정',normal:'확인'}};
-            window.AppModal={create(){},setTitle(){},setBody(){},open(){}};
             window.showToast=(text)=>window.lastToast=text;
             window.CORRECTIONS_IS_ADMIN=false;window.getSelectedDate=()=> '2026-10-27';window.calls=[];
         }''')
@@ -50,7 +49,7 @@ def main():
             else{data=JSON.parse(JSON.stringify(data));if(parsed.searchParams.get('days')==='1')data.items.forEach(r=>r.comparison_rows=[]);}
             return {ok:true,json:async()=>data};
         };}''')
-        for path in ['apps/dx/dx_layer4/static/dx_layer4/js/correction-detail.js',
+        for path in ['static/js/modal.js','apps/dx/dx_layer4/static/dx_layer4/js/correction-detail.js',
                      'apps/dx/dx_layer4/static/dx_layer4/js/correction-list.js',
                      'apps/dx/dx_layer4/static/dx_layer4/js/corrections.js']:
             page.add_script_tag(content=(ROOT/path).read_text(encoding='utf-8'))
@@ -69,10 +68,34 @@ def main():
         page.screenshot(path=str(ROOT/'tmp/correction_list_production.png'),full_page=True)
         page.locator('[data-corr-detail="0"]').click()
         page.wait_for_selector('#audit-source .audit-table')
-        assert page.locator('#correction-inline-detail').is_visible()
+        modal=page.locator('#modal-corr-detail')
+        assert modal.is_visible()
+        assert modal.get_attribute('role')=='dialog'
+        assert page.locator('#correction-inline-detail').count()==0
+        box=modal.locator('.app-modal__content').bounding_box()
+        assert abs(box['x']+box['width']/2-840)<2
+        assert abs(box['y']+box['height']/2-560)<2
+        assert box['height']<=1120*.85+1
+        assert page.evaluate('document.body.style.overflow')=='hidden'
+        page.screenshot(path=str(ROOT/'tmp/correction_detail_modal.png'),full_page=True)
         assert page.locator('#audit-query').count()==0
-        page.locator('#audit-inline-close').click()
-        assert not page.locator('#correction-inline-detail').is_visible()
+        # Keyboard navigation stays inside the dialog.
+        page.keyboard.press('Shift+Tab')
+        assert modal.evaluate('(node)=>node.contains(document.activeElement)')
+        page.keyboard.press('Tab')
+        assert modal.locator('.app-modal__close').evaluate('(node)=>node===document.activeElement')
+        page.keyboard.press('Escape')
+        assert not modal.is_visible()
+        assert page.evaluate('document.body.style.overflow')==''
+        assert page.locator('[data-corr-detail="0"]').evaluate('(node)=>node===document.activeElement')
+        page.locator('[data-corr-detail="0"]').click()
+        page.wait_for_selector('#audit-source .audit-table')
+        modal.locator('.app-modal__close').click()
+        assert not modal.is_visible()
+        page.locator('[data-corr-detail="0"]').click()
+        page.wait_for_selector('#audit-source .audit-table')
+        modal.click(position={'x':2,'y':2})
+        assert not modal.is_visible()
         page.select_option('#correction-compare-days','1')
         page.wait_for_function("document.querySelectorAll('.audit-comparison-row').length===0")
         page.select_option('#corr-country','SEUK')
@@ -90,9 +113,20 @@ def main():
         page.wait_for_selector('#audit-query')
         page.locator('#audit-query').click()
         page.wait_for_selector('.audit-query-panel')
+        # Long audit trails scroll inside the popup while the page stays in place.
+        page.keyboard.press('Escape')
+        page.evaluate('window.detailFixture.events=Array(80).fill(window.detailFixture.events[0])')
+        page.locator('[data-corr-detail="0"]').click()
+        page.wait_for_function("document.querySelectorAll('.audit-events>div').length===80")
+        body=modal.locator('.app-modal__body')
+        assert body.evaluate('(node)=>node.scrollHeight>node.clientHeight')
+        body.evaluate('(node)=>node.scrollTop=node.scrollHeight')
+        assert body.evaluate('(node)=>node.scrollTop')>0
+        close_box=modal.locator('.app-modal__close').bounding_box()
+        assert 0<=close_box['y']<1120-close_box['height']
         assert not errors,errors
         browser.close()
-        print('PASS: real template, list groups, summary counts, filters, inline detail, column selection, admin SQL')
+        print('PASS: real template, groups, counts, filters, centered modal, X/ESC/overlay close, focus, admin SQL')
 
 
 if __name__=='__main__':

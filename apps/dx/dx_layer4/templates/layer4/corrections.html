@@ -4,7 +4,7 @@
 {% block page_title %}검수기록{% endblock %}
 
 {% block layer4_css %}
-<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261023-audit-context">
+<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261023-audit-current-modal">
 <style>
     .log-tabs {
         display: flex;
@@ -105,7 +105,7 @@
 <!-- 조회 필터바 -->
 <div id="corrections-filter-bar"></div>
 <div class="audit-list-toolbar"><span id="correction-row-count" class="audit-muted">조회 중...</span><div class="audit-list-tools"><label>비교 기간 <select id="correction-compare-days"><option value="3">3일치</option><option value="1">당일</option><option value="7">7일치</option></select></label><details id="correction-columns"><summary>컬럼 선택</summary><div id="correction-column-options"></div></details></div></div>
-<p class="audit-list-guide">비교 이력은 검수건수에 포함하지 않습니다. 상품 URL은 원본의 현재 링크이며, 조회 SQL은 관리자에게만 제공됩니다.</p>
+<p class="audit-list-guide">목록과 건수는 각 검수 항목의 최신 처리 결과만 반영합니다. 이전 처리 기록은 상세조회에서 확인할 수 있으며, 비교 이력은 검수건수에 포함하지 않습니다. 상품 URL은 원본의 현재 링크이며, 조회 SQL은 관리자에게만 제공됩니다.</p>
 
 <!-- 상태 탭 -->
 <div class="log-tabs" id="corrections-tabs" style="display:none;">
@@ -124,7 +124,6 @@
 
 <!-- 페이지네이션 -->
 <div id="corrections-pagination"></div>
-<section id="correction-inline-detail" class="l4-section" hidden></section>
 
 <!-- 일괄 이력 조회 (관리자 전용) -->
 <div id="bulk-history-section" style="display:none;">
@@ -138,7 +137,7 @@
 
 {% block layer4_js %}
 <script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
-<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261023-audit-context"></script>
-<script src="{% static 'dx_layer4/js/correction-list.js' %}?v=20261023-audit-context"></script>
-<script src="{% static 'dx_layer4/js/corrections.js' %}?v=20261023-audit-context"></script>
+<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261023-audit-current-modal"></script>
+<script src="{% static 'dx_layer4/js/correction-list.js' %}?v=20261023-audit-current-modal"></script>
+<script src="{% static 'dx_layer4/js/corrections.js' %}?v=20261023-audit-current-modal"></script>
 {% endblock %}

@@ -98,7 +98,7 @@
                 if (bhs) bhs.style.display = isBulk ? '' : 'none';
 
                 if (isBulk) {
-                    if (window.CorrectionAudit) window.CorrectionAudit.closeInline();
+                    if (window.CorrectionAudit) window.CorrectionAudit.close();
                     var daysEl = document.getElementById('bulk-history-days');
                     var days = daysEl ? (parseInt(daysEl.value) || 3) : 3;
                     bulkHistoryTable = null;

@@ -26,9 +26,10 @@ def main():
         page.on('pageerror',lambda error: errors.append(str(error)))
         page.set_content('''<style>:root{--text-primary:#183153;--text-secondary:#73839c;--border-color:#dce5f1}body{font:14px Arial;background:#f6f8fc}#modal{background:white;padding:24px;margin:20px auto;max-width:1180px}.corr-detail-table{border-collapse:collapse;width:100%}.corr-detail-table th,.corr-detail-table td{border:1px solid #dce5f1;padding:8px;text-align:left}button{padding:8px;cursor:pointer}</style><div id="modal"></div>''')
         page.add_style_tag(content=CSS)
+        page.add_style_tag(content=(ROOT/'static/css/modal.css').read_text(encoding='utf-8'))
+        page.add_script_tag(content=(ROOT/'static/js/modal.js').read_text(encoding='utf-8'))
         page.evaluate('''() => {
             window.L4={escapeHtml:s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),TYPE_NAMES:{cross_field:'크로스필드'},STATUS_NAMES:{corrected:'수정'}};
-            window.AppModal={setTitle(){},setBody(id,html){document.getElementById('modal').innerHTML=html;},open(){}};
             window.showToast=(text)=>window.lastToast=text;
             window.CORRECTIONS_IS_ADMIN=false;
             window.calls=[];
@@ -67,7 +68,7 @@ def main():
         # Missing source: the saved audit values survive, with a visible warning.
         page.evaluate('window.fixture={...window.fixture,target:null,rows:[]};CorrectionAudit.open(window.item)')
         page.wait_for_selector('.audit-warning')
-        assert '£400.00' in page.locator('#modal').inner_text()
+        assert '£400.00' in page.locator('#modal-corr-detail').inner_text()
         assert not page.locator('.audit-url a').count()
         # Unsafe product URL is never rendered as a hyperlink.
         unsafe={**DATA,'target':{**ROW,'product_url':'javascript:alert(1)'},'rows':[]}
@@ -84,6 +85,13 @@ def main():
         page.evaluate('data=>window.pending[0]({...data,product:"STALE"})',DATA)
         page.wait_for_timeout(50)
         assert 'STALE' not in page.locator('#audit-source').inner_text()
+        # Closing while a detail request is pending must not repopulate a hidden dialog.
+        page.evaluate('CorrectionAudit.open(window.item)')
+        page.keyboard.press('Escape')
+        page.evaluate('data=>window.pending[2](data)',DATA)
+        page.wait_for_timeout(50)
+        assert not page.locator('#modal-corr-detail').is_visible()
+        assert page.locator('#audit-source').count()==0
         assert not errors,errors
         browser.close()
         print('PASS: common detail, admin-only SQL controls, source URL, nulls, escaping, missing source, stale responses')
