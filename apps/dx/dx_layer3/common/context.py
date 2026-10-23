@@ -13,6 +13,7 @@ from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 
 
 LAYER_CONTEXT = {
@@ -72,6 +73,7 @@ def _get_sidebar_items():
         source['section_code'] for source in SEM_SOURCE_CONFIG.values()
     }
     seda_section_codes = {source['section_code'] for source in SEDA_SOURCE_CONFIG.values()}
+    seuk_section_codes = {source['section_code'] for source in SEUK_SOURCE_CONFIG.values()}
     seib_section_codes = {source['section_code'] for source in SEIB_SOURCE_CONFIG.values()}
     crossfield_items = []
     seen_crossfield_sections = set()
@@ -91,6 +93,7 @@ def _get_sidebar_items():
             or section_code in tse_section_codes
             or section_code in seda_section_codes
             or section_code in seib_section_codes
+            or section_code in seuk_section_codes
         ):
             continue
 
@@ -228,6 +231,18 @@ def _get_sidebar_items():
             if isinstance(item, dict) and item.get('name') == 'SEDA Retail'
         ), len(crossfield_items))
         crossfield_items.insert(insert_at, {'name': 'SEIB Retail', 'children': seib_children})
+
+    seuk_children = [
+        {'name': source['display_name'], 'label': source['category'], 'detail_code': code}
+        for code, source in SEUK_SOURCE_CONFIG.items()
+        if source['section_code'] in active_sections
+    ]
+    if seuk_children:
+        insert_at = next((
+            index + 1 for index, item in enumerate(crossfield_items)
+            if isinstance(item, dict) and item.get('name') == 'SEIB Retail'
+        ), len(crossfield_items))
+        crossfield_items.insert(insert_at, {'name': 'SEUK Retail', 'children': seuk_children})
 
     sidebar['cross_field'] = crossfield_items
 

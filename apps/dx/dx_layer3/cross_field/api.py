@@ -14,7 +14,7 @@ from . import seg_services
 from . import tse_services
 from . import sem_services
 from . import seda_services
-from . import seib_services
+from . import seib_services, seuk_services
 
 
 def cross_field_detail(request):
@@ -43,6 +43,7 @@ def cross_field_detail(request):
     is_siel = product_line_key in ('siel_tv', 'siel_ref', 'siel_ldy')
     is_seg = product_line_key in ('seg_tv', 'seg_ref', 'seg_ldy', 'seg_ldy_dryer')
     is_sea = product_line_key in ('sea_ref', 'sea_ldy', 'sea_ldy_dryer')
+    is_seuk = product_line_key in seuk_services.SEUK_SOURCE_CONFIG
     is_seib = product_line_key in ('seib_tv', 'seib_ref', 'seib_ldy', 'seib_ldy_dryer')
 
     # product_line을 section으로 변환
@@ -50,6 +51,21 @@ def cross_field_detail(request):
     section = section_map.get(product_line, f'{product_line}_retail')
 
     try:
+        if is_seuk:
+            with dx_connection() as (conn, cursor):
+                if rule_id:
+                    result = seuk_services.get_seuk_cross_field_rule_detail(
+                        cursor, target_date, product_line_key, rule_id, days,
+                    )
+                else:
+                    result = seuk_services.get_seuk_cross_field_summary(
+                        cursor, target_date, product_line_key,
+                    )
+            if rule_id and not result.get('found'):
+                return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})
+            result.pop('found', None)
+            return JsonResponse(result)
+
         if is_seib:
             with dx_connection() as (conn, cursor):
                 if rule_id:

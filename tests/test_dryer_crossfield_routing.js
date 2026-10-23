@@ -29,6 +29,9 @@ vm.runInContext(fs.readFileSync(`${root}/static/dx_layer3/js/common.js`, 'utf8')
         ['sem_ldy_dryer', 'SEM LDY_DRYER 논리적 일관성'],
         ['sem_ldy_dryer', 'SEM LDY 논리적 일관성'],
         ['sem_ldy', 'SEM LDY 논리적 일관성'],
+        ['seuk_ldy_dryer', 'SEUK LDY_DRYER 논리적 일관성'],
+        ['seuk_ldy_dryer', 'SEUK LDY 논리적 일관성'],
+        ['seuk_ldy', 'SEUK LDY 논리적 일관성'],
     ]) {
         await context.showDetail('크로스 필드 검증', name, code);
         assert.strictEqual(calls.at(-1), `/layer3/api/cross-field-detail/?date=2026-10-11&type=${code}`);
@@ -41,10 +44,10 @@ vm.runInContext(fs.readFileSync(`${root}/static/dx_layer3/js/common.js`, 'utf8')
         const html = fs.readFileSync(`${root}/templates/${file}`, 'utf8');
         for (const line of html.split('\n')) {
             if (line.includes('dx_layer3/js/common.js')) {
-                assert(line.includes('?v=20261019-sem-dryer-crossfield'), `${file}: stale common.js version`);
+                assert(line.includes('?v=20261023-seuk-crossfield'), `${file}: stale common.js version`);
             }
             if (line.includes('dx_layer3/js/cross-field.js')) {
-                assert(line.includes('?v=20261019-expert-savings'), `${file}: stale cross-field.js version`);
+                assert(line.includes('?v=20261023-seuk-crossfield'), `${file}: stale cross-field.js version`);
             }
         }
     }

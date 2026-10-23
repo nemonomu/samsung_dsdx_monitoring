@@ -104,6 +104,7 @@ function _cfUsesEqualReviewCounts(productLine, retailer) {
         || (/^SEA_(REF|LDY)$/.test(product) && account === 'lowes')
         || (product.startsWith('SEG_') && ['mediamarkt', 'otto', 'expert'].includes(account))
         || (product.startsWith('SEDA_') && account.replace(/\s/g, '') === 'casasbahia')
+        || (product.startsWith('SEUK_') && account === 'currys')
         || (product.startsWith('TSE_') && account === 'homepro')
         || (product.startsWith('SEM_') && ['liverpool', 'homedepot'].includes(account));
 }
@@ -199,7 +200,7 @@ function showRetailerDetail(retailer) {
     const dateCol = window.crossfieldDateCol
         || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
-    const isCanonicalProductLine = /^(SEA_|SEDA_|SEIB_|SIEL_|SEG_|SEM_|TSE_)/.test(productLineDisplay);
+    const isCanonicalProductLine = /^(SEA_|SEDA_|SEIB_|SEUK_|SIEL_|SEG_|SEM_|TSE_)/.test(productLineDisplay);
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const anomalyCount = Number(rSummary.count || 0);
     const reviewCount = Number(rSummary.review_count || 0);

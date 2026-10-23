@@ -15,6 +15,7 @@ from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.tse_retail import TSE_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from apps.dx.dx_layer3.cross_field import (
     sea_services,
     sem_services,
@@ -23,7 +24,7 @@ from apps.dx.dx_layer3.cross_field import (
 )
 from apps.dx.dx_layer3.cross_field import seg_services
 from apps.dx.dx_layer3.cross_field import seda_services
-from apps.dx.dx_layer3.cross_field import seib_services
+from apps.dx.dx_layer3.cross_field import seib_services, seuk_services
 from .services import (
     validate_table_name as _validate_table_name,
     load_timeseries_rules,
@@ -400,6 +401,36 @@ def layer_stats(request):
                             if sea_review_needed
                             else 'OK'
                         ),
+                    })
+
+            if run_crossfield:
+                seuk_product_lines = (
+                    list(SEUK_SOURCE_CONFIG) if product_line == 'all'
+                    else [product_line] if product_line in SEUK_SOURCE_CONFIG else []
+                )
+                for seuk_product_line in seuk_product_lines:
+                    try:
+                        seuk_result = seuk_services.get_seuk_cross_field_summary(
+                            cursor, target_date, seuk_product_line,
+                        )
+                        if not seuk_result['configured']:
+                            continue
+                    except Exception as e:
+                        log_error(e)
+                        continue
+                    checked = seuk_result['total_checked']
+                    failed = seuk_result['failed_records']
+                    findings = seuk_result['total_anomalies']
+                    total_checked += checked
+                    total_anomalies += findings
+                    results['checks'].append({
+                        'category': '크로스 필드 검증',
+                        'name': f"{seuk_result['label']} 논리적 일관성",
+                        'detail_code': seuk_product_line,
+                        'description': '리뷰·별점 수와 가격·할인 금액 관계 검증',
+                        'checked': checked, 'passed': seuk_result['passed_records'],
+                        'failed': failed, 'finding_count': findings,
+                        'status': get_status(failed, checked),
                     })
 
             if run_crossfield:
