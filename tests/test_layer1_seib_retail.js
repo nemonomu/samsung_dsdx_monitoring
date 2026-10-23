@@ -40,7 +40,7 @@ decorate(collected,{policy_version:4,inspection_date:'2026-10-18',snapshots:[{
         ['TV','REF','LDY','LDY_DRYER'].map(product=>({product,retailer:'MediaMarkt',slot:'daily',
             observation_state:'observing',observation_prior_days:0,rules:{}}))
 }]},'2026-10-18');
-assert.equal(collected.checks[0].status,'VERIFYING');
+assert.equal(collected.checks[0].status,'OK'); // Observation retains the current receipt verdict.
 html=context.L1.renderers.seib_retail(collected.checks[0],1);
 assert(html.includes('신규 · 관찰 중 (1/5일)'));
 assert(!html.includes('74/0건'));

@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from apps.common.db import dx_connection
 from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS
@@ -42,6 +43,9 @@ def _sources():
     for key, config in SEIB_SOURCE_CONFIG.items():
         yield _source(key, 'SEIB', config['category'], config['table_name'], 'crawl_datetime', 'text',
                       (_retailer('MediaMarkt'),), has_page_type=False, collection_scope='all')
+    for key, config in SEUK_SOURCE_CONFIG.items():
+        yield _source(key, 'SEUK', config['category'], config['table_name'], 'crawl_datetime', 'text',
+                      (_retailer('Currys'),), has_page_type=False, collection_scope='all')
     # Layer 1 onboarding must not enable unrequested Layer 4 reports.
     for source in EMAIL_REPORT_SOURCES:
         if source['country'] == 'SEA':
@@ -131,6 +135,8 @@ def daily_counts(country, product, retailer_name, end, days):
         selected = {**source, 'retailers': tuple(r for r in source['retailers'] if r['name'] == retailer_name)}
         retailers = ([{**selected['retailers'][0], 'columns': SEIB_SOURCE_CONFIG[source['key']]['columns']}]
                      if country == 'SEIB' else
+                     [{**selected['retailers'][0], 'columns': SEUK_SOURCE_CONFIG[source['key']]['columns']}]
+                     if country == 'SEUK' else
                      [{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]
                      if country == 'SEG' and retailer_name == 'Expert' else
                      [{**selected['retailers'][0],

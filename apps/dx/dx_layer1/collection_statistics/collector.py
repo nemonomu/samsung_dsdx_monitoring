@@ -15,7 +15,7 @@ from apps.dx.dx_layer1.models import (
 )
 from .calculations import (COUNTRIES, OFFSETS, BSR_POLICY_VERSION, MAIN_POLICY_VERSION,
                            OBSERVATION_POLICY_VERSION, remember_observation,
-                           normalize_check, compare_rows, week_start, build_week)
+                           normalize_check, compare_rows, week_start, build_week, SOURCE_START_DATES)
 
 SERVICE_MODULES = {
     country: f'apps.dx.dx_layer1.{country.lower()}_retail.{country.lower()}_retail_services'
@@ -62,9 +62,8 @@ def refresh_country(country, start, end, *, loader=load_check, today=None):
     """Dates are source dates. Rebuild later medians and lifetime observation progress."""
     if country not in COUNTRIES or start > end or (end - start).days > 119:
         raise ValueError('Invalid statistics refresh range')
-    if country == 'SEIB':
-        from apps.common.seib_retail import FIRST_SOURCE_DATE
-        start = max(start, FIRST_SOURCE_DATE)
+    if country in SOURCE_START_DATES:
+        start = max(start, SOURCE_START_DATES[country])
         if start > end:
             return {'busy': False, 'updated': 0, 'errors': 0}
     owner = acquire_lease(country)
@@ -115,6 +114,7 @@ def rebuild(country, start, end, last_due):
     # without re-querying raw source data or changing the web read path.
     policy_start = min(start, last_due - timedelta(days=111))
     history_start = week_start(policy_start) - timedelta(days=28)
+    history_start = max(history_start, SOURCE_START_DATES.get(country, history_start))
     snapshots = list(Daily.objects.filter(country=country,
         source_date__range=(history_start, last_week + timedelta(days=6))).order_by('source_date'))
     stale_days = [snapshot.source_date for snapshot in snapshots
@@ -131,7 +131,10 @@ def rebuild(country, start, end, last_due):
     # stored summaries in chunks so a long outage never resets an established
     # retailer to new. No raw source queries or schema changes are needed.
     observed_dates = defaultdict(set)
-    for old in Daily.objects.filter(country=country, source_date__lt=history_start,
+    older = Daily.objects.filter(country=country)
+    if country in SOURCE_START_DATES:
+        older = older.filter(source_date__gte=SOURCE_START_DATES[country])
+    for old in older.filter(source_date__lt=history_start,
                                    refresh_error=False).only('source_date', 'rows').order_by('source_date').iterator(chunk_size=100):
         remember_observation(observed_dates, old.rows, str(old.source_date))
     updated = []

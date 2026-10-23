@@ -22,6 +22,9 @@ def collection_complete(country, product, retailer, source_day, now=None):
             return False
     if source_day > now.date():
         return False
+    if country == 'SEUK':
+        from apps.common.seuk_retail import collection_phase
+        return collection_phase(source_day, now) == 'complete'
     if country == 'SEIB':
         from apps.common.seib_retail import collection_phase
         return collection_phase(source_day, now) == 'complete'

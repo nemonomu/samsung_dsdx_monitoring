@@ -322,6 +322,11 @@ def is_target_date(schedule, target_date):
     Returns:
         bool: 수집 대상일이면 True
     """
+    if schedule.get('check_type') == 'seuk_retail':
+        from apps.common.seuk_retail import enabled
+        if not enabled(target_date):
+            return False
+
     st = schedule['schedule_type']
     sv = schedule.get('schedule_value') or ''
 

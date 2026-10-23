@@ -2,7 +2,7 @@
 from datetime import timedelta
 
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
-from .calculations import COUNTRIES, OFFSETS
+from .calculations import COUNTRIES, OFFSETS, SOURCE_START_DATES
 from .collector import refresh_country
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
 from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
@@ -12,8 +12,8 @@ from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUM
 
 def history_range(country, last_due):
     start, end = last_due - timedelta(days=111), last_due - timedelta(days=3)
-    if country == 'SEIB':
-        start = max(start, SEIB_START_DATE)
+    if country in SOURCE_START_DATES:
+        start = max(start, SOURCE_START_DATES[country])
         if start > end:
             return None
     stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
@@ -32,6 +32,8 @@ def history_range(country, last_due):
         and (country != 'SEA' or not costco.enabled(day)
              or {r['product'] for r in rows if r['retailer'] == 'Costco'} ==
                 ({'TV', 'REF', 'LDY', 'LDY_DRYER'} if costco.enabled(day, 'ldy_dryer') else {'TV', 'REF', 'LDY'}))
+        and (country != 'SEUK' or {r['product'] for r in rows if r['retailer'] == 'Currys'
+             and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})
         and (country != 'SEIB' or day < SEIB_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'MediaMarkt'
                  and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})

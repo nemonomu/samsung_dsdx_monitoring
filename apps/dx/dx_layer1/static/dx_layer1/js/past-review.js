@@ -6,7 +6,7 @@
     const country = document.getElementById('past-review-country');
     const product = document.getElementById('past-review-product');
     const retailer = document.getElementById('past-review-retailer');
-    const names = {SEA:'미국', SEG:'독일', SEIB:'스페인', SEM:'멕시코', TSE:'태국', SEDA:'브라질', SIEL:'인도'};
+    const names = {SEA:'미국', SEG:'독일', SEIB:'스페인', SEUK:'영국', SEM:'멕시코', TSE:'태국', SEDA:'브라질', SIEL:'인도'};
     function options(select, values, title, labels = {}) {
         const previous = select.value;
         select.replaceChildren(new Option(title, ''));

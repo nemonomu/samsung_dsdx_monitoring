@@ -17,7 +17,7 @@ from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .api import selected_date
 from .calculations import (
     COUNTRIES, OFFSETS, MAIN_POLICY_VERSION, MINIMUM_DAYS, normalize_check,
-    compare_rows, comparison_rules, observation_key,
+    compare_rows, comparison_rules, observation_key, SOURCE_START_DATES,
 )
 from .reviews import review_index, attach_review
 
@@ -44,7 +44,7 @@ def load_current_check(country, inspection_date):
 
 def current_snapshot(country, inspection_date):
     source_day = inspection_date - timedelta(days=OFFSETS[country])
-    start = source_day - timedelta(days=28)
+    start = max(source_day - timedelta(days=28), SOURCE_START_DATES.get(country, source_day - timedelta(days=28)))
     check = load_current_check(country, inspection_date)
     current = normalize_check(check, country, inspection_date)
     # Only saved prior dates enter a median. Neither current counts nor a stale
@@ -54,8 +54,10 @@ def current_snapshot(country, inspection_date):
     history = [{**row, 'source_date': str(snapshot.source_date)}
                for snapshot in snapshots for row in snapshot.rows]
     # Preserve lifetime observation through a long gap without scanning raw history.
-    older = Daily.objects.filter(country=country, refresh_error=False,
-        source_date__lt=start).order_by('-source_date').first()
+    older_query = Daily.objects.filter(country=country, refresh_error=False, source_date__lt=start)
+    if country in SOURCE_START_DATES:
+        older_query = older_query.filter(source_date__gte=SOURCE_START_DATES[country])
+    older = older_query.order_by('-source_date').first()
     prior_counts = {}
     for snapshot in ([older] if older else []) + snapshots:
         for row in snapshot.rows:

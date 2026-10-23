@@ -7,7 +7,7 @@ immediately through its per-retailer collection phase.
 """
 
 PENDING = {'PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'}
-RETAIL_TYPES = {'retail', 'seda_retail', 'siel_retail', 'seg_retail', 'sem_retail', 'tse_retail', 'seib_retail'}
+RETAIL_TYPES = {'retail', 'seda_retail', 'siel_retail', 'seg_retail', 'sem_retail', 'tse_retail', 'seib_retail', 'seuk_retail'}
 
 
 def has_collection(row):

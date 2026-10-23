@@ -9,6 +9,9 @@
     }
 
     function source(country, product) {
+        if (country === 'SEUK' && ['TV', 'REF', 'LDY', 'LDY_DRYER'].includes(product)) {
+            return {table: 'dx_seuk.dx_seuk_' + product.toLowerCase() + '_retail_com', dateColumn: 'crawl_datetime'};
+        }
         if (country === 'SEIB' && ['TV', 'REF', 'LDY', 'LDY_DRYER'].includes(product)) {
             return { table: 'dx_seib.dx_seib_' + product.toLowerCase() + '_retail_com', dateColumn: 'crawl_datetime' };
         }
@@ -49,7 +52,7 @@
             accountName = 'CasasBahia';
         }
         var dateFilter = config.dateColumn + ' >= ' + literal(day);
-        if (country === 'SEIB' || (country === 'SEM' && product === 'LDY_DRYER')) {
+        if (country === 'SEIB' || country === 'SEUK' || (country === 'SEM' && product === 'LDY_DRYER')) {
             dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
         } else if (country === 'SEA' && accountName === 'Costco') {
             dateFilter = '(' + config.dateColumn + "::timestamptz AT TIME ZONE 'Asia/Seoul')::date = " + literal(day) + '::date';

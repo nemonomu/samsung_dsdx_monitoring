@@ -5,11 +5,13 @@ from statistics import median
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START_DATE
 from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
 
-COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB')
-OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0, 'SEIB': 0}
+COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK')
+OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0, 'SEIB': 0, 'SEUK': 0}
+SOURCE_START_DATES = {'SEIB': SEIB_START_DATE, 'SEUK': SEUK_START_DATE}
 METRICS = ('main', 'bsr', 'total')
 PENDING = {'PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'}
 
@@ -24,13 +26,13 @@ def normalize_check(check, country, inspection_date):
     rows = []
     for category in check.get('categories', []):
         product = str(category.get('name') or category.get('category', '')).upper()
-        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG', 'SEM', 'SEIB') and product == 'LDY_DRYER'):
+        if product not in ('TV', 'REF', 'LDY') and not (country in ('SEA', 'SEG', 'SEM', 'SEIB', 'SEUK') and product == 'LDY_DRYER'):
             continue
         slots = category.get('time_slots') or [{'name': 'daily', 'retailers': category.get('retailers', [])}]
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
-                if country == 'SEIB' and source_day < SEIB_START_DATE:
+                if country in SOURCE_START_DATES and source_day < SOURCE_START_DATES[country]:
                     continue
                 if country == 'SEM' and product == 'LDY_DRYER' and source_day < SEM_DRYER_FIRST_SOURCE_DATE:
                     continue
@@ -50,7 +52,7 @@ def normalize_check(check, country, inspection_date):
                 total = next((retailer[key] for key in ('raw_count', 'actual', 'count', 'total')
                               if retailer.get(key) is not None), 0)
                 collected_count = int(total or 0)
-                if country in ('SEM', 'TSE', 'SEIB') and retailer.get('actual') is not None:
+                if country in ('SEM', 'TSE', 'SEIB', 'SEUK') and retailer.get('actual') is not None:
                     total = retailer['actual']
                 verification = verification_state(check, slot, retailer)
                 complete = verification == 'ready'
@@ -64,14 +66,14 @@ def normalize_check(check, country, inspection_date):
                     'verification_state': verification,
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
-                    'active_from': (str(SEM_DRYER_FIRST_SOURCE_DATE) if country == 'SEM' and product == 'LDY_DRYER' else str(SEIB_START_DATE) if country == 'SEIB' else str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                    'active_from': (str(SOURCE_START_DATES[country]) if country in SOURCE_START_DATES else str(SEM_DRYER_FIRST_SOURCE_DATE) if country == 'SEM' and product == 'LDY_DRYER' else str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
                                     else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, name)
                                     else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, name)
                                     else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, name)
                                     else str(costco.first_source_date(product)) if country == 'SEA' and name == 'Costco'
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
-                if country == 'SEIB':
+                if country in SOURCE_START_DATES:
                     rows[-1]['source_date_basis'] = 'db_original'
                 if 'batch_count' in retailer:
                     rows[-1]['batch_count'] = retailer['batch_count']
@@ -166,6 +168,14 @@ def _bsr_basis(row, history, country, saved_basis=None):
 
 def _compare_bsr(row, history, country, *, saved_basis=None):
     """Retain the historical reference even while a collection is absent."""
+    if country == 'SEUK':
+        # Five observed days are evidence for a later policy decision, not
+        # permission to automatically activate a fixed-100 or median threshold.
+        state = ('pending' if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error')
+                 else 'missing' if all((row.get(m) or 0) == 0 for m in (*METRICS, 'collected_count'))
+                 else row['observation_state'] if row.get('observation_state') in ('observing', 'unknown')
+                 else 'policy_pending')
+        return 'undecided', state, None, None
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     basis = _bsr_basis(row, history, country, saved_basis)
@@ -247,6 +257,8 @@ def comparison_rules(row, country):
         return {'bsr': {'baseline': 100, 'days': 0, 'rule': 'fixed_100', 'exact': True}} if exact_bsr(row, country) else {}
     rules = {}
     for metric in ('main', 'bsr'):
+        if country == 'SEUK' and metric == 'bsr':
+            continue
         variable = metric == 'main' or variable_bsr(row, country)
         basis = row.get('baselines', {}).get(metric, {})
         if variable:
@@ -294,12 +306,16 @@ def current_volume_decision(row, country):
             alerts.insert(0, alert)
     baselines = {k: v for k, v in result.get('baselines', {}).items() if k in ('main', 'bsr')}
     ready = len(comparison_rules({**result, 'baselines': baselines}, country)) == 2
-    state = 'pending' if not row.get('complete', row.get('state') == 'complete') else 'ready' if ready else 'insufficient'
+    state = ('pending' if not row.get('complete', row.get('state') == 'complete') else
+             'policy_pending' if country == 'SEUK' and result['bsr_comparison_state'] == 'policy_pending' else
+             'ready' if ready else 'insufficient')
     return {**result, 'alerts': alerts, 'baselines': baselines, 'comparison_state': state}
 
 
 def compare_rows(rows, history, country=None, *, observed_dates=None, prior_observation_counts=None):
     """history contains only the previous 28 source dates, never the target day."""
+    if country == 'SEUK':
+        history = [r for r in history if r.get('source_date', '') >= str(SEUK_START_DATE)]
     groups = defaultdict(list)
     for old in history:
         # Legacy minimum-count failures are not part of the MAIN/BSR policy.
@@ -338,6 +354,7 @@ def compare_rows(rows, history, country=None, *, observed_dates=None, prior_obse
         if bsr_alert:
             alerts.append(bsr_alert)
         state = ('pending' if not row['complete'] else 'observing' if observing else
+                 'policy_pending' if bsr_state == 'policy_pending' else
                  'ready' if all(baselines.get(m, {}).get('value', 0) > 0 for m in ('main', 'bsr')) else 'insufficient')
         result.append({**row, 'baselines': baselines, 'alerts': alerts, 'comparison_state': state,
                        'bsr_policy_version': BSR_POLICY_VERSION,

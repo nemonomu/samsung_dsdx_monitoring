@@ -1,7 +1,7 @@
 // Current counts and historical rules travel together; never mix request dates.
 (function () {
     const countries = {retail:'SEA', seda_retail:'SEDA', siel_retail:'SIEL', seg_retail:'SEG',
-        sem_retail:'SEM', tse_retail:'TSE', seib_retail:'SEIB'};
+        sem_retail:'SEM', tse_retail:'TSE', seib_retail:'SEIB', seuk_retail:'SEUK'};
     const clone = value => JSON.parse(JSON.stringify(value));
     const isInspecting = () => Boolean(document.querySelector(
         'dialog[open], .modal.show, .modal-overlay.show, .l1-batch-toggle[aria-expanded="true"]'));

@@ -16,6 +16,11 @@ def selection(country, product, retailer):
 
 def raw_counts(country, product, retailer, start, end):
     source, account = selection(country, product, retailer)
+    if country == 'SEUK':
+        from apps.common.seuk_retail import FIRST_SOURCE_DATE
+        start = max(start, FIRST_SOURCE_DATE)
+        if start > end:
+            return {}
     day = day_sql(source)
     sql = (f"SELECT {day}, COUNT(*) FROM {source['table_name']} source "
            f"WHERE {_retailer_condition(source, account, include_unassigned=False)} "

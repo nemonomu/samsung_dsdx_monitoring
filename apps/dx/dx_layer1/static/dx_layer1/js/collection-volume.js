@@ -1,7 +1,7 @@
 // Re-evaluate live MAIN/BSR counts against saved historical bases.
 (function () {
-    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB'};
-    const pending = ['PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING', 'INSUFFICIENT'];
+    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB', seuk_retail:'SEUK'};
+    const pending = ['PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING', 'INSUFFICIENT', 'POLICY_PENDING'];
     function metrics(row, country) {
         if (row._volumeCounts) return row._volumeCounts;
         const items = Object.fromEntries((row.items || []).map(item => [item.name, Number(item.count || 0)]));
@@ -20,7 +20,7 @@
         delete item.verification_reason;
     }
     function worst(rows, fallback = 'VERIFYING') {
-        const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2, VERIFYING: 3, INSUFFICIENT: 3,
+        const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2, VERIFYING: 3, INSUFFICIENT: 3, POLICY_PENDING: 3,
             UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4, VOLUME_REVIEW: 4, WARNING: 5,
             VOLUME_LOW: 6, CRITICAL: 6, ERROR: 7};
         return rows.length ? rows.reduce((a, b) => (priority[a.status] || 0) >= (priority[b.status] || 0) ? a : b).status : fallback;
@@ -68,6 +68,7 @@
             const country = countries[check.check_type];
             if (!country) return;
             restore(check);
+            if (country === 'SEUK' && selectedDate < check.active_from) return;
             const snapshot = snapshots.find(s => s.country === country && s.available);
             (check.categories || []).forEach(cat => {
                 restore(cat);
@@ -98,6 +99,7 @@
                         row.observation_days = row.observation_state === 'observing'
                             ? Math.min(5, Number(saved.observation_prior_days || 0) + (collectedToday(check, slots, row.retailer, country) ? 1 : 0)) : null;
                         row.volume_alerts = [];
+                        row.bsr_comparison_state = saved && saved.bsr_comparison_state;
                         row.volume_comparison_state = 'unavailable';
                         row.verification_state = row.status === 'ERROR' ? 'error' : complete ? 'waiting' : received(row, country) ? 'waiting' : 'collecting';
                         if (row.status === 'ERROR') return;
@@ -116,6 +118,7 @@
                             metric === 'bsr' && exactBsr ? {rule: 'fixed_100', baseline: 100, exact: true}
                             : saved && saved.observation_state === 'ready' && saved.rules && saved.rules[metric]));
                         row.volume_alerts = decisions.filter(Boolean).map(decision => decision.alert).filter(Boolean);
+                        const bsrPolicyPending = country === 'SEUK' && saved?.bsr_comparison_state === 'policy_pending';
                         const ready = decisions.every(Boolean);
                         row.volume_comparison_state = ready ? 'ready' : saved ? saved.observation_state === 'observing' ? 'observing' : 'insufficient' : 'unavailable';
                         // Observation is a history label, not a collection verdict.
@@ -125,8 +128,9 @@
                         const observedStatus = row._volumeBaseStatus === 'OK' ? 'OK'
                             : ['CRITICAL', 'VOLUME_LOW'].includes(row._volumeBaseStatus) ? 'CRITICAL' : 'REVIEW';
                         row.status = worst(decisions.filter(Boolean).concat(ready ? []
-                            : [{status: observing ? observedStatus : snapshot?.live ? 'INSUFFICIENT' : 'VERIFYING'}]));
+                            : [{status: observing ? observedStatus : bsrPolicyPending ? 'POLICY_PENDING' : snapshot?.live ? 'INSUFFICIENT' : 'VERIFYING'}]));
                         row.verification_state = ready || observing ? 'ready' : 'waiting';
+                        if (bsrPolicyPending) row.verification_reason = 'BSR 5일 관찰 완료 · 기준 결정 대기';
                         if (['VERIFYING', 'INSUFFICIENT'].includes(row.status)) {
                             row.verification_reason = !payload ? '수집량 판정을 불러오는 중입니다.'
                                 : payload.load_state === 'error' ? '수집량 판정을 불러오지 못했습니다. 잠시 후 다시 조회해 주세요.'

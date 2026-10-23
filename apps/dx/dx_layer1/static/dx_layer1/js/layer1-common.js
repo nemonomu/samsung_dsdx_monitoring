@@ -150,7 +150,7 @@ var L1 = (function() {
 function onSubitemClick(groupKey, itemName) {
     const countryChecks = {
         'SEDA Retail': 'seda_retail', 'SIEL Retail': 'siel_retail',
-        'SEM Retail': 'sem_retail', 'SEG Retail': 'seg_retail', 'TSE Retail': 'tse_retail', 'SEIB Retail': 'seib_retail',
+        'SEM Retail': 'sem_retail', 'SEG Retail': 'seg_retail', 'TSE Retail': 'tse_retail', 'SEIB Retail': 'seib_retail', 'SEUK Retail': 'seuk_retail',
     };
     const checkType = countryChecks[itemName];
     if (checkType && window.LAYER1.section === 'dashboard' && currentStatsData) {
@@ -168,7 +168,7 @@ function onSubitemClick(groupKey, itemName) {
         'SEDA Retail': '/dx/layer1/',
         'SIEL Retail': '/dx/layer1/',
         'SEM Retail': '/dx/layer1/',
-        'SEIB Retail': '/dx/layer1/',
+        'SEIB Retail': '/dx/layer1/', 'SEUK Retail': '/dx/layer1/',
         'SEG Retail': '/dx/layer1/',
         'TSE Retail': '/dx/layer1/',
         'Retail 감성분석': '/dx/layer1/sentiment/',
@@ -233,10 +233,11 @@ function getStatusBadge(status, detail) {
         'COLLECTING': { class: 'collecting', text: '수집중' },
         'VERIFYING': { class: 'pending', text: '검증 대기' },
         'INSUFFICIENT': { class: 'pending', text: '비교 이력 부족' },
+        'POLICY_PENDING': { class: 'pending', text: 'BSR 기준 결정 대기' },
         'ANALYZING': { class: 'collecting', text: '분석중' }
     };
     var s = statusMap[status] || { class: 'ok', text: status };
-    var reason = ['VERIFYING', 'INSUFFICIENT'].includes(status)
+    var reason = ['VERIFYING', 'INSUFFICIENT', 'POLICY_PENDING'].includes(status)
         ? (detail && detail.verification_reason || '수집 건수는 확인되었지만 수집량 검증이 아직 완료되지 않았습니다.') : '';
     var tooltip = reason ? ' tabindex="0" title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '';
     return '<span class="status-badge ' + s.class + '"' + tooltip + '><span class="status-dot"></span>' + s.text + '</span>';
@@ -246,7 +247,7 @@ function getStatusClass(status) {
     if (status === 'ERROR') return 'critical';
     if (status === 'VOLUME_LOW') return 'critical';
     if (['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(status)) return 'volume-review';
-    if (['VERIFYING', 'INSUFFICIENT'].includes(status)) return 'pending';
+    if (['VERIFYING', 'INSUFFICIENT', 'POLICY_PENDING'].includes(status)) return 'pending';
     if (status === 'UNASSESSED') return 'pending';
     if (status === 'REVIEW') return 'volume-review';
     return status ? status.toLowerCase() : 'pending';
@@ -256,7 +257,7 @@ function getRetailerStatusClass(status) {
     if (status === 'ERROR') return 'critical';
     if (status === 'VOLUME_LOW') return 'critical';
     if (['VOLUME_HIGH', 'VOLUME_REVIEW'].includes(status)) return 'volume-review';
-    if (['VERIFYING', 'INSUFFICIENT'].includes(status)) return 'pending';
+    if (['VERIFYING', 'INSUFFICIENT', 'POLICY_PENDING'].includes(status)) return 'pending';
     if (status === 'UNASSESSED') return 'pending';
     var classMap = { 'OK': 'ok', 'WARNING': 'warning', 'REVIEW': 'volume-review', 'CRITICAL': 'critical', 'PENDING': 'pending', 'COLLECTING': 'collecting' };
     return classMap[status] || 'ok';
@@ -402,6 +403,7 @@ function flattenCheckToDetails(sectionType, check) {
         case 'seda_retail':
         case 'siel_retail':
         case 'seib_retail':
+        case 'seuk_retail':
         case 'sem_retail':
         case 'seg_retail':
         case 'tse_retail':
@@ -561,7 +563,7 @@ function getCheckBadgeHtml(sectionType) {
     }
     var isRetailSection = sectionType === 'retail' ||
         sectionType === 'seda_retail' || sectionType === 'siel_retail' ||
-        sectionType === 'seib_retail' || sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
+        sectionType === 'seib_retail' || sectionType === 'seuk_retail' || sectionType === 'sem_retail' || sectionType === 'seg_retail' ||
         sectionType === 'tse_retail';
     var isFullRate = check && check.rate >= 100 && !isRetailSection;
 

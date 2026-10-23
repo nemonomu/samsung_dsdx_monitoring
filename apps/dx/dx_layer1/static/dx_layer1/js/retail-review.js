@@ -1,6 +1,6 @@
 // Keep automatic verdicts for audit; review decisions never change collected counts.
 (function () {
-    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB'};
+    const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB', seuk_retail:'SEUK'};
     const reviewStatuses = ['REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH', 'VOLUME_LOW'];
     let records = [], previousRecords = [], loadedDate = '', loadError = '', generation = 0, targets = [];
     const attr = value => esc(String(value)).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -30,7 +30,7 @@
         row._reviewAutomatic = {status: row.status, volume_alerts: row.volume_alerts};
         row._previousReview = null;
         const counts = L1.collectionVolume.metrics(row, country);
-        if (['ERROR','CRITICAL','WARNING','COLLECTING','PENDING','ANALYZING','UNASSESSED'].includes(row.status)
+        if (['POLICY_PENDING','ERROR','CRITICAL','WARNING','COLLECTING','PENDING','ANALYZING','UNASSESSED'].includes(row.status)
             || counts.main <= 0 || counts.total <= 0) return;
         const previous = previousRecords.find(record => {
             const c = record.context;
@@ -62,7 +62,7 @@
     }
 
     function aggregate(rows, fallback) {
-        const priority = {OK:0,PENDING:1,COLLECTING:2,ANALYZING:2,VERIFYING:3,INSUFFICIENT:3,UNASSESSED:3,
+        const priority = {OK:0,PENDING:1,COLLECTING:2,ANALYZING:2,VERIFYING:3,INSUFFICIENT:3,POLICY_PENDING:3,UNASSESSED:3,
             REVIEW:4,VOLUME_HIGH:4,VOLUME_REVIEW:4,WARNING:5,VOLUME_LOW:6,CRITICAL:6,ERROR:7};
         return rows.reduce((status,row) => (priority[row.status] || 0) > (priority[status] || 0) ? row.status : status, rows.length ? 'OK' : fallback);
     }
@@ -150,7 +150,7 @@
         // Keep automatic verdicts intact for review identity and cancellation.
         if (!pending.length && !done) {
             const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2,
-                VERIFYING: 3, INSUFFICIENT: 3, UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4,
+                VERIFYING: 3, INSUFFICIENT: 3, POLICY_PENDING: 3, UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4,
                 VOLUME_REVIEW: 4, WARNING: 5, VOLUME_LOW: 6, CRITICAL: 6, ERROR: 7};
             const remaining = rows.map(item => Number(item.batch_count || 0) >= 2
                 ? 'REVIEW' : reviewed(item) ? 'OK' : item.status);

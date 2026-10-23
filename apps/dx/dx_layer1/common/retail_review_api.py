@@ -21,7 +21,7 @@ def validate_context(value):
         'retailer', 'batch_id', 'status', 'counts', 'reasons', 'basis',
     }:
         raise ValueError('검토 대상 정보가 올바르지 않습니다.')
-    if value['version'] != 1 or value['country'] not in ('SEA', 'SEDA', 'SEM', 'SIEL', 'SEG', 'TSE', 'SEIB'):
+    if value['version'] != 1 or value['country'] not in ('SEA', 'SEDA', 'SEM', 'SIEL', 'SEG', 'TSE', 'SEIB', 'SEUK'):
         raise ValueError('지원하지 않는 검토 대상입니다.')
     if value['product'] not in ('TV', 'REF', 'LDY', 'LDY_DRYER') or value['status'] not in ('REVIEW', 'VOLUME_REVIEW', 'VOLUME_HIGH', 'VOLUME_LOW'):
         raise ValueError('확인 필요 항목만 정상 확인할 수 있습니다.')

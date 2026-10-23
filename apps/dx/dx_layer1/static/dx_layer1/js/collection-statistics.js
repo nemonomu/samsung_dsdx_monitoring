@@ -3,7 +3,7 @@
     const byId = id => document.getElementById(id);
     const safe = value => String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const number = value => value == null ? '—' : Number(value).toLocaleString('ko-KR', {maximumFractionDigits: 1});
-    const countries = ['SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB'];
+    const countries = ['SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK'];
     const products = ['TV', 'REF', 'LDY', 'LDY_DRYER'];
     let data = null, controller = null, requestId = 0;
     let reviewTargets = [], reviewDialog = null;
@@ -179,7 +179,7 @@
         const bsrLow = bsrAlerts.some(alert => alert.status === 'VOLUME_LOW');
         const bsrInfo = {
             bsrKind: bsrReview.rejected ? 'low' : bsrReview.confirmed ? 'confirmed' : bsrAlerts.length ? (bsrLow ? 'low' : 'high') : '',
-            bsrLabel: bsrReview.rejected ? '이상 확정' : bsrReview.confirmed ? '✓ 정상 확인' : bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
+            bsrLabel: bsrReview.rejected ? '이상 확정' : bsrReview.confirmed ? '✓ 정상 확인' : bsrAlerts.length ? (bsrLow ? '이상' : '확인 필요') : observation || (active.some(day => day.bsr_comparison_state === 'policy_pending') ? '기준 결정 대기' : '') || (active.some(day => day.bsr_comparison_state === 'insufficient') ? '비교 이력 부족' : ''),
             bsrReviews: bsrReview.entries,
             bsrReason: bsrAlerts.map(alert => alert.reason || 'BSR 수량 부족').join(' · '),
         };
@@ -191,7 +191,7 @@
             mainLabel: mainReview.rejected ? '이상 확정' : mainReview.confirmed ? '✓ 정상 확인' : low ? '이상' : high ? '확인 필요' : '',
             mainReviews: mainReview.entries,
             mainReason: mainAlerts.map(alert => alert.reason || 'MAIN 수집량 변동').join(' · '),
-            label: observation || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
+            label: observation || (active.some(day => day.comparison_state === 'policy_pending') ? 'BSR 기준 결정 대기' : '') || (active.every(day => day.comparison_state === 'ready') ? '' : '비교 이력 부족')};
     }
 
     function baselineCell(entries) {

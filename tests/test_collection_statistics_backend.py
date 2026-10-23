@@ -56,7 +56,7 @@ class CalculationTests(SimpleTestCase):
             self.assertEqual(('OK', 'waiting'), (row['status'], row['verification_state']))
             self.assertEqual('OK', check['status'])
             self.assertEqual('OK', category['status'])
-            inspection = date(2026, 10, 19) if country == 'SEIB' else date(2026, 9, 29)
+            inspection = calc.SOURCE_START_DATES.get(country, date(2026, 9, 29))
             normalized = calc.normalize_check(check, country, inspection)[0]
             self.assertFalse(normalized['complete'])
             self.assertFalse(normalized['baseline_eligible'])
@@ -144,7 +144,7 @@ class CalculationTests(SimpleTestCase):
         self.assertEqual('unknown', calc.current_volume_decision(legacy, 'SEM')['observation_state'])
 
     def test_main_15_and_30_percent_boundaries_all_countries(self):
-        history = [sample(total=3000, main=2000)] * 7
+        history = [sample(total=3000, main=2000, source_date=str(date(2026, 10, 25) + timedelta(days=i))) for i in range(7)]
         for country in calc.COUNTRIES:
             for current, expected in [(1901, None), (1900, None),
                                       (1701, None), (1700, 'VOLUME_REVIEW'), (1699, 'VOLUME_REVIEW'), (1401, 'VOLUME_REVIEW'),
@@ -391,7 +391,7 @@ class CalculationTests(SimpleTestCase):
                     source = sample(retailer=retailer, product=product, bsr=99,
                                     alerts=[main_alert], bsr_comparison_state='insufficient')
                     result = calc.current_bsr_decision(source, country)
-                    exception = calc.variable_bsr(source, country)
+                    exception = country == 'SEUK' or calc.variable_bsr(source, country)
                     self.assertEqual(not exception, any(a['metric'] == 'bsr' for a in result['alerts']))
                     self.assertIn(main_alert, result['alerts'])
                     self.assertEqual([main_alert], source['alerts'])

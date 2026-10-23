@@ -22,6 +22,7 @@ COUNTRY_OFFSETS = {
     'SEM': 0,
     'TSE': 0,
     'SEIB': 0,
+    'SEUK': 0,
 }
 
 SOURCE_DEFINITIONS = tuple(
@@ -49,6 +50,11 @@ SOURCE_PRODUCT_BY_KEY['sem_ldy_dryer'] = 'LDY_DRYER'
 for _product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
     SOURCE_COUNTRY_BY_KEY['seib_' + _product] = 'SEIB'
     SOURCE_PRODUCT_BY_KEY['seib_' + _product] = _product.upper()
+
+# UK onboarding is Layer 1 only; keep the shared all-layer source catalog unchanged.
+for _product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+    SOURCE_COUNTRY_BY_KEY['seuk_' + _product] = 'SEUK'
+    SOURCE_PRODUCT_BY_KEY['seuk_' + _product] = _product.upper()
 
 _ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 

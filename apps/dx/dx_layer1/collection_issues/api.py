@@ -49,6 +49,8 @@ def listing(request):
         if status not in ('open', 'resolved', 'excepted', 'all'):
             raise ValueError()
         records = Issue.objects.filter(environment=environment(), source_date__gte=START_DATE, **filters)
+        from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START
+        records = records.exclude(country='SEUK', source_date__lt=SEUK_START)
         inspection_date = request.GET.get('inspection_date', timezone.now().astimezone(KST).date().isoformat())
         # D-1 is the current inspection's source day, not a past incident.
         # Filter the listing only: retain the original evidence and recovery scans.

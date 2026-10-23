@@ -1,7 +1,7 @@
 (function() {
     var categoryPrefixes = {
         retail: 'retail', seda_retail: 'seda', siel_retail: 'siel', seg_retail: 'seg',
-        sem_retail: 'sem', tse_retail: 'tse', seib_retail: 'seib'
+        sem_retail: 'sem', tse_retail: 'tse', seib_retail: 'seib', seuk_retail: 'seuk'
     };
 
     function isMissing(retailer) {
@@ -38,6 +38,9 @@
     }
 
     function bsrCell(retailer, value) {
+        if (retailer && retailer.bsr_comparison_state === 'policy_pending') {
+            return '<td>' + value + '<small style="display:block;color:#64748b;">기준 결정 대기</small></td>';
+        }
         var alerts = bsrAlerts(retailer || {});
         var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer || {});
         var rejected = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer || {});
