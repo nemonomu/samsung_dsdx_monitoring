@@ -25,6 +25,7 @@
     }
 
     function buildCorrectionsFilterBar() {
+        if (window.CorrectionList) { window.CorrectionList.init(); return; }
         var controls = [];
 
         // 검색 항목 드롭다운 + 검색어 입력
@@ -97,6 +98,7 @@
                 if (bhs) bhs.style.display = isBulk ? '' : 'none';
 
                 if (isBulk) {
+                    if (window.CorrectionAudit) window.CorrectionAudit.closeInline();
                     var daysEl = document.getElementById('bulk-history-days');
                     var days = daysEl ? (parseInt(daysEl.value) || 3) : 3;
                     bulkHistoryTable = null;
@@ -134,6 +136,7 @@
     }
 
     function loadCorrections(page) {
+        if (window.CorrectionList) return window.CorrectionList.load(page);
         var date = getSelectedDate();
         if (!date) return;
 

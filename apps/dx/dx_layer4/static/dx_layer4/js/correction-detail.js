@@ -43,11 +43,25 @@
     }
     function open(item) {
         state = { item: item, days: 3, ticket: ++sequence };
-        AppModal.setTitle('corr-detail', '검수기록 상세');
-        AppModal.setBody('corr-detail', '<div class="audit-detail">' + logHtml(item)
-            + '<section id="audit-source"><p class="audit-muted">상품 URL과 수집 이력을 조회 중입니다.</p></section></div>');
-        AppModal.open('corr-detail');
+        var inline = document.getElementById('correction-inline-detail');
+        var content = '<div class="audit-detail"><details class="audit-saved-log"><summary>검수 당시 저장 기록 · 사유 · 메모</summary>' + logHtml(item)
+            + '</details><section id="audit-source"><p class="audit-muted">상품 URL과 수집 이력을 조회 중입니다.</p></section></div>';
+        if (inline) {
+            inline.hidden = false;
+            inline.innerHTML = '<div class="audit-section-heading"><h3>선택한 검수기록 상세</h3><button class="app-btn app-btn-sm app-btn-outline" id="audit-inline-close">닫기</button></div>' + content;
+            document.getElementById('audit-inline-close').onclick = closeInline;
+            inline.scrollIntoView({behavior:'smooth',block:'start'});
+        } else {
+            AppModal.setTitle('corr-detail', '검수기록 상세');
+            AppModal.setBody('corr-detail', content);
+            AppModal.open('corr-detail');
+        }
         load();
+    }
+    function closeInline() {
+        var inline = document.getElementById('correction-inline-detail');
+        if (inline) { inline.hidden = true; inline.innerHTML = ''; }
+        state = null; sequence++;
     }
     function load() {
         var ticket = ++sequence;
@@ -82,7 +96,7 @@
         if (window.CORRECTIONS_IS_ADMIN) html += '<button class="app-btn app-btn-sm app-btn-outline" id="audit-query">관리자 조회 SQL</button>';
         html += '</div><p class="audit-muted">' + esc(data.notice) + ' 모든 배치를 표시하며, 비교 행은 검수건수에 포함하지 않습니다.</p>';
         if (data.truncated) html += '<p class="audit-warning">이력이 많아 최신 300행과 해당 검수 대상 행을 표시합니다.</p>';
-        var cols = ['id', 'batch_id', 'item', 'retailer_sku_name', 'sku', field, 'product_url'].filter(function (c, i, all) { return data.columns.indexOf(c) >= 0 && all.indexOf(c) === i; });
+        var cols = data.columns;
         html += '<div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>수집일 / 구분</th>' + cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>';
         (data.rows || []).forEach(function (r) {
             var isTarget = String(r.id) === String(item.record_id);
@@ -113,12 +127,9 @@
         var ticket = state.ticket;
         get('/dx/layer4/api/corrections/query/?id=' + encodeURIComponent(state.item.id) + '&days=' + state.days).then(function (data) {
             if (!state || ticket !== state.ticket || !document.getElementById('audit-sql')) return;
-            var queries = [data.record_sql, data.history_sql];
-            document.getElementById('audit-sql').innerHTML = '<div class="audit-query-panel"><h3>원본 확인용 SELECT 쿼리 · 관리자</h3><p class="audit-muted">이 화면은 조회 쿼리만 제공합니다. DB에서 확인하려면 복사한 SELECT를 사용하세요.</p>'
-                + queries.map(function (sql, i) { return '<div class="audit-toolbar"><b>' + (i ? 'Item 기간 조회 · 모든 배치' : '검수 대상 원본 행 조회') + '</b><button class="app-btn app-btn-sm app-btn-outline" data-audit-copy="' + i + '">복사</button></div><pre>' + esc(sql) + '</pre>'; }).join('') + '</div>';
-            document.querySelectorAll('[data-audit-copy]').forEach(function (b) {
-                b.onclick = function () { copy(queries[Number(b.dataset.auditCopy)]); };
-            });
+            document.getElementById('audit-sql').innerHTML = '<div class="audit-query-panel"><h3>원본 확인용 SELECT 쿼리 · 관리자</h3><p class="audit-muted">검수 항목과 관련된 컬럼을 함께 조회합니다. 이 화면은 조회 쿼리만 제공하며 DB 값을 변경하지 않습니다.</p>'
+                + '<div class="audit-toolbar"><b>' + state.days + '일치 Item 조회 · 모든 배치</b><button class="app-btn app-btn-sm app-btn-outline" id="audit-copy-query">복사</button></div><pre>' + esc(data.sql) + '</pre></div>';
+            document.getElementById('audit-copy-query').onclick = function () { copy(data.sql); };
         }).catch(function (e) { showToast(e.message, 'error'); });
     }
     function copy(text) {
@@ -131,5 +142,5 @@
         var ok = document.execCommand('copy'); area.remove();
         showToast(ok ? '조회 SQL을 복사했습니다.' : '쿼리 텍스트를 직접 선택해 복사하세요.', ok ? 'success' : 'warning');
     }
-    window.CorrectionAudit = { open: open };
+    window.CorrectionAudit = { open: open, closeInline: closeInline };
 }());

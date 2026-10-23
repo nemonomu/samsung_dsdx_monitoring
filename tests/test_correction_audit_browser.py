@@ -11,10 +11,11 @@ ITEM=dict(id=7,table_name='dx_seuk.dx_seuk_tv_retail_com',record_id=42,retailer=
           status='corrected',reason='price',memo='<img src=x onerror=alert(1)>',created_id='tester',
           created_at='2026-10-27 09:00',crawl_date='2026-10-27')
 ROW=dict(id=42,batch_id='current',item='A',retailer_sku_name='TV',sku=None,savings='£400.99',
-         product_url='https://www.currys.co.uk/products/example.html',_source_date='2026-10-26')
+         product_url='https://www.currys.co.uk/products/example.html',_source_date='2026-10-26',
+         crawl_datetime='2026-10-26T23:59:59-04:00',final_sku_price='£1399.00',original_sku_price=None)
 DATA=dict(success=True,country='SEUK',product='TV',source_date='2026-10-26',start_date='2026-10-24',
           field='savings',field_available=True,target=ROW,rows=[dict(ROW,id=41),ROW],
-          columns=list(ROW),events=[dict(ITEM)],notice='현재 저장값',truncated=False)
+          columns=['id','crawl_datetime','batch_id','item','retailer_sku_name','savings','final_sku_price','original_sku_price','product_url'],events=[dict(ITEM)],notice='현재 저장값',truncated=False)
 
 
 def main():
@@ -36,7 +37,7 @@ def main():
         page.evaluate('item=>{window.item=item;}',ITEM)
         page.evaluate('''() => {window.fetch=async url=>{
             window.calls.push(url);
-            const data=url.includes('/query/')?{success:true,record_sql:'SELECT * FROM dx_seuk.dx_seuk_tv_retail_com WHERE id = 42;',history_sql:'SELECT * FROM dx_seuk.dx_seuk_tv_retail_com LIMIT 301;'}:window.fixture;
+            const data=url.includes('/query/')?{success:true,sql:'SELECT id, savings FROM dx_seuk.dx_seuk_tv_retail_com LIMIT 301;'}:window.fixture;
             return {ok:true,json:async()=>data};
         };}''')
         page.add_script_tag(content=SOURCE)
@@ -45,6 +46,10 @@ def main():
         assert page.locator('#audit-query').count()==0
         assert not any('/query/' in url for url in page.evaluate('window.calls'))
         assert page.locator('.audit-table tbody tr').count()==2
+        headers=page.locator('.audit-table thead').inner_text()
+        for field in ['crawl_datetime','batch_id','savings','final_sku_price','original_sku_price']:
+            assert field in headers
+        assert '\tsku\t' not in headers
         assert page.locator('.audit-null').count()>=1
         assert page.locator('img').count()==0
         assert page.locator('.audit-url a').get_attribute('rel')=='noopener noreferrer'
@@ -53,7 +58,7 @@ def main():
         page.wait_for_selector('#audit-query')
         page.locator('#audit-query').click()
         page.wait_for_selector('.audit-query-panel pre')
-        assert page.locator('.audit-query-panel pre').count()==2
+        assert page.locator('.audit-query-panel pre').count()==1
         assert page.locator('.audit-query-panel pre').first.inner_text().startswith('SELECT')
         page.locator('#audit-days').fill('31')
         count=len(page.evaluate('window.calls'))

@@ -56,16 +56,26 @@ def corrections_list(request):
         return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
 
     try:
+        page = int(request.GET.get('page', 1))
+        page_size = int(request.GET.get('page_size', 50))
+        days = int(request.GET.get('days', 3))
+        if page < 1 or not 1 <= page_size <= 200 or not 1 <= days <= 30:
+            return JsonResponse({'error': '페이지 또는 조회 일수가 올바르지 않습니다.'}, status=400)
         result = get_corrections(
             target_date=target_date,
             correction_type=request.GET.get('type', 'all'),
             status=request.GET.get('status', 'all'),
             search_field=request.GET.get('search_field', ''),
             search_value=request.GET.get('search_value', '').strip(),
-            page=int(request.GET.get('page', 1)),
-            page_size=int(request.GET.get('page_size', 50)),
+            page=page, page_size=page_size, days=days,
+            country=request.GET.get('country', 'all'),
+            product=request.GET.get('product', 'all'),
+            retailer=request.GET.get('retailer', 'all'),
+            reviewer=request.GET.get('reviewer', 'all'),
         )
         return JsonResponse(result)
+    except (ValueError, TypeError):
+        return JsonResponse({'error': '조회 조건이 올바르지 않습니다.'}, status=400)
     except Exception as e:
         return safe_error(e)
 

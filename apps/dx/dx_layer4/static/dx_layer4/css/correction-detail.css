@@ -24,3 +24,40 @@
 .audit-query-panel { margin-top:18px; padding:16px; border:1px solid #d7c9e6; border-radius:8px; background:#faf8fe; }
 .audit-query-panel pre { white-space:pre; overflow:auto; padding:14px; background:#eef3fc; font:12px/1.7 Consolas,monospace; border-radius:6px; }
 @media(max-width:760px) { .audit-values { grid-template-columns:1fr; } .audit-source-head { align-items:flex-start; flex-direction:column; } }
+.audit-summary button { text-align:left; cursor:pointer; color:inherit; font:inherit; }
+.audit-summary button.active { border-color:var(--layer-color); box-shadow:0 0 0 1px var(--layer-color); }
+#corr-corrected { color:#527cff; } #corr-normal { color:#2bbf89; } #corr-reverted { color:#e56a73; }
+.audit-chips { display:flex; gap:8px; flex-wrap:wrap; }
+.audit-chips button { border-color:var(--border-color); color:var(--text-secondary); background:white; padding:8px 15px; font-size:12px; }
+.audit-chips button.active { border-color:var(--layer-color); color:var(--layer-color); background:#f8f4fc; }
+.audit-chips b { margin-left:14px; }
+.audit-section-heading { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:18px; }
+.audit-section-heading h3 { margin:0; }
+.audit-list-filters { display:flex; flex-wrap:wrap; gap:9px; align-items:center; margin:12px 0 24px; }
+.audit-list-filters input,.audit-list-filters select,.audit-list-tools select { background:white; color:var(--text-primary); border:1px solid var(--border-color); border-radius:6px; padding:9px 10px; font:inherit; font-size:12px; }
+#corr-search-btn { background:#31988d; color:white; border-color:#31988d; }
+.audit-list-filters button { padding:9px 16px; font-size:12px; }
+.audit-list-guide { padding:12px 15px; border:1px solid var(--border-color); border-radius:6px; background:#f8faff; color:var(--text-secondary); font-size:12px; line-height:1.7; margin-bottom:16px; }
+.audit-list-toolbar { display:flex; justify-content:space-between; gap:14px; align-items:center; margin-bottom:12px; }
+.audit-list-tools { display:flex; align-items:center; gap:9px; font-size:12px; }
+#correction-columns { position:relative; }
+#correction-columns summary { list-style:none; padding:9px 12px; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; }
+#correction-column-options { position:absolute; right:0; top:100%; z-index:6; min-width:190px; background:white; box-shadow:0 4px 18px #20304b22; border:1px solid var(--border-color); border-radius:7px; padding:10px; }
+#correction-column-options label { display:block; padding:7px; white-space:nowrap; }
+.audit-group-table { width:100%; min-width:1380px; border-collapse:collapse; font-size:12px; }
+.audit-group-table th { background:#f7f9fc; font-weight:600; color:var(--text-secondary); padding:13px 11px; white-space:nowrap; text-align:left; border-bottom:1px solid var(--border-color); }
+.audit-group-table td { padding:12px 10px; border:1px solid var(--border-color); overflow-wrap:anywhere; max-width:230px; line-height:1.7; }
+.audit-group-table small,.audit-group-table strong { display:block; font-size:11px; }
+.audit-group-table small { color:var(--text-secondary); font-weight:400; }
+.audit-group-table [data-col=product] { min-width:165px; }
+.audit-group-table [data-col=date] { min-width:145px; max-width:190px; }
+.audit-group-table [data-col=reviewer] { min-width:120px; }
+.audit-group-table [data-col=url] a,.audit-group-table [data-col=detail] button { white-space:nowrap; }
+.audit-comparison-row { color:#8291a7; background:white; }
+.audit-current-row { background:#f5f9ff; }
+.audit-current-row .audit-badge { color:#278d7c; background:#e7f6f0; }
+.audit-group-table td[rowspan] { background:white; color:var(--text-primary); }
+.audit-pagination { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-top:16px; font-size:12px; color:var(--text-secondary); }
+#correction-inline-detail { margin-top:24px; scroll-margin-top:80px; }
+.audit-saved-log>summary { cursor:pointer; color:var(--layer-color); padding:10px 0; }
+@media(max-width:760px) { .audit-section-heading,.audit-list-toolbar { align-items:flex-start; flex-direction:column; } }

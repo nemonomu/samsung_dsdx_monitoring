@@ -4,7 +4,7 @@
 {% block page_title %}검수기록{% endblock %}
 
 {% block layer4_css %}
-<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261023-audit-query">
+<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261023-audit-context">
 <style>
     .log-tabs {
         display: flex;
@@ -91,12 +91,26 @@
 {% block layer4_content %}
 <script>window.CORRECTIONS_IS_ADMIN = {{ is_admin|yesno:"true,false" }};</script>
 
+<div class="summary-grid audit-summary" id="corrections-summary">
+    <button class="summary-card" data-corr-status="all"><div class="label">총 검수건</div><div class="value" id="corr-total">—</div></button>
+    <button class="summary-card" data-corr-status="corrected"><div class="label">✏️ 수정</div><div class="value" id="corr-corrected">—</div></button>
+    <button class="summary-card" data-corr-status="normal"><div class="label">✅ 확인</div><div class="value" id="corr-normal">—</div></button>
+    <button class="summary-card" data-corr-status="reverted"><div class="label">↩ 확인 취소</div><div class="value" id="corr-reverted">—</div></button>
+</div>
+
+<section class="l4-section audit-types-panel"><h3 class="l4-section-title">검증유형별 현황</h3><div id="correction-type-chips" class="audit-chips"></div></section>
+<section class="l4-section audit-record-panel">
+<div class="audit-section-heading"><h3 class="l4-section-title">검수기록 <span class="audit-badge" id="correction-type-label">전체</span></h3><span class="audit-muted">상품 URL과 수정 전·후 값을 대조해 확인하세요.</span></div>
+
 <!-- 조회 필터바 -->
 <div id="corrections-filter-bar"></div>
+<div class="audit-list-toolbar"><span id="correction-row-count" class="audit-muted">조회 중...</span><div class="audit-list-tools"><label>비교 기간 <select id="correction-compare-days"><option value="3">3일치</option><option value="1">당일</option><option value="7">7일치</option></select></label><details id="correction-columns"><summary>컬럼 선택</summary><div id="correction-column-options"></div></details></div></div>
+<p class="audit-list-guide">비교 이력은 검수건수에 포함하지 않습니다. 상품 URL은 원본의 현재 링크이며, 조회 SQL은 관리자에게만 제공됩니다.</p>
 
 <!-- 상태 탭 -->
 <div class="log-tabs" id="corrections-tabs" style="display:none;">
-    <button class="log-tab active" data-status="corrected">수정 <span class="tab-count count-zero" id="tabCorrectedCount">0</span></button>
+    <button class="log-tab active" data-status="all">전체</button>
+    <button class="log-tab" data-status="corrected">수정 <span class="tab-count count-zero" id="tabCorrectedCount">0</span></button>
     <button class="log-tab" data-status="normal">확인 <span class="tab-count count-zero" id="tabNormalCount">0</span></button>
     <button class="log-tab" data-status="reverted">취소 <span class="tab-count count-zero" id="tabRevertedCount">0</span></button>
 </div>
@@ -110,6 +124,7 @@
 
 <!-- 페이지네이션 -->
 <div id="corrections-pagination"></div>
+<section id="correction-inline-detail" class="l4-section" hidden></section>
 
 <!-- 일괄 이력 조회 (관리자 전용) -->
 <div id="bulk-history-section" style="display:none;">
@@ -118,10 +133,12 @@
         <div class="l4-empty-state"><p>조회 중...</p></div>
     </div>
 </div>
+</section>
 {% endblock %}
 
 {% block layer4_js %}
 <script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
-<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261023-audit-query"></script>
-<script src="{% static 'dx_layer4/js/corrections.js' %}?v=20261023-audit-query"></script>
+<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261023-audit-context"></script>
+<script src="{% static 'dx_layer4/js/correction-list.js' %}?v=20261023-audit-context"></script>
+<script src="{% static 'dx_layer4/js/corrections.js' %}?v=20261023-audit-context"></script>
 {% endblock %}

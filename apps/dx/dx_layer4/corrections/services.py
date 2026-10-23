@@ -81,15 +81,34 @@ def _enrich_crawl_time(cursor, items):
 
 
 def get_corrections(target_date, correction_type='all', status='all',
-                    search_field='', search_value='', page=1, page_size=50):
+                    search_field='', search_value='', page=1, page_size=50,
+                    country='all', product='all', retailer='all', reviewer='all', days=3):
     """검수기록 목록 조회"""
     with dx_connection() as (conn, cursor):
         base_clauses = ["c.crawl_date = %s", "c.status IS NOT NULL", "c.table_name <> 'hhp_retail_com'"]
         base_params = [str(target_date)]
 
-        if correction_type != 'all':
-            base_clauses.append("c.correction_type = %s")
-            base_params.append(correction_type)
+        from .detail import _sources
+        sources = _sources()
+        if country != 'all' or product != 'all':
+            selected = [s['table_name'] for s in sources.values()
+                        if (country == 'all' or s['country'] == country)
+                        and (product == 'all' or s['product'] == product)]
+            aliases = list(dict.fromkeys([t for name in selected for t in
+                                         (name, name.removeprefix('public.'), 'public.' + name if '.' not in name else name)]))
+            base_clauses.append('c.table_name = ANY(%s)')
+            base_params.append(aliases)
+        if retailer != 'all':
+            base_clauses.append('LOWER(BTRIM(c.retailer)) = %s')
+            base_params.append(str(retailer).strip().lower())
+        if reviewer != 'all':
+            base_clauses.append('c.created_id = %s')
+            base_params.append(reviewer)
+
+        cursor.execute('''SELECT DISTINCT retailer, created_id FROM monitoring_corrections
+                          WHERE crawl_date = %s AND status IS NOT NULL AND table_name <> 'hhp_retail_com' ''',
+                       (str(target_date),))
+        options = cursor.fetchall()
 
         _SEARCH_FIELDS = {
             'category': 'c.table_name',
@@ -98,9 +117,13 @@ def get_corrections(target_date, correction_type='all', status='all',
             'item': 'c.item',
             'record_id': None,
             'correction_type': 'c.correction_type',
+            'item_column': None,
         }
         if search_value and search_field in _SEARCH_FIELDS:
-            if search_field == 'record_id':
+            if search_field == 'item_column':
+                base_clauses.append('(c.item ILIKE %s OR c.column_name ILIKE %s)')
+                base_params.extend([f'%{search_value}%', f'%{search_value}%'])
+            elif search_field == 'record_id':
                 base_clauses.append("CAST(c.record_id AS TEXT) LIKE %s")
                 base_params.append(f'%{search_value}%')
             else:
@@ -109,6 +132,13 @@ def get_corrections(target_date, correction_type='all', status='all',
                 base_params.append(f'%{search_value}%')
 
         base_where_sql = " AND ".join(base_clauses)
+        cursor.execute(f'''SELECT c.correction_type, COUNT(*) FROM monitoring_corrections c
+                           WHERE {base_where_sql} GROUP BY c.correction_type''', base_params)
+        type_counts = {row[0]: row[1] for row in cursor.fetchall()}
+        if correction_type != 'all':
+            base_clauses.append('c.correction_type = %s')
+            base_params.append(correction_type)
+            base_where_sql = ' AND '.join(base_clauses)
         cursor.execute(f"""
             SELECT c.status, COUNT(*) FROM monitoring_corrections c
             WHERE {base_where_sql}
@@ -169,7 +199,8 @@ def get_corrections(target_date, correction_type='all', status='all',
                 'cancel_memo': row[20] or '',
             })
 
-        _enrich_crawl_time(cursor, items)
+        from .detail import enrich_list
+        _enrich_crawl_time(cursor, enrich_list(cursor, items, days))
 
         rule_options = []
         if correction_type == 'cross_field':
@@ -193,6 +224,14 @@ def get_corrections(target_date, correction_type='all', status='all',
         'page': page,
         'page_size': page_size,
         'total_pages': total_pages,
+        'days': days,
+        'type_counts': type_counts,
+        'filter_options': {
+            'countries': sorted({s['country'] for s in sources.values()}),
+            'products': sorted({s['product'] for s in sources.values()}),
+            'retailers': sorted({r[0] for r in options if r[0]}),
+            'reviewers': sorted({r[1] for r in options if r[1]}),
+        },
         'status_counts': {
             'corrected': status_counts.get('corrected', 0),
             'normal': status_counts.get('normal', 0),
