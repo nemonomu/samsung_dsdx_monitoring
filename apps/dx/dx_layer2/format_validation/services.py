@@ -25,7 +25,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import seg_validation, sem_validation, seda_format_validation
-from apps.dx.dx_layer2 import seib_format_validation
+from apps.dx.dx_layer2 import seib_format_validation, seuk_format_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -211,7 +211,7 @@ VALID_TABLES_FORMAT = {
     source['section_code']
     for source in getattr(sem_validation, 'SEM_SOURCE_CONFIG', {}).values()
     if not source.get('null_only') or source['source_key'] == 'sem_ldy_dryer'
-} | {source['section_code'] for source in seib_format_validation.SEIB_SOURCE_CONFIG.values()}
+} | {source['section_code'] for source in seib_format_validation.SEIB_SOURCE_CONFIG.values()} | {source['section_code'] for source in seuk_format_validation.SEUK_SOURCE_CONFIG.values()}
 VALID_TABLES_RULES = {
     'tv_retail_com',
     'market_trend', 'market_comp_product', 'market_comp_event',
@@ -221,7 +221,7 @@ VALID_TABLES_RULES = {
     if not source.get('null_only') or key == 'sem_ldy_dryer'
 ) | set(
     getattr(seg_validation, 'SEG_FORMAT_SOURCE_CONFIG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {}))
-) | set(seib_format_validation.SEIB_SOURCE_CONFIG)
+) | set(seib_format_validation.SEIB_SOURCE_CONFIG) | set(seuk_format_validation.SEUK_SOURCE_CONFIG)
 VALID_TABLES_FORMAT |= {source['section_code'] for source in seda_format_validation.SEDA_SOURCE_CONFIG.values()}
 VALID_TABLES_RULES |= set(seda_format_validation.SEDA_SOURCE_CONFIG)
 VALID_TABLES_RULES -= DISABLED_SOURCE_TABLES
@@ -2161,6 +2161,11 @@ def _get_format_detail_raw(cursor, target_date, table, retailer, days, include_n
     형식 오류 상세 조회.
     Returns dict: {date, table, retailer, column_names, editable_cols, actual_table, normal_reviews, results}
     """
+    if seuk_format_validation.product_line_for(table):
+        return seuk_format_validation.format_detail(
+            cursor, target_date, table, retailer, days,
+            include_normal=include_normal,
+        )
     if seib_format_validation.product_line_for(table):
         return seib_format_validation.format_detail(
             cursor, target_date, table, retailer, days,
@@ -2862,6 +2867,11 @@ def get_format_rules(cursor, table_name, retailer):
     Returns dict: {rules: [...]}
     """
     from apps.dx.dx_layer2.format_validation.rule_examples import static_rules, database_examples
+    seuk_product_line = seuk_format_validation.product_line_for(table_name)
+    if seuk_product_line:
+        return static_rules(
+            seuk_format_validation.get_format_rule_details(table_name, retailer),
+            lambda row: seuk_format_validation.evaluate_format(row, seuk_product_line), retailer)
     seib_product_line = seib_format_validation.product_line_for(table_name)
     if seib_product_line:
         return static_rules(
@@ -3407,6 +3417,10 @@ def _get_format_stats_raw(cursor, target_date, category=None):
         cursor, target_date, format_validation,
         **({"category": category} if category else {})
     )
+    total_format_issues += seuk_format_validation.append_format_stats(
+        cursor, target_date, format_validation, category=category,
+    )
+
     total_format_issues += seib_format_validation.append_format_stats(
         cursor, target_date, format_validation, category=category,
     )

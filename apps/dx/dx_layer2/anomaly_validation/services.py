@@ -21,7 +21,7 @@ from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.dx.dx_layer2.common.context import get_status
 from apps.dx.dx_layer2 import seg_validation, sem_validation
-from apps.dx.dx_layer2 import seda_duplicate_validation, seib_duplicate_validation
+from apps.dx.dx_layer2 import seda_duplicate_validation, seib_duplicate_validation, seuk_duplicate_validation
 
 try:
     from apps.common.retail_columns import get_tse_retailer_columns
@@ -96,6 +96,8 @@ VALID_TABLES_ANOMALY = {
     source['section_code'] for source in seda_duplicate_validation.SEDA_SOURCE_CONFIG.values()
 } | {
     source['section_code'] for source in sem_validation.SEM_SOURCE_CONFIG.values()
+} | {
+    source['section_code'] for source in seuk_duplicate_validation.SEUK_SOURCE_CONFIG.values()
 } | {
     source['section_code'] for source in seib_duplicate_validation.SEIB_SOURCE_CONFIG.values()
 }
@@ -1101,6 +1103,10 @@ def _duplicate_lookup_query(result, table):
 
 def _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size):
     """중복 검증 상세 조회 — plain dict 반환"""
+    if seuk_duplicate_validation.product_line_for(table):
+        return seuk_duplicate_validation.duplicate_detail(
+            cursor, target_date, table, retailer, page, page_size,
+        )
     if seib_duplicate_validation.product_line_for(table):
         return seib_duplicate_validation.duplicate_detail(
             cursor, target_date, table, retailer, page, page_size,
@@ -2085,6 +2091,9 @@ def get_anomaly_stats(cursor, target_date, include_youtube=False, category=None)
         **({"category": category} if category else {})
     )
 
+    total_anomaly_issues += seuk_duplicate_validation.append_duplicate_stats(
+        cursor, target_date, anomaly_validation, category=category,
+    )
     total_anomaly_issues += seib_duplicate_validation.append_duplicate_stats(
         cursor, target_date, anomaly_validation, category=category,
     )

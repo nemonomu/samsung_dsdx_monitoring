@@ -113,7 +113,7 @@ class SeukNullTests(unittest.TestCase):
         self.assertFalse(any(sql.lstrip().startswith('UPDATE ') for sql,_ in cursor.calls))
 
     def test_other_validations_and_unrequired_columns_stay_disabled(self):
-        for kind,field in (('format','sku'),('duplicate','sku'),('cross_field','sku'),('other','sku'),('null','loading_type')):
+        for kind,field in (('format','sku'),('duplicate','loading_type'),('cross_field','sku'),('other','sku'),('null','loading_type')):
             cursor=ScriptedCursor([])
             result=edits.update_cell_value(cursor,Mock(),SOURCE['table_name'],42,field,'X',str(DAY),kind,'tester','')
             self.assertEqual(403,result['status'])
@@ -153,18 +153,18 @@ class SeukNullTests(unittest.TestCase):
         self.assertTrue(supports_null_auto_detail('null','seuk_ldy_dryer_retail',DAY))
         self.assertFalse(supports_null_auto_detail('format','seuk_ldy_dryer_retail',DAY))
 
-    def test_dashboard_routes_to_seuk_once_and_sidebar_only_enables_null(self):
+    def test_dashboard_routes_to_seuk_once_and_sidebar_enables_all_checks(self):
         config={s['section_code']:{'display_name':s['display_name'],'checks':{}} for s in policy.SEUK_SOURCE_CONFIG.values()}
         with ExitStack() as stack:
             stack.enter_context(patch.object(nulls,'load_null_check_config',return_value=config))
             stack.enter_context(patch.object(nulls,'get_all_categories',return_value=list(config)))
             groups=context.build_sidebar_groups('null_validation','SEUK REF')
             self.assertTrue(any(i['name']=='SEUK Retail' and i['active'] for i in groups[0]['items']))
-            self.assertFalse(any(i['name']=='SEUK Retail' for g in groups[1:] for i in g.get('items',[])))
+            self.assertEqual(3, sum(i['name']=='SEUK Retail' for g in groups for i in g.get('items',[])))
             menus=context.get_sidebar_items()
             self.assertEqual(4,len(menus['null']))
-            self.assertEqual([],menus['format'])
-            self.assertEqual([],menus['anomaly'])
+            self.assertEqual(menus['null'],menus['format'])
+            self.assertEqual(menus['null'],menus['anomaly'])
             stack.enter_context(patch.object(seuk,'latest_rows',return_value=([record()],seuk._mapping(DAY,SOURCE))))
             stack.enter_context(patch.object(seuk,'_load_normal_reviews',return_value={}))
             stack.enter_context(patch.object(evidence,'load_evidence',return_value=[]))

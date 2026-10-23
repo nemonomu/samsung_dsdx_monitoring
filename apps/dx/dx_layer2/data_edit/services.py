@@ -11,7 +11,7 @@ from apps.common import costco_layer2
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
-from apps.dx.dx_layer2 import seda_null_validation, seib_null_validation, seib_format_validation, seuk_null_validation
+from apps.dx.dx_layer2 import seda_null_validation, seib_null_validation, seib_format_validation, seuk_null_validation, seuk_format_validation
 from apps.dx.dx_layer2 import seda_format_validation
 
 try:
@@ -392,8 +392,13 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     )
     if seuk_product_line:
         product_line = seuk_product_line
-        if correction_type not in {'null', 'null_check'} or (column_name not in seuk_null_validation.get_seuk_null_columns(product_line) and not price_edit_context):
-            return {'error': 'SEUK NULL 검수 대상 컬럼이 아닙니다', 'status': 403}
+        if correction_type not in {'null', 'null_check', 'format'}:
+            return {'error': 'SEUK 검수 유형이 올바르지 않습니다', 'status': 403}
+        seuk_columns = (seuk_format_validation.get_format_columns(product_line)
+                        if correction_type_value == 'format_check'
+                        else seuk_null_validation.get_seuk_null_columns(product_line))
+        if correction_type_value not in {'null_check', 'format_check'} or (column_name not in seuk_columns and not price_edit_context):
+            return {'error': 'SEUK 검수 대상 컬럼이 아닙니다', 'status': 403}
     elif seib_product_line:
         product_line = seib_product_line
         seib_columns = (seib_format_validation.get_format_columns(product_line)
@@ -450,7 +455,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if seuk_product_line:
         try:
             seuk_row = seuk_null_validation.select_record(
-                cursor, crawl_date, product_line, row_id, column_name, for_edit=True)
+                cursor, crawl_date, product_line, row_id, column_name, for_edit=True,
+                format_columns=(seuk_format_validation.get_format_columns(product_line)
+                                if correction_type_value == 'format_check' else None),
+            )
         except (TypeError, ValueError):
             return {'error': '검수일 또는 수정 대상이 올바르지 않습니다', 'status': 400}
     elif seib_product_line:
@@ -576,7 +584,9 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                          else (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
                                else costco_layer2.NULL_COLUMNS).get(sea_context['product_key'], ()))
     elif seuk_product_line:
-        editable_cols = seuk_null_validation.get_seuk_null_columns(product_line, retailer)
+        editable_cols = (seuk_format_validation.get_format_editable_columns(product_line)
+                         if correction_type_value == 'format_check'
+                         else seuk_null_validation.get_seuk_null_columns(product_line, retailer))
     elif seib_product_line:
         editable_cols = (seib_format_validation.get_format_editable_columns(product_line)
                          if correction_type_value == 'format_check'

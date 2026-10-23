@@ -47,10 +47,10 @@ assert(format.includes(
     'const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam)'
 ));
 assert(format.includes(
-    'const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam)'
+    'const isSemRetail = /^sem_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam)'
 ));
 assert(format.includes('isSielRetail || isSegRetail'));
-assert(format.includes('isSemRetail || isTseRetail'));
+assert(format.includes('isSemRetail || isSeibRetail || isTseRetail'));
 assert(format.includes('(isSemRetail || isSedaRetail) && Array.isArray(data.select_cols)'));
 assert(format.includes('return isSemRetail || key === fieldName || !contextOnlyKeys.has(key)'));
 assert(format.includes("tableName: 'dx_sem.dx_sem_tv_retail_com'"));
@@ -75,13 +75,13 @@ assert(dashboard.includes(
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
 assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20261011-costco-dryer"
+    "dx_layer2/js/layer2-common.js' %}?v=20261023-seuk-format-duplicate"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20261012-format-review"
+    "dx_layer2/js/format_validation.js' %}?v=20261023-seuk-format-duplicate"
 ));
 assert(formatTemplate.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20261012-format-review"
+    "dx_layer2/js/dashboard.js' %}?v=20261023-seuk-format-duplicate"
 ));
 
 console.log('Layer 2 SIEL format/duplicate UI tests passed.');

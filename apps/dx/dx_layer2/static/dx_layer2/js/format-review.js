@@ -3,7 +3,7 @@
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const labels = {pending:'확인 필요', error:'오류 확정', baseline_normal:'기존 기준상 정상', legacy_normal:'과거 정상 처리 · 재확인', registered_normal:'등록한 정상'};
     const actionLabels = {normal:'정상 값 일괄 등록', error:'오류 일괄 확정', revoke:'기준 등록 취소', undo:'처리 취소'};
-    const supports = table => table === 'tv_retail' || /^(sea|siel|tse|seda|seg|sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(table);
+    const supports = table => table === 'tv_retail' || /^(sea|siel|tse|seda|seg|sem|seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(table);
     let dialog, state, sequence = 0, controller;
     const el = id => dialog.querySelector('#fr-' + id);
     function button(table, retailer, field = '') {

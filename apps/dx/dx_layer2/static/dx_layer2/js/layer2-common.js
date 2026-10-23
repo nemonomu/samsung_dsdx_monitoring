@@ -250,7 +250,7 @@ function getColumnConfig(type, tableParam) {
         if (/^tse_(tv|ref|ldy)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_tse_retail;
         }
-        if (/^(sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam)) {
+        if (/^(sem|seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam)) {
             return DETAIL_COLUMNS.dup_sem_retail;
         }
         var key = 'dup_' + tableParam;
@@ -268,7 +268,7 @@ function isTseDuplicateTable(tableParam) {
 
 function isReadOnlyDuplicateTable(tableParam) {
     return isTseDuplicateTable(tableParam)
-        || /^(sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(String(tableParam || ''))
+        || /^(sem|seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(String(tableParam || ''))
         || tableParam === 'sea_ldy_dryer_retail'
         || /^siel_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))
         || /^seda_(tv|ref|ldy)_retail$/.test(String(tableParam || ''))

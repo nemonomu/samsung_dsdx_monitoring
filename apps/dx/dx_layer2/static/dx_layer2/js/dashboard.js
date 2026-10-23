@@ -100,7 +100,7 @@ const LAYER2_NULL_TABLE_GROUPS = [
     },
     {key: 'seib', name: 'SEIB Retail', description: '스페인 MediaMarkt 당일 NULL 검증',
      tableCodes: ['seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail']},
-    {key: 'seuk', name: 'SEUK Retail', description: '영국 Currys 당일 NULL 검증',
+    {key: 'seuk', name: 'SEUK Retail', description: '영국 Currys 당일 검증',
      tableCodes: ['seuk_tv_retail', 'seuk_ref_retail', 'seuk_ldy_retail', 'seuk_ldy_dryer_retail']}
 ];
 

@@ -7,7 +7,7 @@ from apps.common.inspection_dates import resolve_monitoring_date
 def source_for_table(table):
     # Lazy imports keep the detail service and edit service independent at import.
     from .anomaly_validation import services as detail
-    from . import seib_null_validation
+    from . import seib_null_validation, seuk_null_validation
 
     registries = (
         ('SEA', detail.SEA_RETAIL_SOURCES),
@@ -16,6 +16,7 @@ def source_for_table(table):
         ('SEDA', detail.seda_duplicate_validation.SEDA_SOURCE_CONFIG),
         ('SEM', detail.sem_validation.SEM_SOURCE_CONFIG),
         ('SEIB', seib_null_validation.SEIB_SOURCE_CONFIG),
+        ('SEUK', seuk_null_validation.SEUK_SOURCE_CONFIG),
     )
     canonical = table if '.' in table else 'public.' + table
     for country, registry in registries:
@@ -30,13 +31,16 @@ def source_for_table(table):
 def scoped_rows(cursor, inspection_date, country, source, retailer):
     """Reuse source-specific date, page, redirect, and latest-batch policies."""
     from .anomaly_validation import services as detail
-    from . import seib_null_validation
+    from . import seib_null_validation, seuk_null_validation
 
     if country == 'SEDA':
         return detail.seda_duplicate_validation.latest_rows(
             cursor, inspection_date, source, retailer)[0]
     if country == 'SEM':
         return detail.sem_validation._latest_rows(
+            cursor, inspection_date, source, retailer)[0]
+    if country == 'SEUK':
+        return seuk_null_validation.latest_rows(
             cursor, inspection_date, source, retailer)[0]
     if country == 'SEIB':
         return seib_null_validation.latest_rows(

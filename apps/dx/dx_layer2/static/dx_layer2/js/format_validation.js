@@ -60,7 +60,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
-    const isSeibRetail = /^seib_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
+    const isSeibRetail = /^(seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isRetail = tableParam === 'tv_retail' || tableParam === 'hhp_retail'
         || isSeaRetail || isSielRetail || isSegRetail || isSedaRetail
         || isSemRetail || isSeibRetail || isTseRetail;
@@ -82,7 +82,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         });
         if (errorItems.size > 0) {
             filteredRecords = records.filter(function(record) {
-                return errorItems.has(record.item) || (isSedaRetail && !record.item
+                return errorItems.has(record.item) || ((isSedaRetail || tableParam.startsWith('seuk_')) && !record.item
                     && String(record[sourceDateColumn] || '').substring(0, 10) === targetDateStr
                     && (record.error_fields || []).includes(fieldName));
             });

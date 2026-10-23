@@ -66,8 +66,8 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items):
     return _rows(cursor)
 
 
-def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False):
-    allowed = get_seuk_null_columns(product_line)
+def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False, format_columns=None):
+    allowed = tuple(format_columns) if format_columns is not None else get_seuk_null_columns(product_line)
     if (column not in allowed
             and not (for_edit and column in PRICE_EDITABLE_COLUMNS)):
         raise ValueError('Unsupported SEUK validation column')
