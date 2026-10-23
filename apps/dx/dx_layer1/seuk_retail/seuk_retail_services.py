@@ -1,7 +1,7 @@
 """SEUK Layer 1 receipt checks; historical volume comparison is shared."""
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seuk_retail import (
-    SEUK_SOURCE_CONFIG, RETAILER, collection_phase, enabled, latest_scope,
+    SEUK_SOURCE_CONFIG, RETAILER, FIRST_SOURCE_DATE, collection_phase, enabled, latest_scope,
 )
 
 
@@ -31,9 +31,9 @@ def get_layer1_stats(cursor, target_date, now=None):
                                timestamp=mapping['source_date']))
     status = ('PENDING' if phase == 'pending' else 'COLLECTING' if phase == 'collecting'
               else 'CRITICAL' if failed else 'OK')
-    return {'check': dict(name='SEUK Retail', description='영국 Currys TV/REF/LDY/LDY_DRYER 당일 수집 · 2026-10-25 시작',
+    return {'check': dict(name='SEUK Retail', description=f'영국 Currys TV/REF/LDY/LDY_DRYER 당일 수집 · {FIRST_SOURCE_DATE} 시작',
                           check_type='seuk_retail', country='SEUK', status=status, phase=phase,
                           collection_window='KST 01:00~04:00', expected=None,
                           actual=sum(c['actual'] for c in categories), total=sum(c['total'] for c in categories),
                           categories=categories, inspection_date=str(target_date), source_date=str(target_date),
-                          offset_days=0, active_from='2026-10-25', source_keys=list(SEUK_SOURCE_CONFIG)), 'failed_items': failed}
+                          offset_days=0, active_from=str(FIRST_SOURCE_DATE), source_keys=list(SEUK_SOURCE_CONFIG)), 'failed_items': failed}

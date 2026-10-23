@@ -29,9 +29,10 @@ NULL_REVIEW_TABLES = {
     'sea_ldy_dryer_retail': 'sea_ldy_dryer_retail',
     'seg_ldy_dryer_retail': 'seg_ldy_dryer_retail',
     'seib_ldy_dryer_retail': 'seib_ldy_dryer_retail',
+    'seuk_ldy_dryer_retail': 'seuk_ldy_dryer_retail',
     **{
         f'{country}_{product}_retail': f'{country}_{product}_retail'
-        for country in ('seda', 'sem', 'siel', 'tse', 'seg', 'seib')
+        for country in ('seda', 'sem', 'siel', 'tse', 'seg', 'seib', 'seuk')
         for product in ('tv', 'ref', 'ldy')
     },
 }

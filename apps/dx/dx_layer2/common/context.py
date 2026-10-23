@@ -160,8 +160,8 @@ def get_sidebar_items():
     ]
     return {
         'null': items,
-        'format': items,
-        'anomaly': items,
+        'format': [item for item in items if not item['key'].startswith('seuk_')],
+        'anomaly': [item for item in items if not item['key'].startswith('seuk_')],
     }
 
 
@@ -180,7 +180,7 @@ def build_sidebar_groups(section, focus=''):
         for category, info in sorted(
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
-            if category.startswith('seib_'):
+            if category.startswith(('seib_', 'seuk_')):
                 continue
             if category in SEDA_RETAIL_CATEGORIES:
                 continue
@@ -291,6 +291,16 @@ def build_sidebar_groups(section, focus=''):
         'anomaly_validation': make_items('anomaly_validation'),
     }
     active_categories = set(get_all_categories())
+    from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
+    seuk_children = [
+        {'name': s['display_name'], 'label': s['category'], 'detail_code': s['section_code'],
+         'active': section == 'null_validation' and focus in (s['display_name'], s['section_code'])}
+        for s in SEUK_SOURCE_CONFIG.values() if s['section_code'] in active_categories]
+    if seuk_children:
+        section_items['null_validation'].append({
+            'name': 'SEUK Retail', 'children': seuk_children,
+            'active': any(child['active'] for child in seuk_children),
+        })
     from apps.common.seib_retail import SEIB_SOURCE_CONFIG
     seib_children = [
         {'name': s['display_name'], 'label': s['category'], 'detail_code': s['section_code'],

@@ -1,11 +1,12 @@
-"""UK Currys source contract; Layer 1 starts with the original 2026-10-25 date."""
+"""UK Currys source contract, using the original collection date."""
 from datetime import date, datetime, time
 
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql, source_date_value
 
 SEUK_COUNTRY = 'SEUK'
-FIRST_SOURCE_DATE = date(2026, 10, 25)
+# Temporary preview requested by the user. Restore to October 25 at final rollout.
+FIRST_SOURCE_DATE = date(2026, 10, 23)
 RETAILER = 'Currys'
 COMMON_REQUIRED = (
     'country', 'account_name', 'item', 'sku', 'retailer_sku_name', 'product_url',
@@ -52,6 +53,16 @@ def get_seuk_source(value):
 
 def seuk_retailer_key(value):
     return str(value or '').strip().casefold()
+
+
+def get_seuk_null_columns(value, retailer=None):
+    if retailer is not None and seuk_retailer_key(retailer) != seuk_retailer_key(RETAILER):
+        raise ValueError('Unsupported SEUK retailer')
+    return get_seuk_source(value)['required_columns']
+
+
+def get_seuk_null_select_columns(value):
+    return get_seuk_source(value)['columns']
 
 
 def enabled(day):

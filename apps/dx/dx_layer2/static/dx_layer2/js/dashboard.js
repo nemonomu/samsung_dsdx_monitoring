@@ -15,9 +15,13 @@ const LAYER2_TABLE_DISPLAY_NAMES = {
     seg_ldy_retail: 'SEG LDY',
     seg_ldy_dryer_retail: 'SEG LDY_DRYER',
     seib_tv_retail: 'SEIB TV',
+    seuk_tv_retail: 'SEUK TV',
     seib_ref_retail: 'SEIB REF',
+    seuk_ref_retail: 'SEUK REF',
     seib_ldy_retail: 'SEIB LDY',
+    seuk_ldy_retail: 'SEUK LDY',
     seib_ldy_dryer_retail: 'SEIB LDY_DRYER',
+    seuk_ldy_dryer_retail: 'SEUK LDY_DRYER',
     sem_tv_retail: 'SEM TV',
     sem_ref_retail: 'SEM REF',
     sem_ldy_retail: 'SEM LDY',
@@ -47,9 +51,13 @@ const LAYER2_TABLE_DISPLAY_ORDER = {
     tse_ref_retail: 13,
     tse_ldy_retail: 14,
     seib_tv_retail: 14.1,
+    seuk_tv_retail: 14.5,
     seib_ref_retail: 14.2,
+    seuk_ref_retail: 14.6,
     seib_ldy_retail: 14.3,
+    seuk_ldy_retail: 14.7,
     seib_ldy_dryer_retail: 14.4,
+    seuk_ldy_dryer_retail: 14.8,
     youtube: 15
 };
 
@@ -91,7 +99,9 @@ const LAYER2_NULL_TABLE_GROUPS = [
         tableCodes: ['tse_tv_retail', 'tse_ref_retail', 'tse_ldy_retail']
     },
     {key: 'seib', name: 'SEIB Retail', description: '스페인 MediaMarkt 당일 NULL 검증',
-     tableCodes: ['seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail']}
+     tableCodes: ['seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail']},
+    {key: 'seuk', name: 'SEUK Retail', description: '영국 Currys 당일 NULL 검증',
+     tableCodes: ['seuk_tv_retail', 'seuk_ref_retail', 'seuk_ldy_retail', 'seuk_ldy_dryer_retail']}
 ];
 
 function buildLayer2NullGroups(tables, validationType) {
@@ -849,7 +859,7 @@ function renderDXTableDetail(vType, table) {
         const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
         const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(table.table || '');
         const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(table.table || '');
-        const isItemRetail = /^(sem|seib)_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
+        const isItemRetail = /^(sem|seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
         html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;

@@ -1,7 +1,7 @@
 -- 영국 Currys: Layer 1 수집 모니터링 / 컬럼별 수집데이터 통계 등록.
 -- 실행 대상: DX PostgreSQL. 운영은 prefix = '', 테스트 설정은 prefix = 'test_'.
 -- 코드 배포와 함께 실행 후 웹/통계 작업 프로세스를 재시작하여 스케줄 캐시를 갱신하세요.
--- 최초 수집일 2026-10-25, 매일 당일(D), KST 01:00~04:00.
+-- 최초 수집일 2026-10-23, 매일 당일(D), KST 01:00~04:00.
 -- BSR은 5일 관찰 후 별도 결정: 100건 고정 기대값을 등록하지 않습니다.
 -- 원본/시험 데이터를 삭제하거나 변경하지 않습니다. NULL/형식/중복/크로스필드 규칙은 등록하지 않습니다.
 -- 재실행 가능. 기존 후속 검증 설정의 skip_missing_check/is_editable 값은 보존합니다.
@@ -59,7 +59,7 @@ BEGIN
             updated_at=NOW(), updated_id=''setup_seuk_layer1''
             WHERE check_type=''seuk_retail'' AND category=$4 AND LOWER(BTRIM(retailer))=''currys''', schedules)
         USING 'SEUK ' || source.category, 'dx_seuk.dx_seuk_' || source.product || '_retail_com',
-              '영국 Currys 당일(D) · KST 01:00~04:00 · 최초 2026-10-25 · BSR 5일 관찰 후 기준 결정', source.category;
+              '영국 Currys 당일(D) · KST 01:00~04:00 · 최초 2026-10-23 · BSR 5일 관찰 후 기준 결정', source.category;
         GET DIAGNOSTICS registered = ROW_COUNT;
         IF registered > 1 THEN
             RAISE EXCEPTION 'Duplicate SEUK % schedules; transaction rolled back', source.category;
@@ -71,7 +71,7 @@ BEGIN
                 VALUES (''Retail'',''seuk_retail'',$1,$2,''daily'',''Currys'',0,''SEUK'',180,$3,7,$4,
                         TRUE,0,NOW(),''setup_seuk_layer1'',NOW(),''setup_seuk_layer1'')', schedules)
             USING 'SEUK ' || source.category, source.category, 'dx_seuk.dx_seuk_' || source.product || '_retail_com',
-                  '영국 Currys 당일(D) · KST 01:00~04:00 · 최초 2026-10-25 · BSR 5일 관찰 후 기준 결정';
+                  '영국 Currys 당일(D) · KST 01:00~04:00 · 최초 2026-10-23 · BSR 5일 관찰 후 기준 결정';
         END IF;
 
         FOREACH column_name IN ARRAY all_columns LOOP

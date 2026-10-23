@@ -11,7 +11,7 @@ from apps.common import costco_layer2
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.retail_columns import get_editable_columns
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
-from apps.dx.dx_layer2 import seda_null_validation, seib_null_validation, seib_format_validation
+from apps.dx.dx_layer2 import seda_null_validation, seib_null_validation, seib_format_validation, seuk_null_validation
 from apps.dx.dx_layer2 import seda_format_validation
 
 try:
@@ -114,6 +114,8 @@ VALID_TABLES_UPDATE = ({
     SEG_TABLE_TO_PRODUCT_LINE
 ) | {
     source['table_name'] for source in seda_null_validation.SEDA_SOURCE_CONFIG.values()
+} | {
+    source['table_name'] for source in seuk_null_validation.SEUK_SOURCE_CONFIG.values()
 } | {
     source['table_name'] for source in seib_null_validation.SEIB_SOURCE_CONFIG.values()
 }) - DISABLED_SOURCE_TABLES
@@ -375,10 +377,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     siel_context = _get_siel_edit_context(table_name)
     sea_context = _get_sea_edit_context(table_name)
     seda_product_line = seda_null_validation.product_line_for(table_name)
+    seuk_product_line = seuk_null_validation.product_line_for(table_name)
     seib_product_line = seib_null_validation.product_line_for(table_name)
     table_basename = str(table_name or '').strip().lower().split('.')[-1]
     retail_context = bool(
-        seib_product_line or seda_product_line or tse_context or sem_context or seg_context
+        seuk_product_line or seib_product_line or seda_product_line or tse_context or sem_context or seg_context
         or siel_context or sea_context
         or table_basename in {'tv_retail_com', 'ref_retail_com', 'ldy_retail_com'}
     )
@@ -387,7 +390,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         and correction_type in {'null', 'null_check'}
         and column_name in PRICE_EDITABLE_COLUMNS
     )
-    if seib_product_line:
+    if seuk_product_line:
+        product_line = seuk_product_line
+        if correction_type not in {'null', 'null_check'} or (column_name not in seuk_null_validation.get_seuk_null_columns(product_line) and not price_edit_context):
+            return {'error': 'SEUK NULL 검수 대상 컬럼이 아닙니다', 'status': 403}
+    elif seib_product_line:
         product_line = seib_product_line
         seib_columns = (seib_format_validation.get_format_columns(product_line)
                         if correction_type_value == 'format_check'
@@ -440,7 +447,13 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     select_columns = f"{column_name}, account_name, item"
     if tse_context or sem_context or seg_context:
         select_columns += ", batch_id"
-    if seib_product_line:
+    if seuk_product_line:
+        try:
+            seuk_row = seuk_null_validation.select_record(
+                cursor, crawl_date, product_line, row_id, column_name, for_edit=True)
+        except (TypeError, ValueError):
+            return {'error': '검수일 또는 수정 대상이 올바르지 않습니다', 'status': 400}
+    elif seib_product_line:
         try:
             seib_row = seib_null_validation.select_record(
                 cursor, crawl_date, product_line, row_id, column_name, for_edit=True,
@@ -521,14 +534,14 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
             (row_id,)
         )
-    row = seib_row if seib_product_line else seda_row if seda_product_line else cursor.fetchone()
+    row = seuk_row if seuk_product_line else seib_row if seib_product_line else seda_row if seda_product_line else cursor.fetchone()
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status': 404}
 
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else ''
-    batch_id = row[3] if tse_context or sem_context or seg_context or seda_product_line or seib_product_line else None
+    batch_id = row[3] if tse_context or sem_context or seg_context or seda_product_line or seib_product_line or seuk_product_line else None
 
     # editable 컬럼 확인
     editable_retailer = retailer
@@ -562,6 +575,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
                          if correction_type_value == 'format_check' and sea_context['product_key'] == 'ldy_dryer'
                          else (costco_layer2.FORMAT_COLUMNS if correction_type_value == 'format_check'
                                else costco_layer2.NULL_COLUMNS).get(sea_context['product_key'], ()))
+    elif seuk_product_line:
+        editable_cols = seuk_null_validation.get_seuk_null_columns(product_line, retailer)
     elif seib_product_line:
         editable_cols = (seib_format_validation.get_format_editable_columns(product_line)
                          if correction_type_value == 'format_check'
@@ -601,7 +616,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     # TSE source tables enforce UNIQUE(account_name, batch_id, item). Check
     # the candidate identity before UPDATE so the API returns a clear error
     # and no correction history is written on collision.
-    if (tse_context or sem_context or seib_product_line) and column_name in {'account_name', 'item'}:
+    if (tse_context or sem_context or seib_product_line or seuk_product_line) and column_name in {'account_name', 'item'}:
         candidate_retailer = (
             update_value if column_name == 'account_name' else retailer
         )

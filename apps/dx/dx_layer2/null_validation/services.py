@@ -20,7 +20,7 @@ from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
 from apps.common.null_review_evidence import uses_new_policy, is_non_target_metric
 from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.dx.dx_layer2.common.context import get_status
-from apps.dx.dx_layer2 import sem_validation, seda_null_validation, seda_format_validation, seib_null_validation, seib_format_validation
+from apps.dx.dx_layer2 import seuk_null_validation, sem_validation, seda_null_validation, seda_format_validation, seib_null_validation, seib_format_validation
 
 try:
     from apps.dx.dx_layer2 import seg_validation
@@ -2330,6 +2330,7 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
             or seg_validation.product_line_for(category)
             or seda_null_validation.product_line_for(category)
             or seib_null_validation.product_line_for(category)
+            or seuk_null_validation.product_line_for(category)
         ):
             continue
         if not include_youtube and str(category).lower() == 'youtube':
@@ -2570,6 +2571,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
         cursor, target_date, null_validation,
         **({'category': requested_category} if requested_category else {})
     )
+    total_null_issues += seuk_null_validation.append_null_stats(
+        cursor, target_date, null_validation, category=requested_category)
     total_null_issues += seib_null_validation.append_null_stats(
         cursor, target_date, null_validation, category=requested_category)
     total_null_issues += seda_null_validation.append_null_stats(
@@ -2590,6 +2593,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
 def get_null_detail(cursor, target_date, category, retailer, days, column):
     """NULL 필드 상세 조회 — 특정 컬럼의 NULL 행만 조회. dict 반환."""
 
+    if seuk_null_validation.product_line_for(category):
+        return seuk_null_validation.null_detail(cursor, target_date, category, retailer, column, days=days)
     if seib_null_validation.product_line_for(category):
         return seib_null_validation.null_detail(cursor, target_date, category, retailer, column, days=days)
     if seda_null_validation.product_line_for(category):
@@ -3007,6 +3012,8 @@ VALID_TABLES_UPDATE = ({
 } | {
     source['table_name'] for source in seda_null_validation.SEDA_SOURCE_CONFIG.values()
 } | {
+    source['table_name'] for source in seuk_null_validation.SEUK_SOURCE_CONFIG.values()
+} | {
     source['table_name'] for source in seib_null_validation.SEIB_SOURCE_CONFIG.values()
 }) - DISABLED_SOURCE_TABLES
 
@@ -3018,6 +3025,7 @@ def _null_evidence_save_source(table_name):
         ('SEA', SEA_RETAIL_SOURCES),
         ('SEDA', seda_null_validation.SEDA_SOURCE_CONFIG),
         ('SEIB', seib_null_validation.SEIB_SOURCE_CONFIG),
+        ('SEUK', seuk_null_validation.SEUK_SOURCE_CONFIG),
         ('SIEL', SIEL_SOURCE_CONFIG),
         ('SEM', getattr(sem_validation, 'SEM_SOURCE_CONFIG', {})),
         ('SEG', getattr(seg_validation, 'SEG_SOURCE_CONFIG', {})),
@@ -3043,7 +3051,7 @@ def _capture_null_review_record(cursor, table_name, record_id, column_name,
     else:
         date_column = source.get('date_column', 'crawl_datetime')
         date_where = (f"{source_date_sql(date_column, retailer=retailer, product=source.get('product_key', ''))} = %s" if country == 'SEA' and (source.get('latest_main_batch') or is_costco(retailer))
-                      else f"{raw_source_date_sql(date_column)} = %s" if country == 'SEM' and source.get('source_key') == 'sem_ldy_dryer'
+                      else f"{raw_source_date_sql(date_column)} = %s" if country == 'SEUK' or (country == 'SEM' and source.get('source_key') == 'sem_ldy_dryer')
                       else f"LEFT(TRIM(CAST({date_column} AS TEXT)), 10) = %s")
         date_params = [str(source_day)]
     # table_name and column_name have already passed the normal-review
@@ -3090,12 +3098,16 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     sem_product_line = sem_validation.product_line_for(table_name)
     seg_product_line = seg_validation.product_line_for(table_name)
     seda_product_line = seda_null_validation.product_line_for(table_name)
+    seuk_product_line = seuk_null_validation.product_line_for(table_name)
     seib_product_line = seib_null_validation.product_line_for(table_name)
     is_siel_format_review = bool(
         siel_source and correction_type_value == 'format_check'
     )
     if not reason and not is_siel_format_review:
         return {'error': '이유 선택은 필수입니다', 'status_code': 400}
+    if seuk_product_line:
+        if correction_type not in {'null', 'null_check'} or column_name not in seuk_null_validation.get_seuk_null_columns(seuk_product_line):
+            return {'error': 'SEUK NULL 검수 대상 컬럼이 아닙니다', 'status_code': 400}
     if seib_product_line:
         allowed = (seib_format_validation.get_format_columns(seib_product_line)
                    if correction_type_value == 'format_check'
@@ -3182,7 +3194,13 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
     else:
         select_columns = f"{column_name}, account_name, item"
 
-    if seib_product_line:
+    if seuk_product_line:
+        try:
+            row = seuk_null_validation.select_record(
+                cursor, crawl_date, seuk_product_line, record_id, column_name)
+        except (TypeError, ValueError):
+            return {'error': '검수일 또는 검수 대상이 올바르지 않습니다', 'status_code': 400}
+    elif seib_product_line:
         try:
             row = seib_null_validation.select_record(
                 cursor, crawl_date, seib_product_line, record_id, column_name,
@@ -3262,6 +3280,8 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 
     old_value = row[0]
+    if seuk_product_line and not seuk_null_validation.missing(old_value):
+        return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     if seib_product_line and correction_type_value == 'null_check' and not seib_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     if seda_product_line and correction_type_value == 'null_check' and not seda_null_validation.missing(old_value):

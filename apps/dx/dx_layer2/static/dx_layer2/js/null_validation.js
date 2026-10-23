@@ -12,6 +12,7 @@ let modalState = {
 };
 var _dupPageSize = 50;
 const SEA_TSE_NULL_HISTORY_TABLES = new Set([
+    'seuk_tv_retail', 'seuk_ref_retail', 'seuk_ldy_retail', 'seuk_ldy_dryer_retail',
     'seib_tv_retail', 'seib_ref_retail', 'seib_ldy_retail', 'seib_ldy_dryer_retail',
     'seda_tv_retail', 'seda_ref_retail', 'seda_ldy_retail',
     'tv_retail',
@@ -226,12 +227,14 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
         /^dx_seda\./.test(tableName));
     const isCostcoDryer = tableName === 'public.ldy_dryer_retail' && accountName.toLowerCase() === 'costco';
     const isSeib = /^dx_seib\./.test(tableName);
+    const isSeuk = /^dx_seuk\./.test(tableName);
     const dateExpression = isCostcoDryer
         ? `TO_CHAR(NULLIF(BTRIM(CAST(${dateColumn} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`
-        : isSeib ? `LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10)` : dateColumn;
+        : (isSeib || isSeuk) ? `LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10)` : dateColumn;
     const historyStart = _tseHistoryStartDate(sourceDate, days);
     const startDate = isCostcoDryer && historyStart < '2026-10-09' ? '2026-10-09'
-        : isSeib && historyStart < '2026-10-18' ? '2026-10-18' : historyStart;
+        : isSeib && historyStart < '2026-10-18' ? '2026-10-18'
+        : isSeuk && data.active_from && historyStart < data.active_from ? data.active_from : historyStart;
     const where = [
         `${dateExpression} >= ${_tseSqlLiteral(startDate)}`,
         `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
@@ -279,9 +282,13 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
                        tableName === 'SEG LDY' ? 'seg_ldy_retail' :
                        tableName === 'SEG LDY_DRYER' ? 'seg_ldy_dryer_retail' :
                        tableName === 'SEIB TV' ? 'seib_tv_retail' :
+                       tableName === 'SEUK TV' ? 'seuk_tv_retail' :
                        tableName === 'SEIB REF' ? 'seib_ref_retail' :
+                       tableName === 'SEUK REF' ? 'seuk_ref_retail' :
                        tableName === 'SEIB LDY' ? 'seib_ldy_retail' :
+                       tableName === 'SEUK LDY' ? 'seuk_ldy_retail' :
                        tableName === 'SEIB LDY_DRYER' ? 'seib_ldy_dryer_retail' :
+                       tableName === 'SEUK LDY_DRYER' ? 'seuk_ldy_dryer_retail' :
                        tableName === 'SEM TV' ? 'sem_tv_retail' :
                        tableName === 'SEM REF' ? 'sem_ref_retail' :
                        tableName === 'SEM LDY_DRYER' ? 'sem_ldy_dryer_retail' :
@@ -512,7 +519,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isSemRetail = /^sem_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
-    const isSeibRetail = /^seib_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
+    const isSeibRetail = /^(seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isLegacyRetail = isSeaTv || tableParam === 'hhp_retail';
     const isSeaDMinusOneSource = isSeaRetail || isSedaRetail || tableParam === 'youtube';
     const isRetail = isLegacyRetail || isSeaRetail || isSielRetail

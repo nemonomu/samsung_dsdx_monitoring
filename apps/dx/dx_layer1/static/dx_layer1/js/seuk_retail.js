@@ -5,7 +5,7 @@
         if (!original) return '';
         var html = original(check, checkIdx);
         if (check.source_date < check.active_from) {
-            html = html.replace(/설정된 리테일러 데이터 없음/g, '2026-10-25부터 수집 여부를 점검합니다.')
+            html = html.replace(/설정된 리테일러 데이터 없음/g, check.active_from + '부터 수집 여부를 점검합니다.')
                 .replace(/0\/0건/g, '운영 시작 전');
         }
         return html
