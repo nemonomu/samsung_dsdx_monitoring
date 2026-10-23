@@ -1,0 +1,26 @@
+.audit-detail { color:var(--text-primary); }
+.audit-detail h3 { font-size:14px; margin:0 0 10px; }
+.audit-muted { color:var(--text-secondary); font-size:12px; line-height:1.7; }
+.audit-null { color:#ef4444; font-family:monospace; }
+.audit-source-head { display:flex; justify-content:space-between; align-items:center; gap:18px; margin-top:24px; }
+.audit-url { white-space:nowrap; padding:10px 14px; border:1px solid var(--border-color); border-radius:6px; }
+.audit-values { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.audit-values>div { padding:16px; border:1px solid var(--border-color); border-radius:8px; overflow-wrap:anywhere; }
+.audit-values label { display:block; color:var(--text-secondary); font-size:12px; margin-bottom:10px; }
+.audit-toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:16px 0 10px; font-size:12px; }
+.audit-toolbar>b { margin-right:auto; }
+.audit-toolbar input { width:62px; padding:6px; border:1px solid var(--border-color); border-radius:5px; }
+.audit-table-wrap { overflow:auto; max-height:440px; border:1px solid var(--border-color); border-radius:8px; }
+.audit-table { border-collapse:collapse; width:100%; font-size:12px; }
+.audit-table th { position:sticky; top:0; background:#f7f9fc; z-index:1; white-space:nowrap; }
+.audit-table td,.audit-table th { border:1px solid var(--border-color); padding:10px 12px; text-align:left; max-width:320px; overflow-wrap:anywhere; }
+.audit-target { background:#eff5ff; }
+.audit-badge { display:inline-block; background:#ecf0f7; padding:2px 5px; font-size:10px; color:#687a96; border-radius:4px; white-space:nowrap; }
+.audit-target .audit-badge { background:#e0f4ef; color:#168875; }
+.audit-warning { background:#fff6e8; border:1px solid #f0d5b2; padding:12px; border-radius:6px; font-size:12px; line-height:1.7; }
+.audit-event-title { margin-top:24px!important; }
+.audit-events>div { border-left:2px solid #d7c9e6; padding:0 0 14px 14px; font-size:12px; }
+.audit-events p { margin:6px 0; overflow-wrap:anywhere; }
+.audit-query-panel { margin-top:18px; padding:16px; border:1px solid #d7c9e6; border-radius:8px; background:#faf8fe; }
+.audit-query-panel pre { white-space:pre; overflow:auto; padding:14px; background:#eef3fc; font:12px/1.7 Consolas,monospace; border-radius:6px; }
+@media(max-width:760px) { .audit-values { grid-template-columns:1fr; } .audit-source-head { align-items:flex-start; flex-direction:column; } }

@@ -523,6 +523,7 @@
     }
 
     function showCorrectionDetail(item, no) {
+        if (window.CorrectionAudit) return window.CorrectionAudit.open(item);
         var CATEGORY_NAME = {
             'tv_retail_com': 'TV',
             'dx_tse.dx_tse_tv_retail_com': 'TSE TV',
@@ -822,7 +823,7 @@
     };
     L4._sectionInit['corrections'] = function() {
         initCorrectionsFilterBar();
-        AppModal.create('corr-detail', { style: 'compact', closeOnOverlay: true });
+        AppModal.create('corr-detail', { style: 'wide', closeOnOverlay: true });
         AppModal.create('corr-history', { style: 'wide', closeOnOverlay: true });
     };
 

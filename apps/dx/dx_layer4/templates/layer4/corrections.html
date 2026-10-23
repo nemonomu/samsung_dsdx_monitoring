@@ -4,6 +4,7 @@
 {% block page_title %}검수기록{% endblock %}
 
 {% block layer4_css %}
+<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261023-audit-query">
 <style>
     .log-tabs {
         display: flex;
@@ -121,5 +122,6 @@
 
 {% block layer4_js %}
 <script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
-<script src="{% static 'dx_layer4/js/corrections.js' %}?v=2"></script>
+<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261023-audit-query"></script>
+<script src="{% static 'dx_layer4/js/corrections.js' %}?v=20261023-audit-query"></script>
 {% endblock %}

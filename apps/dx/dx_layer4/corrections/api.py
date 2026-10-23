@@ -5,9 +5,48 @@ Layer 4 검수기록 API — 목록 조회, 취소, 이유 조회, 이력 조회
 import json
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET
 from apps.common.response import safe_error
 from apps.common.params import parse_date
 from .services import get_corrections, cancel_corrections, get_bulk_history, get_history
+
+
+def _detail_arguments(request):
+    correction_id = int(request.GET.get('id', ''))
+    days = int(request.GET.get('days', 3))
+    if correction_id < 1 or not 1 <= days <= 30:
+        raise ValueError('검수기록 ID 또는 조회 일수가 올바르지 않습니다.')
+    return correction_id, days
+
+
+@require_GET
+def correction_detail(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': '로그인이 필요합니다.'}, status=403)
+    try:
+        from . import detail
+        return JsonResponse(detail.detail(*_detail_arguments(request)))
+    except LookupError as e:
+        return JsonResponse({'error': str(e)}, status=404)
+    except (ValueError, TypeError) as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return safe_error(e)
+
+
+@require_GET
+def correction_query(request):
+    if not (request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser)):
+        return JsonResponse({'error': '관리자만 조회 쿼리를 확인할 수 있습니다.'}, status=403)
+    try:
+        from . import detail
+        return JsonResponse(detail.queries(*_detail_arguments(request)))
+    except LookupError as e:
+        return JsonResponse({'error': str(e)}, status=404)
+    except (ValueError, TypeError) as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return safe_error(e)
 
 
 def corrections_list(request):

@@ -38,6 +38,8 @@ urlpatterns = [
 
     # API — 검수기록
     path('api/corrections/', corr_api.corrections_list, name='api_corrections'),
+    path('api/corrections/detail/', corr_api.correction_detail, name='api_correction_detail'),
+    path('api/corrections/query/', corr_api.correction_query, name='api_correction_query'),
     path('api/corrections/cancel/', corr_api.corrections_cancel, name='api_corrections_cancel'),
     path('api/corrections/history/', corr_api.corrections_history, name='api_corrections_history'),
     path('api/corrections/bulk-history/', corr_api.corrections_bulk_history, name='api_corrections_bulk_history'),
