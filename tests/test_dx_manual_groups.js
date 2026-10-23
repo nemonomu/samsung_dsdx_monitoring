@@ -43,6 +43,18 @@ test('canonical common records are returned once, using their own editable objec
   assert.deepEqual(Array.from(manualFieldsForScope(rows,'tv','tv'),f=>f.field),['screen_size']);
 });
 
+test('deleted columns disappear from common and product lists without mutating evidence', () => {
+  const rows = [{category:'all',fields:[{field:'sku',deleted:true}]},
+    {category:'tv',fields:[{field:'sku'},{field:'screen_size',deleted:true}]},
+    {category:'ref',fields:[{field:'sku'},{field:'screen_size'}]}];
+  const before = JSON.stringify(rows);
+  assert.equal(manualCommonKeys(rows).size, 0);
+  assert.equal(manualFieldsForScope(rows,'tv','common').length, 0);
+  assert.equal(manualFieldsForScope(rows,'tv','tv').length, 0);
+  assert.deepEqual(Array.from(manualFieldsForScope(rows,'ref','ref'),f=>f.field),['screen_size']);
+  assert.equal(JSON.stringify(rows), before);
+});
+
 test('missing, unknown or differently sourced fields are never merged by name', () => {
   const field = (name, direct = true) => ({field: name, direct});
   const datasets = [

@@ -21,12 +21,12 @@ const manualCommonDefinitions = {
 
 function manualCommonKeys(datasets) {
   const shared = datasets.find(dataset => dataset.category === 'all');
-  if (shared) return new Set(shared.fields.filter(f => !manualExcludedFields.has(f.field)).map(f => f.field));
+  if (shared) return new Set(shared.fields.filter(f => !f.deleted && !manualExcludedFields.has(f.field)).map(f => f.field));
   if (datasets.length < 2) return new Set();
   return new Set(datasets[0].fields.filter(first =>
-    !manualExcludedFields.has(first.field) && Object.hasOwn(manualCommonDefinitions, first.field) &&
+    !first.deleted && !manualExcludedFields.has(first.field) && Object.hasOwn(manualCommonDefinitions, first.field) &&
     datasets.every(dataset => dataset.fields.some(candidate =>
-      candidate.field === first.field && candidate.direct === first.direct
+      !candidate.deleted && candidate.field === first.field && candidate.direct === first.direct
     ))
   ).map(field => field.field));
 }
@@ -35,6 +35,7 @@ function manualFieldsForScope(datasets, category, scope) {
   const common = manualCommonKeys(datasets);
   const shared = datasets.find(dataset => dataset.category === 'all');
   const fields = (scope === 'common' && shared ? shared : datasets.find(dataset => dataset.category === category))?.fields || [];
-  return fields.filter(field => !manualExcludedFields.has(field.field) && (scope === 'common' ? common.has(field.field) : !common.has(field.field)));
+  const deletedCommon = new Set(shared?.fields.filter(f => f.deleted).map(f => f.field) || []);
+  return fields.filter(field => !field.deleted && !deletedCommon.has(field.field) && !manualExcludedFields.has(field.field) && (scope === 'common' ? common.has(field.field) : !common.has(field.field)));
 }
 const manualExcludedFields = new Set(['id', 'country', 'account_name', 'product_url', 'main_rank', 'bsr_rank', 'batch_id', 'product']);

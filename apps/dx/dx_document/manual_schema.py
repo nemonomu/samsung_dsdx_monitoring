@@ -90,7 +90,7 @@ def validate_structure(data, seed):
             names.add(field['field']); numbers.add(field['n'])
             if type(field.get('direct')) is not bool:
                 raise ValueError('화면 표시 여부를 확인하세요.')
-            for flag in ('commonEdited', 'userEdited', 'verified'):
+            for flag in ('commonEdited', 'userEdited', 'verified', 'deleted'):
                 if flag in field and type(field[flag]) is not bool:
                     raise ValueError('컬럼 편집 상태가 올바르지 않습니다.')
             for prop in TEXT_KEYS:

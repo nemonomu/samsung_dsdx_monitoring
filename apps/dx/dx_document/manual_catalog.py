@@ -119,9 +119,9 @@ def prepare_data(data, catalog=None):
         for source in datasets:
             for field in source['fields']:
                 key = field['field']
-                if key in existing or key not in COMMON or key in EXCLUDED:
+                if field.get('deleted') or key in existing or key not in COMMON or key in EXCLUDED:
                     continue
-                variants = [(ds, f) for ds in datasets for f in ds['fields'] if f['field'] == key]
+                variants = [(ds, f) for ds in datasets for f in ds['fields'] if f['field'] == key and not f.get('deleted')]
                 if len(variants) < 2 or len({f['direct'] for _, f in variants}) != 1:
                     continue
                 preferred = next((f for ds, f in variants if ds['category'] == 'ref'), field)

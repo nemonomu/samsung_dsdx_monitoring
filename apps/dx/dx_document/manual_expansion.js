@@ -15,9 +15,10 @@ function manualEntry() {
 }
 function manualAnnotationFields() {
   // Keep every existing box link, including mixed common/product captures.
-  const fields = new Map(ds().fields.map(f => [f.field, f]));
-  for (const row of manualAllDatasets()) for (const f of row.fields) if (!fields.has(f.field)) fields.set(f.field, f);
-  return [...fields.values()].filter(f => !manualExcludedFields.has(f.field));
+  const fields = new Map(ds().fields.filter(f => !f.deleted).map(f => [f.field, f]));
+  const deletedCommon = new Set(manualAllDatasets().find(d => d.category === 'all')?.fields.filter(f => f.deleted).map(f => f.field) || []);
+  for (const row of manualAllDatasets()) for (const f of row.fields) if (!f.deleted && !fields.has(f.field)) fields.set(f.field, f);
+  return [...fields.values()].filter(f => !deletedCommon.has(f.field) && !manualExcludedFields.has(f.field));
 }
 function manualDisplayField(f, photo) {
   if (S.scope !== 'common' || f.commonEdited || !photo) return f;
@@ -73,6 +74,22 @@ $('retailerNav').after(addRetailer);
 const addColumn=document.createElement('button');
 addColumn.id='manualAddColumn';addColumn.className='manual-add-button';addColumn.textContent='＋ 컬럼 추가';
 document.querySelector('.fieldpane-head').append(addColumn);
+const deleteColumn=document.createElement('button');
+deleteColumn.id='manualDeleteColumn';deleteColumn.className='manual-add-button';deleteColumn.textContent='선택 컬럼 삭제';
+document.querySelector('.fieldpane-head').append(deleteColumn);
+deleteColumn.onclick=()=>{
+  if(!editing||saveBusy)return;
+  manualFinishInlineEdit();
+  const selected=manualScopedFields().find(f=>f.field===S.field);
+  if(!selected)return;
+  const scope=S.scope==='common'?'공통 컬럼 · 이 쇼핑몰의 모든 적용 제품군':manualCategoryLabel(S.c)+' 제품군';
+  if(!confirm(profile().name+' / '+scope+'\n'+selected.label+' ('+selected.field+') 컬럼을 매뉴얼에서 삭제할까요?\n저장을 눌러야 반영되며, 저장 전에는 되돌리기로 복구할 수 있습니다.'))return;
+  structureUndo();
+  const targets=S.scope==='common'?manualAllDatasets():[ds()];
+  for(const row of targets)for(const f of row.fields)if(f.field===selected.field)f.deleted=true;
+  S.field='';S.photo=0;S.q='';$('fieldSearch').value='';
+  changed();render();showToast('컬럼을 삭제했습니다. 저장을 눌러 반영하세요.');
+};
 const structureDialog=document.createElement('dialog');
 structureDialog.className='editdialog manual-structure-dialog';structureDialog.id='manualStructureDialog';
 structureDialog.innerHTML='<form id="manualStructureForm"><div class="dialoghead"><h2 id="manualStructureTitle"></h2><button type="button" id="manualStructureClose" class="close" aria-label="닫기">×</button></div><div class="dialogbody" id="manualStructureBody"></div><p id="manualStructureError" class="formerror" role="alert"></p><div class="manual-structure-actions"><button type="submit" class="primary">추가</button></div></form>';
@@ -113,9 +130,14 @@ addColumn.onclick=()=>{
     if(manualExcludedFields.has(name))throw new Error('이 컬럼은 매뉴얼 표시에서 제외된 항목입니다.');
     const target=manualAllDatasets().find(d=>d.category===(scope==='common'?'all':scope));
     const shared=manualAllDatasets().find(d=>d.category==='all');
-    if(target.fields.some(f=>f.field===name)||shared?.fields.some(f=>f.field===name)||(scope==='common'&&manualDatasets().some(d=>d.fields.some(f=>f.field===name))))throw new Error('이미 등록된 컬럼입니다. 기존 컬럼을 수정하세요.');
+    if(target.fields.some(f=>f.field===name&&!f.deleted)||shared?.fields.some(f=>f.field===name&&!f.deleted)||(scope==='common'&&manualDatasets().some(d=>d.fields.some(f=>f.field===name&&!f.deleted))))throw new Error('이미 등록된 컬럼입니다. 기존 컬럼을 수정하세요.');
+    if(scope!=='common'&&shared?.fields.some(f=>f.field===name&&f.deleted))throw new Error('삭제한 공통 컬럼은 적용 범위를 공통으로 선택해 다시 추가하세요.');
     structureUndo();
-    target.fields.push({n:Math.max(0,...target.fields.map(f=>f.n))+1,field:name,label,scope:'main · bsr',page:'',position:'',original:'',example:'',note:'',direct:$('manualColumnDirect').checked,images:[]});
+    const previous=target.fields.find(f=>f.field===name&&f.deleted);
+    if(previous){
+      previous.deleted=false;previous.label=label;
+      if(scope==='common')for(const row of manualDatasets())for(const f of row.fields)if(f.field===name)f.deleted=false;
+    }else target.fields.push({n:Math.max(0,...target.fields.map(f=>f.n))+1,field:name,label,scope:'main · bsr',page:'',position:'',original:'',example:'',note:'',direct:$('manualColumnDirect').checked,images:[]});
     S.scope=scope;if(scope!=='common')S.c=scope;S.field=name;S.photo=0;S.q='';$('fieldSearch').value='';
   });
 };
@@ -123,10 +145,10 @@ const originalUndo=$('undoEdit').onclick;
 $('undoEdit').onclick=()=>{
   const item=undoStack.at(-1);
   if(item?.kind!=='structure'){originalUndo();return;}
-  restoreObject(D,item.before);Object.assign(S,item.state);undoStack.length=0;changed();render();showToast('구성 추가를 취소했습니다.');
+  restoreObject(D,item.before);Object.assign(S,item.state);undoStack.length=0;changed();render();showToast('구성 변경을 취소했습니다.');
 };
 const expandedEditorStatus=renderEditorStatus;
-renderEditorStatus=function(){expandedEditorStatus();addRetailer.hidden=addColumn.hidden=!editing;addRetailer.disabled=addColumn.disabled=saveBusy;};
+renderEditorStatus=function(){expandedEditorStatus();addRetailer.hidden=addColumn.hidden=deleteColumn.hidden=!editing;addRetailer.disabled=addColumn.disabled=saveBusy;deleteColumn.disabled=saveBusy||!manualScopedFields().some(f=>f.field===S.field);};
 
 // New images and canonical common text use the selected field, without product switching.
 const beforeTextEdit=$('editText').onclick;

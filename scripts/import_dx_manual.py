@@ -56,7 +56,7 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261021-guide-links"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261023-column-delete"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')
@@ -97,6 +97,9 @@ def build(source):
     code = re.sub(r"const countries=\[.*?\],shortCat=", "const countries=[...new Set(Object.values(D.profiles).map(p=>p.country))].map(n=>[n,({'미국':'US','독일':'DE','스페인':'ES','멕시코':'MX','태국':'TH','브라질':'BR','인도':'IN'})[n]||'']),shortCat=", code, count=1)
     code = code.replace("dryer:'건조기'}", "dryer:'건조기',hhp:'HHP'}")
     code = code.replace("const ds=()=>D.datasets.find(x=>x.retailer===S.r&&x.category===S.c)", "const ds=()=>manualCurrentDataset()")
+    code = code.replace("field=()=>ds().fields.find(f=>f.field===S.field)||ds().fields[0]", "field=()=>manualScopedFields().find(f=>f.field===S.field)||manualScopedFields()[0]")
+    for variable in ('r', 'v'):
+        code = code.replace(f'find({variable}=>{variable}.field===f)?.n', f'find({variable}=>!{variable}.deleted&&{variable}.field===f)?.n')
     code = code.replace("ds().fields[0].field}", "ds().fields[0]?.field||''}")
     entry_start = code.index('const entry=')
     entry_end = code.index('\nfunction photos()', entry_start)

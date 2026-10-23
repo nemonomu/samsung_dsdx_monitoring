@@ -17,10 +17,12 @@ def guide_targets(data):
         profile = data['profiles'][retailer]
         country, token = retailer.split('/', 1)
         product = 'LDY_DRYER' if row['category'] == 'dryer' else row['category'].upper()
-        fields = {f['field']: row['category'] for f in row['fields']}
-        fields.update({f['field']: 'common' for f in common.get(retailer, {}).get('fields', [])})
+        shared = common.get(retailer, {}).get('fields', [])
+        deleted_common = {f['field'] for f in shared if f.get('deleted')}
+        fields = {f['field']: row['category'] for f in row['fields'] if not f.get('deleted')}
+        fields.update({f['field']: 'common' for f in shared if not f.get('deleted')})
         for column, scope in fields.items():
-            if column in EXCLUDED:
+            if column in EXCLUDED or column in deleted_common:
                 continue
             target = dict(retailer=retailer, country=profile['country'], category=row['category'], scope=scope, field=column)
             for alias in (token, profile['name']):

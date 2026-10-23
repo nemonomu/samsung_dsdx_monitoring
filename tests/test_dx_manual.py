@@ -160,6 +160,54 @@ class ManualTests(TestCase):
         self.assertEqual(4, len([p for p in saved['photos'] if p['retailer'] == key]))
         self.assertEqual('테스트 쇼핑몰', saved['profiles'][key]['name'])
 
+    def test_deleted_column_survives_catalog_reload_and_preserves_history(self):
+        data = prepare_data(self.data)
+        row = next(d for d in data['datasets'] if d['key'] == 'SEG/expert/tv')
+        field = next(f for f in row['fields'] if f['field'] == 'summarized_review_content')
+        before = copy.deepcopy(field)
+        self.assertEqual(200, self.save(data=data).status_code)
+        field['deleted'] = True
+        self.assertEqual(200, self.save(1, data).status_code)
+        loaded = self.client.get(PREFIX + 'history/?version=2').json()['data']
+        current = next(d for d in loaded['datasets'] if d['key'] == row['key'])
+        self.assertEqual([dict(before, deleted=True)], [f for f in current['fields'] if f['field'] == field['field']])
+        target, error = requested_target(loaded, dict(country='SEG', product='TV', retailer='expert', column=field['field']))
+        self.assertIsNone(target)
+        self.assertTrue(error)
+        target, error = requested_target(loaded, dict(country='SEG', product='REF', retailer='expert', column=field['field']))
+        self.assertIsNotNone(target)
+        self.assertFalse(error)
+        self.assertEqual(data['photos'], loaded['photos'])
+        old = self.client.get(PREFIX + 'history/?version=1').json()['data']
+        restored = next(d for d in old['datasets'] if d['key'] == row['key'])
+        self.assertEqual(before, next(f for f in restored['fields'] if f['field'] == field['field']))
+        self.assertEqual(200, self.save(2, old).status_code)
+
+    def test_common_column_deletion_is_retailer_scoped_and_reload_does_not_resurrect_it(self):
+        data = prepare_data(self.data)
+        for row in data['datasets']:
+            if row['retailer'] == 'SEA/costco':
+                for field in row['fields']:
+                    if field['field'] == 'retailer_sku_name':
+                        field['deleted'] = True
+        self.assertEqual(200, self.save(data=data).status_code)
+        loaded = self.client.get(PREFIX + 'history/?version=1').json()['data']
+        urls = guide_urls(loaded)
+        for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
+            self.assertNotIn(f'SEA|{product}|costco|retailer_sku_name', urls)
+        self.assertIn('SEA|REF|homedepot|retailer_sku_name', urls)
+        shared = next(d for d in loaded['datasets'] if d['key'] == 'SEA/costco/all')
+        self.assertTrue(next(f for f in shared['fields'] if f['field'] == 'retailer_sku_name')['deleted'])
+
+    def test_deleted_flag_is_boolean_and_does_not_allow_source_identifier_changes(self):
+        for invalid in ('true', 1, None, {}):
+            data = copy.deepcopy(self.data)
+            data['datasets'][0]['fields'][0]['deleted'] = invalid
+            self.assertEqual(400, self.save(data=data).status_code)
+        data = copy.deepcopy(self.data)
+        data['datasets'][0]['fields'][0].update(deleted=True, n=9999)
+        self.assertEqual(400, self.save(data=data).status_code)
+
     def test_expanded_structure_rejects_duplicate_fields_bad_urls_and_foreign_links(self):
         data = prepare_data(self.data, [])
         common = next(d for d in data['datasets'] if d['category'] == 'all')
