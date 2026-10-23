@@ -144,6 +144,65 @@ class IssueTests(TestCase):
         self.observe(target=date(2026,8,31),total=0,raw=0)
         self.assertFalse(Issue.objects.exists())
 
+    def past_listing(self, **params):
+        req = RequestFactory().get('/', params)
+        req.user = SimpleNamespace(is_authenticated=True)
+        return api.listing(req)
+
+    def create_past_issue(self, country, day, **overrides):
+        values = dict(environment='production', country=country, product='TV',
+            retailer={'SEA':'Walmart', 'SEDA':'Casas Bahia', 'SEG':'OTTO', 'SIEL':'Amazon'}[country],
+            source_date=day, column='', severity='uncollected', observed_count=0,
+            current_count=0, first_detected_at=NOW, last_checked_at=NOW)
+        values.update(overrides)
+        return Issue.objects.create(**values)
+
+    def test_past_listing_excludes_current_us_brazil_day_and_rolls_forward(self):
+        for country in ('SEA', 'SEDA', 'SEG', 'SIEL'):
+            for day in (21, 22, 23):
+                self.create_past_issue(country, date(2026, 10, day))
+        # Column incidents and all products obey the same source-day boundary.
+        self.create_past_issue('SEA', date(2026, 10, 22), product='LDY_DRYER', column='offer')
+        for inspection_day, latest in ((23, '2026-10-21'), (24, '2026-10-22')):
+            payload = json.loads(self.past_listing(inspection_date=f'2026-10-{inspection_day}').content)
+            for country in ('SEA', 'SEDA'):
+                rows = [r for r in payload['issues'] if r['country'] == country]
+                self.assertEqual(max(r['source_date'] for r in rows), latest)
+            for country in ('SEG', 'SIEL'):
+                self.assertEqual(len([r for r in payload['issues'] if r['country'] == country]), 3)
+        self.assertEqual(Issue.objects.count(), 13)  # Listing never deletes evidence.
+        self.assertEqual(Issue.objects.filter(status='open').count(), 13)
+
+    def test_past_listing_cutoff_applies_to_country_filters_and_history(self):
+        for country in ('SEA', 'SEDA'):
+            for status in ('open', 'resolved', 'excepted'):
+                for day in (21, 22):
+                    self.create_past_issue(country, date(2026, 10, day), column=status, status=status)
+            for status in ('open', 'resolved', 'excepted', 'all'):
+                payload = json.loads(self.past_listing(country=country, status=status,
+                    inspection_date='2026-10-23').content)
+                self.assertEqual(len(payload['issues']), 3 if status == 'all' else 1)
+                self.assertTrue(all(r['source_date'] == '2026-10-21' for r in payload['issues']))
+
+    def test_past_listing_defaults_to_kst_inspection_day_and_validates_dates(self):
+        self.create_past_issue('SEA', date(2026, 10, 22))
+        with patch.object(api.timezone, 'now', return_value=datetime.fromisoformat('2026-10-23T15:01:00+00:00')):
+            payload = json.loads(self.past_listing(country='SEA').content)
+        self.assertEqual(payload['inspection_date'], '2026-10-24')
+        self.assertEqual(len(payload['issues']), 1)
+        for invalid in ('', '2026-02-30', '20261023', '2026-10-23T00:00:00'):
+            self.assertEqual(self.past_listing(inspection_date=invalid).status_code, 400)
+
+    def test_past_listing_month_year_and_leap_boundaries(self):
+        for inspection_day in (date(2026, 11, 1), date(2027, 1, 1), date(2028, 3, 1)):
+            for country in ('SEA', 'SEDA'):
+                past = self.create_past_issue(country, inspection_day-timedelta(days=2))
+                current = self.create_past_issue(country, inspection_day-timedelta(days=1))
+                payload = json.loads(self.past_listing(country=country, inspection_date=str(inspection_day)).content)
+                ids = {r['id'] for r in payload['issues']}
+                self.assertIn(past.id, ids)
+                self.assertNotIn(current.id, ids)
+
     def test_acknowledgement_exception_and_revision_history(self):
         row=self.observe()
         self.assertEqual(self.request(row,'acknowledge')[0],200)

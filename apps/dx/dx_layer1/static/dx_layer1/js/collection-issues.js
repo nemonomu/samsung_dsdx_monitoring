@@ -23,6 +23,7 @@
     }
     function scope(values) {
         const params = new URLSearchParams({status});
+        if (values.date) params.set('inspection_date', values.date);
         const country = countries[section] || values.country;
         if (country) params.set('country',country);
         if (values.product) params.set('product',values.product);

@@ -45,6 +45,7 @@ with sync_playwright() as p:
     page.add_script_tag(path=str(STATIC/'js/collection-issues.js'))
     page.evaluate("CollectionIssues.load({date:'2026-10-20'})")
     page.wait_for_selector('[data-ci-detail]')
+    assert page.evaluate("new URLSearchParams(calls.at(-1).url.split('?')[1]).get('inspection_date')") == '2026-10-20'
     assert page.locator('.ci-head h3').inner_text() == '과거 미해결 · 미수집 1건'
     assert 'inventory_status' not in page.locator('.ci-panel').inner_text()
     assert page.evaluate("""()=>{
@@ -53,6 +54,7 @@ with sync_playwright() as p:
     page.screenshot(path=str(OUT/'backlog-desktop.png'))
     page.evaluate("CollectionIssues.load({date:'2026-10-19'})")
     page.wait_for_selector('[data-ci-sql]')
+    assert page.evaluate("new URLSearchParams(calls.at(-1).url.split('?')[1]).get('inspection_date')") == '2026-10-19'
     assert '2026-10-14' in page.locator('.ci-panel').inner_text()
     page.locator('[data-ci-sql]').click()
     page.wait_for_selector('#ci-sql-text')

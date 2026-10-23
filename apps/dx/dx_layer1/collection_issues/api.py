@@ -8,6 +8,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.common.inspection_dates import resolve_monitoring_date
 from apps.dx.dx_layer1.models import CollectionIssue as Issue, CollectionIssueScan as Scan
 from apps.dx.dx_layer1.column_statistics.services import catalog, daily_counts
 from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, KST
@@ -48,6 +49,13 @@ def listing(request):
         if status not in ('open', 'resolved', 'excepted', 'all'):
             raise ValueError()
         records = Issue.objects.filter(environment=environment(), source_date__gte=START_DATE, **filters)
+        inspection_date = request.GET.get('inspection_date', timezone.now().astimezone(KST).date().isoformat())
+        # D-1 is the current inspection's source day, not a past incident.
+        # Filter the listing only: retain the original evidence and recovery scans.
+        for country in ('SEA', 'SEDA'):
+            current_source_date = resolve_monitoring_date(
+                inspection_date, country, country.lower() + '_tv')['source_date']
+            records = records.exclude(country=country, source_date__gte=current_source_date)
         if status != 'all':
             records = records.filter(status=status)
         rows = list(records.order_by('source_date', 'country', 'retailer', 'product', 'column'))
@@ -57,7 +65,8 @@ def listing(request):
         scans = list(Scan.objects.filter(environment=environment(), **filters).values(
             'country', 'product', 'retailer', 'coverage_start', 'start_basis',
             'scanned_through', 'last_checked_at', 'error'))
-        return reply({'start_date': str(START_DATE), 'issues': [serialize(r) for r in rows],
+        return reply({'start_date': str(START_DATE), 'inspection_date': inspection_date,
+                      'issues': [serialize(r) for r in rows],
                       'scans': scans, 'target_count': len(jobs)})
     except (ValueError, TypeError):
         return reply({'error': '조회 조건을 확인해주세요.'}, 400)
