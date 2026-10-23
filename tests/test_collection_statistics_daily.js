@@ -317,5 +317,36 @@ async function flush() {
     const readyBaseline = elements['cs-table-body'].innerHTML.match(/<td class="cs-baseline">(.*?)<\/td>/s)[1];
     assert(readyBaseline.includes('<strong>100</strong>'));
     assert(!readyBaseline.includes('고정 기준'));
-    console.log('Daily statistics: target-date baselines, fixed rules, slots, verification, observation and alerts passed.');
+    // Apply the same live country payload used by the dashboard over a saved zero.
+    let liveReceive, refreshes=0;
+    context.L1={liveCollection:{isInspecting:()=>false,poll(_scope,receive){liveReceive=receive;return {stop(){},refresh(){refreshes++;}};},
+        preserveView(render){render();}}};
+    context.document.querySelector=()=>null;
+    elements['cs-country'].value='SEA';elements['cs-product'].value='REF';
+    elements['cs-date'].value='2026-09-20';elements['cs-days'].value='5';elements['cs-retailer'].value='Lowes';
+    elements['cs-filters'].fire('submit');await flush();
+    const liveRow={product:'REF',retailer:'Lowes',slot:'daily',date:'2026-09-19',state:'complete',
+        main:199,bsr:100,total:204,batch_id:'recollected',observation_state:'ready',comparison_state:'ready',
+        bsr_comparison_state:'ready',alerts:[],baselines:{main:{value:196,days:28},bsr:{value:100,days:28,rule:'median_28d'}}};
+    const liveSnapshot={country:'SEA',inspection_date:'2026-09-20',source_date:'2026-09-19',available:true,
+        updated_at:'2026-09-20T01:00:00Z',rows:[liveRow]};
+    liveReceive(liveSnapshot);
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong>'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>196</strong>'));
+    assert(elements['cs-updated'].textContent.includes('현재 건수 확인'));
+    liveReceive({...liveSnapshot,rows:[{...liveRow,main:0,bsr:0,total:0}]});
+    assert(elements['cs-table-body'].innerHTML.includes('미수집'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>196</strong>'));
+    const beforeWrongDate=elements['cs-table-body'].innerHTML;
+    liveReceive({...liveSnapshot,inspection_date:'2026-09-21'});
+    assert.equal(elements['cs-table-body'].innerHTML,beforeWrongDate);
+    liveReceive({...liveSnapshot,available:false});
+    assert(elements['cs-table-body'].innerHTML.includes('갱신 실패'));
+    assert(elements['cs-message'].textContent.includes('현재 수집 건수를 확인하지 못했습니다'));
+    liveReceive(liveSnapshot);
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong>'));
+    assert(!elements['cs-table-body'].innerHTML.includes('갱신 실패'));
+    assert.equal(elements['cs-retailer'].value,'Lowes');
+    assert(refreshes>0);
+    console.log('Daily statistics: baselines, reviews, live recollection/deletion, stale dates and failure recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

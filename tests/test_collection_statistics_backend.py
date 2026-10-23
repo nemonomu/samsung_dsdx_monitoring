@@ -823,6 +823,118 @@ class StatisticsReviewTests(TestCase):
         self.assertNotIn('review', attach({**self.day, 'alerts':self.day['alerts'] + [
             {'metric':'main','status':'VOLUME_LOW','baseline':500,'actual':300}]}))
 
+    def test_live_counts_preserve_matching_review_but_not_changed_batches(self):
+        from apps.dx.dx_layer1.collection_statistics import live
+        check = check_for(300, bsr_count=99, retailer='Costco', batch_count=1)
+        check['categories'][0]['name'] = 'LDY_DRYER'
+        with patch.object(live, 'load_current_check', return_value=check):
+            row = live.current_snapshot('SEA', date(2026,10,15))['rows'][0]
+            self.assertEqual('confirm', row['review']['action'])
+            check['categories'][0]['retailers'][0]['batch_count'] = 2
+            row = live.current_snapshot('SEA', date(2026,10,15))['rows'][0]
+            self.assertNotIn('review', row)
+        self.record.refresh_from_db()
+        self.assertEqual(1, self.record.revision)
+
+
+class LiveCollectionTests(TestCase):
+    def setUp(self):
+        from apps.dx.dx_layer1.collection_statistics import live
+        self.live = live
+        self.day = date(2026, 10, 23)
+        self.source = date(2026, 10, 22)
+        self.factory = RequestFactory()
+        for offset in range(1, 29):
+            source = self.source - timedelta(days=offset)
+            Daily.objects.create(country='SEA', inspection_date=source + timedelta(days=1),
+                source_date=source, rows=[sample(196, product='LDY', source_date=str(source))],
+                digest='history', updated_at=timezone.now())
+
+    def check(self, main, bsr, total=None, **extra):
+        check = check_for(main, bsr_count=bsr, count=main if total is None else total, **extra)
+        check['categories'][0]['name'] = 'LDY'
+        return check
+
+    def read(self, check):
+        with patch.object(self.live, 'load_current_check', return_value=check) as loader:
+            with self.assertNumQueries(3):
+                snapshot = self.live.current_snapshot('SEA', self.day)
+            loader.assert_called_once_with('SEA', self.day)
+        return snapshot['rows'][0]
+
+    def test_zero_recollection_and_deletion_use_same_prior_reference_without_writes(self):
+        stale = Daily.objects.create(country='SEA', inspection_date=self.day, source_date=self.source,
+            rows=[sample(0, product='LDY', bsr=0)], digest='stale', updated_at=timezone.now())
+        for main, bsr, total, expected in [(0, 0, 0, 'missing'), (199, 100, 204, 'ready'),
+                                         (100, 50, 105, 'ready'), (0, 0, 0, 'missing')]:
+            row = self.read(self.check(main, bsr, total))
+            self.assertEqual((main, bsr, total), tuple(row[k] for k in ('main','bsr','total')))
+            self.assertEqual((196, 100), tuple(row['rules'][k]['baseline'] for k in ('main','bsr')))
+            self.assertEqual((28, 28), tuple(row['rules'][k]['days'] for k in ('main','bsr')))
+            self.assertEqual(expected, row['bsr_comparison_state'])
+            if main == 199:
+                self.assertEqual([], row['alerts'])
+            if main == 100:
+                self.assertEqual({'main','bsr'}, {a['metric'] for a in row['alerts'] if a['status'] == 'VOLUME_LOW'})
+        stale.refresh_from_db()
+        self.assertEqual(0, stale.rows[0]['main'])
+        self.assertEqual(29, Daily.objects.count())
+
+    def test_target_future_other_product_and_country_never_enter_history(self):
+        for country, source, rows in [
+            ('SEA', self.source, [sample(9999, product='LDY', bsr=9999)]),
+            ('SEA', self.source + timedelta(days=1), [sample(9999, product='LDY', bsr=9999)]),
+            ('SEG', self.source - timedelta(days=1), [sample(9999, product='LDY', bsr=9999)]),
+        ]:
+            Daily.objects.create(country=country, inspection_date=source + timedelta(days=1),
+                source_date=source, rows=rows, digest='other', updated_at=timezone.now())
+        row = self.read(self.check(199, 100, 204))
+        self.assertEqual(196, row['rules']['main']['baseline'])
+        self.assertEqual(100, row['rules']['bsr']['baseline'])
+
+    def test_pending_keeps_reference_but_never_releases_verification(self):
+        row = self.read(self.check(199, 100, status='COLLECTING', collection_phase='collecting'))
+        self.assertEqual('pending', row['state'])
+        self.assertEqual('waiting', row['verification_state'])
+        self.assertEqual(100, row['rules']['bsr']['baseline'])
+        self.assertEqual([], row['alerts'])
+
+    def test_missing_history_is_unknown_not_automatic_normal(self):
+        Daily.objects.all().delete()
+        row = self.read(self.check(199, 100))
+        self.assertEqual('unknown', row['observation_state'])
+        self.assertEqual({}, row['rules'])
+
+    def test_api_validates_scope_and_source_failures_do_not_become_zero(self):
+        with patch.object(self.live, 'load_current_check', side_effect=RuntimeError('offline')) as loader, \
+                patch.object(self.live.logger, 'warning'):
+            for country in ('ALL', 'invalid', ''):
+                self.assertEqual(400, self.live.current(self.factory.get('/', {'country':country})).status_code)
+            loader.assert_not_called()
+            response = self.live.current(self.factory.get('/', {'country':'SEA', 'date':str(self.day)}))
+            self.assertEqual(503, response.status_code)
+            self.assertNotIn('snapshots', json.loads(response.content))
+            self.assertEqual('private, no-store', response['Cache-Control'])
+
+    def test_live_source_loader_uses_existing_country_date_policy_and_readonly_transaction(self):
+        statements, calls = [], []
+        cursor = SimpleNamespace(execute=lambda sql: statements.append(sql))
+        @contextmanager
+        def connection():
+            yield None, cursor
+        def stats(_cursor, inspection, now):
+            calls.append((inspection, now))
+            return {'check':self.check(199, 100)}
+        with patch.object(self.live, 'dx_connection', connection), \
+                patch.object(self.live.importlib, 'import_module', return_value=SimpleNamespace(get_layer1_stats=stats)), \
+                patch.object(self.live, 'add_batch_counts'):
+            for country in ('SEA','SIEL','SEG'):
+                self.live.load_current_check(country, self.day)
+        self.assertTrue(all(call[0] == self.day for call in calls))
+        self.assertIsNone(calls[0][1].tzinfo)
+        self.assertTrue(all(call[1].utcoffset() == timedelta(hours=9) for call in calls[1:]))
+        self.assertEqual(3, sum('READ ONLY' in sql for sql in statements))
+
 
 if __name__ == '__main__':
     raise SystemExit(bool(DiscoverRunner(verbosity=1).run_tests(['__main__'])))

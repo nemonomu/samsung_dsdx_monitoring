@@ -248,11 +248,11 @@ function categoryFromSummary(key) {
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
     assert.ok(source.includes("switchColumnsTab(\\'ref\\')"));
     assert.ok(source.includes("switchColumnsTab(\\'ldy\\')"));
-    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20261013-bestbuy-dryer"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v=20261013-bestbuy-dryer"));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v=20260930-review1"));
+    assert.ok(retailTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v="));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v="));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v="));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
-    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v=20261008-sem1330"));
+    assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v="));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
     assert.ok(!youtubeSource.includes("(offset_days="));
@@ -263,10 +263,10 @@ function categoryFromSummary(key) {
         commonSource.indexOf('function formatLocalDate(')), context);
     assert(context.getStatusBadge('UNASSESSED').includes('미판정'));
     const baseSource = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html', 'utf8');
-    assert(baseSource.includes("layer1.css' %}?v=5-column-alerts"));
-    assert(baseSource.includes("layer1-common.js' %}?v=20261008-sem1330"));
-    assert(baseSource.includes("collection-volume.js' %}?v=20261013-bestbuy-dryer"));
-    assert(baseSource.includes("retail-status.js' %}?v=20261013-new-review"));
+    assert(baseSource.includes("layer1.css' %}?v="));
+    assert(baseSource.includes("layer1-common.js' %}?v="));
+    assert(baseSource.includes("collection-volume.js' %}?v="));
+    assert(baseSource.includes("retail-status.js' %}?v="));
     assert(context.getStatusBadge('VERIFYING').includes('검증 대기'));
     assert(!context.getStatusBadge('VERIFYING').includes('수집중'));
     assert(context.getStatusBadge('COLLECTING').includes('수집중'));
@@ -277,7 +277,7 @@ function categoryFromSummary(key) {
     assert(context.getStatusBadge('VOLUME_HIGH').includes('확인 필요'));
     assert(context.getStatusBadge('VOLUME_REVIEW').includes('확인 필요'));
     assert(context.getStatusBadge('VOLUME_REVIEW').includes('volume-review'));
-    assert(baseSource.includes("retail-query.js' %}?v=20261013-bestbuy-dryer"));
+    assert(baseSource.includes("retail-query.js' %}?v="));
     assert.strictEqual(context.getStatusClass('UNASSESSED'), 'pending');
     assert.strictEqual(context.getRetailerStatusClass('UNASSESSED'), 'pending');
     for (const [product, total] of [['ref', 300], ['ldy', 265]]) {

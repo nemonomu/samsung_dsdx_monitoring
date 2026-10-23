@@ -1,4 +1,4 @@
-"""Pure calculations. Raw source queries belong only to the offline collector."""
+"""Pure calculations shared by saved statistics and live collection reads."""
 from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
@@ -73,6 +73,8 @@ def normalize_check(check, country, inspection_date):
                 })
                 if country == 'SEIB':
                     rows[-1]['source_date_basis'] = 'db_original'
+                if 'batch_count' in retailer:
+                    rows[-1]['batch_count'] = retailer['batch_count']
                 if country == 'SEM' and product == 'LDY_DRYER':
                     rows[-1]['source_date_basis'] = 'db_original'
                 if country == 'SEA' and (name in ('Costco', 'HomeDepot') or lowes_dryer.matches(product, name)):
@@ -80,7 +82,7 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 5
+BSR_POLICY_VERSION = 6
 MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
 MAIN_REVIEW_PERCENT = 15
@@ -133,26 +135,17 @@ def exact_bsr(row, country):
         ('SEA', 'costco'), ('SEG', 'expert')}
 
 
-def _compare_bsr(row, history, country, *, saved_basis=None):
-    """After observation, compare fixed targets or five good days of history."""
+def _bsr_basis(row, history, country, saved_basis=None):
+    """A prior-day reference does not depend on today's receipt or completion."""
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
-    if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
-        return rule, 'pending', None, None
-    if all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
-        return rule, 'missing', None, None
     if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
-        return rule, row['observation_state'], None, None
-    current = row.get('bsr')
-    if current is None:
-        # Older snapshots can contain NULL; never invent zero collected rows.
-        return rule, 'insufficient', None, None
+        return None
     if variable and saved_basis is not None:
         if (saved_basis.get('rule') != rule or saved_basis.get('days', 0) < MINIMUM_DAYS
                 or saved_basis.get('value', 0) <= 0):
-            return rule, 'insufficient', None, None
-        basis = dict(saved_basis)
-        baseline = basis['value']
+            return None
+        return dict(saved_basis)
     elif variable:
         days = {}
         for index, old in enumerate(history):
@@ -162,12 +155,30 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
                                 for a in old.get('alerts', []))):
                 days[old.get('source_date', index)] = old['bsr']
         if len(days) < MINIMUM_DAYS:
-            return rule, 'insufficient', None, None
+            return None
         baseline = median(days.values())
         basis = {'value': baseline, 'days': len(days), 'rule': rule}
     else:
         baseline = 100
         basis = {'value': baseline, 'days': 0, 'rule': rule}
+    return basis
+
+
+def _compare_bsr(row, history, country, *, saved_basis=None):
+    """Retain the historical reference even while a collection is absent."""
+    variable = variable_bsr(row, country)
+    rule = 'median_28d' if variable else 'fixed_100'
+    basis = _bsr_basis(row, history, country, saved_basis)
+    if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
+        return rule, 'pending', basis, None
+    if all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
+        return rule, 'missing', basis, None
+    if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
+        return rule, row['observation_state'], basis, None
+    current = row.get('bsr')
+    if current is None or basis is None:
+        return rule, 'insufficient', basis, None
+    baseline = basis['value']
     threshold = 15 if tiered_bsr(row, country) else 30
     low = (current != 100 if exact_bsr(row, country) else (baseline - current) * 100 >= baseline * threshold
            if variable else current < baseline)
@@ -287,7 +298,7 @@ def current_volume_decision(row, country):
     return {**result, 'alerts': alerts, 'baselines': baselines, 'comparison_state': state}
 
 
-def compare_rows(rows, history, country=None, *, observed_dates=None):
+def compare_rows(rows, history, country=None, *, observed_dates=None, prior_observation_counts=None):
     """history contains only the previous 28 source dates, never the target day."""
     groups = defaultdict(list)
     for old in history:
@@ -302,7 +313,8 @@ def compare_rows(rows, history, country=None, *, observed_dates=None):
     collected_today = {observation_key(row) for row in rows if observation_eligible(row)}
     result = []
     for row in rows:
-        prior_days = min(MINIMUM_DAYS, len(observed_dates.get(observation_key(row), ())))
+        prior_days = min(MINIMUM_DAYS, max(len(observed_dates.get(observation_key(row), ())),
+                        (prior_observation_counts or {}).get(observation_key(row), 0)))
         observing = prior_days < MINIMUM_DAYS
         row = {**row, 'observation_state': 'observing' if observing else 'ready',
                'observation_days': min(MINIMUM_DAYS, prior_days + (observation_key(row) in collected_today)),

@@ -1,7 +1,7 @@
 // Re-evaluate live MAIN/BSR counts against saved historical bases.
 (function () {
     const countries = {retail: 'SEA', seda_retail: 'SEDA', siel_retail: 'SIEL', seg_retail: 'SEG', sem_retail: 'SEM', tse_retail: 'TSE', seib_retail: 'SEIB'};
-    const pending = ['PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING'];
+    const pending = ['PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING', 'INSUFFICIENT'];
     function metrics(row, country) {
         if (row._volumeCounts) return row._volumeCounts;
         const items = Object.fromEntries((row.items || []).map(item => [item.name, Number(item.count || 0)]));
@@ -20,7 +20,7 @@
         delete item.verification_reason;
     }
     function worst(rows, fallback = 'VERIFYING') {
-        const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2, VERIFYING: 3,
+        const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2, VERIFYING: 3, INSUFFICIENT: 3,
             UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4, VOLUME_REVIEW: 4, WARNING: 5,
             VOLUME_LOW: 6, CRITICAL: 6, ERROR: 7};
         return rows.length ? rows.reduce((a, b) => (priority[a.status] || 0) >= (priority[b.status] || 0) ? a : b).status : fallback;
@@ -77,7 +77,7 @@
                     restore(slot);
                     (slot.retailers || []).forEach(row => {
                         restore(row);
-                        const summary = country === 'SEA' && seaSummaries && seaSummaries[product.toLowerCase()];
+                        const summary = country === 'SEA' && !check._liveCollection && seaSummaries && seaSummaries[product.toLowerCase()];
                         const displayedRetailer = summary && (summary.summary || []).find(r => r.retailer === row.retailer);
                         const displayedRows = displayedRetailer && displayedRetailer.rows || [];
                         const displayed = displayedRows.find(r => r.time_slot === slot.name) || displayedRows[slotIndex];
@@ -125,12 +125,13 @@
                         const observedStatus = row._volumeBaseStatus === 'OK' ? 'OK'
                             : ['CRITICAL', 'VOLUME_LOW'].includes(row._volumeBaseStatus) ? 'CRITICAL' : 'REVIEW';
                         row.status = worst(decisions.filter(Boolean).concat(ready ? []
-                            : [{status: observing ? observedStatus : 'VERIFYING'}]));
+                            : [{status: observing ? observedStatus : snapshot?.live ? 'INSUFFICIENT' : 'VERIFYING'}]));
                         row.verification_state = ready || observing ? 'ready' : 'waiting';
-                        if (row.status === 'VERIFYING') {
+                        if (['VERIFYING', 'INSUFFICIENT'].includes(row.status)) {
                             row.verification_reason = !payload ? '수집량 판정을 불러오는 중입니다.'
                                 : payload.load_state === 'error' ? '수집량 판정을 불러오지 못했습니다. 잠시 후 다시 조회해 주세요.'
                                 : row.observation_state === 'observing' ? '신규 리테일러의 수집 이력을 관찰하고 있습니다.'
+                                : snapshot && snapshot.live ? '비교 이력 부족: 이전 28일 중 비교 가능한 수집 이력이 최소 5일 필요합니다.'
                                 : '현재 MAIN·BSR 건수를 비교할 유효한 과거 중앙값이 아직 준비되지 않았습니다.';
                         }
                     });

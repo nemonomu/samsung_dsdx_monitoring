@@ -7,6 +7,52 @@
     const products = ['TV', 'REF', 'LDY', 'LDY_DRYER'];
     let data = null, controller = null, requestId = 0;
     let reviewTargets = [], reviewDialog = null;
+    let livePoll = null;
+    const liveUpdates = new Map();
+
+    function applyCurrent(snapshot) {
+        if (!data || snapshot.inspection_date !== byId('cs-date').value) return;
+        const sourceDate = data.baseline_dates?.[snapshot.country];
+        if (!sourceDate || (snapshot.available && snapshot.source_date !== sourceDate)) return;
+        const week = data.weeks.find(item => item.start <= sourceDate && shiftDate(item.start, 6) >= sourceDate);
+        if (!week) return;
+        if (!snapshot.available) {
+            for (const group of week.rows.filter(row => row.country === snapshot.country)) {
+                group.daily = group.daily.map(day => day.date === sourceDate
+                    ? {...day, state:'error', refresh_error:true, review:null} : day);
+            }
+            liveUpdates.set(snapshot.country, null);
+        } else {
+            const currentKeys = new Set(snapshot.rows.map(row => JSON.stringify([row.product, row.retailer, row.slot])));
+            // Remove stale target-day entries, including sources no longer enabled.
+            for (const group of week.rows.filter(row => row.country === snapshot.country)) {
+                if (!currentKeys.has(JSON.stringify([group.product, group.retailer, group.slot]))) {
+                    group.daily = group.daily.filter(day => day.date !== sourceDate);
+                }
+            }
+            for (const row of snapshot.rows) {
+                let group = week.rows.find(item => item.country === snapshot.country && item.product === row.product
+                    && item.retailer === row.retailer && item.slot === row.slot);
+                if (!group) {
+                    group = {country:snapshot.country, product:row.product, retailer:row.retailer, slot:row.slot, daily:[]};
+                    week.rows.push(group);
+                }
+                group.daily = group.daily.filter(day => day.date !== sourceDate).concat({...row, date:sourceDate});
+            }
+            liveUpdates.set(snapshot.country, snapshot.updated_at);
+        }
+        if (!reviewDialog && !L1.liveCollection.isInspecting()) {
+            L1.liveCollection.preserveView(() => { syncRetailers(); render(); });
+        }
+    }
+
+    function startLive() {
+        if (typeof L1 === 'undefined' || !L1.liveCollection) return;
+        livePoll?.stop();
+        livePoll = L1.liveCollection.poll(() => ({date:byId('cs-date').value,
+            countries:byId('cs-country').value === 'ALL' ? countries : [byId('cs-country').value]}), applyCurrent);
+        livePoll.refresh();
+    }
 
     function openReview(index) {
         const target = reviewTargets[index];
@@ -234,6 +280,13 @@
         const updated = updates.length ? updates.sort().at(-1) : data.updated_at;
         byId('cs-updated').textContent = updated
             ? '집계 갱신 ' + new Date(updated).toLocaleString('ko-KR') : '아직 집계되지 않았습니다';
+        const visibleCountries = byId('cs-country').value === 'ALL' ? countries : [byId('cs-country').value];
+        const checked = visibleCountries.map(country => liveUpdates.get(country)).filter(Boolean).sort();
+        if (checked.length) byId('cs-updated').textContent = '현재 건수 확인 '
+            + new Date(checked[0]).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) + ' · 15초마다 자동 갱신';
+        if (visibleCountries.some(country => liveUpdates.has(country) && !liveUpdates.get(country))) {
+            setMessage('일부 국가의 현재 수집 건수를 확인하지 못했습니다. 자동으로 다시 조회합니다.', true);
+        }
         history.replaceState(null, '', location.pathname + '?' + new URLSearchParams({
             country: byId('cs-country').value, product: byId('cs-product').value,
             retailer: byId('cs-retailer').value, days: byId('cs-days').value, date: endDate,
@@ -242,6 +295,8 @@
 
     async function load(preferredRetailer = byId('cs-retailer').value) {
         if (!byId('cs-filters').reportValidity()) return;
+        livePoll?.stop();
+        liveUpdates.clear();
         if (controller) controller.abort();
         const request = ++requestId;
         controller = new AbortController();
@@ -265,6 +320,7 @@
             data = result;
             syncRetailers(preferredRetailer);
             render();
+            startLive();
         } catch (error) {
             if (request === requestId) setMessage(error.name === 'AbortError' ? '응답이 지연되고 있습니다. 조회를 다시 눌러주세요.' : error.message, true);
         } finally { clearTimeout(timeout); }
@@ -286,6 +342,7 @@
         for (const key of ['country', 'product']) byId('cs-' + key).addEventListener('change', () => {
             syncRetailers();
             render();
+            livePoll?.refresh();
         });
         byId('cs-retailer').addEventListener('change', render);
         for (const key of ['days', 'date']) byId('cs-' + key).addEventListener('change', () => load());

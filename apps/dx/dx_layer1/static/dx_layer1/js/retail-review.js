@@ -62,7 +62,7 @@
     }
 
     function aggregate(rows, fallback) {
-        const priority = {OK:0,PENDING:1,COLLECTING:2,ANALYZING:2,VERIFYING:3,UNASSESSED:3,
+        const priority = {OK:0,PENDING:1,COLLECTING:2,ANALYZING:2,VERIFYING:3,INSUFFICIENT:3,UNASSESSED:3,
             REVIEW:4,VOLUME_HIGH:4,VOLUME_REVIEW:4,WARNING:5,VOLUME_LOW:6,CRITICAL:6,ERROR:7};
         return rows.reduce((status,row) => (priority[row.status] || 0) > (priority[status] || 0) ? row.status : status, rows.length ? 'OK' : fallback);
     }
@@ -150,7 +150,7 @@
         // Keep automatic verdicts intact for review identity and cancellation.
         if (!pending.length && !done) {
             const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2,
-                VERIFYING: 3, UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4,
+                VERIFYING: 3, INSUFFICIENT: 3, UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4,
                 VOLUME_REVIEW: 4, WARNING: 5, VOLUME_LOW: 6, CRITICAL: 6, ERROR: 7};
             const remaining = rows.map(item => Number(item.batch_count || 0) >= 2
                 ? 'REVIEW' : reviewed(item) ? 'OK' : item.status);

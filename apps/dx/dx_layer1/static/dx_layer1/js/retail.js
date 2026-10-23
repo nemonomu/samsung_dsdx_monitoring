@@ -21,6 +21,8 @@ function getSeaRetailProduct(categoryName) {
 }
 
 function getRetailSummaryData(categoryName) {
+    if (typeof currentStatsData !== 'undefined' && (currentStatsData?.checks || [])
+        .some(check => check.check_type === 'retail' && check._liveCollection)) return null;
     var key = String(categoryName || '').toLowerCase();
     if (seaRetailSummaryCache && seaRetailSummaryCache[key]) {
         return seaRetailSummaryCache[key];

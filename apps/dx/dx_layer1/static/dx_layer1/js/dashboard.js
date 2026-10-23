@@ -10,19 +10,26 @@ var CHECK_TYPE_URL = {
 };
 
 var layer1StatsRequestId = 0;
+var liveCollectionPoll = null;
 
 async function loadStats() {
+    liveCollectionPoll?.stop();
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
     loadDdayCollection(selectedDate);
     let data = null;
     let volume = null;
+    const liveSnapshots = new Map();
     currentCheckStatus = null;
     currentRetailSummary = null;
     currentNullData = null;
     const render = function() {
         if (requestId === layer1StatsRequestId && data) {
-            if (L1.collectionVolume) L1.collectionVolume.decorate(data, volume, selectedDate, currentRetailSummary);
+            liveSnapshots.forEach(snapshot => L1.liveCollection.applyDashboard(data, snapshot));
+            const latestVolume = liveSnapshots.size ? {inspection_date:selectedDate, policy_version:4,
+                snapshots:[...(volume?.snapshots || []).filter(snapshot => !liveSnapshots.has(snapshot.country)),
+                    ...liveSnapshots.values()]} : volume;
+            if (L1.collectionVolume) L1.collectionVolume.decorate(data, latestVolume, selectedDate, currentRetailSummary);
             renderLayer1Stats(data);
         }
     };
@@ -49,6 +56,15 @@ async function loadStats() {
         if (requestId !== layer1StatsRequestId) return;
         currentStatsData = data;
         render();
+        if (L1.liveCollection) {
+            liveCollectionPoll = L1.liveCollection.poll(() => getSelectedDate() !== selectedDate ? null : ({date:selectedDate, countries:
+                data.checks.map(check => L1.liveCollection.countries[check.check_type]).filter(Boolean)}), snapshot => {
+                if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
+                liveSnapshots.set(snapshot.country, snapshot);
+                if (!L1.liveCollection.isInspecting()) L1.liveCollection.preserveView(render);
+            });
+            liveCollectionPoll.refresh();
+        }
         await Promise.allSettled([statusRequest, summaryRequest]);
     } catch (error) {
         if (requestId !== layer1StatsRequestId) return;
