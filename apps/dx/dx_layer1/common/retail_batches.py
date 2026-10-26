@@ -167,12 +167,16 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         time_basis = '미국 뉴욕 시각'
 
     normalized_batch = "NULLIF(BTRIM(CAST(batch_id AS TEXT)), '')"
+    latest_order = 'id DESC'
+    if check_type == 'sem_retail':
+        from apps.common.sem_retail import sem_batch_order
+        latest_order = sem_batch_order(product_line, retailer)
     cursor.execute(f"""
         WITH dated_rows AS (
             SELECT * FROM {source['table_name']}
             WHERE {condition} AND {account} = %s
         ), latest AS (
-            SELECT batch_id FROM dated_rows WHERE {anchor} ORDER BY id DESC LIMIT 1
+            SELECT batch_id FROM dated_rows WHERE {anchor} ORDER BY {latest_order} LIMIT 1
         )
         SELECT {normalized_batch} AS batch_id,
                MIN({time_value}) AS started_at, MAX({time_value}) AS ended_at,

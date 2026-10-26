@@ -9,11 +9,11 @@ from apps.common.sem_retail import (
     SEM_COUNTRY,
     SEM_REVIEW_DEVIATION,
     SEM_HISTORY_DAYS,
-    SEM_LAYER1_RETAILERS,
     SEM_SOURCE_CONFIG,
     SEM_DRYER_FIRST_SOURCE_DATE,
     get_sem_collection_phase,
     get_sem_count_status,
+    active_sem_retailers,
 )
 
 from . import sem_retail_repositories as repo
@@ -105,7 +105,7 @@ def _category(cursor, product_line, source, target_date, phase):
         _retailer(
             cursor, product_line, retailer_name, mapping['source_date'], phase
         )
-        for retailer_name in SEM_LAYER1_RETAILERS[product_line]
+        for retailer_name in active_sem_retailers(product_line, mapping['source_date'])
     ]
     expected_values = [row['expected'] for row in retailers]
     precise_values = [row['expected_precise'] for row in retailers]

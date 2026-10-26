@@ -13,8 +13,8 @@ def collection_complete(country, product, retailer, source_day, now=None):
     """Use Layer 1's existing collection windows, always with source dates."""
     now = (now or datetime.now(KST)).astimezone(KST)
     if country == 'SEM' and product == 'LDY_DRYER':
-        from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
-        if source_day < SEM_DRYER_FIRST_SOURCE_DATE:
+        from apps.common.sem_retail import sem_start_date
+        if source_day < sem_start_date('sem_ldy_dryer', retailer):
             return False
     if country == 'SEG':
         from apps.dx.dx_layer1.seg_retail.sources import retailer_start_date, get_seg_source

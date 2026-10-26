@@ -17,6 +17,7 @@ context.filterBar = {getDate: () => '2026-09-28'};
 
 for (const [category, main, raw, bsr, expected] of [
     ['LDY', 85, 94, 94, 83], ['REF', 274, 274, 100, 272],
+    ['LDY_DRYER', 30, 30, 29, 29],
 ]) {
     const html = context.L1.renderers.sem_retail({
         name: 'SEM Retail', check_type: 'sem_retail', actual: main, status: 'OK',
@@ -33,4 +34,4 @@ for (const [category, main, raw, bsr, expected] of [
     assert(html.includes('Coppel'));
     assert(html.includes(`${main}/${expected}건`));
 }
-console.log('Layer1 SEM Coppel REF/LDY rendering tests passed.');
+console.log('Layer1 SEM Coppel REF/LDY/LDY_DRYER rendering tests passed.');

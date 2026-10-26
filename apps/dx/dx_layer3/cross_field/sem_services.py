@@ -14,9 +14,10 @@ from apps.common.sem_retail import (
     SEM_SOURCE_CONFIG,
     get_sem_editable_columns,
     get_sem_table_columns,
+    active_sem_retailers,
 )
 from apps.dx.dx_layer2.sem_validation import (
-    _COPPEL_SAVINGS, _format_checks, _history_rows, _latest_rows, product_line_for,
+    _COPPEL_SAVINGS, _format_checks, _history_rows, _latest_rows, product_line_for, _mapping,
 )
 
 
@@ -193,16 +194,18 @@ def _result(cursor, target_date, product_line):
     source = SEM_SOURCE_CONFIG.get(key)
     if not source:
         raise ValueError(f'Unsupported SEM product line: {product_line}')
+    mapping = _mapping(target_date, source)
+    active_retailers = active_sem_retailers(key, mapping['source_date'])
     definitions = _RULES + (
-        _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in source['retailers'] else ()
+        _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in active_retailers else ()
     ) + (
-        _COPPEL_RULES if SEM_COPPEL_RETAILER in source['retailers'] else ()
+        _COPPEL_RULES if SEM_COPPEL_RETAILER in active_retailers else ()
     )
     rows = []
     page_exclusions = []
     failures = {rule[0]: [] for rule in definitions}
     failed_ids = set()
-    for retailer in source['retailers']:
+    for retailer in active_retailers:
         if retailer == SEM_RETAILER:
             retailer_rows, mapping = _latest_rows(cursor, target_date, source)
         else:
@@ -223,7 +226,7 @@ def _result(cursor, target_date, product_line):
         applicable_retailers = (
             [SEM_COPPEL_RETAILER] if rule in _COPPEL_RULES
             else [SEM_HOMEDEPOT_RETAILER] if rule in _HOMEDEPOT_RULES
-            else [retailer for retailer in source['retailers']
+            else [retailer for retailer in active_retailers
                   if retailer != SEM_COPPEL_RETAILER
                   or not any(field in _REVIEW_COLUMNS for field in (field1, field2))]
         )
@@ -313,7 +316,7 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     source_date = date.fromisoformat(mapping['source_date'])
     history = []
     retailer_summary = {}
-    for retailer in source['retailers']:
+    for retailer in active_sem_retailers(source['source_key'], source_date):
         if rule['rule_key'].startswith('coppel_') and retailer != SEM_COPPEL_RETAILER:
             continue
         if retailer == SEM_COPPEL_RETAILER and retailer not in rule['retailers']:

@@ -9,6 +9,7 @@ SEM_RETAILER = 'Liverpool'
 SEM_HOMEDEPOT_RETAILER = 'HomeDepot'
 SEM_COPPEL_RETAILER = 'Coppel'
 SEM_DRYER_FIRST_SOURCE_DATE = date(2026, 10, 18)
+SEM_COPPEL_DRYER_FIRST_SOURCE_DATE = date(2026, 10, 25)
 SEM_COPPEL_EXCLUDED_COLUMNS = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
@@ -16,7 +17,7 @@ SEM_LAYER1_RETAILERS = {
     'sem_tv': (SEM_RETAILER,),
     'sem_ref': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
     'sem_ldy': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
-    'sem_ldy_dryer': (SEM_HOMEDEPOT_RETAILER,),
+    'sem_ldy_dryer': (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
 }
 SEM_COLLECTION_START = time(9, 0)
 SEM_COLLECTION_END = time(13, 30)
@@ -116,7 +117,7 @@ SEM_SOURCE_CONFIG = {
         'table_name': 'dx_sem.dx_sem_ldy_dryer_retail_com',
         'backup_table_name': 'dx_sem.dx_sem_ldy_dryer_retail_com_backup',
         'date_column': 'crawl_datetime',
-        'retailers': (SEM_HOMEDEPOT_RETAILER,),
+        'retailers': (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
         'extra_required_columns': ('capacity',),
         'extra_format_columns': ('capacity', 'loading_type'),
         'extra_table_columns': ('loading_type', 'capacity'),
@@ -143,6 +144,39 @@ def normalize_sem_product_line(value):
 
 def get_sem_source(value):
     return dict(SEM_SOURCE_CONFIG[normalize_sem_product_line(value)])
+
+
+def is_coppel_dryer(product_line, retailer):
+    return product_line == 'sem_ldy_dryer' and str(retailer or '').strip().casefold() == 'coppel'
+
+
+def sem_start_date(product_line, retailer):
+    if product_line != 'sem_ldy_dryer':
+        return None
+    return SEM_COPPEL_DRYER_FIRST_SOURCE_DATE if is_coppel_dryer(product_line, retailer) else SEM_DRYER_FIRST_SOURCE_DATE
+
+
+def active_sem_retailers(product_line, source_date):
+    return tuple(r for r in SEM_SOURCE_CONFIG[product_line]['retailers']
+                 if sem_start_date(product_line, r) is None
+                 or str(source_date)[:10] >= str(sem_start_date(product_line, r)))
+
+
+def sem_batch_order(product_line, retailer=None, alias=''):
+    """Latest Coppel dryer crawl timestamp; IDs only break timestamp ties.
+
+    The cast orders instants only. Collection membership always uses the
+    original timestamp's written date, separately via source_date_sql.
+    None is used in mixed-retailer, correlated review/edit queries.
+    """
+    prefix = alias + '.' if alias else ''
+    order = f'{prefix}id DESC'
+    if product_line != 'sem_ldy_dryer' or (retailer is not None and not is_coppel_dryer(product_line, retailer)):
+        return order
+    stamp = f"NULLIF(BTRIM({prefix}crawl_datetime), '')::timestamptz"
+    if retailer is None:
+        stamp = f"CASE WHEN LOWER(BTRIM({prefix}account_name)) = 'coppel' THEN {stamp} END"
+    return f'{stamp} DESC NULLS LAST, {order}'
 
 
 def resolve_sem_table(value):

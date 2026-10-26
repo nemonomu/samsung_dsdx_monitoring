@@ -4,6 +4,7 @@ from datetime import timedelta
 from apps.common.db import dx_connection
 from apps.common.seib_retail import SEIB_SOURCE_CONFIG
 from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
+from apps.common.sem_retail import get_sem_table_columns, sem_batch_order
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS, DRYER_COLUMNS
@@ -38,7 +39,7 @@ def catalog():
 def _sources():
     yield _source('sem_ldy_dryer', 'SEM', 'LDY_DRYER',
                   'dx_sem.dx_sem_ldy_dryer_retail_com', 'crawl_datetime', 'text',
-                  (_retailer('HomeDepot'),), has_page_type=False,
+                  (_retailer('HomeDepot'), _retailer('Coppel')), has_page_type=False,
                   collection_scope='all')
     for key, config in SEIB_SOURCE_CONFIG.items():
         yield _source(key, 'SEIB', config['category'], config['table_name'], 'crawl_datetime', 'text',
@@ -105,7 +106,8 @@ def query_spec(source, retailer, columns, start, end):
         params += _retailer_params(retailer)
         if main_scope:
             anchor += " AND LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'"
-        ctes.append(f"latest AS (SELECT DISTINCT ON (stats_day) stats_day, {source['batch_column']} AS chosen_batch FROM scoped source WHERE {anchor} ORDER BY stats_day, {source['id_column']} DESC)")
+        order = sem_batch_order(source['key'], retailer['name'], 'source') if source['key'] == 'sem_ldy_dryer' else f"{source['id_column']} DESC"
+        ctes.append(f"latest AS (SELECT DISTINCT ON (stats_day) stats_day, {source['batch_column']} AS chosen_batch FROM scoped source WHERE {anchor} ORDER BY stats_day, {order})")
         join = f" JOIN latest ON latest.stats_day = source.stats_day AND source.{source['batch_column']} IS NOT DISTINCT FROM latest.chosen_batch"
     expressions = []
     for column in columns:
@@ -137,6 +139,8 @@ def daily_counts(country, product, retailer_name, end, days):
                      if country == 'SEIB' else
                      [{**selected['retailers'][0], 'columns': SEUK_SOURCE_CONFIG[source['key']]['columns']}]
                      if country == 'SEUK' else
+                     [{**selected['retailers'][0], 'columns': get_sem_table_columns('sem_ldy_dryer')}]
+                     if country == 'SEM' and product == 'LDY_DRYER' and retailer_name == 'Coppel' else
                      [{**selected['retailers'][0], 'columns': DRYER_COLUMNS}]
                      if country == 'SEG' and product == 'LDY_DRYER' else
                      [{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]

@@ -21,6 +21,7 @@ from apps.common.sem_retail import (
     get_sem_required_columns,
     get_sem_table_columns,
     normalize_sem_retailer,
+    active_sem_retailers, sem_start_date, sem_batch_order,
 )
 
 
@@ -50,6 +51,10 @@ _REF_CAPACITY = re.compile(
 _LDY_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s+kg'
 _LDY_CAPACITY = re.compile(
     rf'^{_LDY_CAPACITY_VALUE}(?:\s*/\s*{_LDY_CAPACITY_VALUE})*$', re.I
+)
+_COPPEL_DRYER_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s*kg'
+_COPPEL_DRYER_CAPACITY = re.compile(
+    rf'^{_COPPEL_DRYER_CAPACITY_VALUE}(?:\s*/\s*{_COPPEL_DRYER_CAPACITY_VALUE})*$', re.I
 )
 _REF_REFRIGERATOR_TYPES = {
     'Freezer',
@@ -170,6 +175,9 @@ def _source_day(column, source):
 def _latest_rows(cursor, target_date, source, retailer=None):
     retailer = normalize_sem_retailer(source['source_key'], retailer)
     mapping = _mapping(target_date, source)
+    launch = sem_start_date(source['source_key'], retailer)
+    if launch and mapping['source_date'] < str(launch):
+        return [], mapping
     day = _source_day('crawl_datetime', source)
     row_day = _source_day('source.crawl_datetime', source)
     cursor.execute(f"""
@@ -178,7 +186,7 @@ def _latest_rows(cursor, target_date, source, retailer=None):
             FROM {source['table_name']}
             WHERE {day} = %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
-            ORDER BY id DESC
+            ORDER BY {sem_batch_order(source['source_key'], retailer)}
             LIMIT 1
         )
         SELECT source.*
@@ -198,6 +206,11 @@ def _history_rows(cursor, source, start_date, end_date, items,
                   include_missing_item=False, retailer=None):
     """Load the retailer's latest batch per day for target error items."""
     retailer = normalize_sem_retailer(source['source_key'], retailer)
+    launch = sem_start_date(source['source_key'], retailer)
+    if launch:
+        start_date = max(str(start_date), str(launch))
+        if str(end_date) < start_date:
+            return []
     conditions = []
     params = [str(start_date), str(end_date), retailer, SEM_COUNTRY]
     if items:
@@ -225,7 +238,7 @@ def _history_rows(cursor, source, start_date, end_date, items,
               AND {day} <= %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
               AND UPPER(BTRIM(country)) = %s
-            ORDER BY source_date, id DESC
+            ORDER BY source_date, {sem_batch_order(source['source_key'], retailer)}
         )
         SELECT source.*
         FROM {source['table_name']} source
@@ -317,6 +330,8 @@ def _format_checks(product_line, retailer=SEM_RETAILER):
         })
         if product_line == 'sem_ref':
             checks['ref_refrigerator_type'] = lambda value: str(value).strip() in _COPPEL_REF_TYPES
+        elif product_line == 'sem_ldy_dryer':
+            checks['capacity'] = lambda value: bool(_COPPEL_DRYER_CAPACITY.fullmatch(str(value).strip()))
     return checks
 
 
@@ -360,6 +375,11 @@ def get_format_rule_details(product_line, retailer=SEM_RETAILER):
             'savings': {'description': '할인금액과 괄호 안 정수 할인율 0~100', 'pattern': '$8,200 (43%)'},
             'ref_refrigerator_type': {'description': '허용된 Coppel 냉장고 유형', 'pattern': 'Top Mount / Bottom Mount / French Door / Side by Side'},
         })
+        if product_line == 'sem_ldy_dryer':
+            details['capacity'] = {
+                'description': '숫자와 kg 단위 형식 (숫자와 단위 사이 공백 선택)',
+                'pattern': '20kg / 20 kg / 20.5 kg',
+            }
     return [
         {
             'field': field,
@@ -377,24 +397,25 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column):
     if column not in allowed:
         raise ValueError('허용되지 않는 컬럼')
     mapping = _mapping(target_date, source)
-    placeholders = ', '.join(['%s'] * len(source['retailers']))
+    retailers = active_sem_retailers(product_line, mapping['source_date'])
+    placeholders = ', '.join(['%s'] * len(retailers)) or 'NULL'
     cursor.execute(f"""
         WITH latest_batch AS (
             SELECT DISTINCT ON (LOWER(BTRIM(account_name))) batch_id, account_name
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM(crawl_datetime), 10) = %s
+            WHERE {_source_day('crawl_datetime', source)} = %s
               AND LOWER(BTRIM(account_name)) IN ({placeholders})
-            ORDER BY LOWER(BTRIM(account_name)), id DESC
+            ORDER BY LOWER(BTRIM(account_name)), {sem_batch_order(product_line)}
         )
         SELECT source.{column}, source.account_name, source.item
         FROM {source['table_name']} source
         CROSS JOIN latest_batch
         WHERE source.id = %s
-          AND LEFT(BTRIM(source.crawl_datetime), 10) = %s
+          AND {_source_day('source.crawl_datetime', source)} = %s
           AND LOWER(BTRIM(source.account_name)) = LOWER(BTRIM(latest_batch.account_name))
           AND source.batch_id IS NOT DISTINCT FROM latest_batch.batch_id
     """, (
-        mapping['source_date'], *(r.lower() for r in source['retailers']), record_id,
+        mapping['source_date'], *(r.lower() for r in retailers), record_id,
         mapping['source_date'],
     ))
     return cursor.fetchone()
@@ -471,7 +492,7 @@ def append_null_stats(cursor, target_date, validation, category=None):
         fields = list(get_sem_required_columns(product_line, source['retailers'][0]))
         retailers = []
         mapping = _mapping(target_date, source)
-        for retailer in source['retailers']:
+        for retailer in active_sem_retailers(product_line, mapping['source_date']):
             retailer_fields = get_sem_required_columns(product_line, retailer)
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             reviews = normal_reviews
@@ -612,7 +633,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
         )
         retailers = []
         mapping = _mapping(target_date, source)
-        for retailer in source['retailers']:
+        for retailer in active_sem_retailers(product_line, mapping['source_date']):
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             issue_count = sum(
                 1 for row in rows
@@ -735,7 +756,8 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
         if category and category != source['section_code']:
             continue
         retailers = []
-        for retailer in source['retailers']:
+        mapping = _mapping(target_date, source)
+        for retailer in active_sem_retailers(_product_line, mapping['source_date']):
             rows, mapping = _latest_rows(cursor, target_date, source, retailer)
             groups = _duplicate_groups(rows)
             retailers.append({

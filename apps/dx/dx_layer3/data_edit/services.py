@@ -317,6 +317,7 @@ def _select_siel_record(
 
 def _select_sem_record(
         cursor, source, select_columns, row_id, inspection_date):
+    from apps.common.sem_retail import active_sem_retailers, sem_batch_order
     mapping = resolve_monitoring_date(
         inspection_date, SEM_COUNTRY, source['source_key']
     )
@@ -326,7 +327,8 @@ def _select_sem_record(
                   else 'LEFT(BTRIM(source.crawl_datetime), 10)')
     anchor_day = (source_date_sql('anchor.crawl_datetime') if source['source_key'] == 'sem_ldy_dryer'
                   else 'LEFT(BTRIM(anchor.crawl_datetime), 10)')
-    placeholders = ', '.join(['%s'] * len(source['retailers']))
+    retailers = active_sem_retailers(source['source_key'], source_date)
+    placeholders = ', '.join(['%s'] * len(retailers)) or 'NULL'
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
@@ -339,12 +341,12 @@ def _select_sem_record(
               FROM {table_name} anchor
               WHERE {anchor_day} = %s
                 AND LOWER(BTRIM(anchor.account_name)) = LOWER(BTRIM(source.account_name))
-              ORDER BY anchor.id DESC
+              ORDER BY {sem_batch_order(source['source_key'], alias='anchor')}
               LIMIT 1
           )
     """, (
         row_id, source_date, SEM_COUNTRY,
-        *(r.lower() for r in source['retailers']), source_date,
+        *(r.lower() for r in retailers), source_date,
     ))
 
 
