@@ -88,7 +88,14 @@ def source_date_sql(column, alias='', retailer=None, account_column=None, produc
 def page_scope_sql(alias='', *, anchor=False, retailer=None, product=''):
     if product == 'ldy_dryer' or is_costco(retailer):
         return 'TRUE'
-    legacy = sea_layer2.page_scope_sql(alias, anchor=anchor, retailer=retailer)
+    if product == 'tv':
+        # TV has crawl_datetime only. Do not build the appliance HomeDepot
+        # launch predicate: PostgreSQL resolves columns even inside an OR.
+        prefix = f'{alias}.' if alias else ''
+        page = f"UPPER(TRIM(COALESCE({prefix}page_type, '')))"
+        legacy = f"{page} = 'MAIN'" if anchor else f"{page} IN ('MAIN', 'BSR')"
+    else:
+        legacy = sea_layer2.page_scope_sql(alias, anchor=anchor, retailer=retailer)
     if retailer is not None:
         return legacy
     prefix = f'{alias}.' if alias else ''

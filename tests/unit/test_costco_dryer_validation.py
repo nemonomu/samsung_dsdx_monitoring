@@ -63,7 +63,7 @@ class CostcoDryerValidationTests(unittest.TestCase):
         self.assertNotIn('ldy_dryer', policy.FORMAT_COLUMNS)
         self.assertNotIn('ldy_dryer', sea_retail.SEA_RETAIL_SOURCES)
         self.assertNotIn('ldy_dryer', policy.sources(sea_retail.SEA_RETAIL_SOURCES))
-        self.assertEqual(('Bestbuy', 'Costco', 'HomeDepot'), self.null.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
+        self.assertEqual(('Bestbuy', 'Costco', 'HomeDepot', 'Lowes'), self.null.SEA_RETAIL_SOURCES['ldy_dryer']['retailers'])
 
     def test_null_anchor_edit_and_confirmation_use_real_schema_and_launch_date(self):
         source = policy.dryer_source()
@@ -160,7 +160,7 @@ class CostcoDryerValidationTests(unittest.TestCase):
 
     def test_crossfield_filters_other_retailers_and_missing_columns(self):
         cursor = ScriptedCursor([{'fetchall': [dryer_rule('review_count_match'),
-            dryer_rule('review_count_match', retailer='Lowes'),
+            dryer_rule('review_count_match', retailer='Unsupported'),
             dryer_rule('review_count_match', retailer='ALL')]}])
         rules = cross.load_active_sea_rules(cursor, KEY)
         self.assertEqual(1, len(rules))

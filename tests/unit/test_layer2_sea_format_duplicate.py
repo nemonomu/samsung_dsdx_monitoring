@@ -105,6 +105,11 @@ def common_stubs():
             product_line_for=lambda _value: None,
             append_duplicate_stats=lambda *_args, **_kwargs: 0,
         ),
+        'apps.dx.dx_layer2.seuk_duplicate_validation': module_stub(
+            'apps.dx.dx_layer2.seuk_duplicate_validation', SEUK_SOURCE_CONFIG={},
+            product_line_for=lambda _value: None,
+            append_duplicate_stats=lambda *_args, **_kwargs: 0,
+        ),
         'apps.dx.dx_layer2.common': package_stub(
             'apps.dx.dx_layer2.common'
         ),

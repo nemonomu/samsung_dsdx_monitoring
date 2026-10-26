@@ -166,7 +166,10 @@ class PageAbsenceCrossfieldTests(unittest.TestCase):
                 self.assertEqual(1, result['total_anomalies'])
                 self.assertEqual([43], [row['id'] for row in result['source_rows']])
                 self.assertEqual([42], [entry['record_id'] for entry in result['page_exclusions']])
-                evaluate.assert_called_once_with(replacement)
+                if country in ('sea', 'seg'):
+                    evaluate.assert_called_once_with(replacement, product)
+                else:
+                    evaluate.assert_called_once_with(replacement)
 
     def test_sem_exclusion_affects_summary_and_detail(self):
         from apps.dx.dx_layer3.cross_field import sem_services as sem

@@ -15,7 +15,7 @@ const detail = fs.readFileSync(
     'apps/dx/dx_layer3/templates/layer3_cross_field.html', 'utf8'
 );
 
-assert(common.includes("const regionGroups = { sea: [], seda: [], seib: [], siel: [], seg: [], sem: [], tse: [] }"));
+assert(common.includes("const regionGroups = { sea: [], seda: [], seib: [], seuk: [], siel: [], seg: [], sem: [], tse: [] }"));
 assert(common.includes("{ key: 'sem', title: 'SEM Retail'"));
 assert(common.includes("detailCode === 'sem_tv' || checkName.includes('SEM TV')"));
 assert(common.includes("detailCode === 'sem_ref' || checkName.includes('SEM REF')"));
@@ -30,9 +30,9 @@ assert(common.includes("const loadedRules = isRetailCrossfield"));
 assert(crossField.includes('function _cfPersistedRuleId'));
 assert(crossField.includes('var ruleId = _cfPersistedRuleId('));
 assert(/common\.js' %}\?v=[\w-]+/.test(dashboard));
-assert(dashboard.includes("cross-field.js' %}?v=20261019-expert-savings"));
+assert(/cross-field\.js' %}\?v=[\w-]+/.test(dashboard));
 assert(/common\.js' %}\?v=[\w-]+/.test(detail));
-assert(detail.includes("cross-field.js' %}?v=20261019-expert-savings"));
+assert(/cross-field\.js' %}\?v=[\w-]+/.test(detail));
 
 console.log('Layer3 SEM cross-field UI tests passed.');
 
@@ -77,6 +77,12 @@ with patch.object(sem_services, '_latest_rows', return_value=([], mapping)):
     for product in ('sem_ref', 'sem_ldy'):
         summary = sem_services.get_sem_cross_field_summary(None, date(2026, 9, 13), product)
         fixtures.append({'summary': summary, 'no_findings': True})
+mapping = {'inspection_date': '2026-10-26', 'source_date': '2026-10-26', 'offset_days': 0}
+row['crawl_datetime'] = '2026-10-26T10:00:00+00:00'
+with patch.object(sem_services, 'exclude_page_absent_records', side_effect=lambda cursor, day, records, **kwargs: (records, [])), patch.object(sem_services, '_latest_rows', side_effect=coppel_latest), patch.object(sem_services, '_history_rows', return_value=[]):
+    summary = sem_services.get_sem_cross_field_summary(None, date(2026, 10, 26), 'sem_ldy_dryer')
+    detail = sem_services.get_sem_cross_field_rule_detail(None, date(2026, 10, 26), 'sem_ldy_dryer', 'sem_ldy_dryer:coppel_savings_amount_match', days=3)
+    fixtures.append({'summary': summary, 'detail': detail, 'retailer': 'Coppel'})
 print(json.dumps(fixtures))
 `], {encoding: 'utf8'}));
 
@@ -87,7 +93,7 @@ print(json.dumps(fixtures))
         const context = {
             console,
             document: {addEventListener() {}, querySelector: () => container},
-            getSelectedDate: () => '2026-09-13',
+            getSelectedDate: () => fixture.summary.inspection_date,
             esc: value => String(value == null ? '' : value),
             escJs: value => String(value),
             ViewStack: {push() {}},
@@ -129,7 +135,7 @@ print(json.dumps(fixtures))
         const action = actions.find(match => match[1].includes(fixture.detail.rule_id))[1];
         await vm.runInContext(action, context);
         const params = new URL(requested, 'https://monitoring.test').searchParams;
-        assert.strictEqual(params.get('date'), '2026-09-13');
+        assert.strictEqual(params.get('date'), fixture.summary.inspection_date);
         assert.strictEqual(params.get('type'), fixture.summary.product_line);
         assert.strictEqual(params.get('rule_id'), fixture.detail.rule_id);
         assert.strictEqual(params.get('days'), '3');

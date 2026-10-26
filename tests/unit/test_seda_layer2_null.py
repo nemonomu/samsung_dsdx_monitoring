@@ -215,11 +215,17 @@ class SedaNullTests(unittest.TestCase):
                     cursor.calls[1][0],
                 )
 
-    def test_other_validation_writes_are_not_enabled(self):
+    def test_sku_edits_and_null_confirmation_use_their_validation_scope(self):
         for kind in ('format', 'duplicate', 'cross_field'):
             cursor = ScriptedCursor([])
-            result = edits.update_cell_value(cursor, Mock(), SOURCE['table_name'], 1, 'sku', 'X', str(DAY), kind, 'tester', '')
-            self.assertEqual(403, result['status'])
+            if kind == 'duplicate':
+                with patch('apps.dx.dx_layer2.retail_duplicate_edit.update_sku', return_value={'success': True}) as update:
+                    result = edits.update_cell_value(cursor, Mock(), SOURCE['table_name'], 1, 'sku', 'X', str(DAY), kind, 'tester', '')
+                self.assertTrue(result['success'])
+                update.assert_called_once()
+            else:
+                result = edits.update_cell_value(cursor, Mock(), SOURCE['table_name'], 1, 'sku', 'X', str(DAY), kind, 'tester', '')
+                self.assertEqual(403, result['status'])
             result = nulls.save_null_review(cursor, Mock(), SOURCE['table_name'], 1, 'sku', 'normal', '', 'reason', str(DAY), kind, 'tester')
             self.assertEqual(400, result['status_code'])
             self.assertEqual([], cursor.calls)
@@ -339,7 +345,7 @@ class SedaNullSqlTests(unittest.TestCase):
             value.strip().strip("'")
             for value in country_check.group(1).split(',')
         }
-        self.assertEqual({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG'}, countries)
+        self.assertEqual({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG', 'SEIB'}, countries)
 
 
 if __name__ == '__main__':

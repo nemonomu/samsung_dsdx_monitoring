@@ -55,6 +55,25 @@ class CostcoLayer2Tests(unittest.TestCase):
         self.assertIn('LEFT(BTRIM(CAST(', sql)
         self.assertIn("'2026-10-04'", sql)
 
+    def test_tv_review_query_uses_only_tv_schema(self):
+        source = self.null._get_sea_null_source_for_table('public.tv_retail_com')
+        sql, retailers = self.null._build_sea_latest_batch_record_query(source, 'screen_size')
+        self.assertEqual(['costco'], retailers)
+        self.assertIn('source.screen_size', sql)
+        self.assertIn('anchor.crawl_datetime', sql)
+        self.assertNotIn('crawl_strdatetime', sql)
+        for anchor in (True, False):
+            tv = policy.page_scope_sql('source', anchor=anchor, product='tv')
+            self.assertNotIn('crawl_strdatetime', tv)
+            self.assertNotIn('homedepot', tv)
+            self.assertIn("= 'costco' OR", tv)
+            self.assertIn('page_type', tv)
+            self.assertEqual('TRUE', policy.page_scope_sql('source', anchor=anchor, retailer='Costco', product='tv'))
+            for product in ('ref', 'ldy'):
+                appliance = policy.page_scope_sql('source', anchor=anchor, product=product)
+                self.assertIn('crawl_strdatetime', appliance)
+                self.assertIn('homedepot', appliance)
+
     def test_latest_batch_null_scope_includes_unranked_rows(self):
         for product in LEGACY_NULL_COLUMNS:
             source = self.null._get_sea_null_source_for_table(f'public.{product}_retail_com')
@@ -100,6 +119,8 @@ class CostcoLayer2Tests(unittest.TestCase):
                                                         42, field, '1', date(2026, 10, 6), 'null', 'tester', 'fixed')
                 self.assertTrue(result.get('success'), result)
                 self.assertIn('ORDER BY anchor.id DESC', cursor.calls[0][0])
+                if product == 'tv':
+                    self.assertNotIn('crawl_strdatetime', cursor.calls[0][0])
                 self.assertEqual((42, '2026-10-05', '2026-10-05'), cursor.calls[0][1])
                 self.assertIn('INSERT INTO monitoring_corrections', cursor.calls[-1][0])
 
@@ -141,6 +162,7 @@ class CostcoLayer2Tests(unittest.TestCase):
         self.assertEqual(1, len(cursor.calls))
         self.assertEqual(('2026-10-05', 'costco', 42, '2026-10-05'), cursor.calls[0][1])
         self.assertIn('t.batch_id IS NOT DISTINCT FROM latest.batch_id', cursor.calls[0][0])
+        self.assertNotIn('crawl_strdatetime', cursor.calls[0][0])
 
     def test_metric_reviews_manual_only_but_specs_carry(self):
         helper = evidence_tests.NullReviewEvidenceTests()

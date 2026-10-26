@@ -1668,11 +1668,11 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
                        anchor.batch_id,
                        anchor.id
                 FROM {actual_table} anchor
-                WHERE {source_date_sql(date_column, 'anchor')} = %s
+                WHERE {source_date_sql(date_column, 'anchor', product=sea_source['product_key'])} = %s
                   AND LOWER(TRIM(anchor.account_name)) IN (
                       {retailer_placeholders}
                   )
-                  AND {page_scope_sql('anchor', anchor=True)}
+                  AND {page_scope_sql('anchor', anchor=True, product=sea_source['product_key'])}
                 ORDER BY retailer_key, anchor.id DESC
             )
             SELECT DISTINCT ON (t.id)
@@ -1686,8 +1686,8 @@ def cleanup_duplicates(cursor, conn, table, ids, target_date, username):
                  OR TRIM(CAST(t.account_name AS TEXT)) = ''
              )
             WHERE t.id IN ({id_placeholders})
-              AND {source_date_sql(date_column, 't', account_column='latest.retailer_key')} = %s
-              AND (latest.retailer_key IN ('homedepot', 'costco') OR {page_scope_sql('t')})
+              AND {source_date_sql(date_column, 't', account_column='latest.retailer_key', product=sea_source['product_key'])} = %s
+              AND (latest.retailer_key IN ('homedepot', 'costco') OR {page_scope_sql('t', product=sea_source['product_key'])})
               AND (UPPER(TRIM(COALESCE(t.country, ''))) IN ('SEA', ''))
             ORDER BY t.id
         """, (
