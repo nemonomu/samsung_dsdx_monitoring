@@ -46,14 +46,18 @@
             return Promise.resolve();
         }
         spinner.hidden = false;
-        let next = 0, completed = 0, failures = 0, historyFailures = 0, abnormal = 0, review = 0, missing = 0;
+        let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0, missing = 0;
+        const historyFailures = [];
         async function worker() {
             while (next < jobs.length && !current.signal.aborted) {
                 const job = jobs[next++];
                 try {
                     const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force});
                     if (current.signal.aborted) return;
-                    if (data.issue_history_error) historyFailures++;
+                    if (data.issue_history_error) {
+                        const diagnostic = data.issue_history_diagnostic || {};
+                        historyFailures.push(`${job.country} · ${job.product} · ${job.retailer}: ${diagnostic.error || '이력 저장 오류'} ${diagnostic.action || '다시 조회해 주세요.'}`);
+                    }
                     abnormal += data.comparisons.filter(row => row.status === 'abnormal').length;
                     review += data.comparisons.filter(row => row.status === 'review').length;
                     missing += data.comparisons.some(row => row.status === 'uncollected') ? 1 : 0;
@@ -70,9 +74,9 @@
             if (current.signal.aborted) return;
             if (window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
-            if (historyFailures && historyNotice && historyDetail) {
+            if (historyFailures.length && historyNotice && historyDetail) {
                 historyNotice.hidden = false;
-                historyDetail.textContent = `${historyFailures}개 대상 · 서버 확인 필요. 조회된 통계는 표시됩니다.`;
+                historyDetail.textContent = `${historyFailures.length}개 대상 · 조회된 통계는 표시됩니다. ${historyFailures.join(' / ')}`;
             }
             if (failures || !jobs.length) {
                 if (total) { total.textContent = '일부 조회 실패'; }

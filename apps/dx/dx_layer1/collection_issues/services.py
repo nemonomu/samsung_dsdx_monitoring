@@ -15,6 +15,7 @@ from apps.dx.dx_layer1.column_statistics.dates import active_from
 from apps.dx.dx_layer1.column_statistics.services import daily_counts
 from .queries import raw_counts, selection, first_observed, daily_batch_ids
 from . import volume
+from .retry import retry_locked_write
 
 START_DATE = date(2026, 10, 1)
 POLICY_VERSION = 1  # Original-day missing/column + MAIN/BSR + distinct batches.
@@ -49,6 +50,11 @@ def event(issue, action, at, *, username='', reason='', evidence=None):
 
 
 def reconcile_day(data, target, completed, raw_total, *, now=None):
+    observed_at = now or timezone.now()
+    return retry_locked_write(lambda: _reconcile_day(data, target, completed, raw_total, now=observed_at))
+
+
+def _reconcile_day(data, target, completed, raw_total, *, now=None):
     """Use the original incident's baseline when checking a later restoration."""
     now = now or timezone.now()
     if target < START_DATE or not completed.get(str(target), False):
@@ -84,6 +90,10 @@ def reconcile_day(data, target, completed, raw_total, *, now=None):
             recovered = raw_total > 0 and (not column or (
                 current['total'] > 0 and issue.baseline is not None
                 and count * 100 > issue.baseline * 60))
+            expected_status = issue.status if issue.status == 'excepted' else 'resolved' if recovered else 'open'
+            if (issue.last_checked_at == now and issue.current_count == count
+                    and issue.status == expected_status):
+                continue  # Re-reading the same cached observation needs no write.
             old_status = issue.status
             issue.current_count, issue.last_checked_at = count, now
             if issue.status != 'excepted':

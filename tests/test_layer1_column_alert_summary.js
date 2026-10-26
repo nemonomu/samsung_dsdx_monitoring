@@ -80,14 +80,18 @@ function setup(section = 'dashboard') {
 
     const history = setup();
     const historyRun = history.sandbox.ColumnAlertSummary.load('2026-09-23');
-    history.respond(history.pending[0], ['abnormal'], true, {issue_history_error:true});
+    history.respond(history.pending[0], ['abnormal'], true, {issue_history_error:true,
+        issue_history_diagnostic:{code:'issue_storage_busy',error:'이력 DB가 다른 작업에 사용 중입니다.',action:'잠시 후 다시 조회하세요.'}});
     history.respond(history.pending[1], ['review']); await tick();
     history.respond(history.pending[2], []); await historyRun;
     assert.equal(history.nodes.get('l1-column-alert-total').textContent, '2');
     assert.equal(history.badge().textContent, '1', 'storage failure must preserve fetched abnormal counts');
     assert.match(history.nodes.get('l1-column-alert-breakdown').innerHTML, /확인 필요 1/);
     assert.equal(history.nodes.get('l1-column-alert-history').hidden, false);
-    assert.match(history.nodes.get('l1-column-alert-history-detail').textContent, /1개 대상 · 서버 확인 필요/);
+    assert.match(history.nodes.get('l1-column-alert-history-detail').textContent, /1개 대상/);
+    assert.match(history.nodes.get('l1-column-alert-history-detail').textContent, /SEA · TV · Amazon/);
+    assert.match(history.nodes.get('l1-column-alert-history-detail').textContent, /이력 DB가 다른 작업에 사용 중/);
+    assert.match(history.nodes.get('l1-column-alert-history-detail').textContent, /잠시 후 다시 조회/);
     await history.sandbox.ColumnAlertSummary.load('2099-01-01');
     assert.equal(history.nodes.get('l1-column-alert-history').hidden, true, 'date changes clear stale storage warnings');
 

@@ -144,7 +144,10 @@
                 try {
                     const data = await window.ColumnAlertCache.load(job, date, {signal: current.signal, force});
                     if (current.signal.aborted) return;
-                    if (data.issue_history_error) historyFailed.push(`${date} ${job.country} ${job.product} ${job.retailer}`);
+                    if (data.issue_history_error) {
+                        const diagnostic = data.issue_history_diagnostic || {};
+                        historyFailed.push(`${date} ${job.country} ${job.product} ${job.retailer}: ${diagnostic.error || '이력 저장 오류'} ${diagnostic.action || ''}`);
+                    }
                     const comparisons = data.comparisons.some(row => row.status === 'uncollected')
                         ? [{column: '전체 미수집', status: 'uncollected', current: 0, baseline: null, history_days: 0, ratio: null, delta: null}]
                         : data.comparisons;

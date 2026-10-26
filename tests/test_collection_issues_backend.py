@@ -14,7 +14,7 @@ if not settings.configured:
         USE_TZ=True,TIME_ZONE='Asia/Seoul',SECRET_KEY='isolated-issues',DEBUG=False)
 import django
 django.setup()
-from django.test import TestCase, RequestFactory, override_settings
+from django.test import TestCase, TransactionTestCase, RequestFactory, override_settings
 from django.test.runner import DiscoverRunner
 from django.db import OperationalError
 from apps.dx.dx_layer1.collection_issues import services as s, api
@@ -459,6 +459,58 @@ class VolumeIssueTests(TestCase):
         main.refresh_from_db()
         self.assertEqual(main.status,'resolved')
         live.assert_called_once_with('SEG',TARGET)
+
+
+class HistoryWriteRetryTests(TransactionTestCase):
+    def test_lock_retries_whole_transaction_without_duplicate_issue_or_event(self):
+        from apps.dx.dx_layer1.collection_issues import retry
+        data,complete=sample()
+        original_event=s.event
+        attempts=[]
+        def flaky_event(*args,**kwargs):
+            attempts.append(Issue.objects.count())
+            if len(attempts)==1:
+                raise OperationalError('database is locked')
+            return original_event(*args,**kwargs)
+        with patch.object(s,'event',side_effect=flaky_event),patch.object(retry,'sleep') as sleep:
+            s.reconcile_day(data,TARGET,complete,300,now=NOW)
+        self.assertEqual(attempts,[1,1])
+        self.assertEqual(Issue.objects.count(),1)
+        self.assertEqual(s.Event.objects.count(),1)
+        sleep.assert_called_once_with(0.05)
+
+    def test_permanent_error_and_outer_transaction_are_not_retried(self):
+        from apps.dx.dx_layer1.collection_issues import retry
+        from django.db import transaction
+        from unittest.mock import Mock
+        operation=Mock(side_effect=OperationalError('no such column: policy_version'))
+        with patch.object(retry,'sleep') as sleep:
+            with self.assertRaises(OperationalError):
+                retry.retry_locked_write(operation)
+            operation.assert_called_once()
+            sleep.assert_not_called()
+        locked=Mock(side_effect=OperationalError('database is locked'))
+        with transaction.atomic(),patch.object(retry,'sleep') as sleep:
+            with self.assertRaises(OperationalError):
+                retry.retry_locked_write(locked)
+            locked.assert_called_once()
+            sleep.assert_not_called()
+
+    def test_exhausted_lock_remains_an_error(self):
+        from apps.dx.dx_layer1.collection_issues import retry
+        from unittest.mock import Mock
+        operation=Mock(side_effect=OperationalError('database table is locked'))
+        with patch.object(retry,'sleep') as sleep:
+            with self.assertRaises(OperationalError):
+                retry.retry_locked_write(operation)
+        self.assertEqual(operation.call_count,4)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list],[0.05,0.15,0.3])
+
+    def test_same_cached_observation_does_not_write_again(self):
+        data,complete=sample()
+        s.reconcile_day(data,TARGET,complete,300,now=NOW)
+        with patch.object(Issue,'save',side_effect=AssertionError('unexpected duplicate write')):
+            s.reconcile_day(data,TARGET,complete,300,now=NOW)
 
 
 if __name__=='__main__':
