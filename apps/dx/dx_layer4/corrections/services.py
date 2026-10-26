@@ -3,6 +3,7 @@ Layer 4 검수기록 Services — 목록 조회, 취소, 이력 조회
 """
 
 from datetime import datetime, timedelta
+import json
 from apps.common.db import dx_connection
 from apps.common.retail_columns import (
     get_retailer_columns,
@@ -101,14 +102,46 @@ _CURRENT_CORRECTIONS_SQL = """
 """
 
 
+_AUDIT_FIELDS = {
+    'id': 'bigint', 'layer': 'integer', 'correction_type': 'text', 'table_name': 'text',
+    'record_id': 'bigint', 'column_name': 'text', 'old_value': 'text', 'new_value': 'text',
+    'crawl_date': 'date', 'status': 'text', 'memo': 'text', 'created_id': 'text',
+    'created_at': 'timestamp', 'reason': 'text', 'retailer': 'text', 'item': 'text',
+    'rule_id': 'bigint', 'updated_id': 'text', 'updated_at': 'timestamp', 'cancel_memo': 'text',
+}
+
+
+def _current_source(target_date):
+    from .format_reviews import list_rows
+    reviews = list_rows(target_date)
+    if not reviews:
+        return f'({_CURRENT_CORRECTIONS_SQL}) c', [str(target_date)], {}
+    payload = []
+    for review in reviews:
+        row = {key: review.get(key) for key in _AUDIT_FIELDS}
+        row['created_at'] = review['_sort_created_at']
+        row['updated_at'] = row['updated_at'] or None
+        payload.append(row)
+    fields = ', '.join(_AUDIT_FIELDS)
+    declarations = ', '.join(f'{name} {kind}' for name, kind in _AUDIT_FIELDS.items())
+    # Rank before status/reviewer filters and pagination across BOTH stores.
+    # Bound JSON is data only; table/column identifiers are fixed application text.
+    union = f'''SELECT {fields} FROM monitoring_corrections
+                WHERE crawl_date = %s AND status IS NOT NULL AND table_name <> 'hhp_retail_com'
+                UNION ALL SELECT {fields} FROM jsonb_to_recordset(%s::jsonb) AS saved({declarations})'''
+    ranked = _CURRENT_CORRECTIONS_SQL.replace('FROM monitoring_corrections c', f'FROM ({union}) c')
+    ranked = ranked.replace("WHERE c.crawl_date = %s AND c.status IS NOT NULL\n          AND c.table_name <> 'hhp_retail_com'", '')
+    return f'({ranked}) c', [str(target_date), json.dumps(payload, ensure_ascii=False)], {r['id']: r for r in reviews}
+
+
 def get_corrections(target_date, correction_type='all', status='all',
                     search_field='', search_value='', page=1, page_size=50,
                     country='all', product='all', retailer='all', reviewer='all', days=3):
     """검수기록 목록 조회"""
+    current_source, source_params, review_rows = _current_source(target_date)
     with dx_connection() as (conn, cursor):
-        current_source = f'({_CURRENT_CORRECTIONS_SQL}) c'
         base_clauses = ['TRUE']
-        base_params = [str(target_date)]
+        base_params = list(source_params)
 
         from .detail import _sources
         sources = _sources()
@@ -116,6 +149,9 @@ def get_corrections(target_date, correction_type='all', status='all',
             selected = [s['table_name'] for s in sources.values()
                         if (country == 'all' or s['country'] == country)
                         and (product == 'all' or s['product'] == product)]
+            selected.extend(r['table_name'] for r in review_rows.values()
+                            if (country == 'all' or r['country'] == country)
+                            and (product == 'all' or r['product'] == product))
             aliases = list(dict.fromkeys([t for name in selected for t in
                                          (name, name.removeprefix('public.'), 'public.' + name if '.' not in name else name)]))
             base_clauses.append('c.table_name = ANY(%s)')
@@ -128,7 +164,7 @@ def get_corrections(target_date, correction_type='all', status='all',
             base_params.append(reviewer)
 
         cursor.execute(f'''SELECT DISTINCT c.retailer, c.created_id FROM {current_source}''',
-                       (str(target_date),))
+                       source_params)
         options = cursor.fetchall()
 
         _SEARCH_FIELDS = {
@@ -221,7 +257,13 @@ def get_corrections(target_date, correction_type='all', status='all',
             })
 
         from .detail import enrich_list
-        _enrich_crawl_time(cursor, enrich_list(cursor, items, days))
+        legacy_items = []
+        for item in items:
+            if item['id'] in review_rows:
+                item.update({k: v for k, v in review_rows[item['id']].items() if not k.startswith('_')})
+            else:
+                legacy_items.append(item)
+        _enrich_crawl_time(cursor, enrich_list(cursor, legacy_items, days))
 
         rule_options = []
         if correction_type == 'cross_field':
@@ -232,7 +274,7 @@ def get_corrections(target_date, correction_type='all', status='all',
                 WHERE c.correction_type = 'cross_field'
                   AND c.status IS NOT NULL AND c.rule_id IS NOT NULL
                 ORDER BY r.detail_name
-            """, [str(target_date)])
+            """, source_params)
             for rrow in cursor.fetchall():
                 if rrow[0]:
                     rule_options.append({'name': rrow[0]})
@@ -248,14 +290,15 @@ def get_corrections(target_date, correction_type='all', status='all',
         'days': days,
         'type_counts': type_counts,
         'filter_options': {
-            'countries': sorted({s['country'] for s in sources.values()}),
-            'products': sorted({s['product'] for s in sources.values()}),
+            'countries': sorted({s['country'] for s in sources.values()} | {r['country'] for r in review_rows.values()}),
+            'products': sorted({s['product'] for s in sources.values()} | {r['product'] for r in review_rows.values()}),
             'retailers': sorted({r[0] for r in options if r[0]}),
             'reviewers': sorted({r[1] for r in options if r[1]}),
         },
         'status_counts': {
             'corrected': status_counts.get('corrected', 0),
             'normal': status_counts.get('normal', 0),
+            'error': status_counts.get('error', 0),
             'reverted': status_counts.get('reverted', 0),
         },
     }
@@ -268,6 +311,8 @@ def cancel_corrections(ids, cancel_memo, username):
     """정상처리 일괄 취소"""
     if not ids:
         return {'success': True, 'cancelled': 0}
+    if any(type(ident) is not int or ident < 1 for ident in ids):
+        raise ValueError('형식 확인 기록의 취소는 형식검증 화면에서 처리하세요.')
 
     now = datetime.now()
     with dx_connection() as (conn, cursor):

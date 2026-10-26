@@ -25,6 +25,8 @@
 .audit-query-panel pre { white-space:pre; overflow:auto; padding:14px; background:#eef3fc; font:12px/1.7 Consolas,monospace; border-radius:6px; }
 @media(max-width:760px) { .audit-values { grid-template-columns:1fr; } .audit-source-head { align-items:flex-start; flex-direction:column; } }
 .audit-summary button { text-align:left; cursor:pointer; color:inherit; font:inherit; }
+.summary-grid.audit-summary { grid-template-columns:repeat(5,minmax(0,1fr)); }
+@media(max-width:900px) { .summary-grid.audit-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .audit-summary button.active { border-color:var(--layer-color); box-shadow:0 0 0 1px var(--layer-color); }
 #corr-corrected { color:#527cff; } #corr-normal { color:#2bbf89; } #corr-reverted { color:#e56a73; }
 .audit-chips { display:flex; gap:8px; flex-wrap:wrap; }

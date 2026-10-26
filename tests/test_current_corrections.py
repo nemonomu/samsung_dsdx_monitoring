@@ -1,8 +1,10 @@
 """Execute the current-state list queries against a local SQL fixture, never production."""
 import sqlite3
+import json
+import re
 import unittest
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 
 from tests import test_collection_statistics_backend
@@ -44,10 +46,24 @@ class CurrentCorrectionsTests(unittest.TestCase):
 
             def execute(self, sql, params):
                 assert sql.lstrip().startswith('SELECT'), sql
+                if 'jsonb_to_recordset' in sql:
+                    # PostgreSQL expands the bound JSON; emulate only that table
+                    # function, then execute the actual union/ranking/filter SQL.
+                    params = list(params)
+                    payload = json.loads(params.pop(1))
+                    db.execute('DROP TABLE IF EXISTS saved_reviews')
+                    db.execute('CREATE TEMP TABLE saved_reviews AS SELECT * FROM monitoring_corrections WHERE 0')
+                    for row in payload:
+                        db.execute('INSERT INTO saved_reviews (' + ','.join(row) + ') VALUES (' +
+                                   ','.join('?' for _ in row) + ')', list(row.values()))
+                    sql = re.sub(r'jsonb_to_recordset\(%s::jsonb\) AS saved\([^)]*\)', 'saved_reviews', sql)
                 self.cursor.execute(sql.replace('%s', '?').replace(' ILIKE ', ' LIKE '), params)
 
             def fetchall(self):
-                return self.cursor.fetchall()
+                names = [column[0] for column in self.cursor.description]
+                return [tuple(datetime.fromisoformat(value) if name in ('created_at', 'updated_at')
+                              and isinstance(value, str) else value for name, value in zip(names, row))
+                        for row in self.cursor.fetchall()]
 
             def fetchone(self):
                 return self.cursor.fetchone()
@@ -67,7 +83,7 @@ class CurrentCorrectionsTests(unittest.TestCase):
         self.add(2, 'corrected', new_value='322 L')
         result = self.read()
         self.assertEqual([2], [r['id'] for r in result['items']])
-        self.assertEqual({'corrected': 1, 'normal': 0, 'reverted': 0}, result['status_counts'])
+        self.assertEqual({'corrected': 1, 'normal': 0, 'error': 0, 'reverted': 0}, result['status_counts'])
         self.assertEqual({'null_check': 1}, result['type_counts'])
         self.assertEqual(1, result['total'])
         self.assertEqual(2, self.db.execute('SELECT COUNT(*) FROM monitoring_corrections').fetchone()[0])
@@ -126,6 +142,44 @@ class CurrentCorrectionsTests(unittest.TestCase):
         self.assertEqual(0, self.read(reviewer='old-reviewer')['total'])
         self.assertEqual(2, self.read(retailer=' mediamarkt ', search_field='item_column',
                                      search_value='ref_capacity')['total'])
+
+    def review(self, ident=-1, **extra):
+        return dict(id=ident, layer=2, correction_type='format_check',
+                    table_name='dx_seib.dx_seib_ref_retail_com', record_id=42,
+                    column_name='ref_capacity', old_value=None, new_value='322 L',
+                    crawl_date='2026-10-23', status='normal', memo='', reason='reviewed',
+                    created_id='reviewer', created_at='2026-10-23 20:00:00',
+                    _sort_created_at='2026-10-23 11:00:00', retailer='MediaMarkt', item='186101572',
+                    country='SEIB', product='REF', review_source='format_review',
+                    review_event_id=1, review_target=0, review_record=0, **extra)
+
+    def test_saved_reviews_merge_before_ranking_filtering_and_pagination(self):
+        from apps.dx.dx_layer4.corrections import format_reviews
+        self.add(1, 'corrected', '10:00:00', correction_type='format_check')
+        self.add(2, 'corrected', '12:00:00', record_id=100)
+        rows = [self.review(), self.review(-2)]
+        rows[1].update(record_id=43, status='error', item='OTHER')
+        with patch.object(format_reviews, 'list_rows', return_value=rows):
+            result = self.read(page_size=1)
+            self.assertEqual(3, result['total'])
+            self.assertEqual(3, result['total_pages'])
+            self.assertEqual([2], [r['id'] for r in result['items']])
+            self.assertEqual({'corrected':1,'normal':1,'error':1,'reverted':0}, result['status_counts'])
+            self.assertEqual(1, self.read(status='corrected')['total'])
+            self.assertEqual(-1, self.read(status='normal')['items'][0]['id'])
+            self.assertEqual('reviewed', self.read(status='error')['items'][0]['reason'])
+            self.assertEqual(0, self.read(reviewer='admin', correction_type='format_check')['total'])
+            self.assertEqual(1, self.read(search_field='item_column', search_value='OTHER')['total'])
+            self.assertEqual({'null_check':1,'format_check':2}, result['type_counts'])
+            # A later source correction supersedes the saved confirmation.
+            self.add(3, 'corrected', '13:00:00', correction_type='format_check')
+            self.assertEqual(0, self.read(status='normal')['total'])
+
+    def test_format_review_ids_cannot_reach_legacy_cancel_updates(self):
+        with patch.object(services, 'dx_connection') as connect:
+            with self.assertRaises(ValueError):
+                services.cancel_corrections([-1], 'cancel', 'reviewer')
+            connect.assert_not_called()
 
 
 if __name__ == '__main__':

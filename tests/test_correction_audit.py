@@ -228,7 +228,7 @@ class CorrectionAuditTests(unittest.TestCase):
             result=services.get_corrections(date(2026,10,27),'null_check','corrected',
                 country='SEUK',product='TV',retailer='Currys',reviewer='tester',days=3)
         self.assertEqual(2,result['total'])
-        self.assertEqual({'corrected':2,'normal':1,'reverted':0},result['status_counts'])
+        self.assertEqual({'corrected':2,'normal':1,'error':0,'reverted':0},result['status_counts'])
         self.assertEqual({'null_check':3,'format_check':1},result['type_counts'])
         self.assertEqual(2,len(result['items']))
         self.assertEqual(4,sum(len(r['comparison_rows']) for r in result['items']))

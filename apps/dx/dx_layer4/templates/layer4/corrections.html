@@ -4,7 +4,7 @@
 {% block page_title %}검수기록{% endblock %}
 
 {% block layer4_css %}
-<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261023-audit-current-modal">
+<link rel="stylesheet" href="{% static 'dx_layer4/css/correction-detail.css' %}?v=20261026-format-confirmations">
 <style>
     .log-tabs {
         display: flex;
@@ -94,7 +94,8 @@
 <div class="summary-grid audit-summary" id="corrections-summary">
     <button class="summary-card" data-corr-status="all"><div class="label">총 검수건</div><div class="value" id="corr-total">—</div></button>
     <button class="summary-card" data-corr-status="corrected"><div class="label">✏️ 수정</div><div class="value" id="corr-corrected">—</div></button>
-    <button class="summary-card" data-corr-status="normal"><div class="label">✅ 확인</div><div class="value" id="corr-normal">—</div></button>
+    <button class="summary-card" data-corr-status="normal"><div class="label">✅ 정상 확인</div><div class="value" id="corr-normal">—</div></button>
+    <button class="summary-card" data-corr-status="error"><div class="label">🔎 이상 확인</div><div class="value" id="corr-error">—</div></button>
     <button class="summary-card" data-corr-status="reverted"><div class="label">↩ 확인 취소</div><div class="value" id="corr-reverted">—</div></button>
 </div>
 
@@ -105,13 +106,14 @@
 <!-- 조회 필터바 -->
 <div id="corrections-filter-bar"></div>
 <div class="audit-list-toolbar"><span id="correction-row-count" class="audit-muted">조회 중...</span><div class="audit-list-tools"><label>비교 기간 <select id="correction-compare-days"><option value="3">3일치</option><option value="1">당일</option><option value="7">7일치</option></select></label><details id="correction-columns"><summary>컬럼 선택</summary><div id="correction-column-options"></div></details></div></div>
-<p class="audit-list-guide">목록과 건수는 각 검수 항목의 최신 처리 결과만 반영합니다. 이전 처리 기록은 상세조회에서 확인할 수 있으며, 비교 이력은 검수건수에 포함하지 않습니다. 상품 URL은 원본의 현재 링크이며, 조회 SQL은 관리자에게만 제공됩니다.</p>
+<p class="audit-list-guide">선택한 검수일의 수정·정상 확인·이상 확인 기록을 표시합니다. 항목별 최신 처리만 집계하며 자동 정상 판정은 포함하지 않습니다. 이상 확인은 이상임을 확인한 기록으로, 수정·해결 완료를 뜻하지 않습니다. 형식 확인은 당시 저장된 값·상품 URL·증빙을 표시하며, 정상 공유 승인은 최초 처리 제품군에만 집계합니다. 이전 처리·취소 이력은 상세조회에서 확인하세요. 형식 확인 취소는 형식검증 화면에서 처리합니다.</p>
 
 <!-- 상태 탭 -->
 <div class="log-tabs" id="corrections-tabs" style="display:none;">
     <button class="log-tab active" data-status="all">전체</button>
     <button class="log-tab" data-status="corrected">수정 <span class="tab-count count-zero" id="tabCorrectedCount">0</span></button>
-    <button class="log-tab" data-status="normal">확인 <span class="tab-count count-zero" id="tabNormalCount">0</span></button>
+    <button class="log-tab" data-status="normal">정상 확인 <span class="tab-count count-zero" id="tabNormalCount">0</span></button>
+    <button class="log-tab" data-status="error">이상 확인 <span class="tab-count count-zero" id="tabErrorCount">0</span></button>
     <button class="log-tab" data-status="reverted">취소 <span class="tab-count count-zero" id="tabRevertedCount">0</span></button>
 </div>
 
@@ -137,7 +139,7 @@
 
 {% block layer4_js %}
 <script src="{% static 'dx_layer4/js/common.js' %}?v=1"></script>
-<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261023-audit-current-modal"></script>
-<script src="{% static 'dx_layer4/js/correction-list.js' %}?v=20261023-audit-current-modal"></script>
+<script src="{% static 'dx_layer4/js/correction-detail.js' %}?v=20261026-format-confirmations"></script>
+<script src="{% static 'dx_layer4/js/correction-list.js' %}?v=20261026-format-confirmations"></script>
 <script src="{% static 'dx_layer4/js/corrections.js' %}?v=20261023-audit-current-modal"></script>
 {% endblock %}

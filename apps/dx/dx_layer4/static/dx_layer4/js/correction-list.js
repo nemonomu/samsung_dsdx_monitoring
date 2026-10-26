@@ -7,6 +7,7 @@
     var selectedType = focusTypes[new URLSearchParams(window.location.search).get('focus')] || 'all';
     var hiddenColumns = new Set();
     var cols = [['no','No'],['category','국가 · 제품군'],['product','Item · 상품명'],['date','수집일'],['field','검수 항목'],['old','수정 전'],['new','수정 후 · 확인값'],['status','처리 결과'],['reviewer','검수자 · 처리 시각'],['url','상품 URL'],['reason','확인 사유'],['detail','상세']];
+    var statusNames = {corrected:'수정',normal:'정상 확인',error:'이상 확인',reverted:'취소'};
     function el(id) { return document.getElementById(id); }
     function esc(v) { return L4.escapeHtml(String(v == null ? '' : v)); }
     function val(v) { return v === null ? '<span class="audit-null">NULL</span>' : v === '' ? '<span class="audit-muted">빈 문자열</span>' : v === undefined ? '—' : esc(v); }
@@ -60,7 +61,7 @@
     function summary(data) {
         var counts = data.status_counts || {}, total = Object.values(counts).reduce(function (a,b) { return a+b; },0);
         el('corr-total').textContent = total.toLocaleString();
-        ['corrected','normal','reverted'].forEach(function (s) { el('corr-' + s).textContent = (counts[s] || 0).toLocaleString();
+        ['corrected','normal','error','reverted'].forEach(function (s) { el('corr-' + s).textContent = (counts[s] || 0).toLocaleString();
             var tab = el('tab' + s.charAt(0).toUpperCase() + s.slice(1) + 'Count'); if (tab) tab.textContent = counts[s] || 0;
         });
         document.querySelectorAll('[data-corr-status]').forEach(function (b) { b.classList.toggle('active',b.dataset.corrStatus === status()); });
@@ -82,7 +83,7 @@
             rows.forEach(function (row, i) {
                 displayed++;
                 html += '<tr class="' + (row.target ? 'audit-current-row' : 'audit-comparison-row') + '">';
-                if (status() === 'normal' && i === 0) html += '<td rowspan="' + span + '"><input class="corr-check" type="checkbox" data-id="' + Number(item.id) + '" aria-label="확인 기록 선택"></td>';
+                if (status() === 'normal' && i === 0) html += '<td rowspan="' + span + '">' + (item.review_source ? '<span title="형식검증 화면에서 취소">—</span>' : '<input class="corr-check" type="checkbox" data-id="' + Number(item.id) + '" aria-label="확인 기록 선택">') + '</td>';
                 html += cell('no',row.target ? number + index + 1 : '·');
                 if (i === 0) {
                     var category = item.category_label || item.table_name;
@@ -91,9 +92,9 @@
                 }
                 html += cell('date',dateText(row.target ? item.crawl_time : row.comparison.crawl_time || row.comparison.source_date) + '<span class="audit-badge">' + (row.target ? '검수 대상' : '비교 이력') + '</span>');
                 html += cell('field',esc(item.column_name) + '<small>' + esc(types[item.correction_type] || item.correction_type) + '</small>');
-                html += cell('old',val(row.target ? item.old_value : row.comparison.field_available ? row.comparison.value : undefined));
+                html += cell('old',row.target && item.review_source ? '—' : val(row.target ? item.old_value : row.comparison.field_available ? row.comparison.value : undefined));
                 html += cell('new',row.target ? val(item.new_value) : '—');
-                html += cell('status','<span class="audit-badge">' + esc(row.target ? L4.STATUS_NAMES[item.status] || item.status : '비교 이력') + '</span>');
+                html += cell('status','<span class="audit-badge">' + esc(row.target ? statusNames[item.status] || L4.STATUS_NAMES[item.status] || item.status : '비교 이력') + '</span>' + (row.target && item.shared_normal ? '<small>정상 공유 승인 · 최초 ' + esc(item.origin_product) + '</small>' : '') + (row.target && item.status === 'error' ? '<small>이상 확인 · 미수정</small>' : ''));
                 html += cell('reviewer',row.target ? esc(item.created_id || '-') + '<small>' + esc(item.created_at) + '</small>' : '—');
                 html += cell('url',url(row.target ? item.product_url : row.comparison.product_url));
                 html += cell('reason',row.target ? esc(item.reason || item.memo || '-') + (item.history_truncated ? '<small>이력 일부 생략 · 상세에서 확인</small>' : '') + (item.history_notice ? '<small>' + esc(item.history_notice) + '</small>' : '') : '—');
@@ -102,9 +103,12 @@
         });
         if (!data.items.length) html += '<tr><td colspan="13" class="l4-empty-state">조건에 맞는 검수기록이 없습니다.</td></tr>';
         el('corrections-table-container').innerHTML = html + '</tbody></table>';
+        var cancelButton = el('corr-cancel-btn');
+        var selectable = data.items.some(function (item) { return !item.review_source; });
+        if (cancelButton) cancelButton.style.display = selectable ? '' : 'none';
         el('correction-row-count').textContent = '검수 대상 ' + data.total.toLocaleString() + '건 · 현재 페이지 비교 이력 포함 ' + displayed + '행';
         el('corrections-table-container').querySelectorAll('[data-corr-detail]').forEach(function (button) { button.onclick = function () { window.CorrectionAudit.open(data.items[Number(button.dataset.corrDetail)]); }; });
-        var all = el('audit-list-check-all'); if (all) all.onchange = function () { document.querySelectorAll('.corr-check').forEach(function (check) { check.checked = all.checked; }); };
+        var all = el('audit-list-check-all'); if (all) { all.disabled = !selectable; all.onchange = function () { document.querySelectorAll('.corr-check').forEach(function (check) { check.checked = all.checked; }); }; }
         var pages = el('corrections-pagination'); pages.innerHTML = '<div class="audit-pagination"><span>' + data.page + ' / ' + Math.max(data.total_pages,1) + ' 페이지</span><button class="app-btn app-btn-sm app-btn-outline" id="corr-previous" ' + (data.page <= 1 ? 'disabled' : '') + '>이전</button><button class="app-btn app-btn-sm app-btn-outline" id="corr-next" ' + (data.page >= data.total_pages ? 'disabled' : '') + '>다음</button></div>';
         el('corr-previous').onclick = function () { load(page-1); }; el('corr-next').onclick = function () { load(page+1); };
         applyColumns();

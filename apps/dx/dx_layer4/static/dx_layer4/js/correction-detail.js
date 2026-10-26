@@ -32,11 +32,12 @@
     }
     function kv(label, val) { return '<tr><th>' + esc(label) + '</th><td>' + value(val) + '</td></tr>'; }
     function logHtml(item) {
+        var review = item.review_source === 'format_review';
         var rows = kv('검증유형', L4.TYPE_NAMES[item.correction_type] || item.correction_type)
             + kv('원본 테이블', item.table_name) + kv('리테일러 / Item', (item.retailer || '-') + ' / ' + (item.item || '-'))
             + kv('레코드 / 컬럼', String(item.record_id) + ' / ' + item.column_name)
-            + kv('검수일', item.crawl_date) + kv('수정 전 값', item.old_value) + kv('수정 후 값', item.new_value)
-            + kv('처리 결과', L4.STATUS_NAMES[item.status] || item.status)
+            + kv('검수일', item.crawl_date) + (review ? kv('확인 당시 값', item.new_value) : kv('수정 전 값', item.old_value) + kv('수정 후 값', item.new_value))
+            + kv('처리 결과', ({normal:'정상 확인',error:'이상 확인',reverted:'취소'})[item.status] || L4.STATUS_NAMES[item.status] || item.status)
             + kv('사유', item.reason || '-') + kv('메모', item.memo || '-')
             + kv('처리자 / 처리 시각', (item.created_id || '-') + ' / ' + (item.created_at || '-'));
         if (item.rule_name) rows += kv('검증 규칙', item.rule_name);
@@ -87,7 +88,8 @@
         var ticket = ++sequence;
         state.ticket = ticket;
         var id = state.item.id, days = state.days;
-        get('/dx/layer4/api/corrections/detail/?id=' + encodeURIComponent(id) + '&days=' + days).then(function (data) {
+        var params = state.item.review_source === 'format_review' ? new URLSearchParams({review_event_id:state.item.review_event_id,target:state.item.review_target,record:state.item.review_record}) : new URLSearchParams({id:id,days:days});
+        get('/dx/layer4/api/corrections/detail/?' + params).then(function (data) {
             if (!state || state.ticket !== ticket || !document.getElementById('audit-source')) return;
             state.data = data;
             render(data);
@@ -97,6 +99,7 @@
         });
     }
     function render(data) {
+        if (data.review_source === 'format_review') return renderReview(data);
         var item = state.item, target = data.target, field = data.field;
         var url = target && target.product_url;
         if (!url) {
@@ -133,7 +136,16 @@
             html += '</div>';
         });
         html += '</div>';
+        if ((data.review_events || []).length) {
+            html += '<h3 class="audit-event-title">이 레코드·컬럼의 형식 확인 기록</h3><div class="audit-events">';
+            data.review_events.forEach(function (e, i) {
+                html += '<div><b>' + esc(e.review_action === 'normal' ? '정상 확인' : '이상 확인') + '</b> · ' + esc(e.created_id) + ' · ' + esc(e.created_at)
+                    + '<p>확인 당시 값: ' + value(e.new_value) + '</p><p>' + esc(e.reason) + '</p><button class="app-btn app-btn-sm app-btn-outline" data-review-detail="' + i + '">확인 증빙·취소 이력</button></div>';
+            });
+            html += '</div>';
+        }
         document.getElementById('audit-source').innerHTML = html;
+        document.querySelectorAll('[data-review-detail]').forEach(function (button) { button.onclick = function () { open(data.review_events[Number(button.dataset.reviewDetail)]); }; });
         document.getElementById('audit-reload').onclick = function () {
             var days = Number(document.getElementById('audit-days').value);
             if (!Number.isInteger(days) || days < 1 || days > 30) return showToast('비교 일수는 1~30일입니다.', 'warning');
@@ -141,6 +153,33 @@
         };
         var queryButton = document.getElementById('audit-query');
         if (queryButton) queryButton.onclick = loadQuery;
+    }
+    function renderReview(data) {
+        var labels = {normal:'정상 확인',error:'이상 확인',revoke:'승인 취소',undo:'처리 취소'};
+        var html = '<h3>형식 확인 당시 저장 기록</h3><p class="audit-muted">검수일 ' + esc(data.inspection_date) + ' · 원본 수집일 ' + esc(data.source_date)
+            + ' · 최초 처리 제품군 ' + esc(data.origin_product) + '</p><p>'
+            + (data.shared_normal ? '같은 국가·리테일러·컬럼·정확한 값의 정상 승인을 제품군 간 공유합니다. 다른 제품군의 개별 상품을 직접 확인했다는 뜻은 아닙니다.' : '이상임을 확인한 기록이며 수정·해결 완료가 아닙니다. 실제 확인한 원본 레코드에만 적용됩니다.') + '</p>'
+            + '<div class="audit-values"><div><label>확인 컬럼</label>' + esc(data.field) + '</div><div><label>확인 당시 값</label>' + value(data.value) + '</div><div><label>확인 사유</label>' + esc(data.reason) + '</div></div>'
+            + '<h3>확인 대상 상품 · 당시 저장 정보</h3><div class="audit-table-wrap"><table class="audit-table"><thead><tr><th>레코드</th><th>Item · 상품명</th><th>수집 시각 원문</th><th>상품 URL</th></tr></thead><tbody>';
+        (data.records || []).forEach(function (r) { html += '<tr><td>' + esc(r.id) + '</td><td>' + esc(r.item) + '<br>' + esc(r.name) + '</td><td>' + esc(r.collected_at || '미저장') + '</td><td>' + link(r.url) + '</td></tr>'; });
+        html += '</tbody></table></div><h3>확인한 URL · 첨부 증빙</h3>';
+        (data.checked_urls || []).forEach(function (u) { html += '<p>' + link(u) + '</p>'; });
+        (data.captures || []).forEach(function (c) {
+            // Only the authenticated, environment-scoped capture endpoint is embedded.
+            if (!/^\/dx\/layer2\/api\/format-review\/capture\/\d+\/$/.test(c.url)) return;
+            html += '<details><summary>' + esc(c.name) + '</summary><img loading="lazy" style="max-width:100%;height:auto" src="' + esc(c.url) + '" alt="' + esc(c.name) + '"></details>';
+        });
+        if (!(data.checked_urls || []).length && !(data.captures || []).length) html += '<p class="audit-muted">저장된 증빙이 없습니다.</p>';
+        html += '<h3>동일 값의 처리·취소 이력</h3><div class="audit-events">';
+        (data.history || []).forEach(function (e) { html += '<div><b>' + esc(labels[e.action] || e.action) + '</b> · ' + esc(e.product) + ' · ' + esc(e.actor) + ' · ' + esc(e.created_at) + (e.is_del ? ' · 취소된 처리' : '') + '<p>' + esc(e.reason) + '</p></div>'; });
+        html += '</div>' + (data.history_truncated ? '<p>최근 처리 이력 100건을 표시합니다.</p>' : '');
+        if ((data.correction_history || []).length) {
+            html += '<h3 class="audit-event-title">이 레코드·컬럼의 수정 이력</h3><div class="audit-events">';
+            data.correction_history.forEach(function (e) { html += '<div><b>' + esc(L4.STATUS_NAMES[e.status] || e.status) + '</b> · ' + esc(e.created_id) + ' · ' + esc(e.created_at)
+                + '<p>' + value(e.old_value) + ' → ' + value(e.new_value) + '</p><p>' + esc(e.reason || e.memo || '') + '</p></div>'; });
+            html += '</div>';
+        }
+        document.getElementById('audit-source').innerHTML = html;
     }
     function loadQuery() {
         if (!window.CORRECTIONS_IS_ADMIN || !state) return;

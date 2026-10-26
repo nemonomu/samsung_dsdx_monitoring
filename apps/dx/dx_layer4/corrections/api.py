@@ -24,6 +24,16 @@ def correction_detail(request):
     if not request.user.is_authenticated:
         return JsonResponse({'error': '로그인이 필요합니다.'}, status=403)
     try:
+        if request.GET.get('review_event_id'):
+            from . import format_reviews
+            data = format_reviews.detail(
+                int(request.GET['review_event_id']), int(request.GET.get('target', -1)),
+                int(request.GET.get('record', -1)),
+            )
+            data['correction_history'] = format_reviews.correction_history(data['correction'])
+            response = JsonResponse(data)
+            response['Cache-Control'] = 'private, no-store'
+            return response
         from . import detail
         return JsonResponse(detail.detail(*_detail_arguments(request)))
     except LookupError as e:

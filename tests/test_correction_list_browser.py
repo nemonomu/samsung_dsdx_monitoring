@@ -124,6 +124,48 @@ def main():
         assert body.evaluate('(node)=>node.scrollTop')>0
         close_box=modal.locator('.app-modal__close').bounding_box()
         assert 0<=close_box['y']<1120-close_box['height']
+        page.keyboard.press('Escape')
+        # Saved format decisions use their own evidence API, never legacy
+        # correction IDs, raw validation requests, or the legacy cancel endpoint.
+        review={**records[0], 'id':-1, 'correction_type':'format_check', 'status':'error',
+                'review_source':'format_review','review_event_id':22,'review_target':0,'review_record':0,
+                'new_value':'<script>bad()</script>','old_value':None,'reason':'상품 페이지와 대조한 이상 값',
+                'comparison_rows':[],'shared_normal':False,'origin_product':'REF'}
+        payload.update(items=[review],total=1,type_counts={'format_check':1},
+                       status_counts={'corrected':0,'normal':0,'error':1,'reverted':0})
+        saved=dict(success=True,review_source='format_review',correction=review,
+                   inspection_date='2026-10-27',source_date='2026-10-26',origin_product='REF',
+                   field='ref_capacity',value=review['new_value'],reason=review['reason'],shared_normal=False,
+                   records=[dict(id=42,item='REF-42',name='Saved refrigerator',collected_at='2026-10-26T23:59:00-04:00',url='javascript:bad()')],
+                   checked_urls=['https://example.test/product/42'],captures=[],
+                   correction_history=[dict(status='corrected',created_id='editor',created_at='2026-10-27 09:00:00',old_value='192 liters',new_value='192 L',reason='단위 정정')],
+                   history=[dict(id=22,action='error',actor='tester',created_at='2026-10-27 10:00:00',product='REF',reason='이상 확인',is_del=False)])
+        page.evaluate('data=>window.listFixture=data',payload)
+        page.evaluate('data=>window.detailFixture=data',saved)
+        page.locator('[data-corr-type="format_check"]').click()
+        page.locator('[data-corr-status="error"]').click()
+        page.wait_for_function("document.querySelector('#corr-error').textContent==='1'")
+        assert page.locator('.audit-current-row [data-col=status]').inner_text()=='이상 확인\n이상 확인 · 미수정'
+        assert page.locator('.audit-current-row [data-col=old]').inner_text()=='—'
+        assert page.locator('.audit-current-row [data-col=new]').inner_text()==review['new_value']
+        page.locator('[data-corr-detail="0"]').click()
+        page.wait_for_function("document.querySelector('#audit-source').textContent.includes('Saved refrigerator')")
+        assert 'review_event_id=22' in page.evaluate('window.calls.at(-1)')
+        assert page.locator('#audit-query').count()==0
+        assert page.locator('#audit-source a[href^="javascript:"]').count()==0
+        assert '수정·해결 완료가 아닙니다' in page.locator('#audit-source').inner_text()
+        assert '단위 정정' in page.locator('#audit-source').inner_text()
+        page.screenshot(path=str(ROOT/'tmp/format_review_audit_detail.png'),full_page=True)
+        page.keyboard.press('Escape')
+        review.update(status='normal',shared_normal=True)
+        payload.update(items=[review],status_counts={'corrected':0,'normal':1,'error':0,'reverted':0})
+        page.evaluate('data=>window.listFixture=data',payload)
+        page.locator('[data-corr-status="normal"]').click()
+        page.wait_for_function("document.querySelector('#corr-normal').textContent==='1'")
+        assert page.locator('.corr-check').count()==0
+        assert not page.locator('#corr-cancel-btn').is_visible()
+        assert '정상 공유 승인 · 최초 REF' in page.locator('.audit-current-row').inner_text()
+        page.screenshot(path=str(ROOT/'tmp/format_review_audit_list.png'),full_page=True)
         assert not errors,errors
         browser.close()
         print('PASS: real template, groups, counts, filters, centered modal, X/ESC/overlay close, focus, admin SQL')

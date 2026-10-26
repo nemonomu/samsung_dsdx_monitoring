@@ -196,6 +196,10 @@ def detail(correction_id, days=3):
                        (correction['table_name'], correction['record_id'], context['field'],
                         correction['retailer'], correction['item']))
         events = _dicts(cursor)
+    review_events = []
+    if correction.get('column_name'):
+        from .format_reviews import record_history
+        review_events = record_history(correction)
     def serialize(row):
         return {key: _text(value) for key, value in row.items()}
     return dict(success=True, correction=serialize(correction), country=context['source']['country'],
@@ -204,6 +208,7 @@ def detail(correction_id, days=3):
                 target=serialize(target) if target else None, field_available=context['field'] in context['columns'],
                 columns=context['columns'], rows=[serialize(r) for r in rows],
                 events=[serialize(e) for e in events], truncated=truncated,
+                review_events=review_events,
                 notice='원본의 현재 저장값입니다. 비교 행은 과거 시점의 변경 전 스냅샷을 보장하지 않습니다.')
 
 

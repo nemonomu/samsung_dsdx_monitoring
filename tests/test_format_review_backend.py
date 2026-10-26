@@ -476,6 +476,102 @@ class FormatReviewTests(TestCase):
         self.assertEqual([1,2],[r['id'] for r in result['results']])
 
 
+class FormatAuditTests(TestCase):
+    def setUp(self):
+        from django.utils import timezone
+        self.now = timezone.now()
+        self.context = service.context_for(sample())
+        self.key = service.group_key('pick_up_availability', 'Ready')
+        self.target = dict(key=self.key, field='pick_up_availability', value='Ready',
+                           source_date='2026-10-10', count=1, records=[dict(
+                               id=9, item='REF-9', name='Saved name', url='https://example.test/item/9',
+                               collected_at='2026-10-10T23:58:00-04:00')])
+
+    def add(self, action='normal', product='REF', environment='production', **kwargs):
+        context = {**self.context, 'product': product, 'environment': environment,
+                   'source_table': 'public.' + product.lower() + '_retail_com'}
+        scope, _ = FormatReviewScope.objects.get_or_create(
+            fingerprint=service.digest(context), defaults={'context':context})
+        return FormatReviewEvent.objects.create(scope=scope, inspection_date=DAY,
+            action=action, actor='reviewer', reason='Checked original', created_at=self.now,
+            targets=[copy.deepcopy(self.target)], **kwargs)
+
+    def test_saved_snapshot_only_origin_product_and_environment(self):
+        from apps.dx.dx_layer4.corrections import format_reviews as audit
+        normal = self.add()
+        self.add('error', product='TV')
+        self.add(environment='test')
+        with patch('apps.common.db.get_dx_connection', side_effect=AssertionError('source DB must not be queried')):
+            rows = audit.list_rows(DAY)
+            self.assertEqual(2, len(rows))
+            row = next(r for r in rows if r['review_event_id'] == normal.pk)
+            self.assertEqual('normal', row['status'])
+            self.assertEqual('REF', row['origin_product'])
+            self.assertEqual('Ready', row['new_value'])
+            self.assertEqual('2026-10-10T23:58:00-04:00', row['crawl_time'])
+            self.assertEqual('2026-10-10', row['source_date'])
+            self.assertEqual([], audit.list_rows(date(2026,10,12)))
+            data = audit.detail(normal.pk, 0, 0)
+            self.assertEqual('Saved name', data['records'][0]['name'])
+            self.assertEqual([normal.pk], [e['id'] for e in data['history']])
+            self.assertNotIn('queries', data)
+            history = audit.record_history(row)
+            self.assertEqual([normal.pk], [r['review_event_id'] for r in history])
+            self.assertEqual([], audit.record_history({**row,'record_id':999}))
+
+    def test_shared_normal_revocation_crosses_products_but_error_stays_local(self):
+        from apps.dx.dx_layer4.corrections import format_reviews as audit
+        normal = self.add()
+        error = self.add('error', product='TV')
+        revoked = self.add('revoke', product='LDY_DRYER')
+        revoked.targets[0]['shared_normal'] = True
+        revoked.targets[0]['records'] = []
+        revoked.save()
+        rows = {row['review_event_id']:row for row in audit.list_rows(DAY)}
+        self.assertEqual('reverted', rows[normal.pk]['status'])
+        self.assertEqual('normal', rows[normal.pk]['review_action'])
+        self.assertEqual('error', rows[error.pk]['status'])
+        self.assertEqual(2, len(rows))  # shared policy does not invent inspected dryer items
+        revoked.targets[0]['shared_normal'] = False
+        revoked.scope = error.scope
+        revoked.previous = {self.key:{'event_id':error.pk}}
+        revoked.save()
+        rows = {row['review_event_id']:row for row in audit.list_rows(DAY)}
+        self.assertEqual('normal', rows[normal.pk]['status'])
+        self.assertEqual('reverted', rows[error.pk]['status'])
+        revoked.is_del = True  # Undoing a revocation restores the original approval.
+        revoked.save()
+        rows = {row['review_event_id']:row for row in audit.list_rows(DAY)}
+        self.assertEqual('error', rows[error.pk]['status'])
+
+    def test_undo_evidence_and_authorized_detail_without_raw_rows(self):
+        from apps.dx.dx_layer4.corrections import format_reviews as audit, api
+        from apps.dx.dx_layer2.models import FormatReviewCapture
+        event = self.add(is_del=True, checked_urls=['https://example.test/checked'])
+        undo = self.add('undo')
+        FormatReviewCapture.objects.create(event=event, name='proof.png', content_type='image/png', content=b'saved-proof')
+        data = audit.detail(event.pk,0,0)
+        self.assertEqual('reverted', data['correction']['status'])
+        self.assertEqual('reviewer', data['correction']['updated_id'])
+        self.assertEqual([undo.pk,event.pk], [e['id'] for e in data['history']])
+        self.assertEqual(['https://example.test/checked'], data['checked_urls'])
+        self.assertEqual(1,len(data['captures']))
+        self.assertNotIn('content',data['captures'][0])
+        request = RequestFactory().get('/', {'review_event_id':event.pk,'target':0,'record':0})
+        request.user = SimpleNamespace(is_authenticated=False)
+        self.assertEqual(403,api.correction_detail(request).status_code)
+        request.user.is_authenticated=True
+        with patch.object(audit,'correction_history',return_value=[]) as saved_corrections:
+            response=api.correction_detail(request)
+            self.assertEqual(9,saved_corrections.call_args.args[0]['record_id'])
+        self.assertEqual(200,response.status_code)
+        self.assertEqual('private, no-store',response['Cache-Control'])
+        foreign=self.add(environment='test')
+        with self.assertRaises(LookupError): audit.detail(foreign.pk,0,0)
+        for ti,ri in [(-1,0),(0,-1),(1,0),(0,1)]:
+            with self.assertRaises(ValueError): audit.detail(event.pk,ti,ri)
+
+
 if __name__=='__main__':
     failures=DiscoverRunner(verbosity=2).run_tests(['__main__'])
     raise SystemExit(bool(failures))
