@@ -17,6 +17,34 @@ DAY = date(2026, 9, 21)
 
 
 class SedaFormatRulesTests(unittest.TestCase):
+    def test_magalu_reviewed_delivery_ranges_and_date_boundaries(self):
+        valid = (
+            'Receive entre 03 a 06 de novembro', 'Receive entre 28 a 30 de outubro',
+            'Receive entre 29/10 a 04 de novembro', 'Receive entre 25/11 a 02 de dezembro',
+            'Receive entre 1 a 9 de março', 'Receive entre 28 a 29 de fevereiro',
+            'Receive entre 30/12 a 02 de janeiro', 'Receive entre 04 a 04 de novembro',
+        )
+        invalid = (
+            'Receive entre 00 a 06 de novembro', 'Receive entre 03 a 32 de novembro',
+            'Receive entre 03 a 31 de novembro', 'Receive entre 30 a 30 de fevereiro',
+            'Receive entre 31/04 a 06 de maio', 'Receive entre 29/13 a 04 de novembro',
+            'Receive entre 29/00 a 04 de novembro', 'Receive entre 06 a 03 de novembro',
+            'Receive entre 04/11 a 03 de novembro', 'Receive entre 04/11 a 06 de outubro',
+            'Receive entre 03 a 06 de November', 'Receive entre 03 a 06 de unknown',
+            'Receive entre 03 e 06 de novembro', 'Receive entre 03 a 06 de novembro extra',
+            'Receive entre 003 a 06 de novembro',
+        )
+        for product in SEDA_SOURCE_CONFIG:
+            for value in valid + invalid:
+                with self.subTest(product=product, value=value):
+                    errors = rules.evaluate({'delivery_availability': value}, product, 'Magalu')
+                    self.assertEqual(value in invalid, 'delivery_availability' in errors)
+            for value in valid:
+                self.assertIn('delivery_availability', rules.evaluate(
+                    {'delivery_availability': value}, product, 'CasasBahia'))
+        detail = rules.rule_details('seda_tv', 'Magalu', 'delivery_availability')
+        self.assertIn('DD/MM', detail['pattern'])
+
     def test_numeric_metadata_and_url_rules(self):
         pairs = {
             'account_name': ('Magalu', 'Wrong'), 'country': ('SEDA', 'SEA'),

@@ -56,6 +56,9 @@ _COPPEL_DRYER_CAPACITY_VALUE = r'\d+(?:\.\d+)?\s*kg'
 _COPPEL_DRYER_CAPACITY = re.compile(
     rf'^{_COPPEL_DRYER_CAPACITY_VALUE}(?:\s*/\s*{_COPPEL_DRYER_CAPACITY_VALUE})*$', re.I
 )
+_COPPEL_LDY_CAPACITY = re.compile(
+    rf'^{_COPPEL_DRYER_CAPACITY_VALUE}(?:\s*[,/]\s*{_COPPEL_DRYER_CAPACITY_VALUE})*$', re.I
+)
 _REF_REFRIGERATOR_TYPES = {
     'Freezer',
     'Freezer-on-Bottom (Bottom Mount)',
@@ -330,6 +333,8 @@ def _format_checks(product_line, retailer=SEM_RETAILER):
         })
         if product_line == 'sem_ref':
             checks['ref_refrigerator_type'] = lambda value: str(value).strip() in _COPPEL_REF_TYPES
+        elif product_line == 'sem_ldy':
+            checks['ldy_capacity'] = lambda value: bool(_COPPEL_LDY_CAPACITY.fullmatch(str(value).strip()))
         elif product_line == 'sem_ldy_dryer':
             checks['capacity'] = lambda value: bool(_COPPEL_DRYER_CAPACITY.fullmatch(str(value).strip()))
     return checks
@@ -375,7 +380,12 @@ def get_format_rule_details(product_line, retailer=SEM_RETAILER):
             'savings': {'description': '할인금액과 괄호 안 정수 할인율 0~100', 'pattern': '$8,200 (43%)'},
             'ref_refrigerator_type': {'description': '허용된 Coppel 냉장고 유형', 'pattern': 'Top Mount / Bottom Mount / French Door / Side by Side'},
         })
-        if product_line == 'sem_ldy_dryer':
+        if product_line == 'sem_ldy':
+            details['ldy_capacity'] = {
+                'description': '숫자와 kg 단위 형식 (단위 앞 공백 선택, 복수 용량은 쉼표 또는 /로 구분)',
+                'pattern': '20kg / 20 kg / 20.5 kg / 20kg, 24kg / 16kg, 10kg',
+            }
+        elif product_line == 'sem_ldy_dryer':
             details['capacity'] = {
                 'description': '숫자와 kg 단위 형식 (숫자와 단위 사이 공백 선택)',
                 'pattern': '20kg / 20 kg / 20.5 kg',

@@ -39,6 +39,23 @@ def errors(**changes):
 
 
 class CoppelRulesTests(unittest.TestCase):
+    def test_washer_capacity_accepts_comma_separated_kg_values(self):
+        for value in ('20kg, 24kg', '16kg, 10kg', '20kg', '20 kg',
+                      '20.5 kg,24 KG', '10 kg / 20.5 kg'):
+            with self.subTest(value=value):
+                self.assertEqual([], layer2.evaluate_format(
+                    record(ldy_capacity=value), 'sem_ldy', 'Coppel'))
+        for value in ('20, 24kg', '20kg,', ',24kg', '20kg,,24kg',
+                      '20kg 24kg', '20lb, 24kg', '-20kg, 24kg'):
+            with self.subTest(value=value):
+                self.assertIn('ldy_capacity', layer2.evaluate_format(
+                    record(ldy_capacity=value), 'sem_ldy', 'Coppel'))
+        for retailer in ('Liverpool', 'HomeDepot'):
+            self.assertFalse(layer2._format_checks('sem_ldy', retailer)['ldy_capacity']('20kg, 24kg'))
+        rule = next(r for r in layer2.get_format_rule_details('sem_ldy', 'Coppel')
+                    if r['field'] == 'ldy_capacity')
+        self.assertIn('20kg, 24kg', rule['pattern'])
+
     def test_scope_and_required_columns_preserve_existing_retailers(self):
         for product in ('sem_ref', 'sem_ldy'):
             self.assertEqual(('Liverpool', 'HomeDepot', 'Coppel'), SEM_LAYER1_RETAILERS[product])

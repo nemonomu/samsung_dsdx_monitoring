@@ -34,6 +34,7 @@ FIELD_VALUES = {
                              'Pick up in store starting tomorrow', 'Fast pickup in 2h',
                              'Pick up today', 'Pick up tomorrow'),
     'delivery_availability': ('Receive today', 'Receive tomorrow', 'Receive within 2 business days',
+                              'Receive entre 03 a 06 de novembro', 'Receive entre 29/10 a 04 de novembro',
                               'Receive by Tuesday, October 20', 'Normal by Tuesday, October 20',
                               'Delivery by Wednesday, 23 Sep', 'Delivery unavailable for this ZIP code',
                               'FREE delivery Today.', 'FREE delivery Wednesday, 23 September.',

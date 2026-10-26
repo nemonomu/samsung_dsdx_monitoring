@@ -20,6 +20,16 @@ MONEY = r'R\$\s*(?:[0-9]+|[0-9]{1,3}(?:\.[0-9]{3})+),[0-9]{2}'
 WEEKDAY = r'(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)'
 MONTH = '(?:' + '|'.join(calendar.month_name[1:]) + ')'
 DELIVERY_DATE = rf'{WEEKDAY}, (?P<month>{MONTH}) (?P<day>0?[1-9]|[12][0-9]|3[01])'
+PORTUGUESE_MONTHS = (
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+)
+MAGALU_DELIVERY_RANGE = re.compile(
+    r'Receive entre (?P<start>0?[1-9]|[12][0-9]|3[01])'
+    r'(?:/(?P<start_month>0?[1-9]|1[0-2]))? a '
+    r'(?P<end>0?[1-9]|[12][0-9]|3[01]) de '
+    r'(?P<month>' + '|'.join(PORTUGUESE_MONTHS) + r')'
+)
 CASAS_UNAVAILABLE = (
     'Delivery unavailable for this ZIP code',
     'Delivery unavailable for your region at the moment. Try another ZIP code?',
@@ -54,11 +64,30 @@ def valid_review_body(text):
     return bool(parts)
 
 
+def valid_magalu_delivery_range(text):
+    # Explicitly reviewed range shapes; exact-value approvals remain independent.
+    match = MAGALU_DELIVERY_RANGE.fullmatch(text)
+    if not match:
+        return False
+    end_month = PORTUGUESE_MONTHS.index(match['month']) + 1
+    start_month = int(match['start_month'] or end_month)
+    start, end = int(match['start']), int(match['end'])
+    # No year is supplied: allow February 29, as with the existing delivery rule.
+    if (start > calendar.monthrange(2000, start_month)[1]
+            or end > calendar.monthrange(2000, end_month)[1]):
+        return False
+    if start_month == end_month:
+        return start <= end
+    return start_month < end_month or (start_month, end_month) == (12, 1)
+
+
 def valid_delivery(text, retailer):
     if retailer == 'casasbahia' and text in CASAS_UNAVAILABLE:
         return True
     if retailer == 'magalu' and (text in ('Receive today', 'Receive tomorrow')
             or re.fullmatch(r'Receive within (?:1 business day|[2-9][0-9]* business days|1[0-9]+ business days)', text)):
+        return True
+    if retailer == 'magalu' and valid_magalu_delivery_range(text):
         return True
     prefix = 'Normal by ' if retailer == 'casasbahia' else 'Receive by '
     match = re.fullmatch(re.escape(prefix) + DELIVERY_DATE, text)
@@ -142,7 +171,9 @@ def rule_details(product_line, retailer, field):
         'sku_status': 'Sponsored여야 합니다.',
         'discount_type': ('Coupon R$ 양수금액 off 형식이어야 합니다.' if seda_retailer_key(retailer) == 'magalu'
                           else 'USE O CUPOM DESCONTO 1~100% 형식이어야 합니다.'),
-        'delivery_availability': ('Receive by 요일, 월 날짜 / Receive today·tomorrow / Receive within N business day(s) 형식이어야 합니다.'
+        'delivery_availability': ('Receive by 요일, 월 날짜 / Receive today·tomorrow / Receive within N business day(s) / '
+                                  'Receive entre DD a DD de 포르투갈어 월 / Receive entre DD/MM a DD de 포르투갈어 월 형식이어야 합니다. '
+                                  '월별 유효한 날짜와 시작·종료 순서를 검사하며 12월→1월은 허용합니다.'
                                   if seda_retailer_key(retailer) == 'magalu' else 'Normal by 요일, 월 날짜 또는 확인된 배송 불가 문구여야 합니다. Delivery unavailable for this ZIP code도 정상입니다.'),
         'pick_up_availability': ('Pick up in store 또는 Pick up in store starting tomorrow여야 합니다.'
                                  if seda_retailer_key(retailer) == 'magalu' else 'Pick up in store 또는 Fast pickup in 2h여야 합니다.'),

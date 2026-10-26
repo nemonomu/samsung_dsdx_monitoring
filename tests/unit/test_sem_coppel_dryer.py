@@ -171,9 +171,9 @@ class CoppelDryerTests(unittest.TestCase):
                 self.assertEqual([field], l2.evaluate_format(dict(row, **{field: value}), KEY, 'Coppel'))
         self.assertEqual([], l2.evaluate_format(dict(row, capacity=None, loading_type=' ',
                             original_sku_price=None, savings=None, star_rating='invalid'), KEY, 'Coppel'))
-        # The source-specific unit spacing exception must not broaden other retailers/products.
+        # Coppel washers also allow compact kg values; HomeDepot remains unchanged.
         self.assertFalse(l2._format_checks(KEY, 'HomeDepot')['capacity']('20kg'))
-        self.assertFalse(l2._format_checks('sem_ldy', 'Coppel')['ldy_capacity']('20kg'))
+        self.assertTrue(l2._format_checks('sem_ldy', 'Coppel')['ldy_capacity']('20kg'))
 
     def test_format_summary_detail_history_and_review_agree(self):
         mapping = dict(source_date=str(DAY), inspection_date=str(DAY), offset_days=0)
