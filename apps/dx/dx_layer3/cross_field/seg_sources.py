@@ -1,8 +1,8 @@
 """SEG cross-field sources, including Expert's collected-column contract."""
 from apps.common import seg_retail as legacy
 from apps.dx.dx_layer2.seg_sources import (
-    SEG_COUNTRY, SEG_SOURCE_CONFIG, SEG_TABLE_TO_PRODUCT_LINE,
-    get_seg_source, get_seg_product_line, EXPERT_START_DATE, record_scope,
+    SEG_COUNTRY, SEG_FORMAT_SOURCE_CONFIG as SEG_SOURCE_CONFIG, SEG_TABLE_TO_PRODUCT_LINE,
+    get_seg_product_line, EXPERT_START_DATE, record_scope, retailer_start_date, active_retailers,
 )
 
 SEG_RETAILERS = (*legacy.SEG_RETAILERS, 'Expert')
@@ -10,6 +10,17 @@ EXPERT_EDITABLE = (
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
     'final_sku_price', 'original_sku_price',
 )
+MEDIAMARKT_DRYER_RULES = frozenset({
+    'rating_count_presence', 'review_count_match', 'final_original_price',
+    'savings_missing', 'original_missing', 'final_missing',
+})
+
+
+def get_seg_source(value):
+    key = get_seg_product_line(value)
+    if key is None:
+        raise ValueError(f'Unsupported SEG source: {value}')
+    return SEG_SOURCE_CONFIG[key]
 
 
 def display_seg_retailer(value):
@@ -27,7 +38,9 @@ get_seg_product_line_for_table = normalize_seg_product_line
 
 
 def get_seg_crossfield_editable_columns(product_line, retailer):
-    normalize_seg_product_line(product_line)
+    key = normalize_seg_product_line(product_line)
     if display_seg_retailer(retailer) == 'Expert':
         return list(EXPERT_EDITABLE)
+    if key == 'seg_ldy_dryer':
+        return [*EXPERT_EDITABLE, 'savings'] if display_seg_retailer(retailer) == 'Mediamarkt' else []
     return legacy.get_seg_crossfield_editable_columns(product_line, retailer)

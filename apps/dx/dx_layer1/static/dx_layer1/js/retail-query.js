@@ -52,7 +52,7 @@
             accountName = 'CasasBahia';
         }
         var dateFilter = config.dateColumn + ' >= ' + literal(day);
-        if (country === 'SEIB' || country === 'SEUK' || (country === 'SEM' && product === 'LDY_DRYER')) {
+        if (country === 'SEIB' || country === 'SEUK' || (['SEM', 'SEG'].includes(country) && product === 'LDY_DRYER')) {
             dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
         } else if (country === 'SEA' && accountName === 'Costco') {
             dateFilter = '(' + config.dateColumn + "::timestamptz AT TIME ZONE 'Asia/Seoul')::date = " + literal(day) + '::date';

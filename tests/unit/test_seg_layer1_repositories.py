@@ -12,7 +12,7 @@ class SegLayer1RepositoryTests(unittest.TestCase):
         result = repo.get_previous_main_counts(cursor, 'seg_ldy', '2026-09-09')
         sql, params = cursor.calls[0]
         self.assertEqual(['2026-09-09', 'mediamarkt', 'otto', 7], params)
-        self.assertIn('LEFT(BTRIM(crawl_strdatetime), 10) < %s', sql)
+        self.assertIn('LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10) < %s', sql)
         self.assertIn('WHERE main_count > 0', sql)
         self.assertIn('PARTITION BY retailer ORDER BY source_date DESC', sql)
         self.assertIn('WHERE day_rank <= %s', sql)
@@ -24,7 +24,7 @@ class SegLayer1RepositoryTests(unittest.TestCase):
     def test_dated_latest_main_anchor_and_rank_coverage(self):
         sql, params = repo.latest_main_counts_query('seg_tv', '2026-08-11')
         self.assertEqual(['2026-08-11', 'mediamarkt', 'otto', 'amazon'], params)
-        self.assertIn('LEFT(BTRIM(crawl_strdatetime), 10) = %s', sql)
+        self.assertIn('LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10) = %s', sql)
         self.assertIn("WHERE LOWER(BTRIM(page_type)) = 'main'", sql)
         self.assertIn('ORDER BY LOWER(BTRIM(account_name)), id DESC', sql)
         self.assertIn('rows.batch_id IS NOT DISTINCT FROM latest.batch_id', sql)

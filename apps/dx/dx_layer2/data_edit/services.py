@@ -327,14 +327,14 @@ def _select_seg_edit_record(
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
-          AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+          AND {raw_source_date_sql('source.' + date_column)} = %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
           {record_scope(source, source_date)}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
-              WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+              WHERE {raw_source_date_sql('anchor.' + date_column)} = %s
                 AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
                     LOWER(BTRIM(CAST(source.account_name AS TEXT)))
                 {record_scope(source, source_date, 'anchor', anchor=True)}

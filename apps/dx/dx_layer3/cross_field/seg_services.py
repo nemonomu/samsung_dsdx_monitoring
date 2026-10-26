@@ -14,6 +14,7 @@ from apps.common.crossfield_history import build_detail_history
 from apps.common import amazon_review_history
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.source_dates import source_date_sql as raw_source_date_sql
 from apps.common.seg_retail import get_seg_collection_phase
 from .seg_sources import (
     SEG_RETAILERS,
@@ -21,7 +22,8 @@ from .seg_sources import (
     get_seg_crossfield_editable_columns,
     get_seg_source,
     normalize_seg_product_line,
-    EXPERT_START_DATE, record_scope,
+    EXPERT_START_DATE, record_scope, retailer_start_date, active_retailers,
+    MEDIAMARKT_DRYER_RULES,
 )
 
 
@@ -217,11 +219,13 @@ def parse_seg_number(value):
         return None
 
 
-def parse_seg_money(value):
+def parse_seg_money(value, *, allow_dash=False):
     """Parse one German euro amount without discarding cents."""
     if not _has_value(value):
         return None
     text = str(value).strip().replace('€', '').replace(' ', '')
+    if allow_dash:
+        text = text.replace(',–', ',00')
     if not re.fullmatch(
             r'[+-]?(?:0|[1-9]\d{0,2}(?:\.\d{3})*|[1-9]\d*)'
             r'(?:,\d{2})?', text):
@@ -233,7 +237,7 @@ def parse_seg_money(value):
         return None
 
 
-def evaluate_seg_row(row):
+def evaluate_seg_row(row, product_line=None):
     """Return canonical SEG rule keys failed by one source row."""
     errors = set()
     retailer = display_seg_retailer(row.get('account_name'))
@@ -283,8 +287,9 @@ def evaluate_seg_row(row):
     if retailer == 'Amazon' and final_text in SEG_PRICE_STATUS_TEXTS:
         return errors
 
-    final_price = parse_seg_money(row.get('final_sku_price'))
-    original_price = parse_seg_money(row.get('original_sku_price'))
+    dryer_mediamarkt = product_line == 'seg_ldy_dryer' and retailer == 'Mediamarkt'
+    final_price = parse_seg_money(row.get('final_sku_price'), allow_dash=dryer_mediamarkt)
+    original_price = parse_seg_money(row.get('original_sku_price'), allow_dash=dryer_mediamarkt)
 
     if retailer == 'Expert':
         if final_price is not None and original_price is not None and final_price >= original_price:
@@ -503,6 +508,8 @@ def load_active_seg_rules(cursor, product_line):
         rule_key = _resolve_rule_key(row)
         if not rule_key:
             continue
+        if key == 'seg_ldy_dryer' and rule_key not in MEDIAMARKT_DRYER_RULES:
+            continue
 
         spec = SEG_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
@@ -602,12 +609,12 @@ def load_latest_seg_rows(
     end_date = end_contract['source_date']
     if key == 'seg_ldy_dryer' and end_date < str(EXPERT_START_DATE):
         return []
+    if review_items is not None and not source.get('has_page_type', True):
+        return []  # Dryer sources do not collect review bodies or page_type.
     table_name = source['table_name']
     date_column = source['date_column']
-    source_date_sql = (
-        f"LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10)"
-    )
-    retailers = source['retailers']
+    source_date_sql = raw_source_date_sql('source.' + date_column)
+    retailers = active_retailers(source, end_date)
     select_sql = 'source.*'
     order_sql = (f'{source_date_sql}, '
                  'LOWER(BTRIM(CAST(source.account_name AS TEXT))), source.id')
@@ -650,9 +657,10 @@ def load_latest_seg_rows(
         "OR source.redirect IS NOT TRUE)"
         if source.get('has_redirect') and review_items is None else ''
     )
-    expert_start_scope = (
-        "AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))) <> 'expert' "
-        f"OR {source_date_sql} >= '{EXPERT_START_DATE}')"
+    expert_start_scope = ' '.join(
+        "AND (LOWER(BTRIM(CAST(source.account_name AS TEXT))) <> "
+        f"'{name.lower()}' OR {source_date_sql} >= '{retailer_start_date(source, name)}')"
+        for name in retailers if retailer_start_date(source, name)
     )
     cursor.execute(f"""
         WITH main_batches AS (
@@ -701,6 +709,8 @@ def load_latest_seg_rows(
 
 
 def load_seg_review_history(cursor, target_date, product_line, rows):
+    if not get_seg_source(product_line).get('has_page_type', True):
+        return []
     identities = {
         identity for row in rows
         if display_seg_retailer(row.get('account_name')) in SEG_EQUAL_REVIEW_RETAILERS
@@ -786,7 +796,7 @@ def build_seg_crossfield_result(
     }
 
     evaluations = {
-        str(row.get('id')): evaluate_seg_row(row)
+        str(row.get('id')): evaluate_seg_row(row, key)
         for row in rows
     }
     retailer_rows = {}

@@ -2,8 +2,9 @@
 
 from collections.abc import Mapping
 from datetime import date
+from apps.common.source_dates import source_date_sql
 
-from .sources import EXPERT_START_DATE, active_retailers, get_seg_source
+from .sources import active_retailers, get_seg_source, retailer_start_date
 
 
 def latest_main_counts_query(product_line, source_date):
@@ -29,7 +30,7 @@ def latest_main_counts_query(product_line, source_date):
             SELECT id, batch_id, account_name{page_column}, main_rank, bsr_rank
                    {redirect_column}
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM({source['date_column']}), 10) = %s
+            WHERE {source_date_sql(source['date_column'])} = %s
               AND LOWER(BTRIM(account_name)) IN ({placeholders or 'NULL'})
         ), latest_main_batches AS (
             SELECT DISTINCT ON (LOWER(BTRIM(account_name)))
@@ -83,26 +84,27 @@ def get_previous_main_counts(cursor, product_line, source_date, limit=7):
     page_column = "LOWER(BTRIM(page_type)) AS page_type," if has_page else ''
     anchor = "page_type = 'main'" if has_page else 'TRUE'
     scope = "page_type IN ('main', 'bsr')" if has_page else 'TRUE'
-    expert_date_scope = ''
     if 'expert' in retailers:
         if has_page:
             anchor += " OR retailer = 'expert'"
             scope += " OR retailer = 'expert'"
-        expert_date_scope = (
-            "AND (LOWER(BTRIM(account_name)) <> 'expert' OR "
-            f"LEFT(BTRIM({date_column}), 10) >= '{EXPERT_START_DATE.isoformat()}')"
-        )
+    source_day = source_date_sql(date_column)
+    start_scopes = ' '.join(
+        f"AND (LOWER(BTRIM(account_name)) <> '{name.lower()}' OR "
+        f"{source_day} >= '{retailer_start_date(source, name).isoformat()}')"
+        for name in active_retailers(source, day) if retailer_start_date(source, name)
+    )
     cursor.execute(f"""
         WITH dated_rows AS (
             SELECT id, batch_id, LOWER(BTRIM(account_name)) AS retailer,
                    {page_column} main_rank,
-                   LEFT(BTRIM({date_column}), 10) AS source_date
+                   {source_day} AS source_date
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM({date_column}), 10) < %s
-              AND LEFT(BTRIM({date_column}), 10)
+            WHERE {source_day} < %s
+              AND {source_day}
                   ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
               AND LOWER(BTRIM(account_name)) IN ({placeholders})
-              {expert_date_scope}
+              {start_scopes}
         ), batch_counts AS (
             SELECT retailer, source_date, batch_id,
                    MAX(id) FILTER (WHERE {anchor}) AS latest_main_id,

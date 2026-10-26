@@ -7,6 +7,7 @@ from apps.common import seg_tv_format
 from . import seg_expert_format
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.source_dates import source_date_sql
 from apps.common.null_review_evidence import uses_new_policy
 from apps.dx.dx_layer2.null_review_state import review_state, add_review_totals
 from apps.dx.dx_layer2.seg_sources import (
@@ -17,7 +18,8 @@ from apps.dx.dx_layer2.seg_sources import (
     get_seg_null_columns,
     get_seg_product_line,
     get_seg_table_columns,
-    SEG_FORMAT_SOURCE_CONFIG, EXPERT_START_DATE, active_retailers,
+    SEG_FORMAT_SOURCE_CONFIG, SEG_DUPLICATE_SOURCE_CONFIG, EXPERT_START_DATE, active_retailers,
+    retailer_start_date,
     is_expert, page_scope, record_scope,
 )
 
@@ -111,7 +113,8 @@ def _latest_rows(cursor, target_date, source, retailer):
     table_name = source['table_name']
     date_column = source['date_column']
     source_date = mapping['source_date']
-    if is_expert(retailer) and source_date < str(EXPERT_START_DATE):
+    launch = retailer_start_date(source, retailer)
+    if launch and source_date < str(launch):
         return [], {**mapping, 'batch_id': None}
     anchor_redirect = _redirect_scope(source, retailer, 'anchor')
     row_redirect = _redirect_scope(source, retailer, 'source')
@@ -119,7 +122,7 @@ def _latest_rows(cursor, target_date, source, retailer):
     cursor.execute(f"""
         SELECT anchor.batch_id
         FROM {table_name} anchor
-        WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+        WHERE {source_date_sql('anchor.' + date_column)} = %s
           AND UPPER(BTRIM(CAST(anchor.country AS TEXT))) = %s
           AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) = LOWER(%s)
           {page_scope(source, retailer, 'anchor', anchor=True)}
@@ -136,7 +139,7 @@ def _latest_rows(cursor, target_date, source, retailer):
     cursor.execute(f"""
         SELECT source.*
         FROM {table_name} source
-        WHERE LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+        WHERE {source_date_sql('source.' + date_column)} = %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
           AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(%s)
           {page_scope(source, retailer)}
@@ -150,8 +153,9 @@ def _latest_rows(cursor, target_date, source, retailer):
 
 def _history_rows(cursor, source, retailer, start_date, end_date, items,
                   include_missing_item=False):
-    if is_expert(retailer):
-        start_date = max(str(start_date), str(EXPERT_START_DATE))
+    launch = retailer_start_date(source, retailer)
+    if launch:
+        start_date = max(str(start_date), str(launch))
         if str(end_date) < start_date:
             return []
     conditions = []
@@ -171,19 +175,20 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items,
     date_column = source['date_column']
     anchor_redirect = _redirect_scope(source, retailer, 'anchor')
     row_redirect = _redirect_scope(source, retailer, 'source')
-    date_expression = f"LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10)"
+    date_expression = source_date_sql('source.' + date_column)
+    anchor_day = source_date_sql('anchor.' + date_column)
     cursor.execute(f"""
         WITH latest_batches AS (
             SELECT DISTINCT ON (
-                       LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10)
+                       {anchor_day}
                    )
-                   LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10)
+                   {anchor_day}
                        AS source_date,
                    anchor.batch_id,
                    anchor.id
             FROM {table_name} anchor
-            WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) >= %s
-              AND LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) <= %s
+            WHERE {anchor_day} >= %s
+              AND {anchor_day} <= %s
               AND UPPER(BTRIM(CAST(anchor.country AS TEXT))) = %s
               AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) = LOWER(%s)
               {page_scope(source, retailer, 'anchor', anchor=True)}
@@ -305,9 +310,10 @@ def evaluate_format_row(row, product_line, retailer):
             'ref_capacity', _REF_CAPACITY_PATTERN,
             '숫자와 L, Liter 또는 Kubikfuß 단위 형식이 아닙니다.',
         )
-    if 'ldy_capacity' in fields:
+    capacity_column = 'capacity' if 'capacity' in fields else 'ldy_capacity'
+    if capacity_column in fields:
         check_pattern(
-            'ldy_capacity', _LDY_CAPACITY_PATTERN,
+            capacity_column, _LDY_CAPACITY_PATTERN,
             '숫자와 kg 단위 형식이 아닙니다.',
         )
 
@@ -325,14 +331,15 @@ def evaluate_format_row(row, product_line, retailer):
             'CSV에서 확인된 리테일러별 냉장고 타입이 아닙니다.'
         )
 
-    loading_type = row.get('ldy_loading_type')
+    loading_column = 'loading_type' if 'loading_type' in fields else 'ldy_loading_type'
+    loading_type = row.get(loading_column)
     if (
-        'ldy_loading_type' in fields
+        loading_column in fields
         and not _missing(loading_type)
         and str(loading_type).strip().casefold()
         not in _LDY_LOADING_VALUES.get(retailer_key, set())
     ):
-        errors['ldy_loading_type'] = (
+        errors[loading_column] = (
             'CSV에서 확인된 리테일러별 세탁기 타입이 아닙니다.'
         )
     return errors
@@ -425,6 +432,8 @@ _FORMAT_RULE_DETAILS = {
         'pattern': 'Front load / Front loader / Top load / Top-loading',
     },
 }
+_FORMAT_RULE_DETAILS['capacity'] = {**_FORMAT_RULE_DETAILS['ldy_capacity'], 'field': 'capacity', 'description': '건조기 용량'}
+_FORMAT_RULE_DETAILS['loading_type'] = {**_FORMAT_RULE_DETAILS['ldy_loading_type'], 'field': 'loading_type', 'description': 'Mediamarkt 로딩 타입', 'pattern': 'Front load / Top load'}
 
 
 def get_format_rule_details(product_line, retailer):
@@ -781,16 +790,18 @@ def _serialize_duplicate_row(row):
     }
 
 
-def build_duplicate_groups(rows, retailer=None):
+def build_duplicate_groups(rows, retailer=None, product_line=None):
     """Group by page_type/item, keeping OTTO option SKUs separate."""
     is_otto = _duplicate_key(retailer) == 'otto'
     expert = is_expert(retailer)
+    dryer = get_seg_product_line(product_line) == 'seg_ldy_dryer'
+    item_only = expert or dryer
     grouped = defaultdict(list)
     for row in rows:
         page_type_key = _duplicate_key(row.get('page_type'))
         item_key = _duplicate_key(row.get('item'))
-        if item_key and (expert or page_type_key):
-            key = (item_key,) if expert else (page_type_key, item_key)
+        if item_key and (item_only or page_type_key):
+            key = (item_key,) if item_only else (page_type_key, item_key)
             if is_otto:
                 key += (_duplicate_key(row.get('sku')),)
             grouped[key].append(row)
@@ -808,14 +819,14 @@ def build_duplicate_groups(rows, retailer=None):
             for row in duplicate_rows
         }
         mapping_conflict = len(sku_values) > 1 or len(name_values) > 1
-        page_type = '' if expert else _duplicate_text(first.get('page_type')).upper()
-        scope_label = '최신 배치' if expert else page_type
+        page_type = '' if item_only else _duplicate_text(first.get('page_type')).upper()
+        scope_label = '최신 배치' if item_only else page_type
         item = _duplicate_text(first.get('item'))
         identity = 'item + SKU' if is_otto else 'item'
         conflict_fields = '상품명' if is_otto else 'SKU/상품명'
         groups.append({
             'duplicate_type': (
-                '상품 매핑 충돌' if mapping_conflict else '완전 중복'
+                '상품 매핑 충돌' if mapping_conflict else '동일 상품 중복' if dryer and not expert else '완전 중복'
             ),
             'page_type': page_type,
             'item': item,
@@ -844,7 +855,7 @@ def build_duplicate_groups(rows, retailer=None):
 
 def append_duplicate_stats(cursor, target_date, validation, category=None):
     total_issues = 0
-    for _product_line, source in SEG_SOURCE_CONFIG.items():
+    for _product_line, source in SEG_DUPLICATE_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
             continue
         retailers = active_retailers(source, target_date)
@@ -859,14 +870,14 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
             rows, mapping = _latest_rows(
                 cursor, target_date, source, retailer
             )
-            groups = build_duplicate_groups(rows, retailer)
+            groups = build_duplicate_groups(rows, retailer, _product_line)
             issue_count = len(groups)
             retailer_rows.append({
                 'retailer': retailer,
                 'total': len(rows),
                 'duplicate_groups': issue_count,
                 'duplicate_keys': [
-                    'item' if is_expert(retailer)
+                    'item' if is_expert(retailer) or not source.get('has_page_type', True)
                     else 'page_type + item + sku' if _duplicate_key(retailer) == 'otto'
                     else 'page_type + item'
                 ],
@@ -896,7 +907,7 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
 def duplicate_detail(cursor, target_date, table, retailer, page=1,
                      page_size=50):
     product_line = product_line_for(table)
-    source = SEG_SOURCE_CONFIG.get(product_line)
+    source = SEG_DUPLICATE_SOURCE_CONFIG.get(product_line)
     if not source or retailer not in active_retailers(source, target_date):
         return {
             'results': {
@@ -907,7 +918,7 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
         }
 
     rows, mapping = _latest_rows(cursor, target_date, source, retailer)
-    groups = build_duplicate_groups(rows, retailer)
+    groups = build_duplicate_groups(rows, retailer, product_line)
     start = (page - 1) * page_size
     total_pages = (
         (len(groups) + page_size - 1) // page_size if groups else 0
@@ -918,7 +929,7 @@ def duplicate_detail(cursor, target_date, table, retailer, page=1,
         'retailer': retailer,
         'select_cols': {
             'group': [
-                'duplicate_type', *([] if is_expert(retailer) else ['page_type']), 'item',
+                'duplicate_type', *([] if is_expert(retailer) or not source.get('has_page_type', True) else ['page_type']), 'item',
                 'retailer_sku_name', 'dup_count', 'reason',
             ],
             'record': [
@@ -968,14 +979,14 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column,
         SELECT source.{column}, source.account_name, source.item
         FROM {table_name} source
         WHERE source.id = %s
-          AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
+          AND {source_date_sql('source.' + date_column)} = %s
           AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
           {record_scope(source, mapping['source_date'])}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
-              WHERE LEFT(BTRIM(CAST(anchor.{date_column} AS TEXT)), 10) = %s
+              WHERE {source_date_sql('anchor.' + date_column)} = %s
                 AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) =
                     LOWER(BTRIM(CAST(source.account_name AS TEXT)))
                 {record_scope(source, mapping['source_date'], 'anchor', anchor=True)}

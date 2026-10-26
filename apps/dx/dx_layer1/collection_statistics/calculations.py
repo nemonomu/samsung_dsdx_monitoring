@@ -7,7 +7,7 @@ from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, low
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
 from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START_DATE
 from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
-from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
+from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, MEDIAMARKT_DRYER_START_DATE
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK')
 OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0, 'SEIB': 0, 'SEUK': 0}
@@ -44,6 +44,9 @@ def normalize_check(check, country, inspection_date):
                     continue
                 if country == 'SEG' and name == 'Expert' and source_day < EXPERT_START_DATE:
                     continue
+                seg_mediamarkt_dryer = country == 'SEG' and product == 'LDY_DRYER' and name == 'Mediamarkt'
+                if seg_mediamarkt_dryer and source_day < MEDIAMARKT_DRYER_START_DATE:
+                    continue
                 if country == 'SEA' and name == 'Costco' and not costco.enabled(source_day, product):
                     continue
                 if country == 'SEA' and name == 'HomeDepot' and source_day < date(2026, 9, 20):
@@ -67,6 +70,7 @@ def normalize_check(check, country, inspection_date):
                     'complete': complete, 'base_status': status,
                     'baseline_eligible': complete and int(total or 0) > 0 and status != 'ERROR',
                     'active_from': (str(SOURCE_START_DATES[country]) if country in SOURCE_START_DATES else str(SEM_DRYER_FIRST_SOURCE_DATE) if country == 'SEM' and product == 'LDY_DRYER' else str(EXPERT_START_DATE) if country == 'SEG' and name == 'Expert'
+                                    else str(MEDIAMARKT_DRYER_START_DATE) if seg_mediamarkt_dryer
                                     else str(lowes_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and lowes_dryer.matches(product, name)
                                     else str(homedepot_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and homedepot_dryer.matches(product, name)
                                     else str(bestbuy_dryer.FIRST_SOURCE_DATE) if country == 'SEA' and bestbuy_dryer.matches(product, name)
@@ -74,6 +78,8 @@ def normalize_check(check, country, inspection_date):
                                     else '2026-09-20' if country == 'SEA' and name == 'HomeDepot' else None),
                 })
                 if country in SOURCE_START_DATES:
+                    rows[-1]['source_date_basis'] = 'db_original'
+                if seg_mediamarkt_dryer:
                     rows[-1]['source_date_basis'] = 'db_original'
                 if 'batch_count' in retailer:
                     rows[-1]['batch_count'] = retailer['batch_count']

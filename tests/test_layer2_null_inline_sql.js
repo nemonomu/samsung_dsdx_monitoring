@@ -15,6 +15,7 @@ const cases = [
     ['seg_ref_retail', 'SEG', 'dx_seg.dx_seg_ref_retail_com', 'crawl_strdatetime', 'expert'],
     ['seg_ldy_retail', 'SEG', 'dx_seg.dx_seg_ldy_retail_com', 'crawl_strdatetime', 'expert'],
     ['seg_ldy_dryer_retail', 'SEG', 'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'expert'],
+    ['seg_ldy_dryer_retail', 'SEG', 'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'Mediamarkt'],
 ];
 
 function setup(tableParam, country, table, dateColumn, retailer) {

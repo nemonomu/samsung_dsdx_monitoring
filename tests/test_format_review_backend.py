@@ -430,6 +430,7 @@ class FormatReviewTests(TestCase):
             ('tse_tv_retail','Homepro',services,'_fetch_tse_format_rows','_load_tse_format_normal_reviews','final_sku_price','฿10,000'),
             ('seda_tv_retail','Magalu',services.seda_format_validation,'load_rows','normal_reviews','star_rating','5.0'),
             ('seg_ldy_dryer_retail','Expert',services.seg_validation,'_latest_rows','_load_normal_reviews','capacity','8 kg'),
+            ('seg_ldy_dryer_retail','Mediamarkt',services.seg_validation,'_latest_rows','_load_normal_reviews','capacity','8 kg'),
             ('sem_tv_retail','Liverpool',services.sem_validation,'_latest_rows','_load_normal_reviews','star_rating','4.5'),
         ]
         for table,retailer,module,fetch,reviews,field,value in cases:
@@ -440,7 +441,8 @@ class FormatReviewTests(TestCase):
                 stack.enter_context(patch.object(module,reviews,return_value={}))
                 if table.startswith('sea_'):
                     stack.enter_context(patch.object(services,'validate_field',return_value=None))
-                data=service.inventory(None,DAY,table,retailer)
+                inventory_day = date(2026, 10, 25) if table == 'seg_ldy_dryer_retail' and retailer == 'Mediamarkt' else DAY
+                data=service.inventory(None,inventory_day,table,retailer)
                 group=next(g for g in data['groups'] if g['field']==field)
                 self.assertEqual({'baseline_normal':1},group['states'])
                 self.assertEqual(1,data['record_count'])

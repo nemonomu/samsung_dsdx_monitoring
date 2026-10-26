@@ -16,9 +16,10 @@ def collection_complete(country, product, retailer, source_day, now=None):
         from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE
         if source_day < SEM_DRYER_FIRST_SOURCE_DATE:
             return False
-    if country == 'SEG' and retailer == 'Expert':
-        from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE
-        if source_day < EXPERT_START_DATE:
+    if country == 'SEG':
+        from apps.dx.dx_layer1.seg_retail.sources import retailer_start_date, get_seg_source
+        launch = retailer_start_date(get_seg_source('seg_' + product.lower()), retailer)
+        if launch and source_day < launch:
             return False
     if source_day > now.date():
         return False

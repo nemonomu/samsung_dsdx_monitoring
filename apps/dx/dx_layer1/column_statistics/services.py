@@ -6,7 +6,7 @@ from apps.common.seib_retail import SEIB_SOURCE_CONFIG
 from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
-from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS
+from apps.dx.dx_layer1.seg_retail.sources import EXPERT_COLUMNS, DRYER_COLUMNS
 from apps.dx.dx_layer1.retail import costco
 from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
@@ -60,7 +60,7 @@ def _sources():
                 yield _source(
                     'seg_ldy_dryer', 'SEG', 'LDY_DRYER',
                     'dx_seg.dx_seg_ldy_dryer_retail', 'crawl_datetime', 'text',
-                    (_retailer('Expert'),), has_page_type=False, collection_scope='all',
+                    (_retailer('Mediamarkt'), _retailer('Expert')), has_page_type=False, collection_scope='all',
                 )
         else:
             yield source
@@ -137,6 +137,8 @@ def daily_counts(country, product, retailer_name, end, days):
                      if country == 'SEIB' else
                      [{**selected['retailers'][0], 'columns': SEUK_SOURCE_CONFIG[source['key']]['columns']}]
                      if country == 'SEUK' else
+                     [{**selected['retailers'][0], 'columns': DRYER_COLUMNS}]
+                     if country == 'SEG' and product == 'LDY_DRYER' else
                      [{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]
                      if country == 'SEG' and retailer_name == 'Expert' else
                      [{**selected['retailers'][0],
