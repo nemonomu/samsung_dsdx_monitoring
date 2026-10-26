@@ -103,7 +103,7 @@ with sync_playwright() as p:
     page.screenshot(path=str(OUT/'backlog-mobile.png'))
     page.evaluate("pending=true; issue.status='excepted'; extraIssues=[]; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_function("document.querySelector('.ci-head h3').textContent.includes('점검 중')")
-    assert '0건으로 확정하지 않습니다' in page.locator('.ci-panel').inner_text()
+    assert '점검 대기' in page.locator('.ci-panel').inner_text()
     # A legacy completed date is not proof the new MAIN/BSR/batch checks ran.
     page.evaluate("pending=false; oldScan=true; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_function("document.querySelector('.ci-head h3').textContent.includes('점검 중')")

@@ -47,22 +47,19 @@
         const scans = data.scans || [];
         const unavailable = scans.filter(s=>s.error).length;
         const unchecked = Math.max(0,data.target_count-scans.filter(s=>s.pending === false).length);
-        const through = !unchecked && !unavailable && scans.filter(s=>s.scanned_through).map(s=>s.scanned_through).sort()[0];
-        const checked = scans.filter(s=>s.last_checked_at).map(s=>s.last_checked_at).sort()[0];
         const deferred = scans.filter(s=>s.start_basis==='first_observed' && s.coverage_start>data.start_date);
-        const coverage = `점검 시작 ${data.start_date} · ${through ? '공통 점검 완료 '+through+'까지' : '과거 점검 준비 중'}${unchecked>0?' · 점검 대기 '+unchecked+'개 대상':''}${unavailable?' · 조회 실패 '+unavailable+'개 대상':''}${checked?' · 최근 점검 '+new Date(checked).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):''}`;
         host.innerHTML = `<section class="ci-panel ${rows.length?'':'ci-clear'}" aria-label="과거 미해결 ${issueLabel}">
             <div class="ci-head"><div><h3>과거 미해결 · ${issueLabel} ${!rows.length && (unavailable||unchecked)?'점검 중':rows.length+'건'}</h3>
             <p>검수 대상 데이터일 이전의 미해결만 표시합니다. 미국·브라질은 D-2부터, 나머지는 D-1부터입니다.</p></div>
             <div class="ci-controls"><button type="button" data-ci-refresh>새로고침</button></div></div>
-            <p class="ci-note ${unavailable||unchecked?'ci-error':''}">${esc(coverage)}</p>
+            ${unavailable||unchecked?`<p class="ci-note ci-error">${unchecked?'점검 대기 '+unchecked+'개 대상':''}${unavailable?(unchecked?' · ':'')+'조회 실패 '+unavailable+'개 대상':''}</p>`:''}
             ${rows.length?`<div class="ci-scroll"><table><thead><tr><th>국가 · 리테일러</th><th>제품군</th><th>문제 데이터일</th><th>미해결 항목 · 상세</th><th>조회</th></tr></thead><tbody>
             ${rows.slice((page-1)*size,page*size).map(r=>`<tr><td><b>${esc(r.country)} · ${esc(r.retailer)}</b></td><td>${esc(r.product)}</td><td><b>${esc(r.source_date)}</b></td>
             <td>${r.reasons.map(reason=>`<div class="ci-reason"><button type="button" data-ci-detail="${reason.id}">${esc(reason.label||reason.column||'전체 미수집')}</button>
             <small>${reason.kind==='batches'?esc((reason.batch_ids||[]).join(' · ')):reason.column?'기준 '+esc(reason.baseline)+' / 최근 수집 '+esc(reason.current_count)+'건':'DB 원본 수집일 · 모든 배치'}</small></div>`).join('')}</td>
             <td><button type="button" data-ci-sql="${r.id}">조회 SQL</button></td></tr>`).join('')}</tbody></table></div>
             <div class="ci-page"><span>${page} / ${pages}페이지</span><button type="button" data-ci-page="${page-1}" ${page===1?'disabled':''}>이전</button><button type="button" data-ci-page="${page+1}" ${page===pages?'disabled':''}>다음</button></div>`:
-            `<p class="ci-note">${unavailable||unchecked?'아직 전체 점검을 완료하지 못했습니다. 미해결 0건으로 확정하지 않습니다.':'점검 완료 범위에 미해결 수집 문제가 없습니다.'}</p>`}</section>`;
+            ''}</section>`;
         if (deferred.length) {
             const note=document.createElement('p');
             note.className='ci-note';
