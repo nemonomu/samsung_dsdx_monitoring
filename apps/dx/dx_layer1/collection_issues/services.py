@@ -13,9 +13,10 @@ from apps.dx.dx_layer1.models import CollectionIssueScan as Scan, CollectionStat
 from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, compare_columns, KST
 from apps.dx.dx_layer1.column_statistics.dates import active_from
 from apps.dx.dx_layer1.column_statistics.services import daily_counts
-from .queries import raw_counts, selection, first_observed
+from .queries import raw_counts, selection, first_observed, daily_batch_ids
+from . import volume
 
-START_DATE = date(2026, 9, 1)
+START_DATE = date(2026, 10, 1)
 CHUNK_DAYS = 28
 
 
@@ -71,6 +72,8 @@ def reconcile_day(data, target, completed, raw_total, *, now=None):
                 first_detected_at=now, last_checked_at=now)
             event(issue, 'detected', now, evidence=evidence)
         for column, issue in existing.items():
+            if column.startswith('__'):
+                continue  # MAIN/BSR and batch issues have their own recovery policy.
             if issue.last_checked_at > now:
                 continue  # A cached response cannot undo a newer verification.
             # Removed/disabled fields are not silently marked recovered.
@@ -93,12 +96,12 @@ def reconcile_day(data, target, completed, raw_total, *, now=None):
             issue.save()
 
 
-def refresh_target(country, product, retailer, *, now=None):
+def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
     """Recent days, one backfill chunk, and every still-open source day."""
     now = now or timezone.now()
     source, _ = selection(country, product, retailer)
     today = now.astimezone(KST).date()
-    target = date.fromisoformat(resolve_monitoring_date(today, country, source['key'])['source_date'])
+    target = date.fromisoformat(resolve_monitoring_date(today, country, source['key'])['source_date']) - timedelta(days=1)
     scope = identity(country, product, retailer)
     lease_key = 'issues:' + hashlib.sha256(repr(sorted(scope.items())).encode()).hexdigest()[:32]
     owner = str(uuid4())
@@ -130,6 +133,7 @@ def refresh_target(country, product, retailer, *, now=None):
                       .values_list('source_date', flat=True))
         # Bounded windows even when an unresolved incident is years old.
         pending = sorted(wanted)
+        volume_pending = False
         while pending:
             first = pending[0]
             end = min(target, first+timedelta(days=CHUNK_DAYS-1))
@@ -138,13 +142,23 @@ def refresh_target(country, product, retailer, *, now=None):
             query_start = first-timedelta(days=28)
             data = daily_counts(country, product, retailer, end, (end-query_start).days+1)
             totals = raw_counts(country, product, retailer, first, end)
+            batches = daily_batch_ids(country, product, retailer, first, end)
             complete = {d['date']: collection_complete(country, product, retailer,
                         date.fromisoformat(d['date']), now) for d in data['daily']}
+            volumes = volume.load_days(country, product, retailer,
+                [d for d in days if complete.get(str(d)) and totals.get(str(d), 0) > 0],
+                cache=volume_cache, strict=False)
             for day in days:
                 reconcile_day(data, day, complete, totals.get(str(day), 0), now=now)
+                if complete.get(str(day), False):
+                    volume_pending |= volumes.get(str(day), []) is None
+                    volume.reconcile(country, product, retailer, day, volumes.get(str(day)) or [],
+                                     batches.get(str(day), []), now=now)
             if not Lease.objects.filter(name=lease_key, owner=owner, expires_at__gt=timezone.now()).update(
                     expires_at=timezone.now()+timedelta(minutes=15)):
                 raise RuntimeError('Collection issue scan lease expired')
+        if volume_pending:
+            raise ValueError('Collection volume verification pending; retry required')
         if backfill_start <= backfill_end:
             scan.scanned_through = backfill_end
         scan.last_checked_at, scan.error = now, False
@@ -162,6 +176,9 @@ def serialize(issue, *, detail=False):
               ('id', 'country', 'product', 'retailer', 'column', 'severity', 'status',
                'baseline', 'observed_count', 'current_count', 'revision')}
     result.update(source_date=str(issue.source_date),
+                  kind=issue.evidence.get('kind', 'column' if issue.column else 'uncollected'),
+                  label=volume.label(issue),
+                  batch_ids=issue.evidence.get('batch_ids', []),
                   first_detected_at=issue.first_detected_at.isoformat(),
                   last_checked_at=issue.last_checked_at.isoformat(),
                   resolved_at=issue.resolved_at.isoformat() if issue.resolved_at else None)

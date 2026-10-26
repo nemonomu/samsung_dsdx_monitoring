@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -12,9 +12,11 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.dx.dx_layer1.models import CollectionIssue as Issue, CollectionIssueScan as Scan
 from apps.dx.dx_layer1.column_statistics.services import catalog, daily_counts
 from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, KST
-from .queries import sql_queries, raw_counts
+from apps.dx.dx_layer1.column_statistics.dates import active_from
+from .queries import sql_queries, raw_counts, daily_batch_ids, selection
 from .services import START_DATE, environment, serialize, event, reconcile_day
 from .errors import storage_error
+from . import volume
 
 
 def reply(data, status=200):
@@ -49,24 +51,38 @@ def listing(request):
         if status not in ('open', 'resolved', 'excepted', 'all'):
             raise ValueError()
         records = Issue.objects.filter(environment=environment(), source_date__gte=START_DATE, **filters)
-        from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START
-        records = records.exclude(country='SEUK', source_date__lt=SEUK_START)
+        for job in jobs:
+            source, _ = selection(**job)
+            start = active_from(source, job['retailer'])
+            if start:
+                records = records.exclude(**job, source_date__lt=start)
         inspection_date = request.GET.get('inspection_date', timezone.now().astimezone(KST).date().isoformat())
         # D-1 is the current inspection's source day, not a past incident.
         # Filter the listing only: retain the original evidence and recovery scans.
-        for country in ('SEA', 'SEDA'):
+        cutoffs = {}
+        for country in {job['country'] for job in jobs}:
             current_source_date = resolve_monitoring_date(
                 inspection_date, country, country.lower() + '_tv')['source_date']
             records = records.exclude(country=country, source_date__gte=current_source_date)
+            cutoffs[country] = date.fromisoformat(current_source_date) - timedelta(days=1)
         if status != 'all':
             records = records.filter(status=status)
         rows = list(records.order_by('source_date', 'country', 'retailer', 'product', 'column'))
+        rows = volume.hide_confirmed(rows) if status == 'open' else rows
         # Whole-collection incidents are one row, not one copy per affected field.
         whole = {(r.country,r.product,r.retailer,r.source_date) for r in rows if not r.column and r.status=='open'}
-        rows = [r for r in rows if not r.column or (r.country,r.product,r.retailer,r.source_date) not in whole]
+        rows = [r for r in rows if not r.column or r.column.startswith('__')
+                or (r.country,r.product,r.retailer,r.source_date) not in whole]
         scans = list(Scan.objects.filter(environment=environment(), **filters).values(
             'country', 'product', 'retailer', 'coverage_start', 'start_basis',
             'scanned_through', 'last_checked_at', 'error'))
+        scopes = {(j['country'],j['product'],j['retailer']) for j in jobs}
+        scans = [s for s in scans if (s['country'],s['product'],s['retailer']) in scopes]
+        for scan in scans:
+            last_due = cutoffs.get(scan['country'])
+            not_started = scan['coverage_start'] and last_due and scan['coverage_start'] > last_due
+            scan['pending'] = bool(not not_started and (not scan['scanned_through']
+                or (last_due and scan['scanned_through'] < last_due)))
         return reply({'start_date': str(START_DATE), 'inspection_date': inspection_date,
                       'issues': [serialize(r) for r in rows],
                       'scans': scans, 'target_count': len(jobs)})
@@ -121,7 +137,14 @@ def action(request, issue_id):
             now = timezone.now()
             complete = {d['date']:collection_complete(record.country,record.product,record.retailer,
                         date.fromisoformat(d['date']),now) for d in data['daily']}
-            reconcile_day(data,target,complete,totals.get(str(target),0),now=now)
+            batches = daily_batch_ids(record.country,record.product,record.retailer,target,target)
+            volumes = volume.load_days(record.country,record.product,record.retailer,
+                [target] if totals.get(str(target),0) > 0 else [])
+            with transaction.atomic():
+                reconcile_day(data,target,complete,totals.get(str(target),0),now=now)
+                if complete.get(str(target)):
+                    volume.reconcile(record.country,record.product,record.retailer,target,
+                        volumes.get(str(target),[]),batches.get(str(target),[]),now=now)
             record.refresh_from_db()
             return reply({'issue': serialize(record,detail=True)})
         reason = payload.get('reason','')

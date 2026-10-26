@@ -18,6 +18,7 @@ from django.test import TestCase, RequestFactory, override_settings
 from django.test.runner import DiscoverRunner
 from django.db import OperationalError
 from apps.dx.dx_layer1.collection_issues import services as s, api
+from apps.dx.dx_layer1.collection_issues import volume
 from apps.dx.dx_layer1.collection_issues.queries import sql_queries
 from apps.dx.dx_layer1.column_statistics.dates import day_sql
 from apps.dx.dx_layer1.column_statistics.services import select_source
@@ -131,17 +132,17 @@ class IssueTests(TestCase):
         payload=json.loads(api.listing(req).content)
         self.assertEqual(len(payload['issues']),1)
         self.assertEqual(payload['issues'][0]['column'],'')
-        self.assertEqual(payload['start_date'],'2026-09-01')
+        self.assertEqual(payload['start_date'],'2026-10-01')
         self.assertEqual(payload['scans'],[])  # not a claim of complete coverage
         bad=RequestFactory().get('/',{'country':'UNKNOWN'})
         bad.user=req.user
         self.assertEqual(api.listing(bad).status_code,400)
 
-    def test_pending_and_before_september_never_create_incident(self):
+    def test_pending_and_before_october_never_create_incident(self):
         data,complete=sample()
         complete[str(TARGET)]=False
         s.reconcile_day(data,TARGET,complete,0,now=NOW)
-        self.observe(target=date(2026,8,31),total=0,raw=0)
+        self.observe(target=date(2026,9,30),total=0,raw=0)
         self.assertFalse(Issue.objects.exists())
 
     def past_listing(self, **params):
@@ -169,7 +170,7 @@ class IssueTests(TestCase):
                 rows = [r for r in payload['issues'] if r['country'] == country]
                 self.assertEqual(max(r['source_date'] for r in rows), latest)
             for country in ('SEG', 'SIEL'):
-                self.assertEqual(len([r for r in payload['issues'] if r['country'] == country]), 3)
+                self.assertEqual(max(r['source_date'] for r in payload['issues'] if r['country'] == country), f'2026-10-{inspection_day-1}')
         self.assertEqual(Issue.objects.count(), 13)  # Listing never deletes evidence.
         self.assertEqual(Issue.objects.filter(status='open').count(), 13)
 
@@ -183,6 +184,33 @@ class IssueTests(TestCase):
                     inspection_date='2026-10-23').content)
                 self.assertEqual(len(payload['issues']), 3 if status == 'all' else 1)
                 self.assertTrue(all(r['source_date'] == '2026-10-21' for r in payload['issues']))
+
+    def test_every_registered_retailer_obeys_daily_boundary_and_october_start(self):
+        from apps.dx.dx_layer1.column_statistics.dates import active_from
+        from apps.dx.dx_layer1.collection_issues.queries import selection
+        expected=set()
+        for source in api.catalog():
+            for retailer in source['retailers']:
+                country,product=source['country'],source['product']
+                config,_=selection(country,product,retailer)
+                start=active_from(config,retailer)
+                last_day=24 if country in ('SEA','SEDA') else 25
+                for day in (date(2026,9,30),date(2026,10,24),date(2026,10,25),date(2026,10,26)):
+                    row=Issue.objects.create(**s.identity(country,product,retailer),source_date=day,
+                        column='',severity='uncollected',observed_count=0,current_count=0,
+                        first_detected_at=NOW,last_checked_at=NOW)
+                    if day.month==10 and day.day<=last_day and (not start or day>=start):
+                        expected.add(row.id)
+        response=self.past_listing(inspection_date='2026-10-26')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual({r['id'] for r in json.loads(response.content)['issues']},expected)
+
+    def test_incomplete_coverage_is_reported_as_pending(self):
+        Scan.objects.create(**s.identity('SEG','TV','Amazon'),coverage_start=date(2026,10,1),
+            scanned_through=date(2026,10,24),last_checked_at=NOW)
+        payload=json.loads(self.past_listing(country='SEG',product='TV',retailer='Amazon',
+            inspection_date='2026-10-26').content)
+        self.assertTrue(payload['scans'][0]['pending'])
 
     def test_past_listing_defaults_to_kst_inspection_day_and_validates_dates(self):
         self.create_past_issue('SEA', date(2026, 10, 22))
@@ -261,7 +289,7 @@ class IssueTests(TestCase):
         with self.assertRaises(ValueError):
             sql_queries('SEA','TV',"Walmart';DROP TABLE x",TARGET)
 
-    def test_scan_from_september_incremental_new_launch_and_failure_retains_coverage(self):
+    def test_scan_from_october_incremental_new_launch_and_failure_retains_coverage(self):
         def counts(country,product,retailer,end,days):
             return {'country':country,'product':product,'retailer':retailer,'columns':['offer'],
                 'daily':[{'date':str(end-timedelta(days=i)), 'total':100,'counts':{'offer':100}} for i in range(days)]}
@@ -269,33 +297,148 @@ class IssueTests(TestCase):
             return {str(start+timedelta(days=i)):100 for i in range((end-start).days+1)}
         with patch.object(s,'daily_counts',side_effect=counts), patch.object(s,'raw_counts',side_effect=raw), \
                 patch.object(s,'first_observed',return_value=date(2026,6,1)), \
-                patch.object(s,'collection_complete',return_value=True),patch.object(s.timezone,'now',return_value=NOW):
+                patch.object(s,'collection_complete',return_value=True),patch.object(s.timezone,'now',return_value=NOW), \
+                patch.object(s,'daily_batch_ids',return_value={}), patch.object(s.volume,'load_days',return_value={}):
             s.refresh_target('SEA','TV','Walmart',now=NOW)
             scan=Scan.objects.get()
-            self.assertEqual(scan.scanned_through,date(2026,9,28))
+            self.assertEqual(scan.scanned_through,date(2026,10,18))
             s.refresh_target('SEA','TV','Walmart',now=NOW)
             scan.refresh_from_db()
-            self.assertEqual(scan.scanned_through,date(2026,10,19))
+            self.assertEqual(scan.scanned_through,date(2026,10,18))
             s.refresh_target('SEA','LDY_DRYER','Lowes',now=NOW)
-            self.assertEqual(Scan.objects.get(retailer='Lowes').scanned_through,date(2026,10,19))
+            self.assertEqual(Scan.objects.get(retailer='Lowes').scanned_through,date(2026,10,18))
+            with patch.object(s.volume,'load_days',return_value={'2026-10-18':None}), \
+                    patch.object(s,'daily_batch_ids',return_value={'2026-10-18':['a1','a2']}):
+                with self.assertRaises(ValueError):
+                    s.refresh_target('SEA','TV','Walmart',now=NOW)
+            scan.refresh_from_db()
+            self.assertTrue(scan.error)
+            self.assertTrue(Issue.objects.filter(column=volume.BATCH_COLUMN,status='open').exists())
             with patch.object(s,'raw_counts',side_effect=RuntimeError('outage')):
                 with self.assertRaises(RuntimeError):
                     s.refresh_target('SEA','TV','Walmart',now=NOW)
             scan.refresh_from_db()
             self.assertTrue(scan.error)
-            self.assertEqual(scan.scanned_through,date(2026,10,19))
-        self.assertFalse(Issue.objects.exists())
+            self.assertEqual(scan.scanned_through,date(2026,10,18))
+        self.assertEqual(set(Issue.objects.values_list('column',flat=True)),{volume.BATCH_COLUMN})
 
     def test_first_observed_start_does_not_move_forward_on_later_deletion(self):
-        with patch.object(s,'first_observed',return_value=date(2026,9,6)):
+        with patch.object(s,'first_observed',return_value=date(2026,10,6)):
             start,basis=s.coverage_start('SEM','TV','Liverpool')
-        self.assertEqual(start,date(2026,9,6))
+        self.assertEqual(start,date(2026,10,6))
         self.assertEqual(basis,'first_observed')
         Scan.objects.create(**s.identity('SEM','TV','Liverpool'),coverage_start=start,start_basis=basis)
-        with patch.object(s,'first_observed',return_value=date(2026,9,10)):
-            self.assertEqual(s.coverage_start('SEM','TV','Liverpool')[0],date(2026,9,6))
+        with patch.object(s,'first_observed',return_value=date(2026,10,10)):
+            self.assertEqual(s.coverage_start('SEM','TV','Liverpool')[0],date(2026,10,6))
         with patch.object(s,'first_observed',return_value=None):
-            self.assertEqual(s.coverage_start('SEM','TV','Liverpool')[0],date(2026,9,6))
+            self.assertEqual(s.coverage_start('SEM','TV','Liverpool')[0],date(2026,10,6))
+
+class VolumeIssueTests(TestCase):
+    def row(self, **changes):
+        row = dict(product='TV', retailer='Amazon', slot='daily', main=131, bsr=55,
+            total=131, collected_count=131, batch_id='a1', date=str(TARGET),
+            state='complete', complete=True, base_status='PASS', verification_state='ready',
+            observation_state='ready', baselines={'main': {'value':293, 'days':28},
+                'bsr': {'value':100,'days':28,'rule':'median_28d'}}, alerts=[])
+        return {**row, **changes}
+
+    def reconcile(self, row=None, batches=None):
+        volume.reconcile('SEG','TV','Amazon',TARGET,[self.row() if row is None else row],
+            ['a1'] if batches is None else batches,now=NOW)
+
+    def test_volume_and_batches_are_independent_and_keep_original_basis(self):
+        self.reconcile(batches=['a1','a2'])
+        self.assertEqual(Issue.objects.count(),3)
+        main=Issue.objects.get(column=volume.metric_column('main','daily'))
+        self.reconcile(self.row(main=140,baselines={'main':{'value':140,'days':28}}))
+        main.refresh_from_db()
+        self.assertEqual((main.status,main.baseline,main.current_count),('open',293,140))
+        self.assertEqual(Issue.objects.get(column=volume.BATCH_COLUMN).status,'resolved')
+        self.reconcile(self.row(main=293,bsr=100,total=300))
+        self.assertEqual(Issue.objects.filter(status='open').count(),0)
+        self.reconcile()
+        main.refresh_from_db()
+        self.assertEqual(main.status,'open')
+        self.assertEqual(list(main.events.values_list('action',flat=True)),['detected','recovered','reopened'])
+
+    def test_confirmation_hides_only_matching_metrics_and_cancel_restores(self):
+        from apps.dx.dx_layer1.models import RetailNormalReview
+        self.reconcile(batches=['a1','a2'])
+        main=Issue.objects.get(column=volume.metric_column('main','daily'))
+        row=main.evidence['current_row']
+        context=dict(country='SEG',product='TV',retailer='Amazon',slot='daily',
+            source_date=str(TARGET),date=str(TARGET),batch_id='a1',counts=[131,55,131,2],
+            basis=json.dumps({'alerts':row['alerts']}))
+        review=RetailNormalReview.objects.create(fingerprint='approval',inspection_date=TARGET,
+            context=context,active=True,history=[{'action':'confirm','at':NOW.isoformat()}])
+        self.assertEqual([r.column for r in volume.hide_confirmed(list(Issue.objects.all()))],[volume.BATCH_COLUMN])
+        req=RequestFactory().get('/',{'country':'SEG','inspection_date':'2026-10-26'})
+        req.user=SimpleNamespace(is_authenticated=True)
+        self.assertEqual([r['kind'] for r in json.loads(api.listing(req).content)['issues']],['batches'])
+        review.active=False
+        review.history.append({'action':'cancel','at':(NOW+timedelta(hours=1)).isoformat()})
+        review.save()
+        self.assertEqual(len(volume.hide_confirmed(list(Issue.objects.all()))),3)
+        review.active=True
+        review.history.append({'action':'confirm','at':(NOW+timedelta(hours=2)).isoformat()})
+        review.save()
+        self.reconcile(self.row(main=130),batches=['a1','a2'])
+        self.assertEqual(len(volume.hide_confirmed(list(Issue.objects.all()))),3)
+        self.assertEqual(review.history[0]['action'],'confirm')
+
+    def test_uncertain_observation_cannot_resolve_and_column_scan_leaves_volume_alone(self):
+        self.reconcile()
+        self.reconcile(self.row(complete=False,main=293,bsr=100))
+        self.assertEqual(Issue.objects.filter(status='open').count(),2)
+        data,complete=sample(count=100)
+        data.update(country='SEG',retailer='Amazon')
+        s.reconcile_day(data,TARGET,complete,300,now=NOW)
+        self.assertEqual(Issue.objects.filter(status='open').count(),2)
+
+    def test_live_reads_shared_per_country_day_and_d1_inspection_mapping(self):
+        cache={}
+        rows=[self.row(),self.row(retailer='Costco',product='LDY_DRYER')]
+        with patch.object(volume,'current_snapshot',return_value={'rows':rows}) as live:
+            volume.load_days('SEA','TV','Amazon',[TARGET],cache=cache)
+            volume.load_days('SEA','LDY_DRYER','Costco',[TARGET],cache=cache)
+        live.assert_called_once_with('SEA',TARGET+timedelta(days=1))
+        with patch.object(volume,'current_snapshot',side_effect=RuntimeError('unavailable')):
+            self.assertEqual(volume.load_days('SEG','TV','Amazon',[TARGET],strict=False),{str(TARGET):None})
+            with self.assertRaises(RuntimeError):
+                volume.load_days('SEG','TV','Amazon',[TARGET])
+
+    def test_mediamarkt_catalog_alias_matches_counts_and_normal_approval(self):
+        from apps.dx.dx_layer1.models import RetailNormalReview
+        row=self.row(retailer='Mediamarkt')
+        with patch.object(volume,'current_snapshot',return_value={'rows':[row]}):
+            rows=volume.load_days('SEG','TV','MediaMarkt',[TARGET])[str(TARGET)]
+        volume.reconcile('SEG','TV','MediaMarkt',TARGET,rows,['a1'],now=NOW)
+        issue=Issue.objects.get(column=volume.metric_column('main','daily'))
+        context=dict(country='SEG',product='TV',retailer='Mediamarkt',slot='daily',
+            source_date=str(TARGET),date=str(TARGET),batch_id='a1',counts=[131,55,131,1],
+            basis=json.dumps({'alerts':issue.evidence['current_row']['alerts']}))
+        RetailNormalReview.objects.create(fingerprint='mmkt',inspection_date=TARGET,
+            context=context,active=True,history=[{'action':'confirm','at':NOW.isoformat()}])
+        self.assertEqual(volume.hide_confirmed(list(Issue.objects.all())),[])
+
+    def test_recheck_uses_original_source_day_and_fresh_volume(self):
+        self.reconcile()
+        main=Issue.objects.get(column=volume.metric_column('main','daily'))
+        req=RequestFactory().post('/',json.dumps({'action':'recheck','revision':main.revision}),content_type='application/json')
+        req.user=SimpleNamespace(is_authenticated=True)
+        data,_=sample(count=100)
+        data.update(country='SEG',retailer='Amazon')
+        with patch.object(api,'daily_counts',return_value=data), \
+                patch.object(api,'raw_counts',return_value={str(TARGET):300}), \
+                patch.object(api,'daily_batch_ids',return_value={str(TARGET):['a1']}), \
+                patch.object(api,'collection_complete',return_value=True), \
+                patch.object(volume,'current_snapshot',return_value={'rows':[self.row(main=293,bsr=100)]}) as live:
+            response=api.action(req,main.id)
+        self.assertEqual(response.status_code,200)
+        main.refresh_from_db()
+        self.assertEqual(main.status,'resolved')
+        live.assert_called_once_with('SEG',TARGET)
+
 
 if __name__=='__main__':
     sys.exit(bool(DiscoverRunner(verbosity=1).run_tests([__name__])))

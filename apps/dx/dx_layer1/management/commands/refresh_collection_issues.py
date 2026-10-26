@@ -5,13 +5,14 @@ from apps.dx.dx_layer1.collection_issues.services import refresh_target
 
 def refresh_all(*, country=None, report=None):
     errors = 0
+    volume_cache = {}
     for source in catalog():
         if country and source['country'] != country:
             continue
         for retailer in source['retailers']:
             job = (source['country'], source['product'], retailer)
             try:
-                result = refresh_target(*job)
+                result = refresh_target(*job, volume_cache=volume_cache)
                 if report:
                     report(' '.join(job) + f": days={result['days']}, busy={result['busy']}")
             except Exception:
@@ -22,7 +23,7 @@ def refresh_all(*, country=None, report=None):
 
 
 class Command(BaseCommand):
-    help = 'Check source-day collection issues from 2026-09-01, retaining unresolved incidents.'
+    help = 'Check past source-day collection issues from 2026-10-01, retaining unresolved incidents.'
 
     def add_arguments(self, parser):
         parser.add_argument('--country', choices=sorted({s['country'] for s in catalog()}))

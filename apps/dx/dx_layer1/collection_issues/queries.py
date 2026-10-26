@@ -31,6 +31,20 @@ def raw_counts(country, product, retailer, start, end):
         return {str(day): int(count) for day, count in cursor.fetchall()}
 
 
+def daily_batch_ids(country, product, retailer, start, end):
+    source, account = selection(country, product, retailer)
+    day = day_sql(source)
+    batch = "NULLIF(BTRIM(CAST(source.batch_id AS TEXT)), '')"
+    with dx_connection() as (_, cursor):
+        cursor.execute("SET LOCAL statement_timeout = '20s'")
+        cursor.execute(
+            f"SELECT {day}, ARRAY_AGG(DISTINCT {batch} ORDER BY {batch}) FILTER (WHERE {batch} IS NOT NULL) "
+            f"FROM {source['table_name']} source WHERE {_retailer_condition(source, account, include_unassigned=False)} "
+            f"AND ({day}) BETWEEN %s AND %s GROUP BY 1 ORDER BY 1",
+            _retailer_params(account) + [str(start), str(end)])
+        return {str(day): list(ids or []) for day, ids in cursor.fetchall()}
+
+
 def first_observed(country, product, retailer):
     """Earliest surviving original day; not proof of an authoritative launch date."""
     key = 'collection-first-original:v1:' + hashlib.sha256(

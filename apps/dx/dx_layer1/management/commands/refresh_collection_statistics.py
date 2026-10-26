@@ -22,11 +22,11 @@ class Command(BaseCommand):
             from apps.dx.dx_layer1.collection_statistics.automatic import refresh_automatic
             def report(country, phase, result):
                 self.stdout.write(f"{country} {phase}: updated={result['updated']}, errors={result['errors']}, busy={result['busy']}")
-            # Check durable incidents before the slower statistics backfill.
+            # Incidents reuse the statistics policy and prior-day baselines.
             from .refresh_collection_issues import refresh_all
-            errors = refresh_all(country=options['country'], report=self.stdout.write)
-            errors += refresh_automatic(timezone.localdate(timezone=tz(timedelta(hours=9))),
+            errors = refresh_automatic(timezone.localdate(timezone=tz(timedelta(hours=9))),
                 countries=[options['country']] if options['country'] else COUNTRIES, report=report)
+            errors += refresh_all(country=options['country'], report=self.stdout.write)
             if errors:
                 raise CommandError(f'{errors} source-day refreshes failed; the next scheduled run will retry.')
             return

@@ -36,7 +36,8 @@ with sync_playwright() as p:
                 else {
                     const params=new URLSearchParams(url.split('?')[1]),state=params.get('status');
                     const columnIssue={...structuredClone(issue),id:2,column:'inventory_status',severity:'abnormal',status:'open',baseline:38,observed_count:0};
-                    value={start_date:'2026-09-01',target_count:1,scans:[{scanned_through:'2026-10-19',last_checked_at:'2026-10-20T00:00:00Z',error:false}],issues:[issue,columnIssue].filter(row=>state==='all'||state===row.status).map(row=>structuredClone(row))};
+                    const extra=window.extraIssues||[];
+                    value={start_date:'2026-10-01',target_count:1,scans:window.pending?[]:[{scanned_through:'2026-10-18',last_checked_at:'2026-10-20T00:00:00Z',error:false,pending:false}],issues:[issue,columnIssue,...extra].filter(row=>state===row.status).map(row=>structuredClone(row))};
                 }
             }
             return {ok,json:async()=>value};
@@ -46,7 +47,8 @@ with sync_playwright() as p:
     page.evaluate("CollectionIssues.load({date:'2026-10-20'})")
     page.wait_for_selector('[data-ci-detail]')
     assert page.evaluate("new URLSearchParams(calls.at(-1).url.split('?')[1]).get('inspection_date')") == '2026-10-20'
-    assert page.locator('.ci-head h3').inner_text() == '과거 미해결 · 미수집 1건'
+    assert page.locator('.ci-head h3').inner_text() == '과거 미해결 · 미수집·수집 이상 1건'
+    assert page.locator('#ci-status').count() == 0
     assert 'inventory_status' not in page.locator('.ci-panel').inner_text()
     assert page.evaluate("""()=>{
         let a=document.querySelector('#filter-bar-container').getBoundingClientRect(),b=document.querySelector('.ci-panel').getBoundingClientRect(),c=document.querySelector('#stats-grid').getBoundingClientRect();return a.bottom<=b.top&&b.bottom<=c.top;
@@ -79,12 +81,29 @@ with sync_playwright() as p:
     page.wait_for_function("issue.status==='excepted'")
     page.locator('[data-ci-close]').click()
     page.wait_for_function("document.querySelector('.ci-head h3').textContent.includes('0건')")
-    page.locator('#ci-status').select_option('excepted')
-    page.wait_for_selector('[data-ci-detail]')
-    assert '예외 처리' in page.locator('.ci-panel').inner_text()
+    assert page.locator('#ci-status').count() == 0
+    assert '예외 처리' not in page.locator('.ci-panel').inner_text()
+    page.evaluate("""()=>{
+        issue.status='open';
+        window.extraIssues=[
+            {...issue,id:3,kind:'volume',column:'__main:daily',label:'MAIN 수집량 부족',baseline:293,current_count:131},
+            {...issue,id:4,kind:'batches',column:'__batches',label:'배치 ID 2개',batch_ids:['b1','b2']},
+            {...issue,id:5,status:'resolved',kind:'volume',column:'__bsr:daily',label:'BSR 수집량 부족'}
+        ];
+        CollectionIssues.load({date:'2026-10-20'},true);
+    }""")
+    page.wait_for_selector('[data-ci-detail="4"]')
+    assert page.locator('.ci-panel tbody tr').count() == 1
+    assert page.locator('[data-ci-detail]').count() == 3
+    assert 'b1 · b2' in page.locator('.ci-panel').inner_text()
+    assert 'BSR 수집량 부족' not in page.locator('.ci-panel').inner_text()
+    assert '1건' in page.locator('.ci-head h3').inner_text()
     page.set_viewport_size({'width':390,'height':844})
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.screenshot(path=str(OUT/'backlog-mobile.png'))
+    page.evaluate("pending=true; issue.status='excepted'; extraIssues=[]; CollectionIssues.load({date:'2026-10-20'},true)")
+    page.wait_for_function("document.querySelector('.ci-head h3').textContent.includes('점검 중')")
+    assert '0건으로 확정하지 않습니다' in page.locator('.ci-panel').inner_text()
     page.evaluate("failed=true; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_selector('[role="alert"]')
     assert '미해결 없음으로 처리하지 않습니다' in page.locator('[role="alert"]').inner_text()
