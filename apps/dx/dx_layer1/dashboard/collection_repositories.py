@@ -1,5 +1,7 @@
 from apps.common.db import dx_table
 from apps.common.sea_dates import appliance_source_date_sql
+from apps.common.source_dates import source_date_sql
+from apps.common.sea_collection import AFTERNOON_RETAILERS
 from apps.dx.dx_layer1.retail import costco, homedepot_dryer
 
 
@@ -12,6 +14,13 @@ SOURCES = (
     ('Costco', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
     ('Costco', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
     ('Costco', 'LDY_DRYER', 'ldy_dryer_retail', 'crawl_datetime'),
+    ('Bestbuy', 'TV', 'tv_retail_com', 'crawl_datetime'),
+    ('Bestbuy', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
+    ('Bestbuy', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
+    ('Bestbuy', 'LDY_DRYER', 'ldy_dryer_retail', 'crawl_datetime'),
+    ('Lowes', 'REF', 'ref_retail_com', 'crawl_strdatetime'),
+    ('Lowes', 'LDY', 'ldy_retail_com', 'crawl_strdatetime'),
+    ('Lowes', 'LDY_DRYER', 'ldy_dryer_retail', 'crawl_datetime'),
 )
 
 
@@ -26,6 +35,12 @@ def fetch_collection(cursor, source, target_date):
         day = (homedepot_dryer.source_date_sql('source.' + column) if home_dryer
                else appliance_source_date_sql('source.' + column, 'source.account_name'))
         stamp = f"NULLIF(TRIM(CAST(source.{column} AS TEXT)), '')::timestamptz"
+    elif retailer.casefold() in AFTERNOON_RETAILERS:
+        day = source_date_sql('source.' + column)
+        # Explicit offsets affect display only; unzoned legacy SEA stamps use NY.
+        stamp = (f"CASE WHEN BTRIM(CAST(source.{column} AS TEXT)) ~ '(Z|[+-][0-9]{{2}}:[0-9]{{2}})$' "
+                 f"THEN source.{column}::timestamptz "
+                 f"ELSE source.{column}::timestamp AT TIME ZONE 'America/New_York' END")
     else:
         day = f"LEFT(TRIM(CAST(source.{column} AS TEXT)), 10)"
         stamp = f"source.{column}::timestamp AT TIME ZONE 'America/New_York'"

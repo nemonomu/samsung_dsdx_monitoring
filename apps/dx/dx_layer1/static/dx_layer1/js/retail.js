@@ -397,9 +397,10 @@ function renderRetailCheck(check, checkIdx) {
     const pmUsTime = pmInfo.us ? pmInfo.us.split(' ')[1] || pmInfo.us : '12:00';
     const amCompletion = amInfo.collection_completion_kst || '09:00';
     const pmCompletion = pmInfo.collection_completion_kst || '21:00';
-    const amRetailerStarts = amInfo.retailer_start_times || [
-        ['Amazon', '05:50'], ['Best Buy', '06:55'], ['Lowes', '06:55']
-    ];
+    const newSeaSchedule = getSelectedDate() >= '2026-10-26';
+    const amRetailerStarts = amInfo.retailer_start_times || (newSeaSchedule
+        ? [['Amazon', '05:50']]
+        : [['Amazon', '05:50'], ['Best Buy', '06:55'], ['Lowes', '06:55']]);
     const pmRetailerStarts = pmInfo.retailer_start_times || [['Walmart', '16:55']];
     const amRetailerTimes = amRetailerStarts.map(function(item) {
         return item[0] + ' ' + item[1] + ' 시작';
@@ -408,6 +409,7 @@ function renderRetailCheck(check, checkIdx) {
         return item[0] + ' ' + item[1] + ' 시작';
     }).join(' · ');
     const homedepotWindow = timeInfo.homedepot || { start_kst: '13:00', end_kst: '14:00' };
+    const afternoonWindow = timeInfo.bestbuy_lowes || (newSeaSchedule ? {start_kst: '13:00', end_kst: '18:00'} : null);
 
     const timeHeader = '<div class="time-slot-item" style="margin-bottom: 16px;">' +
         '<div class="time-slot-header" style="cursor: default;">' +
@@ -419,6 +421,8 @@ function renderRetailCheck(check, checkIdx) {
                     '<span class="utc">[오후] US(NY) ' + pmUsTime + ' ' + kstLabel + ' ' + pmInfo.kst +
                         ' / 수집 완료 시간 KST ' + pmCompletion + ' (' + pmRetailerTimes + ')</span>' +
                     '<span class="utc">HomeDepot REF·LDY: KST ' + esc(homedepotWindow.start_kst) + ' 시작 / ' + esc(homedepotWindow.end_kst) + ' 완료 예정 · 최소 수집 건수 미판정</span>' +
+                    (afternoonWindow ? '<span class="utc">Best Buy TV·REF·LDY·LDY_DRYER / Lowe’s REF·LDY·LDY_DRYER: KST ' +
+                        esc(afternoonWindow.start_kst) + ' 시작 / ' + esc(afternoonWindow.end_kst) + ' 완료 예정 (10/26 수집분부터)</span>' : '') +
                 '</span>' +
             '</div>' +
         '</div>' +

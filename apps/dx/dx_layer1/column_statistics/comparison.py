@@ -30,6 +30,10 @@ def collection_complete(country, product, retailer, source_day, now=None):
         from apps.common.seib_retail import collection_phase
         return collection_phase(source_day, now) == 'complete'
     if country == 'SEA':
+        from apps.common.sea_collection import afternoon_collection_phase
+        afternoon_phase = afternoon_collection_phase(source_day, retailer, now)
+        if afternoon_phase is not None:
+            return afternoon_phase == 'complete'
         if lowes_dryer.matches(product, retailer):
             return lowes_dryer.complete(source_day, now)
         if homedepot_dryer.matches(product, retailer):

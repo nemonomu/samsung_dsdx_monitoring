@@ -59,6 +59,18 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'uncollected');
     costco.retailers[0].status = 'error';
     assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'error');
+    const afternoon = {source_date:'2026-10-26', retailers:[
+        {retailer:'Bestbuy', product:'TV', status:'partial', count:50, main_count:50, bsr_count:0,
+         scheduled_at:'2026-10-26T13:00:00+09:00', scheduled_end_at:'2026-10-26T18:00:00+09:00'},
+        {retailer:'Lowes', product:'REF', status:'collecting', count:0, main_count:0, bsr_count:0,
+         scheduled_at:'2026-10-26T13:00:00+09:00', scheduled_end_at:'2026-10-26T18:00:00+09:00'}
+    ]};
+    const afternoonHtml = sandbox.renderDdayCollection(afternoon);
+    for (const text of ['SEA Bestbuy TV','SEA Lowes REF','13:00 ~ 18:00 KST','일부 수집','수집 중']) {
+        assert(afternoonHtml.includes(text), text);
+    }
+    assert.strictEqual(sandbox.ddaySummary(afternoon.retailers).status, 'partial');
+    assert.strictEqual(sandbox.ddaySummary([afternoon.retailers[1]]).status, 'collecting');
     respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);

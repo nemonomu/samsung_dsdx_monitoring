@@ -226,6 +226,14 @@ function categoryFromSummary(key) {
     assert.ok(fallbackHtml.includes('Amazon 05:50 시작'));
     assert.ok(fallbackHtml.includes('Best Buy 06:55 시작'));
     assert.ok(fallbackHtml.includes('Lowes 06:55 시작'));
+    const previousDate = selectedDate;
+    selectedDate = '2026-10-26';
+    const afternoonHtml = context.renderRetailCheck({status:'OK', actual:0, categories:[]}, 0);
+    assert(afternoonHtml.includes('13:00 시작 / 18:00 완료 예정'));
+    assert(afternoonHtml.includes('Best Buy TV·REF·LDY·LDY_DRYER'));
+    assert(afternoonHtml.includes('Lowe’s REF·LDY·LDY_DRYER'));
+    assert(!afternoonHtml.includes('06:55'));
+    selectedDate = previousDate;
     assert.ok(fallbackHtml.includes('수집 완료 시간 KST 21:00'));
     assert.ok(fallbackHtml.includes('Walmart 16:55 시작'));
     const tvIndex = fallbackHtml.indexOf('sentiment-category-name">TV');

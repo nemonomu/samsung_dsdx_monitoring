@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apps.common.db import dx_connection
 from apps.common.sea_collection import (
     KST, collection_schedule, homedepot_source_enabled,
+    AFTERNOON_RETAILERS, afternoon_collection_phase,
 )
 from .collection_repositories import SOURCES, fetch_collection
 from apps.dx.dx_layer1.retail import costco, homedepot_dryer
@@ -14,6 +15,10 @@ def get_collection_status(target_date, now=None):
     rows = []
     for source in SOURCES:
         retailer, product, _table, _column = source
+        afternoon = retailer.casefold() in AFTERNOON_RETAILERS
+        phase = afternoon_collection_phase(target_date, retailer, current)
+        if afternoon and phase is None:
+            continue
         if retailer == 'Costco' and not costco.enabled(target_date, product):
             continue
         home_dryer = homedepot_dryer.matches(product, retailer)
@@ -25,6 +30,9 @@ def get_collection_status(target_date, now=None):
                'count': 0, 'main_count': 0, 'bsr_count': 0,
                'last_collected_at': None, 'batch_id': None,
                'status': 'scheduled' if scheduled and current < scheduled else 'waiting'}
+        if afternoon:
+            row['scheduled_end_at'] = (scheduled + timedelta(hours=5)).isoformat()
+            row['collection_phase'] = phase
         enabled = retailer != 'HomeDepot' or homedepot_source_enabled(target_date)
         if enabled:
             try:
@@ -32,6 +40,11 @@ def get_collection_status(target_date, now=None):
                     count, last_at, batch, main_count, bsr_count = fetch_collection(cursor, source, target_date)
                 row.update(count=int(count or 0), main_count=int(main_count or 0),
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
+                if afternoon:
+                    row['status'] = ('received' if row['count'] else 'uncollected') if phase == 'complete' else (
+                        'partial' if row['count'] else 'scheduled' if phase == 'pending' else 'collecting')
+                    rows.append(row)
+                    continue
                 if row['count']:
                     row['status'] = 'received'
                     if retailer == 'Costco' and product.upper() != 'TV' and row['bsr_count'] != 100:

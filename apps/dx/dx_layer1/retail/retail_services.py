@@ -10,7 +10,10 @@ from apps.common.retail_columns import (
 )
 from apps.common.response import log_error
 from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_retail_source
-from apps.common.sea_collection import homedepot_inspection_label
+from apps.common.sea_collection import (
+    homedepot_inspection_label, afternoon_collection_phase, afternoon_schedule_enabled,
+    AFTERNOON_COLLECTION_WINDOW,
+)
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 
 from . import retail_repositories as repo
@@ -334,6 +337,13 @@ def _build_category(cursor, source, inspection_date, now):
     )
 
     for retailer in retailer_details:
+        afternoon_phase = afternoon_collection_phase(source_date, retailer['retailer'], now)
+        if afternoon_phase is not None:
+            retailer['collection_phase'] = afternoon_phase
+            retailer['collection_window'] = dict(AFTERNOON_COLLECTION_WINDOW)
+            if afternoon_phase != 'complete':
+                retailer['status'] = 'COLLECTING'
+            continue
         if lowes_dryer.matches(source['product_key'], retailer['retailer']):
             ready = lowes_dryer.complete(source_date, now)
             retailer['collection_phase'] = 'complete' if ready else 'collecting'
@@ -490,8 +500,8 @@ def get_layer1_stats(cursor, target_date, now=None):
             'collection_completion_kst': '09:00',
             'retailer_start_times': (
                 ('Amazon', '05:50'),
-                ('Best Buy', '06:55'),
-                ('Lowes', '06:55'),
+                *((('Best Buy', '06:55'), ('Lowes', '06:55'))
+                  if not afternoon_schedule_enabled(_inspection_value(target_date), 'Bestbuy') else ()),
             ),
         },
         'pm': {
@@ -503,6 +513,8 @@ def get_layer1_stats(cursor, target_date, now=None):
         },
         'is_dst': am_kst['is_dst'],
         'homedepot': dict(HOMEDEPOT_COLLECTION_WINDOW),
+        'bestbuy_lowes': (dict(AFTERNOON_COLLECTION_WINDOW)
+                          if afternoon_schedule_enabled(_inspection_value(target_date), 'Bestbuy') else None),
     }
 
     check = {

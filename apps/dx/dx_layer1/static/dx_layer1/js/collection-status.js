@@ -3,6 +3,7 @@ var ddayCollectionRequestId = 0;
 function ddayStatusBadge(status) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
+        collecting: ['collecting', '수집 중'],
         received: ['ok', '수집 확인'], partial: ['collecting', '일부 수집'],
         error: ['warning', '조회 실패'], uncollected: ['critical', '미수집'],
         abnormal: ['critical', 'BSR 이상']
@@ -19,7 +20,8 @@ function ddaySummary(rows) {
         : rows.some(row => row.status === 'uncollected') ? 'uncollected'
         : rows.some(row => row.status === 'abnormal') ? 'abnormal'
         : rows.every(row => row.status === 'received') ? 'received'
-        : rows.some(row => row.status === 'received') ? 'partial'
+        : rows.some(row => row.status === 'received' || row.status === 'partial') ? 'partial'
+        : rows.some(row => row.status === 'collecting') ? 'collecting'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';
     return { count, mainCount, bsrCount, status };
 }
@@ -32,12 +34,13 @@ function renderDdayCollection(data) {
         const summary = ddaySummary(rows);
         const body = rows.map(function(row) {
             const scheduled = String(row.scheduled_at || '').slice(0, 16).replace('T', ' ');
+            const scheduledEnd = String(row.scheduled_end_at || '').slice(11, 16);
             const batch = row.batch_id ? ' <span class="dday-batch">/ ' + esc(row.batch_id) + '</span>' : '';
             return '<tr aria-label="SEA ' + esc(row.retailer) + ' ' + product + '">' +
                 '<td class="rt-name">' + esc(row.retailer) + batch + '</td>' +
                 '<td>' + (row.main_count == null ? '-' : Number(row.main_count).toLocaleString()) + '</td>' +
                 '<td>' + (row.bsr_count == null ? '-' : Number(row.bsr_count).toLocaleString()) + '</td>' +
-                '<td>' + (scheduled ? esc(scheduled) + ' KST' : '미정') + '</td>' +
+                '<td>' + (scheduled ? esc(scheduled) + (scheduledEnd ? ' ~ ' + esc(scheduledEnd) : '') + ' KST' : '미정') + '</td>' +
                 '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' KST' : '') + '</td>' +
                 '<td class="rt-total">' + (row.count === null ? '-' : Number(row.count).toLocaleString()) + '</td>' +
                 '<td class="rt-status ct-nc">' + ddayStatusBadge(row.status) + '</td></tr>';

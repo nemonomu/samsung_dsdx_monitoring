@@ -5,6 +5,26 @@ from datetime import date, datetime, time, timedelta, timezone
 KST = timezone(timedelta(hours=9))
 HOMEDEPOT_FIRST_SOURCE_DATE = date(2026, 9, 20)
 HOMEDEPOT_FIRST_INSPECTION_DATE = HOMEDEPOT_FIRST_SOURCE_DATE + timedelta(days=1)
+AFTERNOON_FIRST_SOURCE_DATE = date(2026, 10, 26)
+AFTERNOON_RETAILERS = frozenset({'bestbuy', 'lowes'})
+AFTERNOON_COLLECTION_WINDOW = {'start_kst': '13:00', 'end_kst': '18:00'}
+
+
+def afternoon_schedule_enabled(source_date, retailer):
+    return (str(retailer or '').strip().casefold() in AFTERNOON_RETAILERS
+            and str(source_date)[:10] >= AFTERNOON_FIRST_SOURCE_DATE.isoformat())
+
+
+def afternoon_collection_phase(source_date, retailer, now=None):
+    """KST schedule only; source-date keys and D-1 inspection are unchanged."""
+    if not afternoon_schedule_enabled(source_date, retailer):
+        return None
+    current = now or datetime.now(KST)
+    current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
+    start = collection_schedule(source_date, retailer)
+    if current < start:
+        return 'pending'
+    return 'collecting' if current < start + timedelta(hours=5) else 'complete'
 
 
 def homedepot_source_enabled(source_date):

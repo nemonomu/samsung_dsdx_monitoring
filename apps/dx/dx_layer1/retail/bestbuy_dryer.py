@@ -1,7 +1,7 @@
 """Bestbuy dryer onboarding; retain the existing Bestbuy source-date contract."""
 from datetime import date, datetime
 
-from apps.common.sea_collection import KST
+from apps.common.sea_collection import KST, afternoon_collection_phase
 from apps.common.source_dates import source_date_sql as original_date_sql
 
 FIRST_SOURCE_DATE = date(2026, 10, 12)
@@ -17,9 +17,12 @@ def enabled(source_date):
 
 
 def complete(source_date, now=None):
+    phase = afternoon_collection_phase(source_date, 'Bestbuy', now)
+    if phase is not None:
+        return enabled(source_date) and phase == 'complete'
     current = now or datetime.now(KST)
     current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
-    # No verified same-day completion schedule; use the existing D-1 contract.
+    # Preserve the previous completion policy before the new schedule starts.
     return enabled(source_date) and str(source_date)[:10] < current.date().isoformat()
 
 
