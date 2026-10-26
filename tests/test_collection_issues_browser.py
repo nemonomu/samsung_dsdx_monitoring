@@ -37,7 +37,7 @@ with sync_playwright() as p:
                     const params=new URLSearchParams(url.split('?')[1]),state=params.get('status');
                     const columnIssue={...structuredClone(issue),id:2,column:'inventory_status',severity:'abnormal',status:'open',baseline:38,observed_count:0};
                     const extra=window.extraIssues||[];
-                    value={start_date:'2026-10-01',target_count:1,scans:window.pending?[]:[{scanned_through:'2026-10-18',last_checked_at:'2026-10-20T00:00:00Z',error:false,pending:false}],issues:[issue,columnIssue,...extra].filter(row=>state===row.status).map(row=>structuredClone(row))};
+                    value={policy_version:window.legacy?undefined:1,start_date:'2026-10-01',target_count:1,scans:window.pending?[]:[{scanned_through:'2026-10-18',last_checked_at:'2026-10-20T00:00:00Z',error:false,pending:!!window.oldScan}],issues:[issue,columnIssue,...extra].filter(row=>state===row.status).map(row=>structuredClone(row))};
                 }
             }
             return {ok,json:async()=>value};
@@ -104,6 +104,15 @@ with sync_playwright() as p:
     page.evaluate("pending=true; issue.status='excepted'; extraIssues=[]; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_function("document.querySelector('.ci-head h3').textContent.includes('점검 중')")
     assert '0건으로 확정하지 않습니다' in page.locator('.ci-panel').inner_text()
+    # A legacy completed date is not proof the new MAIN/BSR/batch checks ran.
+    page.evaluate("pending=false; oldScan=true; CollectionIssues.load({date:'2026-10-20'},true)")
+    page.wait_for_function("document.querySelector('.ci-head h3').textContent.includes('점검 중')")
+    assert '공통 점검 완료' not in page.locator('.ci-panel').inner_text()
+    assert '미해결 수집 문제가 없습니다' not in page.locator('.ci-panel').inner_text()
+    page.evaluate("legacy=true; oldScan=false; CollectionIssues.load({date:'2026-10-20'},true)")
+    page.wait_for_selector('[role="alert"]')
+    assert '서버 업데이트와 재점검' in page.locator('[role="alert"]').inner_text()
+    page.evaluate('legacy=false')
     page.evaluate("failed=true; CollectionIssues.load({date:'2026-10-20'},true)")
     page.wait_for_selector('[role="alert"]')
     assert '미해결 없음으로 처리하지 않습니다' in page.locator('[role="alert"]').inner_text()

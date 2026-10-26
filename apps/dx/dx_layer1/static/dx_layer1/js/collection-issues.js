@@ -31,6 +31,9 @@
         return params;
     }
     function render(data) {
+        if (data.policy_version !== 1) {
+            throw new Error('새 수집량·배치 점검의 완료 여부를 확인할 수 없습니다. 서버 업데이트와 재점검이 필요합니다.');
+        }
         const visible = data.issues.filter(row => row.status === 'open' && (!dashboard || !row.column || ['volume','batches'].includes(row.kind)));
         const grouped = new Map();
         visible.forEach(row => {
@@ -43,8 +46,8 @@
         page = Math.min(page,pages);
         const scans = data.scans || [];
         const unavailable = scans.filter(s=>s.error).length;
-        const unchecked = data.target_count-scans.filter(s=>s.pending === false || (s.scanned_through && !s.pending)).length;
-        const through = scans.filter(s=>s.scanned_through).map(s=>s.scanned_through).sort()[0];
+        const unchecked = Math.max(0,data.target_count-scans.filter(s=>s.pending === false).length);
+        const through = !unchecked && !unavailable && scans.filter(s=>s.scanned_through).map(s=>s.scanned_through).sort()[0];
         const checked = scans.filter(s=>s.last_checked_at).map(s=>s.last_checked_at).sort()[0];
         const deferred = scans.filter(s=>s.start_basis==='first_observed' && s.coverage_start>data.start_date);
         const coverage = `점검 시작 ${data.start_date} · ${through ? '공통 점검 완료 '+through+'까지' : '과거 점검 준비 중'}${unchecked>0?' · 점검 대기 '+unchecked+'개 대상':''}${unavailable?' · 조회 실패 '+unavailable+'개 대상':''}${checked?' · 최근 점검 '+new Date(checked).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):''}`;

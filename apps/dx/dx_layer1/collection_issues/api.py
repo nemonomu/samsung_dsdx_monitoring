@@ -14,7 +14,7 @@ from apps.dx.dx_layer1.column_statistics.services import catalog, daily_counts
 from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, KST
 from apps.dx.dx_layer1.column_statistics.dates import active_from
 from .queries import sql_queries, raw_counts, daily_batch_ids, selection
-from .services import START_DATE, environment, serialize, event, reconcile_day
+from .services import START_DATE, POLICY_VERSION, environment, serialize, event, reconcile_day
 from .errors import storage_error
 from . import volume
 
@@ -75,15 +75,20 @@ def listing(request):
                 or (r.country,r.product,r.retailer,r.source_date) not in whole]
         scans = list(Scan.objects.filter(environment=environment(), **filters).values(
             'country', 'product', 'retailer', 'coverage_start', 'start_basis',
-            'scanned_through', 'last_checked_at', 'error'))
+            'scanned_through', 'last_checked_at', 'error', 'policy_version'))
         scopes = {(j['country'],j['product'],j['retailer']) for j in jobs}
         scans = [s for s in scans if (s['country'],s['product'],s['retailer']) in scopes]
         for scan in scans:
+            current_policy = scan['policy_version'] == POLICY_VERSION
+            if not current_policy:
+                scan['scanned_through'] = None
+                scan['last_checked_at'] = None
             last_due = cutoffs.get(scan['country'])
             not_started = scan['coverage_start'] and last_due and scan['coverage_start'] > last_due
-            scan['pending'] = bool(not not_started and (not scan['scanned_through']
-                or (last_due and scan['scanned_through'] < last_due)))
-        return reply({'start_date': str(START_DATE), 'inspection_date': inspection_date,
+            scan['pending'] = bool(not current_policy or (not not_started and (not scan['scanned_through']
+                or (last_due and scan['scanned_through'] < last_due))))
+        return reply({'policy_version': POLICY_VERSION,
+                      'start_date': str(START_DATE), 'inspection_date': inspection_date,
                       'issues': [serialize(r) for r in rows],
                       'scans': scans, 'target_count': len(jobs)})
     except (ValueError, TypeError):

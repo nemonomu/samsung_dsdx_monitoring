@@ -105,6 +105,7 @@ class CollectionIssueScan(models.Model):
     scanned_through = models.DateField(null=True)
     last_checked_at = models.DateTimeField(null=True)
     error = models.BooleanField(default=False)
+    policy_version = models.PositiveIntegerField(default=0)
 
     class Meta:
         constraints = [models.UniqueConstraint(

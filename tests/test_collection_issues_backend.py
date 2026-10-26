@@ -212,6 +212,21 @@ class IssueTests(TestCase):
             inspection_date='2026-10-26').content)
         self.assertTrue(payload['scans'][0]['pending'])
 
+    def test_legacy_completed_scan_cannot_claim_new_volume_policy_is_complete(self):
+        scan=Scan.objects.create(**s.identity('SEG','TV','Amazon'),coverage_start=date(2026,9,1),
+            scanned_through=date(2026,10,25),last_checked_at=NOW,error=False)
+        params=dict(country='SEG',product='TV',retailer='Amazon',inspection_date='2026-10-26')
+        payload=json.loads(self.past_listing(**params).content)
+        self.assertEqual(payload['policy_version'],s.POLICY_VERSION)
+        self.assertTrue(payload['scans'][0]['pending'])
+        self.assertIsNone(payload['scans'][0]['scanned_through'])
+        self.assertIsNone(payload['scans'][0]['last_checked_at'])
+        scan.refresh_from_db()
+        self.assertEqual(scan.scanned_through,date(2026,10,25))  # Read path preserves audit metadata.
+        scan.policy_version=s.POLICY_VERSION
+        scan.save()
+        self.assertFalse(json.loads(self.past_listing(**params).content)['scans'][0]['pending'])
+
     def test_past_listing_defaults_to_kst_inspection_day_and_validates_dates(self):
         self.create_past_issue('SEA', date(2026, 10, 22))
         with patch.object(api.timezone, 'now', return_value=datetime.fromisoformat('2026-10-23T15:01:00+00:00')):
@@ -295,6 +310,8 @@ class IssueTests(TestCase):
                 'daily':[{'date':str(end-timedelta(days=i)), 'total':100,'counts':{'offer':100}} for i in range(days)]}
         def raw(country,product,retailer,start,end):
             return {str(start+timedelta(days=i)):100 for i in range((end-start).days+1)}
+        Scan.objects.create(**s.identity('SEA','TV','Walmart'),coverage_start=date(2026,9,1),
+            scanned_through=date(2026,10,25),last_checked_at=NOW,error=False)
         with patch.object(s,'daily_counts',side_effect=counts), patch.object(s,'raw_counts',side_effect=raw), \
                 patch.object(s,'first_observed',return_value=date(2026,6,1)), \
                 patch.object(s,'collection_complete',return_value=True),patch.object(s.timezone,'now',return_value=NOW), \
@@ -302,6 +319,10 @@ class IssueTests(TestCase):
             s.refresh_target('SEA','TV','Walmart',now=NOW)
             scan=Scan.objects.get()
             self.assertEqual(scan.scanned_through,date(2026,10,18))
+            self.assertEqual(scan.policy_version,s.POLICY_VERSION)
+            self.assertEqual(scan.coverage_start,date(2026,10,1))
+            scanned_days=s.volume.load_days.call_args.args[3]
+            self.assertIn(date(2026,10,1),scanned_days)
             s.refresh_target('SEA','TV','Walmart',now=NOW)
             scan.refresh_from_db()
             self.assertEqual(scan.scanned_through,date(2026,10,18))

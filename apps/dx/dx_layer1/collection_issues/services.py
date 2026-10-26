@@ -17,6 +17,7 @@ from .queries import raw_counts, selection, first_observed, daily_batch_ids
 from . import volume
 
 START_DATE = date(2026, 10, 1)
+POLICY_VERSION = 1  # Original-day missing/column + MAIN/BSR + distinct batches.
 CHUNK_DAYS = 28
 
 
@@ -111,6 +112,11 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
         return {'busy': True, 'days': 0}
     scan, _ = Scan.objects.get_or_create(**scope)
     try:
+        if scan.policy_version != POLICY_VERSION:
+            # A completed legacy column scan proves nothing about volume/batches.
+            # Reset here too: deployment may have skipped the one-off reset migration.
+            scan.scanned_through, scan.last_checked_at = None, None
+            scan.save(update_fields=['scanned_through','last_checked_at'])
         start, basis = coverage_start(country, product, retailer)
         scan.coverage_start, scan.start_basis = start, basis
         scan.save(update_fields=['coverage_start','start_basis'])
@@ -118,6 +124,7 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
             raise ValueError('No authoritative start or observed collection day')
         if target < start:
             scan.last_checked_at, scan.error = now, False
+            scan.policy_version = POLICY_VERSION
             scan.save()
             return {'busy': False, 'days': 0}
         # Do not advance coverage through a source day still inside its collection window.
@@ -162,6 +169,7 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
         if backfill_start <= backfill_end:
             scan.scanned_through = backfill_end
         scan.last_checked_at, scan.error = now, False
+        scan.policy_version = POLICY_VERSION
         scan.save()
         return {'busy': False, 'days': len(wanted)}
     except Exception:
