@@ -17,10 +17,10 @@ function ddaySummary(rows) {
     const mainCount = rows.reduce((total, row) => total + (Number(row.main_count) || 0), 0);
     const bsrCount = rows.reduce((total, row) => total + (Number(row.bsr_count) || 0), 0);
     const status = rows.some(row => row.status === 'error') ? 'error'
-        : rows.some(row => row.status === 'uncollected') ? 'uncollected'
         : rows.some(row => row.status === 'abnormal') ? 'abnormal'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received' || row.status === 'partial') ? 'partial'
+        : rows.some(row => row.status === 'uncollected') ? 'uncollected'
         : rows.some(row => row.status === 'collecting') ? 'collecting'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';
     return { count, mainCount, bsrCount, status };

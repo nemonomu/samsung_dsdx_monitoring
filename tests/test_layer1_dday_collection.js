@@ -47,6 +47,7 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.strictEqual(total.mainCount, 600);
     assert.strictEqual(total.bsrCount, 200);
     assert.strictEqual(total.count, 600);
+    assert.strictEqual(total.status, 'received');
     const costco = {source_date: '2026-10-06', retailers: [
         {retailer: 'Costco', product: 'TV', status: 'uncollected', count: 0, main_count: 0, bsr_count: 0},
         {retailer: 'Costco', product: 'REF', status: 'received', count: 205, main_count: 205, bsr_count: 100},
@@ -56,21 +57,35 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert(costcoHtml.includes('SEA Costco TV'));
     assert(costcoHtml.includes('미수집'));
     assert.strictEqual(sandbox.ddaySummary(costco.retailers).count, 509);
-    assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'uncollected');
+    assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'partial');
+    assert.strictEqual(sandbox.ddaySummary([costco.retailers[0]]).status, 'uncollected');
+    assert(costcoHtml.split('<div class="time-slots-container show">')[0].includes('일부 수집'));
+    for (const [states, expected] of [
+        [['uncollected', 'uncollected'], 'uncollected'],
+        [['received', 'waiting'], 'partial'],
+        [['received', 'scheduled'], 'partial'],
+        [['scheduled', 'scheduled'], 'scheduled'],
+        [['waiting', 'waiting'], 'waiting'],
+        [['received', 'abnormal'], 'abnormal'],
+        [['received', 'error'], 'error']
+    ]) {
+        assert.strictEqual(sandbox.ddaySummary(data('2026-10-27', states).retailers).status, expected);
+    }
     costco.retailers[0].status = 'error';
     assert.strictEqual(sandbox.ddaySummary(costco.retailers).status, 'error');
     const afternoon = {source_date:'2026-10-26', retailers:[
-        {retailer:'Bestbuy', product:'TV', status:'partial', count:50, main_count:50, bsr_count:0,
+        {retailer:'Bestbuy', product:'TV', status:'received', count:50, main_count:50, bsr_count:0,
          scheduled_at:'2026-10-26T13:00:00+09:00', scheduled_end_at:'2026-10-26T18:00:00+09:00'},
-        {retailer:'Lowes', product:'REF', status:'collecting', count:0, main_count:0, bsr_count:0,
+        {retailer:'Lowes', product:'REF', status:'waiting', count:0, main_count:0, bsr_count:0,
          scheduled_at:'2026-10-26T13:00:00+09:00', scheduled_end_at:'2026-10-26T18:00:00+09:00'}
     ]};
     const afternoonHtml = sandbox.renderDdayCollection(afternoon);
-    for (const text of ['SEA Bestbuy TV','SEA Lowes REF','13:00 ~ 18:00 KST','일부 수집','수집 중']) {
+    for (const text of ['SEA Bestbuy TV','SEA Lowes REF','13:00 ~ 18:00 KST','일부 수집','수집 확인','수집 대기']) {
         assert(afternoonHtml.includes(text), text);
     }
     assert.strictEqual(sandbox.ddaySummary(afternoon.retailers).status, 'partial');
-    assert.strictEqual(sandbox.ddaySummary([afternoon.retailers[1]]).status, 'collecting');
+    assert.strictEqual(sandbox.ddaySummary([afternoon.retailers[0]]).status, 'received');
+    assert.strictEqual(sandbox.ddaySummary([afternoon.retailers[1]]).status, 'waiting');
     respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);

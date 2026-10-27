@@ -38,8 +38,10 @@ class SeaAfternoonScheduleTests(unittest.TestCase):
             self.assertTrue(module.complete(DAY, datetime(2026, 10, 26, 18, tzinfo=KST)))
 
     def test_dday_all_seven_scopes_and_collection_states(self):
-        for hour, minute, count, status in ((12, 59, 0, 'scheduled'), (13, 0, 0, 'collecting'),
-                (17, 59, 50, 'partial'), (18, 0, 0, 'uncollected'), (18, 0, 300, 'received')):
+        for hour, minute, count, status in ((12, 59, 0, 'scheduled'), (12, 59, 1, 'received'),
+                (13, 0, 0, 'waiting'), (13, 0, 1, 'received'),
+                (17, 59, 0, 'waiting'), (17, 59, 50, 'received'),
+                (18, 0, 0, 'uncollected'), (18, 0, 1, 'received'), (18, 0, 300, 'received')):
             with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection',
                     return_value=(count, None, 'b1', count, 0)) as fetch:
                 data = dday.get_collection_status(DAY, datetime(2026, 10, 26, hour, minute, tzinfo=KST))

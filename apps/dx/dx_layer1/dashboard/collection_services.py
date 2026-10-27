@@ -41,8 +41,10 @@ def get_collection_status(target_date, now=None):
                 row.update(count=int(count or 0), main_count=int(main_count or 0),
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
                 if afternoon:
-                    row['status'] = ('received' if row['count'] else 'uncollected') if phase == 'complete' else (
-                        'partial' if row['count'] else 'scheduled' if phase == 'pending' else 'collecting')
+                    # Receipt is independent of the collection window and volume validation.
+                    row['status'] = ('received' if row['count'] else
+                                     'uncollected' if phase == 'complete' else
+                                     'scheduled' if phase == 'pending' else 'waiting')
                     rows.append(row)
                     continue
                 if row['count']:
