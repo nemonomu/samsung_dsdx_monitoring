@@ -1,15 +1,16 @@
 var ddayCollectionRequestId = 0;
 
-function ddayStatusBadge(status) {
+function ddayStatusBadge(status, reason) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
         collecting: ['collecting', '수집 중'],
         received: ['ok', '수집 확인'], partial: ['collecting', '일부 수집'],
         error: ['warning', '조회 실패'], uncollected: ['critical', '미수집'],
-        abnormal: ['critical', 'BSR 이상']
+        abnormal: ['critical', 'BSR 이상'], rank_mismatch: ['critical', '이상']
     };
     const entry = styles[status] || styles.error;
-    return '<span class="status-badge ' + entry[0] + '">' + entry[1] + '</span>';
+    const title = reason ? ' title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '';
+    return '<span class="status-badge ' + entry[0] + '"' + title + '>' + entry[1] + '</span>';
 }
 
 function ddaySummary(rows) {
@@ -17,6 +18,7 @@ function ddaySummary(rows) {
     const mainCount = rows.reduce((total, row) => total + (Number(row.main_count) || 0), 0);
     const bsrCount = rows.reduce((total, row) => total + (Number(row.bsr_count) || 0), 0);
     const status = rows.some(row => row.status === 'error') ? 'error'
+        : rows.some(row => row.status === 'rank_mismatch') ? 'rank_mismatch'
         : rows.some(row => row.status === 'abnormal') ? 'abnormal'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received' || row.status === 'partial') ? 'partial'
@@ -43,7 +45,7 @@ function renderDdayCollection(data) {
                 '<td>' + (scheduled ? esc(scheduled) + (scheduledEnd ? ' ~ ' + esc(scheduledEnd) : '') + ' KST' : '미정') + '</td>' +
                 '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' KST' : '') + '</td>' +
                 '<td class="rt-total">' + (row.count === null ? '-' : Number(row.count).toLocaleString()) + '</td>' +
-                '<td class="rt-status ct-nc">' + ddayStatusBadge(row.status) + '</td></tr>';
+                '<td class="rt-status ct-nc">' + ddayStatusBadge(row.status, row.status_reason) + '</td></tr>';
         }).join('');
         return '<details class="sentiment-category-item" open>' +
             '<summary class="sentiment-category-header"><div class="sentiment-category-info">' +

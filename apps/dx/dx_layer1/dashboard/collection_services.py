@@ -40,6 +40,11 @@ def get_collection_status(target_date, now=None):
                     count, last_at, batch, main_count, bsr_count = fetch_collection(cursor, source, target_date)
                 row.update(count=int(count or 0), main_count=int(main_count or 0),
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
+                if 0 <= row['main_count'] < row['bsr_count']:
+                    row.update(status='rank_mismatch',
+                               status_reason=f"MAIN {row['main_count']}건 / BSR {row['bsr_count']}건 / MAIN이 BSR보다 적음")
+                    rows.append(row)
+                    continue
                 if afternoon:
                     # Receipt is independent of the collection window and volume validation.
                     row['status'] = ('received' if row['count'] else

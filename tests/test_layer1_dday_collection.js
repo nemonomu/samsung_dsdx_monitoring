@@ -54,6 +54,25 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
         {retailer: 'Costco', product: 'LDY', status: 'received', count: 304, main_count: 300, bsr_count: 100}
     ]};
     const costcoHtml = sandbox.renderDdayCollection(costco);
+    const mismatch = {source_date:'2026-10-28', retailers:[
+        {retailer:'HomeDepot', product:'REF', status:'received', count:266, main_count:266, bsr_count:100},
+        {retailer:'Costco', product:'REF', status:'rank_mismatch', count:124, main_count:80, bsr_count:100,
+         status_reason:'MAIN 80건 / BSR 100건 / MAIN이 BSR보다 적음', batch_id:'c20261028_001821'}
+    ]};
+    const mismatchHtml = sandbox.renderDdayCollection(mismatch);
+    const costcoRow = mismatchHtml.match(/<tr aria-label="SEA Costco REF">(.*?)<\/tr>/s)[1];
+    assert(costcoRow.includes('<td>80</td><td>100</td>'));
+    assert(costcoRow.includes('status-badge critical'));
+    assert(costcoRow.includes('>이상</span>'));
+    assert(costcoRow.includes('MAIN 80건 / BSR 100건 / MAIN이 BSR보다 적음'));
+    assert(!costcoRow.includes('수집 확인'));
+    assert.strictEqual(sandbox.ddaySummary(mismatch.retailers).status, 'rank_mismatch');
+    assert.strictEqual(sandbox.ddaySummary(mismatch.retailers).count, 390);
+    assert.strictEqual((mismatchHtml.match(/>이상<\/span>/g) || []).length, 4, 'row, slot, category and country show the anomaly');
+    assert.strictEqual(sandbox.ddaySummary([...mismatch.retailers, {status:'error'}]).status, 'error');
+    mismatch.retailers[1] = {...mismatch.retailers[1], main_count:100, status:'received', status_reason:undefined};
+    assert.strictEqual(sandbox.ddaySummary(mismatch.retailers).status, 'received');
+    assert(!sandbox.renderDdayCollection(mismatch).includes('>이상</span>'));
     assert(costcoHtml.includes('SEA Costco TV'));
     assert(costcoHtml.includes('미수집'));
     assert.strictEqual(sandbox.ddaySummary(costco.retailers).count, 509);

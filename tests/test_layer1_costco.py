@@ -31,6 +31,24 @@ def connection(cursor=None):
 
 
 class CostcoTests(SimpleTestCase):
+    def test_dday_main_below_bsr_is_abnormal_on_receipt(self):
+        day = date(2026, 10, 28)
+        for hour in (13, 16, 18):
+            for main, expected in ((0, 'rank_mismatch'), (80, 'rank_mismatch'),
+                                   (99, 'rank_mismatch'), (100, 'received'), (101, 'received')):
+                with patch.object(dday, 'dx_connection', connection), patch.object(
+                        dday, 'fetch_collection', return_value=(124, '2026-10-28 13:18:21', 'c20261028_001821', main, 100)):
+                    rows = dday.get_collection_status(day, datetime(2026, 10, 28, hour, 20, tzinfo=KST))['retailers']
+                self.assertTrue(rows)
+                self.assertEqual(4, len([row for row in rows if row['retailer'] == 'Costco']))
+                for row in rows:
+                    self.assertEqual(expected, row['status'], (row['retailer'], row['product'], hour, main))
+                    self.assertEqual((main, 100, 124), (row['main_count'], row['bsr_count'], row['count']))
+                    if expected == 'rank_mismatch':
+                        self.assertEqual(f'MAIN {main}건 / BSR 100건 / MAIN이 BSR보다 적음', row['status_reason'])
+                    else:
+                        self.assertNotIn('status_reason', row)
+
     def test_monitoring_starts_october_fourth(self):
         self.assertFalse(costco.enabled('2026-10-03'))
         self.assertTrue(costco.enabled('2026-10-04'))
