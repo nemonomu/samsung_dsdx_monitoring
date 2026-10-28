@@ -44,6 +44,30 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_main_below_bsr_without_history_and_after_recovery(self):
+        for country in calc.COUNTRIES:
+            for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
+                for main in (0, 99, 100, 101):
+                    row = sample(main=main, bsr=100, product=product)
+                    fresh = calc.compare_rows([row], [], country=country)[0]
+                    for result in (fresh, calc.current_volume_decision(fresh, country),
+                                   calc.current_volume_decision({**row, 'state': 'complete'}, country)):
+                        alerts = [a for a in result['alerts'] if a.get('rule') == 'main_lt_bsr']
+                        self.assertEqual(main < 100, bool(alerts))
+                        if alerts:
+                            self.assertEqual(('VOLUME_LOW', main, 100),
+                                             (alerts[0]['status'], alerts[0]['actual'], alerts[0]['baseline']))
+                    recovered = calc.current_volume_decision({**fresh, 'main': 100}, country)
+                    self.assertFalse(any(a.get('rule') == 'main_lt_bsr' for a in recovered['alerts']))
+
+    def test_main_bsr_skips_pending_failed_and_inapplicable_counts(self):
+        for extra in ({'complete': False}, {'state': 'pending'}, {'base_status': 'ERROR'},
+                      {'refresh_error': True}, {'bsr_applicable': False}, {'main': None}):
+            row = sample(**{'main': 99, 'bsr': 100, **extra})
+            for result in (calc.compare_rows([row], [], country='SEA')[0],
+                           calc.current_volume_decision(row, 'SEA')):
+                self.assertFalse(any(a.get('rule') == 'main_lt_bsr' for a in result['alerts']))
+
     def test_history_eligibility_does_not_override_automatic_normal_status(self):
         for country in calc.COUNTRIES:
             check = check_for(250, bsr_count=60)
@@ -152,7 +176,7 @@ class CalculationTests(SimpleTestCase):
                                       (2599, None), (2600, 'VOLUME_HIGH')]:
                 with self.subTest(country=country, current=current):
                     result = calc.compare_rows([sample(total=3000, main=current)], history, country=country)[0]
-                    alerts = [a for a in result['alerts'] if a['metric'] == 'main']
+                    alerts = [a for a in result['alerts'] if a['metric'] == 'main' and a.get('rule') != 'main_lt_bsr']
                     self.assertEqual([expected] if expected else [], [a['status'] for a in alerts])
                     projected = calc.current_volume_decision(result, country)
                     self.assertEqual(result['alerts'], projected['alerts'])
@@ -904,6 +928,10 @@ class LiveCollectionTests(TestCase):
         row = self.read(self.check(199, 100))
         self.assertEqual('unknown', row['observation_state'])
         self.assertEqual({}, row['rules'])
+        row = self.read(self.check(99, 100))
+        self.assertEqual('unknown', row['observation_state'])
+        self.assertEqual('main_lt_bsr', row['alerts'][0]['rule'])
+        self.assertEqual('VOLUME_LOW', row['alerts'][0]['status'])
 
     def test_api_validates_scope_and_source_failures_do_not_become_zero(self):
         with patch.object(self.live, 'load_current_check', side_effect=RuntimeError('offline')) as loader, \

@@ -96,6 +96,9 @@
                 var bsrLow = bsr.filter(function(alert) { return alert.status === 'VOLUME_LOW'; });
                 var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer);
                 var errorReviewed = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer);
+                var rankMismatch = !normalReviewed && !errorReviewed && (retailer.volume_alerts || []).find(function(alert) {
+                    return alert.rule === 'main_lt_bsr';
+                });
                 var legacyReview = retailer.status === 'REVIEW' && !normalReviewed && !errorReviewed;
                 var bsrReview = normalReviewed || errorReviewed ? [] : bsr.filter(function(alert) { return alert.status === 'VOLUME_REVIEW'; });
                 var mainReview = !missing && !normalReviewed && !errorReviewed ? (retailer.volume_alerts || []).filter(function(alert) {
@@ -105,7 +108,7 @@
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
                 var volumeHigh = !missing && !normalReviewed && !errorReviewed && retailer.status === 'VOLUME_HIGH' &&
                     (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
-                if (!name || (!errorReviewed && !observing && !failed && !missing && !multiple && !volumeLow && !volumeHigh && !legacyReview && !bsrReview.length && !mainReview.length)) return;
+                if (!name || (!errorReviewed && !observing && !failed && !missing && !multiple && !volumeLow && !volumeHigh && !legacyReview && !bsrReview.length && !mainReview.length && !rankMismatch)) return;
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
                 if (checkType === 'retail') {
@@ -130,6 +133,10 @@
                 if (missing) {
                     items.push('<span class="retail-missing-item">' + link + esc(product) + ' 미수집</span>');
                 }
+                if (rankMismatch) {
+                    items.push('<span class="retail-missing-item">' + link + esc(product) + ' '
+                        + esc(rankMismatch.reason) + '</span>');
+                }
                 if (multiple) {
                     items.push('<span class="retail-missing-item">' + link + esc(product) + ' 배치 2개 이상</span>');
                 }
@@ -146,9 +153,9 @@
                         items.push('<span class="retail-missing-item">' + link + esc(product) + ' '
                             + esc(alert.reason || 'BSR 수량 부족') + '</span>');
                     });
-                    if (!bsrLow.length || (retailer.volume_alerts || []).some(function(alert) {
+                    if (!rankMismatch && (!bsrLow.length || (retailer.volume_alerts || []).some(function(alert) {
                         return alert.metric !== 'bsr' && alert.status === 'VOLUME_LOW';
-                    })) items.push('<span class="retail-missing-item">' + link + esc(product) + ' 건수 부족</span>');
+                    }))) items.push('<span class="retail-missing-item">' + link + esc(product) + ' 건수 부족</span>');
                 } else if (volumeHigh) {
                     items.push('<span class="retail-missing-item volume-review">' + link + esc(product) + ' 건수 증가</span>');
                 }

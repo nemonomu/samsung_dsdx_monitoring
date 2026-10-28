@@ -10,7 +10,7 @@ context.getSelectedDate = () => day;
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/retail-status.js', 'utf8'), context);
 const volume = context.L1.collectionVolume;
 const day = '2026-10-02';
-const types = {SEA:'retail', SEDA:'seda_retail', SIEL:'siel_retail', SEG:'seg_retail', SEM:'sem_retail', TSE:'tse_retail', SEIB:'seib_retail'};
+const types = {SEA:'retail', SEDA:'seda_retail', SIEL:'siel_retail', SEG:'seg_retail', SEM:'sem_retail', TSE:'tse_retail', SEIB:'seib_retail', SEUK:'seuk_retail'};
 const median = (baseline=300, extra={}) => ({baseline, days:7, rule:'median_28d', low_percent:30, high_percent:30, review_percent:15, ...extra});
 const fixed = () => ({baseline:100, days:0, rule:'fixed_100', low_percent:30, high_percent:null, review_percent:null});
 function fixture(country='SIEL', product='TV', base='OK') {
@@ -30,6 +30,35 @@ function fixture(country='SIEL', product='TV', base='OK') {
     return {row, cat, check, data, saved, payload};
 }
 function apply(f) {volume.decorate(f.data, f.payload, day, f.summaries); return f.row.status;}
+
+// The current MAIN/BSR relationship does not require historical baselines.
+for (const country of Object.keys(types)) for (const product of ['TV','REF','LDY','LDY_DRYER']) {
+    const f = fixture(country, product);
+    f.row.main_count = 99;
+    f.payload = null;
+    assert.equal(apply(f), 'VOLUME_LOW');
+    assert.equal(f.check.status, 'VOLUME_LOW');
+    assert.equal(f.data.summary.failed, 1);
+    assert.equal(f.row.volume_alerts[0].rule, 'main_lt_bsr');
+    assert(context.L1.retailStatus.render(f.check, 0, types[country]).includes('MAIN 99건 / BSR 100건'));
+    f.row.main_count = 100;
+    assert.equal(apply(f), 'VERIFYING');
+    assert.equal(f.row.volume_alerts.length, 0, 'recovery clears the relationship alert');
+    f.row.main_count = 101;
+    assert.equal(apply(f), 'VERIFYING');
+    f.row.main_count = 0;
+    assert.equal(apply(f), 'CRITICAL');
+    assert(context.L1.retailStatus.render(f.check, 0, types[country]).includes('MAIN 0건 / BSR 100건'));
+}
+for (const base of ['ERROR','PENDING','COLLECTING']) {
+    const f = fixture('SIEL', 'TV', base);
+    f.check.phase = base === 'ERROR' ? 'complete' : base === 'PENDING' ? 'pending' : 'collecting';
+    f.row.main_count = 99;
+    assert.equal(apply(f), base);
+    assert(!f.row.volume_alerts.some(a => a.rule === 'main_lt_bsr'));
+}
+const noBsr = fixture(); noBsr.row.main_count = 99; noBsr.row.bsr_applicable = false; noBsr.payload = null;
+assert.equal(apply(noBsr), 'VERIFYING');
 
 // SEM received batches are assessed without waiting for the other retailers.
 for (const product of ['REF', 'LDY']) {

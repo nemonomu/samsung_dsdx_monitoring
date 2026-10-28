@@ -107,6 +107,14 @@
                             row.status = check.phase === 'pending' || row.collection_phase === 'pending' ? 'PENDING' : 'COLLECTING';
                             return;
                         }
+                        const rankMismatch = datesMatch && row.bsr_applicable !== false
+                            && Number.isInteger(counts.main) && counts.main >= 0
+                            && Number.isInteger(counts.bsr) && counts.main < counts.bsr
+                            ? {metric: 'main', baseline: counts.bsr, actual: counts.main,
+                                percent: Math.round((counts.main - counts.bsr) * 1000 / counts.bsr) / 10,
+                                status: 'VOLUME_LOW', rule: 'main_lt_bsr',
+                                reason: `MAIN ${counts.main}건 / BSR ${counts.bsr}건 / MAIN이 BSR보다 적음`} : null;
+                        if (rankMismatch) row.volume_alerts.push(rankMismatch);
                         if (datesMatch && (!received(row, country) || counts.main === 0)) {
                             row.status = 'CRITICAL';
                             row.verification_state = 'ready';
@@ -117,6 +125,7 @@
                         const decisions = ['main', 'bsr'].map(metric => compare(metric, counts[metric],
                             metric === 'bsr' && exactBsr ? {rule: 'fixed_100', baseline: 100, exact: true}
                             : saved && saved.observation_state === 'ready' && saved.rules && saved.rules[metric]));
+                        if (rankMismatch) decisions.push({status: 'VOLUME_LOW', alert: rankMismatch});
                         row.volume_alerts = decisions.filter(Boolean).map(decision => decision.alert).filter(Boolean);
                         const bsrPolicyPending = country === 'SEUK' && saved?.bsr_comparison_state === 'policy_pending';
                         const ready = decisions.every(Boolean);

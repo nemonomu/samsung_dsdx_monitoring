@@ -348,5 +348,12 @@ async function flush() {
     assert(!elements['cs-table-body'].innerHTML.includes('갱신 실패'));
     assert.equal(elements['cs-retailer'].value,'Lowes');
     assert(refreshes>0);
+    for (const observation_state of ['observing', 'unknown', 'ready']) {
+        liveReceive({...liveSnapshot, rows:[{...liveRow, main:99, observation_state,
+            alerts:[{metric:'main', rule:'main_lt_bsr', status:'VOLUME_LOW',
+                reason:'MAIN 99건 / BSR 100건 / MAIN이 BSR보다 적음'}]}]});
+        assert(elements['cs-table-body'].innerHTML.includes('MAIN 99건 / BSR 100건 / MAIN이 BSR보다 적음'));
+        assert(elements['cs-table-body'].innerHTML.includes('이상'));
+    }
     console.log('Daily statistics: baselines, reviews, live recollection/deletion, stale dates and failure recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

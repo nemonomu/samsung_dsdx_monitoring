@@ -165,7 +165,7 @@
             return annotate({total, main, bsr, label: '미수집', kind: 'low'});
         }
         const visibleAlerts = day => (day.alerts || []).filter(alert =>
-            alert.exact || !['observing', 'unknown'].includes(day.observation_state));
+            alert.exact || alert.rule === 'main_lt_bsr' || !['observing', 'unknown'].includes(day.observation_state));
         const alerts = active.flatMap(visibleAlerts);
         function reviewInfo(metric) {
             const affected = active.filter(day => visibleAlerts(day).some(alert => alert.metric === metric));

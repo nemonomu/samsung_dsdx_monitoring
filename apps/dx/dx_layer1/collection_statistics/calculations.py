@@ -83,6 +83,8 @@ def normalize_check(check, country, inspection_date):
                     rows[-1]['source_date_basis'] = 'db_original'
                 if 'batch_count' in retailer:
                     rows[-1]['batch_count'] = retailer['batch_count']
+                if 'bsr_applicable' in retailer:
+                    rows[-1]['bsr_applicable'] = retailer['bsr_applicable']
                 if country == 'SEM' and product == 'LDY_DRYER':
                     rows[-1]['source_date_basis'] = 'db_original'
                 if country == 'SEA' and (name in ('Costco', 'HomeDepot') or lowes_dryer.matches(product, name)):
@@ -285,6 +287,21 @@ def comparison_rules(row, country):
     return rules
 
 
+def _main_bsr_alert(row):
+    main, bsr = row.get('main'), row.get('bsr')
+    if (not row.get('complete', row.get('state') == 'complete')
+            or row.get('state', 'complete') != 'complete'
+            or row.get('base_status') == 'ERROR' or row.get('refresh_error')
+            or row.get('bsr_applicable') is False
+            or not isinstance(main, int) or not isinstance(bsr, int)
+            or not 0 <= main < bsr):
+        return None
+    return {'metric': 'main', 'baseline': bsr, 'actual': main,
+            'percent': round((main - bsr) * 100 / bsr, 1),
+            'status': 'VOLUME_LOW', 'rule': 'main_lt_bsr',
+            'reason': f'MAIN {main}건 / BSR {bsr}건 / MAIN이 BSR보다 적음'}
+
+
 def current_volume_decision(row, country):
     """Reapply MAIN and BSR policies to stored baselines without database writes."""
     if 'verification_state' not in row and row.get('state') == 'pending':
@@ -296,12 +313,14 @@ def current_volume_decision(row, country):
         proven = any(b.get('days', 0) >= MINIMUM_DAYS for b in row.get('baselines', {}).values())
         row = {**row, 'observation_state': 'ready' if proven else 'unknown'}
     result = current_bsr_decision(row, country)
+    rank_alert = _main_bsr_alert(row)
+    rank_alerts = [rank_alert] if rank_alert else []
     if row['observation_state'] != 'ready':
         if exact_bsr(row, country):
-            return {**result, 'alerts': [a for a in result['alerts'] if a.get('metric') == 'bsr'],
+            return {**result, 'alerts': [a for a in result['alerts'] if a.get('metric') == 'bsr'] + rank_alerts,
                     'baselines': {k: v for k, v in result['baselines'].items() if k == 'bsr'},
                     'comparison_state': row['observation_state']}
-        return {**result, 'alerts': [], 'baselines': {},
+        return {**result, 'alerts': rank_alerts, 'baselines': {},
                 'comparison_state': row['observation_state']}
     alerts = [a for a in result.get('alerts', []) if a.get('metric') == 'bsr']
     if (row.get('complete', row.get('state') == 'complete')
@@ -315,7 +334,7 @@ def current_volume_decision(row, country):
     state = ('pending' if not row.get('complete', row.get('state') == 'complete') else
              'policy_pending' if country == 'SEUK' and result['bsr_comparison_state'] == 'policy_pending' else
              'ready' if ready else 'insufficient')
-    return {**result, 'alerts': alerts, 'baselines': baselines, 'comparison_state': state}
+    return {**result, 'alerts': alerts + rank_alerts, 'baselines': baselines, 'comparison_state': state}
 
 
 def compare_rows(rows, history, country=None, *, observed_dates=None, prior_observation_counts=None):
@@ -359,6 +378,9 @@ def compare_rows(rows, history, country=None, *, observed_dates=None, prior_obse
             baselines['bsr'] = bsr_basis
         if bsr_alert:
             alerts.append(bsr_alert)
+        rank_alert = _main_bsr_alert(row)
+        if rank_alert:
+            alerts.append(rank_alert)
         state = ('pending' if not row['complete'] else 'observing' if observing else
                  'policy_pending' if bsr_state == 'policy_pending' else
                  'ready' if all(baselines.get(m, {}).get('value', 0) > 0 for m in ('main', 'bsr')) else 'insufficient')

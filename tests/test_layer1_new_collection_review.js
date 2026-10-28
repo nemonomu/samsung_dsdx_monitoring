@@ -25,6 +25,19 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
 }
 (async()=>{
     await review.load(day);
+    for (const observation of ['observing', 'ready', 'unknown']) {
+        const mismatch = fixture(100, observation);
+        mismatch.row.main_count = 99;
+        context.L1.collectionVolume.decorate(mismatch.data, mismatch.payload, day);
+        review.decorate(mismatch.data, day);
+        assert.equal(mismatch.row.status, 'VOLUME_LOW');
+        assert.equal(mismatch.check.status, 'VOLUME_LOW');
+        assert.equal(mismatch.data.summary.failed, 1);
+        assert(context.getStatusBadge(mismatch.row.status, mismatch.row).includes('이상'));
+        assert(mismatch.row._reviewReasons.some(reason => reason.includes('MAIN 99건 / BSR 100건')));
+        review.decorate(mismatch.data, day);
+        assert.equal(mismatch.row.status, 'VOLUME_LOW', 'observation/repeated review decoration cannot soften MAIN < BSR');
+    }
     for (const [country,retailer,product] of [['SEG','Expert','TV'],['SEG','Expert','REF'],['SEG','Expert','LDY'],['SEA','Costco','LDY_DRYER'],['SEA','Bestbuy','LDY_DRYER']]) {
         const normal=fixture(100,'observing','OK',retailer,country,product);
         assert.strictEqual(normal.row.status,'OK',`${country} ${retailer} ${product} 300/100 needs no manual review`);

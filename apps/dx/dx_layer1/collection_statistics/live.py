@@ -71,7 +71,7 @@ def current_snapshot(country, inspection_date):
         # No saved evidence is not proof that an established retailer is new.
         if not snapshots and not older and not row.get('active_from'):
             row.update(observation_state='unknown', comparison_state='unknown',
-                       baselines={}, alerts=[])
+                       baselines={}, alerts=[a for a in row['alerts'] if a.get('rule') == 'main_lt_bsr'])
         row['date'] = str(source_day)
         row['state'] = ('error' if row.get('base_status') == 'ERROR' or row.get('refresh_error')
                         else 'complete' if row['complete'] else 'pending')
