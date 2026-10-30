@@ -9,7 +9,7 @@ from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.seib_retail import (
     SEIB_COUNTRY, SEIB_SOURCE_CONFIG, enabled, latest_scope,
     get_seib_null_columns,
-    get_seib_null_select_columns, product_line_for, seib_retailer_key,
+    get_seib_null_select_columns, product_line_for, seib_retailer_key, active_retailers,
 )
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 
@@ -74,7 +74,10 @@ def select_record(cursor, target_date, product_line, record_id, column, *, for_e
         raise ValueError('Unsupported SEIB validation column')
     source = SEIB_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
-    cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'])
+    if format_columns is None and len(source['retailers']) > 1:
+        cte, scope, params = latest_scope(source, mapping['source_date'], mapping['source_date'], None)
+    else:
+        cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'])
     # Lock the same current row that will be edited or manually confirmed.
     cursor.execute(f"""{cte}
         SELECT source.{column}, source.account_name, source.item, source.batch_id
@@ -113,7 +116,7 @@ def append_null_stats(cursor, target_date, validation, category=None):
             continue
         normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
-        for retailer in source['retailers']:
+        for retailer in active_retailers(source, target_date):
             rows, mapping = latest_rows(cursor, target_date, source, retailer)
             fields = list(get_seib_null_columns(product_line, retailer))
             reviews = normal_reviews

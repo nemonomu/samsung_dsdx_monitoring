@@ -1,5 +1,6 @@
 """Bounded background refresh: recent days first, then one history chunk per country."""
 from datetime import timedelta
+from apps.common.dryer_onboarding import SOURCES as DRYER_SOURCES, is_preview
 
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS, SOURCE_START_DATES
@@ -19,6 +20,11 @@ def history_range(country, last_due):
     stored = {day for day, rows in Daily.objects.filter(country=country, refresh_error=False,
         source_date__range=(start, end)).values_list('source_date', 'rows')
         if not any(row.get('bsr') is None for row in rows)
+        and not any(is_preview(country, r['product'], r['retailer'], day) and r.get('collected_count', r.get('total', 0)) for r in rows)
+        and all(day < spec['preview_from'] or any(
+            r['product'] == 'LDY_DRYER' and r['retailer'] == spec['retailer']
+            and r.get('source_date_basis') == 'db_original' for r in rows)
+            for (code, _), spec in DRYER_SOURCES.items() if code == country)
         and (country != 'SEA' or all(
             row.get('source_date_basis') == 'db_original'
             for row in rows if row['retailer'] in ('Costco', 'HomeDepot')))

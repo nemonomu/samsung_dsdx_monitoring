@@ -1,4 +1,5 @@
 """Monitoring source dates, independent of batch names and lookup timezones."""
+from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
 from apps.common.source_dates import source_date_sql
 from apps.common.sea_collection import HOMEDEPOT_FIRST_SOURCE_DATE
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START
@@ -22,6 +23,8 @@ def day_sql(source, alias='source'):
 
 def active_from(source, retailer):
     country, product = source['country'], source['product']
+    if dryer_config(country, product, retailer):
+        return OPERATIONAL_FROM
     if country == 'SEUK':
         return SEUK_START
     if country == 'SEIB':

@@ -85,7 +85,7 @@ class SemDryerCrossfieldTests(unittest.TestCase):
 
     def test_source_registry_keeps_existing_null_policy(self):
         self.assertTrue(SEM_SOURCE_CONFIG[KEY]['null_only'])
-        self.assertEqual(('HomeDepot', 'Coppel'), SEM_SOURCE_CONFIG[KEY]['retailers'])
+        self.assertEqual(('HomeDepot', 'Coppel', 'Liverpool'), SEM_SOURCE_CONFIG[KEY]['retailers'])
         self.assertTrue({'star_rating', 'count_of_star_ratings', 'count_of_reviews',
                          'final_sku_price', 'original_sku_price', 'savings'}
                         <= set(get_sem_editable_columns(KEY, 'HomeDepot')))

@@ -356,5 +356,12 @@ async function flush() {
         assert(elements['cs-table-body'].innerHTML.includes('MAIN 99건 / BSR 100건 / MAIN이 BSR보다 적음'));
         assert(elements['cs-table-body'].innerHTML.includes('이상'));
     }
-    console.log('Daily statistics: baselines, reviews, live recollection/deletion, stale dates and failure recovery passed.');
+    const previewRow = {...liveRow, state:'preview', preview_mode:true, observation_state:'preview',
+        comparison_state:'preview', bsr_comparison_state:'preview', alerts:[], baselines:{}};
+    liveReceive({...liveSnapshot, rows:[previewRow]});
+    assert(elements['cs-table-body'].innerHTML.includes('확인용'));
+    assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong>'));
+    liveReceive({...liveSnapshot, rows:[{...previewRow, main:0, bsr:0, total:0, collected_count:0}]});
+    assert(elements['cs-table-body'].innerHTML.includes('수집 예정'));
+    console.log('Daily statistics: baselines, reviews, live recollection/deletion, previews, stale dates and failure recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

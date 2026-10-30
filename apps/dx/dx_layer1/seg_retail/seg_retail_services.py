@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta, timezone
 
+from apps.common.dryer_onboarding import decorate_row, config as dryer_config, OPERATIONAL_FROM
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.seg_retail import (
     SEG_CHECK_TYPE, SEG_HISTORY_DAYS,
@@ -55,7 +56,9 @@ def get_layer1_stats(cursor, target_date, now=None):
         retailers = []
         for name in names:
             row = counts.get(name.lower(), {})
-            previous = [r for r in history if r['retailer'] == name.lower()]
+            previous = [r for r in history if r['retailer'] == name.lower()
+                        and (not dryer_config('SEG', product_line, name)
+                             or str(r['source_date']) >= str(OPERATIONAL_FROM))]
             expected = get_seg_average([r['main_count'] for r in previous])
             actual = int(row.get('main_count') or 0)
             # Assess received retailers independently of the SEG-wide window.
@@ -86,7 +89,8 @@ def get_layer1_stats(cursor, target_date, now=None):
                 'status': status,
                 'collection_phase': row_phase,
             })
-            if status == 'CRITICAL':
+            decorate_row(retailers[-1], 'SEG', product_line, mapping['source_date'])
+            if retailers[-1]['status'] == 'CRITICAL':
                 failed_items.append({
                     'source': f"SEG {source['category']} ({name})",
                     'error_type': 'BSR 100건 불일치' if bsr_invalid else '수집 건수 없음',

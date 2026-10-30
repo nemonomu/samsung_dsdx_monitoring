@@ -20,7 +20,7 @@ from apps.dx.dx_layer2.seg_sources import (
     get_seg_table_columns,
     SEG_FORMAT_SOURCE_CONFIG, SEG_DUPLICATE_SOURCE_CONFIG, EXPERT_START_DATE, active_retailers,
     retailer_start_date,
-    is_expert, page_scope, record_scope,
+    is_expert, page_scope, record_scope, country_scope,
 )
 
 
@@ -123,7 +123,7 @@ def _latest_rows(cursor, target_date, source, retailer):
         SELECT anchor.batch_id
         FROM {table_name} anchor
         WHERE {source_date_sql('anchor.' + date_column)} = %s
-          AND UPPER(BTRIM(CAST(anchor.country AS TEXT))) = %s
+          AND {country_scope(source, 'anchor')}
           AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) = LOWER(%s)
           {page_scope(source, retailer, 'anchor', anchor=True)}
           {anchor_redirect}
@@ -140,7 +140,7 @@ def _latest_rows(cursor, target_date, source, retailer):
         SELECT source.*
         FROM {table_name} source
         WHERE {source_date_sql('source.' + date_column)} = %s
-          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+          AND {country_scope(source)}
           AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(%s)
           {page_scope(source, retailer)}
           AND source.batch_id IS NOT DISTINCT FROM %s
@@ -189,7 +189,7 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items,
             FROM {table_name} anchor
             WHERE {anchor_day} >= %s
               AND {anchor_day} <= %s
-              AND UPPER(BTRIM(CAST(anchor.country AS TEXT))) = %s
+              AND {country_scope(source, 'anchor')}
               AND LOWER(BTRIM(CAST(anchor.account_name AS TEXT))) = LOWER(%s)
               {page_scope(source, retailer, 'anchor', anchor=True)}
               {anchor_redirect}
@@ -200,7 +200,7 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items,
         JOIN latest_batches latest
           ON {date_expression} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-        WHERE UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+        WHERE {country_scope(source)}
           AND LOWER(BTRIM(CAST(source.account_name AS TEXT))) = LOWER(%s)
           {page_scope(source, retailer)}
           AND ({' OR '.join(conditions)})
@@ -877,7 +877,8 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
                 'total': len(rows),
                 'duplicate_groups': issue_count,
                 'duplicate_keys': [
-                    'item' if is_expert(retailer) or not source.get('has_page_type', True)
+                    'item + sku' if _product_line == 'seg_ldy_dryer' and _duplicate_key(retailer) == 'otto'
+                    else 'item' if is_expert(retailer) or not source.get('has_page_type', True)
                     else 'page_type + item + sku' if _duplicate_key(retailer) == 'otto'
                     else 'page_type + item'
                 ],
@@ -980,7 +981,7 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column,
         FROM {table_name} source
         WHERE source.id = %s
           AND {source_date_sql('source.' + date_column)} = %s
-          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+          AND {country_scope(source)}
           {record_scope(source, mapping['source_date'])}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (

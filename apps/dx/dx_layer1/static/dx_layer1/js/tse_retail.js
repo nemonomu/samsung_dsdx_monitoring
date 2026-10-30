@@ -12,6 +12,7 @@ function renderTseRetailerRow(retailer) {
     var bsrCount = tseNumber(retailer.bsr_count);
     var actual = tseNumber(retailer.actual !== undefined ? retailer.actual : retailer.count);
     var retailerLabel = esc(retailer.retailer || '-');
+    if (retailer.collection_window) retailerLabel += '<small style="display:block;color:#64748b;">' + esc(retailer.collection_window) + '</small>';
     var batchId = retailer.batch_id || '';
     var batchHtml = batchId
         ? ' <span class="retail-batch-id" style="font-size:11px;color:#64748b;">/ ' + esc(batchId) + '</span>'

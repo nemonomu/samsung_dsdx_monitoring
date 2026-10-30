@@ -2,6 +2,7 @@
 from datetime import date, datetime, timedelta, timezone
 from importlib import import_module
 from statistics import median
+from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 
 KST = timezone(timedelta(hours=9))
@@ -12,6 +13,8 @@ MINIMUM_DAYS = 7
 def collection_complete(country, product, retailer, source_day, now=None):
     """Use Layer 1's existing collection windows, always with source dates."""
     now = (now or datetime.now(KST)).astimezone(KST)
+    if dryer_config(country, product, retailer) and source_day < OPERATIONAL_FROM:
+        return False
     if country == 'SEM' and product == 'LDY_DRYER':
         from apps.common.sem_retail import sem_start_date
         if source_day < sem_start_date('sem_ldy_dryer', retailer):
@@ -28,7 +31,8 @@ def collection_complete(country, product, retailer, source_day, now=None):
         return collection_phase(source_day, now) == 'complete'
     if country == 'SEIB':
         from apps.common.seib_retail import collection_phase
-        return collection_phase(source_day, now) == 'complete'
+        from apps.common.seib_retail import get_seib_source
+        return collection_phase(source_day, now, source=get_seib_source('seib_' + product.lower()), retailer=retailer) == 'complete'
     if country == 'SEA':
         from apps.common.sea_collection import afternoon_collection_phase
         afternoon_phase = afternoon_collection_phase(source_day, retailer, now)

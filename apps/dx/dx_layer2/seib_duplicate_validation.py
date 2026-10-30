@@ -1,5 +1,5 @@
 """SEIB duplicate inspection on the original collection day and latest batch."""
-from apps.common.seib_retail import SEIB_SOURCE_CONFIG, enabled, product_line_for
+from apps.common.seib_retail import SEIB_SOURCE_CONFIG, enabled, product_line_for, active_retailers, normalize_retailer
 from .seib_null_validation import latest_rows
 from .sem_validation import _duplicate_groups
 
@@ -12,7 +12,7 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
         if category and category != source['section_code']:
             continue
         retailers = []
-        for retailer in source['retailers']:
+        for retailer in active_retailers(source, target_date):
             rows, mapping = latest_rows(cursor, target_date, source, retailer)
             groups = _duplicate_groups(rows)
             retailers.append({
@@ -34,15 +34,16 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
 
 def duplicate_detail(cursor, target_date, table, retailer, page=1, page_size=50):
     source = SEIB_SOURCE_CONFIG.get(product_line_for(table))
-    if source is None or str(retailer or '').strip().casefold() != 'mediamarkt':
+    if source is None:
         raise ValueError('Unsupported SEIB duplicate source or retailer')
+    retailer = normalize_retailer(source, retailer)
     page, page_size = max(1, int(page)), min(200, max(1, int(page_size)))
-    rows, mapping = latest_rows(cursor, target_date, source, 'MediaMarkt')
+    rows, mapping = latest_rows(cursor, target_date, source, retailer)
     groups = _duplicate_groups(rows)
     start = (page - 1) * page_size
     return {
         'date': mapping['inspection_date'], 'table': source['section_code'],
-        'retailer': 'MediaMarkt', 'actual_table': source['table_name'],
+        'retailer': retailer, 'actual_table': source['table_name'],
         'select_cols': {
             'group': ['duplicate_type', 'item', 'retailer_sku_name', 'dup_count', 'reason'],
             'record': ['id', 'sku', 'retailer_sku_name', 'final_sku_price',

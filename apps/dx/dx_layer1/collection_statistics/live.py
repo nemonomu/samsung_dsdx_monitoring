@@ -74,6 +74,7 @@ def current_snapshot(country, inspection_date):
                        baselines={}, alerts=[a for a in row['alerts'] if a.get('rule') == 'main_lt_bsr'])
         row['date'] = str(source_day)
         row['state'] = ('error' if row.get('base_status') == 'ERROR' or row.get('refresh_error')
+                        else 'preview' if row.get('preview_mode')
                         else 'complete' if row['complete'] else 'pending')
         row['rules'] = comparison_rules(row, country)
     rows = [attach_review(row, country, row['product'], row['retailer'], row['slot'], reviews)

@@ -312,7 +312,7 @@ def _select_sem_edit_record(
 
 def _select_seg_edit_record(
         cursor, context, select_columns, row_id, inspection_date):
-    from apps.dx.dx_layer2.seg_sources import record_scope
+    from apps.dx.dx_layer2.seg_sources import record_scope, country_scope
     source = context['source']
     mapping = resolve_monitoring_date(
         inspection_date, SEG_COUNTRY, source['source_key']
@@ -330,7 +330,7 @@ def _select_seg_edit_record(
         FROM {table_name} source
         WHERE source.id = %s
           AND {raw_source_date_sql('source.' + date_column)} = %s
-          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+          AND {country_scope(source)}
           {record_scope(source, source_date)}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (

@@ -1,5 +1,6 @@
 """Layer 2 SEG sources and retailer-specific validation columns."""
 from apps.common import seg_retail as legacy
+from apps.common.dryer_onboarding import config as dryer_config, REQUIRED_COLUMNS
 from apps.dx.dx_layer1.seg_retail.sources import (
     SEG_SOURCE_CONFIG as LAYER1_SOURCES, EXPERT_COLUMNS, EXPERT_START_DATE,
     active_retailers, retailer_start_date,
@@ -12,8 +13,12 @@ SEG_SOURCE_CONFIG = {
     for key, source in LAYER1_SOURCES.items()
 }
 SEG_TABLE_TO_PRODUCT_LINE = {s['table_name']: k for k, s in SEG_SOURCE_CONFIG.items()}
-SEG_FORMAT_SOURCE_CONFIG = SEG_SOURCE_CONFIG
-SEG_DUPLICATE_SOURCE_CONFIG = SEG_FORMAT_SOURCE_CONFIG
+SEG_FORMAT_SOURCE_CONFIG = {
+    key: {**source, 'retailers': tuple(r for r in source['retailers']
+                                     if not dryer_config('SEG', key, r))}
+    for key, source in SEG_SOURCE_CONFIG.items()
+}
+SEG_DUPLICATE_SOURCE_CONFIG = SEG_SOURCE_CONFIG
 MEDIAMARKT_DRYER_FORMAT_COLUMNS = (
     *legacy.SEG_FORMAT_COMMON_COLUMNS, 'capacity', 'loading_type',
 )
@@ -59,6 +64,8 @@ def resolve_seg_table(value):
 
 def get_seg_null_columns(product_line, retailer):
     key = get_seg_product_line(product_line)
+    if dryer_config('SEG', key, retailer):
+        return REQUIRED_COLUMNS
     if key == 'seg_ldy_dryer' and str(retailer or '').strip().casefold() == 'mediamarkt':
         return MEDIAMARKT_DRYER_NULL_COLUMNS
     return (EXPERT_NULL_COLUMNS.get(key, ()) if is_expert(retailer)
@@ -99,6 +106,15 @@ def page_scope(source, retailer, alias='source', anchor=False):
         return ''
     test = "= 'main'" if anchor else "IN ('main', 'bsr')"
     return f' AND LOWER(BTRIM(CAST({alias}.page_type AS TEXT))) {test}'
+
+
+def country_scope(source, alias='source'):
+    condition = f'UPPER(BTRIM(CAST({alias}.country AS TEXT))) = %s'
+    if source['source_key'] == 'seg_ldy_dryer' and 'OTTO' in source['retailers']:
+        # The dedicated SEG table identifies the source country. Do not hide
+        # an OTTO NULL country from its newly required country check.
+        return f"({condition} OR LOWER(BTRIM(CAST({alias}.account_name AS TEXT))) = 'otto')"
+    return condition
 
 
 def record_scope(source, source_date, alias='source', anchor=False):

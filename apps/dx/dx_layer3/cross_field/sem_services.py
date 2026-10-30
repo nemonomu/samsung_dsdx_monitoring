@@ -11,10 +11,10 @@ from apps.common.sem_retail import (
     SEM_COPPEL_RETAILER,
     SEM_HOMEDEPOT_RETAILER,
     SEM_RETAILER,
-    SEM_SOURCE_CONFIG,
+    SEM_RULE_SOURCE_CONFIG as SEM_SOURCE_CONFIG,
     get_sem_editable_columns,
     get_sem_table_columns,
-    active_sem_retailers,
+    active_sem_rule_retailers as active_sem_retailers,
 )
 from apps.dx.dx_layer2.sem_validation import (
     _COPPEL_SAVINGS, _format_checks, _history_rows, _latest_rows, product_line_for, _mapping,

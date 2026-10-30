@@ -103,6 +103,13 @@
                         row.volume_comparison_state = 'unavailable';
                         row.verification_state = row.status === 'ERROR' ? 'error' : complete ? 'waiting' : received(row, country) ? 'waiting' : 'collecting';
                         if (row.status === 'ERROR') return;
+                        if (row.preview_mode) {
+                            row.status = received(row, country) ? 'OK' : 'PENDING';
+                            row.observation_state = 'preview';
+                            row.volume_comparison_state = 'preview';
+                            row.verification_state = 'pending';
+                            return;
+                        }
                         if (!complete) {
                             row.status = check.phase === 'pending' || row.collection_phase === 'pending' ? 'PENDING' : 'COLLECTING';
                             return;
@@ -127,7 +134,7 @@
                             : saved && saved.observation_state === 'ready' && saved.rules && saved.rules[metric]));
                         if (rankMismatch) decisions.push({status: 'VOLUME_LOW', alert: rankMismatch});
                         row.volume_alerts = decisions.filter(Boolean).map(decision => decision.alert).filter(Boolean);
-                        const bsrPolicyPending = country === 'SEUK' && saved?.bsr_comparison_state === 'policy_pending';
+                        const bsrPolicyPending = saved?.bsr_comparison_state === 'policy_pending';
                         const ready = decisions.every(Boolean);
                         row.volume_comparison_state = ready ? 'ready' : saved ? saved.observation_state === 'observing' ? 'observing' : 'insufficient' : 'unavailable';
                         // Observation is a history label, not a collection verdict.

@@ -1,5 +1,6 @@
 """Layer 1 onboarding only; shared validation/report sources stay unchanged."""
 from datetime import date
+from apps.common.dryer_onboarding import config as dryer_config
 
 from apps.common.seg_retail import SEG_SOURCE_CONFIG as EXISTING_SOURCES
 
@@ -14,7 +15,7 @@ SEG_SOURCE_CONFIG = {
 SEG_SOURCE_CONFIG['seg_ldy_dryer'] = {
     'source_key': 'seg_ldy_dryer', 'category': 'LDY_DRYER',
     'table_name': 'dx_seg.dx_seg_ldy_dryer_retail',
-    'date_column': 'crawl_datetime', 'retailers': ('Mediamarkt', 'Expert'),
+    'date_column': 'crawl_datetime', 'retailers': ('Mediamarkt', 'Expert', 'OTTO'),
     'has_redirect': False, 'has_page_type': False,
 }
 
@@ -34,6 +35,9 @@ DRYER_COLUMNS = (*EXPERT_COLUMNS['LDY_DRYER'], 'batch_id')
 
 
 def retailer_start_date(source, retailer):
+    onboarding = dryer_config('SEG', source['source_key'], retailer)
+    if onboarding:
+        return onboarding['preview_from']
     name = str(retailer).strip().casefold()
     if name == 'expert':
         return EXPERT_START_DATE

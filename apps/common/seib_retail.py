@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql, source_date_value
+from apps.common.dryer_onboarding import config as dryer_config
 
 SEIB_COUNTRY = 'SEIB'
 FIRST_SOURCE_DATE = date(2026, 10, 18)
@@ -33,6 +34,26 @@ SEIB_SOURCE_CONFIG = {
         ('ldy_dryer', 'capacity', ('capacity', 'loading_type')),
     )
 }
+SEIB_SOURCE_CONFIG['seib_ldy_dryer']['retailers'] = (RETAILER, 'ECI')
+
+
+def normalize_retailer(source, retailer):
+    key = seib_retailer_key(retailer)
+    for name in source['retailers']:
+        if seib_retailer_key(name) == key:
+            return name
+    raise ValueError('Unsupported SEIB retailer')
+
+
+def retailer_start_date(source, retailer):
+    name = normalize_retailer(source, retailer)
+    onboarding = dryer_config('SEIB', source['source_key'], name)
+    return onboarding['preview_from'] if onboarding else FIRST_SOURCE_DATE
+
+
+def active_retailers(source, day):
+    return tuple(name for name in source['retailers']
+                 if source_date_value(day) >= str(retailer_start_date(source, name)))
 
 
 def product_line_for(value):
@@ -51,8 +72,8 @@ def get_seib_source(value):
 
 
 def get_seib_null_columns(value, retailer=None):
-    if retailer is not None and str(retailer).strip().casefold() != RETAILER.casefold():
-        raise ValueError('Unsupported SEIB retailer')
+    if retailer is not None:
+        normalize_retailer(get_seib_source(value), retailer)
     return get_seib_source(value)['required_columns']
 
 
@@ -68,21 +89,42 @@ def enabled(day):
     return source_date_value(day) >= str(FIRST_SOURCE_DATE)
 
 
-def collection_phase(day, now=None):
+def collection_phase(day, now=None, *, source=None, retailer=RETAILER):
     current = now or datetime.now(KST)
     current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
     selected = date.fromisoformat(source_date_value(day))
+    start, end = (time(8), time(9)) if source and dryer_config('SEIB', source['source_key'], retailer) else (time(1), time(4))
     if not enabled(day) or selected > current.date():
         return 'pending'
-    if selected < current.date() or current.time().replace(tzinfo=None) >= time(4):
+    if selected < current.date() or current.time().replace(tzinfo=None) >= end:
         return 'complete'
-    return 'pending' if current.time().replace(tzinfo=None) < time(1) else 'collecting'
+    return 'pending' if current.time().replace(tzinfo=None) < start else 'collecting'
 
 
 def latest_scope(source, start, end, retailer=RETAILER):
     """One latest batch per original source day; never infer a day from batch_id."""
-    if str(retailer).strip().casefold() != RETAILER.casefold():
-        raise ValueError('Unsupported SEIB retailer')
+    if retailer is None:
+        day = source_date_sql('anchor.crawl_datetime')
+        source_day = source_date_sql('source.crawl_datetime')
+        account = 'LOWER(BTRIM(anchor.account_name))'
+        clauses, params = [], [str(start), str(end)]
+        for name in source['retailers']:
+            clauses.append(f'({account} = %s AND {day} >= %s)')
+            params.extend((name.lower(), str(retailer_start_date(source, name))))
+        cte = f"""WITH latest AS (
+            SELECT DISTINCT ON ({day}, {account}) {day} AS source_date,
+                   {account} AS retailer_key, anchor.batch_id
+            FROM {source['table_name']} anchor
+            WHERE {day} BETWEEN %s AND %s AND ({' OR '.join(clauses)})
+            ORDER BY {day}, {account}, anchor.id DESC
+        )"""
+        scope = f"""FROM {source['table_name']} source
+            JOIN latest ON {source_day} = latest.source_date
+             AND LOWER(BTRIM(source.account_name)) = latest.retailer_key
+             AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+            WHERE TRUE"""
+        return cte, scope, params
+    retailer = normalize_retailer(source, retailer)
     day = source_date_sql('anchor.crawl_datetime')
     source_day = source_date_sql('source.crawl_datetime')
     cte = f"""WITH latest AS (
@@ -96,4 +138,4 @@ def latest_scope(source, start, end, retailer=RETAILER):
         JOIN latest ON {source_day} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
         WHERE LOWER(BTRIM(source.account_name)) = %s"""
-    return cte, scope, [max(str(start), str(FIRST_SOURCE_DATE)), str(end), RETAILER.lower(), RETAILER.lower()]
+    return cte, scope, [max(str(start), str(retailer_start_date(source, retailer))), str(end), retailer.lower(), retailer.lower()]

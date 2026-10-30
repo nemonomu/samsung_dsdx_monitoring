@@ -159,6 +159,12 @@
         const annotate = result => ({...result, label: [result.label, observation].filter(Boolean).join(' · ')});
         if (!active.length) return {total: null, label: '수집 시작 전'};
         if (active.some(day => day.state === 'error' || day.base_status === 'ERROR')) return annotate({total: null, label: '갱신 실패', kind: 'low'});
+        if (active.length && active.every(day => day.state === 'preview')) {
+            const total = active.reduce((n, day) => n + Number(day.total || 0), 0);
+            const received = active.some(day => Number(day.collected_count || day.total || 0) > 0);
+            return {total, main: active.reduce((n, day) => n + Number(day.main || 0), 0),
+                bsr: active.reduce((n, day) => n + Number(day.bsr || 0), 0), label: received ? '확인용' : '수집 예정'};
+        }
         if (active.some(day => day.state === 'pending' && day.verification_state !== 'waiting')) return annotate({total: null, label: '수집 중'});
         if (active.every(day => day.state === 'unknown')) return {total: null, label: '미집계'};
         if (active.some(day => day.state === 'unknown')) return {total: null, label: '부분 집계'};

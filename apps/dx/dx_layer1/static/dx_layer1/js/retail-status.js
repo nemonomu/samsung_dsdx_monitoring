@@ -54,6 +54,10 @@
     }
 
     function rowBadge(retailer) {
+        if (retailer.preview_mode && retailer.status !== 'ERROR') {
+            var received = Number(retailer.raw_count || retailer.actual || retailer.count || 0) > 0;
+            return '<span class="status-badge">' + (received ? '확인용' : '수집 예정') + '</span>';
+        }
         var count = batchCount(retailer);
         var missing = isMissing(retailer);
         var statusBadge = missing

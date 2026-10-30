@@ -101,8 +101,9 @@ class MediamarktDryerTests(unittest.TestCase):
         self.assertTrue(nulls._missing(''))
         self.assertIn("'mediamarkt'", config.record_scope(config.get_seg_source(KEY), DAY))
         self.assertNotIn("'mediamarkt'", config.record_scope(config.get_seg_source(KEY), DAY - timedelta(days=1)))
-        for registry in (config.SEG_FORMAT_SOURCE_CONFIG, config.SEG_DUPLICATE_SOURCE_CONFIG, crossfield.SEG_SOURCE_CONFIG):
+        for registry in (config.SEG_FORMAT_SOURCE_CONFIG, crossfield.SEG_SOURCE_CONFIG):
             self.assertEqual(('Mediamarkt', 'Expert'), registry[KEY]['retailers'])
+        self.assertEqual(('Mediamarkt', 'Expert', 'OTTO'), config.SEG_DUPLICATE_SOURCE_CONFIG[KEY]['retailers'])
 
     def test_saved_statistics_missing_new_retailer_are_refreshed(self):
         last_due = DAY + timedelta(days=3)

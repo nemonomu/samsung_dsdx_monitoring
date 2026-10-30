@@ -2,6 +2,8 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
+from apps.common.dryer_onboarding import (config as dryer_config, OPERATIONAL_FROM,
+    is_preview, bsr_policy_pending, operating_history)
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
@@ -81,6 +83,12 @@ def normalize_check(check, country, inspection_date):
                     rows[-1]['source_date_basis'] = 'db_original'
                 if seg_mediamarkt_dryer:
                     rows[-1]['source_date_basis'] = 'db_original'
+                if dryer_config(country, product, name):
+                    preview = is_preview(country, product, name, source_day)
+                    rows[-1].update(active_from=str(OPERATIONAL_FROM), source_date_basis='db_original',
+                                    preview_mode=preview, country=country)
+                    if preview:
+                        rows[-1].update(complete=False, baseline_eligible=False, verification_state='pending')
                 if 'batch_count' in retailer:
                     rows[-1]['batch_count'] = retailer['batch_count']
                 if 'bsr_applicable' in retailer:
@@ -106,7 +114,7 @@ def observation_key(row):
 
 
 def observation_eligible(row):
-    return (row.get('complete') and row.get('base_status') != 'ERROR'
+    return (not row.get('preview_mode') and row.get('complete') and row.get('base_status') != 'ERROR'
             and not row.get('refresh_error')
             and any((row.get(metric) or 0) > 0 for metric in (*METRICS, 'collected_count')))
 
@@ -147,6 +155,8 @@ def exact_bsr(row, country):
 
 def _bsr_basis(row, history, country, saved_basis=None):
     """A prior-day reference does not depend on today's receipt or completion."""
+    if bsr_policy_pending(country, row['product'], row['retailer']):
+        return None
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
@@ -185,6 +195,8 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
         return rule, 'missing', basis, None
     if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
         return rule, row['observation_state'], basis, None
+    if bsr_policy_pending(country, row['product'], row['retailer']):
+        return 'policy_pending', 'policy_pending', None, None
     current = row.get('bsr')
     if current is None or basis is None:
         return rule, 'insufficient', basis, None
@@ -257,6 +269,8 @@ def comparison_rules(row, country):
         return {'bsr': {'baseline': 100, 'days': 0, 'rule': 'fixed_100', 'exact': True}} if exact_bsr(row, country) else {}
     rules = {}
     for metric in ('main', 'bsr'):
+        if metric == 'bsr' and bsr_policy_pending(country, row['product'], row['retailer']):
+            continue
         variable = metric == 'main' or variable_bsr(row, country)
         basis = row.get('baselines', {}).get(metric, {})
         if variable:
@@ -294,6 +308,8 @@ def _main_bsr_alert(row):
 
 def current_volume_decision(row, country):
     """Reapply MAIN and BSR policies to stored baselines without database writes."""
+    if row.get('preview_mode'):
+        return {**row, 'alerts': [], 'baselines': {}, 'comparison_state': 'preview', 'bsr_comparison_state': 'preview'}
     if 'verification_state' not in row and row.get('state') == 'pending':
         received = any((row.get(metric) or 0) > 0 for metric in (*METRICS, 'collected_count'))
         row = {**row, 'verification_state': 'waiting' if received else 'collecting'}
@@ -322,7 +338,7 @@ def current_volume_decision(row, country):
     baselines = {k: v for k, v in result.get('baselines', {}).items() if k in ('main', 'bsr')}
     ready = len(comparison_rules({**result, 'baselines': baselines}, country)) == 2
     state = ('pending' if not row.get('complete', row.get('state') == 'complete') else
-             'policy_pending' if country == 'SEUK' and result['bsr_comparison_state'] == 'policy_pending' else
+             'policy_pending' if result['bsr_comparison_state'] == 'policy_pending' else
              'ready' if ready else 'insufficient')
     return {**result, 'alerts': alerts + rank_alerts, 'baselines': baselines, 'comparison_state': state}
 
@@ -331,6 +347,7 @@ def compare_rows(rows, history, country=None, *, observed_dates=None, prior_obse
     """history contains only the previous 28 source dates, never the target day."""
     if country == 'SEUK':
         history = [r for r in history if r.get('source_date', '') >= str(SEUK_START_DATE)]
+    history = [r for r in history if operating_history(r, country, r.get('source_date', ''))]
     groups = defaultdict(list)
     for old in history:
         # Legacy minimum-count failures are not part of the MAIN/BSR policy.
@@ -344,6 +361,13 @@ def compare_rows(rows, history, country=None, *, observed_dates=None, prior_obse
     collected_today = {observation_key(row) for row in rows if observation_eligible(row)}
     result = []
     for row in rows:
+        if row.get('preview_mode'):
+            result.append({**row, 'baselines': {}, 'alerts': [], 'comparison_state': 'preview',
+                           'observation_state': 'preview', 'observation_days': 0, 'observation_prior_days': 0,
+                           'bsr_rule': 'preview', 'bsr_comparison_state': 'preview',
+                           'bsr_policy_version': BSR_POLICY_VERSION, 'main_policy_version': MAIN_POLICY_VERSION,
+                           'observation_policy_version': OBSERVATION_POLICY_VERSION})
+            continue
         prior_days = min(MINIMUM_DAYS, max(len(observed_dates.get(observation_key(row), ())),
                         (prior_observation_counts or {}).get(observation_key(row), 0)))
         observing = prior_days < MINIMUM_DAYS
@@ -401,7 +425,9 @@ def build_week(rows_by_date, monday, last_due_date):
         for offset in range(7):
             day = monday + timedelta(days=offset)
             row = days.get(day)
-            state = ('not_scheduled' if day < active_from else 'future' if day > last_due_date
+            state = ('error' if row and row.get('preview_mode') and row.get('refresh_error')
+                     else 'preview' if row and row.get('preview_mode')
+                     else 'not_scheduled' if day < active_from else 'future' if day > last_due_date
                      else 'unknown' if row is None else 'error' if row.get('refresh_error')
                      else 'complete' if row['complete'] else 'pending')
             daily.append({'date': str(day), 'state': state, **(row or {})})

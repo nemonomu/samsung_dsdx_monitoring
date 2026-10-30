@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 
 from apps.common.sem_retail import get_sem_source, sem_batch_order, sem_start_date
+from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
 from apps.common.source_dates import source_date_sql
 
 
@@ -64,6 +65,8 @@ def get_previous_main_counts(
     table_name = source['table_name']
     day = source_date_sql('crawl_datetime') if product_line == 'sem_ldy_dryer' else 'LEFT(BTRIM(crawl_datetime), 10)'
     launch = sem_start_date(product_line, retailer)
+    if dryer_config('SEM', product_line, retailer):
+        launch = OPERATIONAL_FROM
     launch_scope = f"AND {day} >= '{launch}'" if launch else ''
     cursor.execute(f"""
         WITH retailer_rows AS (

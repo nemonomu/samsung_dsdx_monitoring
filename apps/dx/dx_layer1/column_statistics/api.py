@@ -6,6 +6,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 from django.views.decorators.csrf import ensure_csrf_cookie
+from apps.common.dryer_onboarding import is_preview
 
 from apps.dx.dx_layer1.common.context import build_context
 from .services import catalog, daily_counts, select_source
@@ -54,7 +55,8 @@ def daily(request):
     query_days = max(days, 29)
     key = f'column-statistics:v5-source-day:{country}:{product}:{retailer}:{target}:{query_days}'
     try:
-        result = cache.get(key)
+        preview = is_preview(country, product, retailer, target)
+        result = None if preview else cache.get(key)
         if result is None:
             result = daily_counts(country, product, retailer, target, query_days)
             totals = raw_counts(country, product, retailer, target, target)
@@ -62,7 +64,8 @@ def daily(request):
                 if row['date'] == str(target):
                     row['raw_total'] = totals.get(str(target), 0)
             result['updated_at'] = timezone.now().isoformat()
-            cache.set(key, result, 300)
+            if not preview:
+                cache.set(key, result, 300)
         # Recheck completion on each request, even across a cached window boundary.
         result = attach_comparisons(result, target)
         result.update(mapping)

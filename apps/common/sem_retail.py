@@ -1,6 +1,7 @@
 """SEM (Mexico) retail monitoring constants and allowlists."""
 
 from datetime import date, time
+from apps.common.dryer_onboarding import config as dryer_config
 
 
 SEM_CHECK_TYPE = 'sem_retail'
@@ -17,7 +18,7 @@ SEM_LAYER1_RETAILERS = {
     'sem_tv': (SEM_RETAILER,),
     'sem_ref': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
     'sem_ldy': (SEM_RETAILER, SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
-    'sem_ldy_dryer': (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
+    'sem_ldy_dryer': (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER, SEM_RETAILER),
 }
 SEM_COLLECTION_START = time(9, 0)
 SEM_COLLECTION_END = time(13, 30)
@@ -117,12 +118,18 @@ SEM_SOURCE_CONFIG = {
         'table_name': 'dx_sem.dx_sem_ldy_dryer_retail_com',
         'backup_table_name': 'dx_sem.dx_sem_ldy_dryer_retail_com_backup',
         'date_column': 'crawl_datetime',
-        'retailers': (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER),
+        'retailers': (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER, SEM_RETAILER),
         'extra_required_columns': ('capacity',),
         'extra_format_columns': ('capacity', 'loading_type'),
         'extra_table_columns': ('loading_type', 'capacity'),
         'null_only': True,  # Legacy flag; format and duplicate validation opt in separately.
     },
+}
+
+SEM_RULE_SOURCE_CONFIG = {
+    key: {**source, 'retailers': tuple(r for r in source['retailers']
+                                     if not dryer_config('SEM', key, r))}
+    for key, source in SEM_SOURCE_CONFIG.items()
 }
 
 SEM_TABLE_TO_PRODUCT_LINE = {
@@ -151,6 +158,9 @@ def is_coppel_dryer(product_line, retailer):
 
 
 def sem_start_date(product_line, retailer):
+    onboarding = dryer_config('SEM', product_line, retailer)
+    if onboarding:
+        return onboarding['preview_from']
     if product_line != 'sem_ldy_dryer':
         return None
     return SEM_COPPEL_DRYER_FIRST_SOURCE_DATE if is_coppel_dryer(product_line, retailer) else SEM_DRYER_FIRST_SOURCE_DATE
@@ -160,6 +170,12 @@ def active_sem_retailers(product_line, source_date):
     return tuple(r for r in SEM_SOURCE_CONFIG[product_line]['retailers']
                  if sem_start_date(product_line, r) is None
                  or str(source_date)[:10] >= str(sem_start_date(product_line, r)))
+
+
+def active_sem_rule_retailers(product_line, source_date):
+    """Format/cross-field onboarding is independent of receipt/NULL/duplicates."""
+    return tuple(r for r in active_sem_retailers(product_line, source_date)
+                 if not dryer_config('SEM', product_line, r))
 
 
 def sem_batch_order(product_line, retailer=None, alias=''):

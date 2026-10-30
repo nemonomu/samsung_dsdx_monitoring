@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta, timezone
 
+from apps.common.dryer_onboarding import decorate_row
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.source_dates import source_date_value
 from apps.common.sem_retail import (
@@ -107,6 +108,8 @@ def _category(cursor, product_line, source, target_date, phase):
         )
         for retailer_name in active_sem_retailers(product_line, mapping['source_date'])
     ]
+    for row in retailers:
+        decorate_row(row, 'SEM', product_line, mapping['source_date'])
     expected_values = [row['expected'] for row in retailers]
     precise_values = [row['expected_precise'] for row in retailers]
     expected = (

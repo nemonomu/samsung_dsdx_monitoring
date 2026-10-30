@@ -4,6 +4,8 @@ import re
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+from apps.common.dryer_onboarding import config as dryer_config
+from apps.common.sem_retail import active_sem_rule_retailers
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.source_dates import source_date_sql
 from apps.common.null_review_evidence import uses_new_policy
@@ -281,6 +283,8 @@ def _valid_datetime(value):
 
 
 def _format_checks(product_line, retailer=SEM_RETAILER):
+    if dryer_config('SEM', product_line, retailer):
+        return {}
     retailer = normalize_sem_retailer(product_line, retailer)
     checks = {
         'country': lambda value: str(value).strip().upper() == SEM_COUNTRY,
@@ -643,7 +647,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
         )
         retailers = []
         mapping = _mapping(target_date, source)
-        for retailer in active_sem_retailers(product_line, mapping['source_date']):
+        for retailer in active_sem_rule_retailers(product_line, mapping['source_date']):
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             issue_count = sum(
                 1 for row in rows
@@ -673,7 +677,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
 def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, include_normal=False):
     product_line = product_line_for(table)
     source = SEM_SOURCE_CONFIG.get(product_line)
-    if not source or (source.get('null_only') and product_line != 'sem_ldy_dryer'):
+    if not source or dryer_config('SEM', product_line, retailer) or (source.get('null_only') and product_line != 'sem_ldy_dryer'):
         return {'results': [], 'column_names': [], 'actual_table': ''}
     retailer = normalize_sem_retailer(product_line, retailer)
     rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
