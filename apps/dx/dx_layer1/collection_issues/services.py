@@ -189,7 +189,7 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
         Lease.objects.filter(name=lease_key, owner=owner).update(expires_at=timezone.now())
 
 
-def serialize(issue, *, detail=False):
+def serialize(issue, *, detail=False, reviews=None):
     result = {k: getattr(issue, k) for k in
               ('id', 'country', 'product', 'retailer', 'column', 'severity', 'status',
                'baseline', 'observed_count', 'current_count', 'revision')}
@@ -200,6 +200,14 @@ def serialize(issue, *, detail=False):
                   first_detected_at=issue.first_detected_at.isoformat(),
                   last_checked_at=issue.last_checked_at.isoformat(),
                   resolved_at=issue.resolved_at.isoformat() if issue.resolved_at else None)
+    if issue.evidence.get('metric') in ('main', 'bsr'):
+        from apps.dx.dx_layer1.collection_statistics.reviews import review_index
+        decision = volume.review_decision(issue, reviews if reviews is not None else review_index(issue.source_date, issue.source_date))
+        result['review'] = decision
+        result['review_target'] = dict(country=issue.country, product=issue.product, retailer=issue.retailer,
+            source_date=str(issue.source_date), metric=issue.evidence['metric'], slot=issue.evidence.get('slot', 'daily'))
+        if issue.status == 'open' and decision.get('action') == 'confirm':
+            result['status'] = 'confirmed'
     if detail:
         result['evidence'] = issue.evidence
         result['history'] = list(issue.events.order_by('id').values(

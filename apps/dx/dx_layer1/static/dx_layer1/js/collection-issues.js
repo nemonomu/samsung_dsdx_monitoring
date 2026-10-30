@@ -8,8 +8,8 @@
     const countries = {retail:'SEA', seda_retail:'SEDA', seg_retail:'SEG', siel_retail:'SIEL', sem_retail:'SEM', tse_retail:'TSE', seib_retail:'SEIB', seuk_retail:'SEUK'};
     const enabled = section === 'dashboard' || section === 'past_review' || Object.hasOwn(countries, section);
     const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const statusText = {open:'미해결', resolved:'복구 검증 완료', excepted:'예외 처리'};
-    let selection = {}, rows = [], page = 1, controller, lastKey, selectedIssue, queries, kind = 'count';
+    const statusText = {open:'미해결', resolved:'복구 검증 완료', excepted:'예외 처리', confirmed:'정상 확인 완료'};
+    let selection = {}, rows = [], page = 1, controller, lastKey, selectedIssue, queries, kind = 'count', listStatus = 'open';
     const size = 20;
     const dialog = document.createElement('dialog');
     dialog.className = 'ci-dialog';
@@ -22,7 +22,7 @@
         return data;
     }
     function scope(values) {
-        const params = new URLSearchParams({status:'open'});
+        const params = new URLSearchParams({status:listStatus});
         if (values.date) params.set('inspection_date', values.date);
         const country = countries[section] || values.country;
         if (country) params.set('country',country);
@@ -34,7 +34,7 @@
         if (data.policy_version !== 1) {
             throw new Error('새 수집량·배치 점검의 완료 여부를 확인할 수 없습니다. 서버 업데이트와 재점검이 필요합니다.');
         }
-        const visible = data.issues.filter(row => row.status === 'open' && (!dashboard || !row.column || ['volume','batches'].includes(row.kind)));
+        const visible = data.issues.filter(row => (listStatus === 'all' || row.status === listStatus) && (!dashboard || !row.column || ['volume','batches'].includes(row.kind)));
         const grouped = new Map();
         visible.forEach(row => {
             const key = JSON.stringify([row.country,row.product,row.retailer,row.source_date]);
@@ -48,12 +48,12 @@
         const unavailable = scans.filter(s=>s.error).length;
         const unchecked = Math.max(0,data.target_count-scans.filter(s=>s.pending === false).length);
         const deferred = scans.filter(s=>s.start_basis==='first_observed' && s.coverage_start>data.start_date);
-        host.innerHTML = `<section class="ci-panel ${rows.length?'':'ci-clear'}" aria-label="과거 미해결 ${issueLabel}">
-            <div class="ci-head"><div><h3>과거 미해결 · ${issueLabel} ${!rows.length && (unavailable||unchecked)?'점검 중':rows.length+'건'}</h3>
-            <p>검수 대상 데이터일 이전의 미해결만 표시합니다. 미국·브라질은 D-2부터, 나머지는 D-1부터입니다.</p></div>
-            <div class="ci-controls"><button type="button" data-ci-refresh>새로고침</button></div></div>
+        host.innerHTML = `<section class="ci-panel ${rows.length && listStatus === 'open'?'':'ci-clear'}" aria-label="과거 미해결 ${issueLabel}">
+            <div class="ci-head"><div><h3>과거 ${listStatus === 'open' ? '미해결' : listStatus === 'confirmed' ? '정상 확인 완료' : '전체 이력'} · ${issueLabel} ${!rows.length && (unavailable||unchecked)?'점검 중':rows.length+'건'}</h3>
+            <p>검수 대상 데이터일 이전의 ${listStatus === 'open' ? '미해결' : listStatus === 'confirmed' ? '정상 확인 완료' : '전체 이력'} 항목을 표시합니다. 미국·브라질은 D-2부터, 나머지는 D-1부터입니다.</p></div>
+            <div class="ci-controls"><select data-ci-status aria-label="처리 상태"><option value="open">미해결</option><option value="confirmed">정상 확인 완료</option><option value="all">전체 이력</option></select><button type="button" data-ci-refresh>새로고침</button></div></div>
             ${unavailable||unchecked?`<p class="ci-note ci-error">${unchecked?'점검 대기 '+unchecked+'개 대상':''}${unavailable?(unchecked?' · ':'')+'조회 실패 '+unavailable+'개 대상':''}</p>`:''}
-            ${rows.length?`<div class="ci-scroll"><table><thead><tr><th>국가 · 리테일러</th><th>제품군</th><th>문제 데이터일</th><th>미해결 항목 · 상세</th><th>조회</th></tr></thead><tbody>
+            ${rows.length?`<div class="ci-scroll"><table><thead><tr><th>국가 · 리테일러</th><th>제품군</th><th>문제 데이터일</th><th>${listStatus === 'open' ? '미해결 항목' : '처리 항목'} · 상세</th><th>조회</th></tr></thead><tbody>
             ${rows.slice((page-1)*size,page*size).map(r=>`<tr><td><b>${esc(r.country)} · ${esc(r.retailer)}</b></td><td>${esc(r.product)}</td><td><b>${esc(r.source_date)}</b></td>
             <td>${r.reasons.map(reason=>`<div class="ci-reason"><button type="button" data-ci-detail="${reason.id}">${esc(reason.label||reason.column||'전체 미수집')}</button>
             <small>${reason.kind==='batches'?esc((reason.batch_ids||[]).join(' · ')):reason.column?'기준 '+esc(reason.baseline)+' / 최근 수집 '+esc(reason.current_count)+'건':'DB 원본 수집일 · 모든 배치'}</small></div>`).join('')}</td>
@@ -66,6 +66,9 @@
             note.textContent='최초 데이터 이전은 판정 유보: '+deferred.map(s=>`${s.country} ${s.retailer} ${s.product} (${s.coverage_start}부터 점검)`).join(' · ');
             host.querySelector('.ci-head').after(note);
         }
+        const statusSelect = host.querySelector('[data-ci-status]');
+        statusSelect.value = listStatus;
+        statusSelect.onchange = () => { listStatus = statusSelect.value; page = 1; load(selection, true); };
         host.querySelectorAll('[data-ci-page]').forEach(b=>b.onclick=()=>{page=Number(b.dataset.ciPage);render(data);});
     }
     async function load(values = {}, force = false) {
@@ -113,9 +116,9 @@
     function showDetail(data) {
         selectedIssue=data.issue;queries=data.queries;
         const r=selectedIssue;
-        const names={detected:'문제 발견',recovered:'복구 검증 완료',reopened:'문제 재발',acknowledge:'담당자 확인 · 미해결 유지',except:'사유 기록 후 예외 처리',reopen:'예외 취소 · 미해결'};
+        const names={detected:'문제 발견',recovered:'복구 검증 완료',reopened:'문제 재발',acknowledge:'담당자 확인 · 미해결 유지',except:'사유 기록 후 예외 처리',reopen:'예외 취소 · 미해결',normal_confirm:'정상 확인 처리',normal_cancel:'정상 확인 취소'};
         openDialog(`${r.country} · ${r.retailer} · ${r.product} · ${r.source_date}`,
-            `<p><b>${esc(r.label||r.column||'전체 미수집')}</b> · ${statusText[r.status]}<br>발견 당시 ${r.observed_count}건${r.baseline!=null?' / 기준 '+r.baseline+'건':''} · 최근 확인 ${r.current_count}건</p><p>다른 날짜의 정상 수집이나 확인 버튼만으로 해결하지 않습니다. 복구 재검증은 이 날짜를 다시 조회합니다.</p><ol>${r.history.map(h=>`<li>${esc(new Date(h.created_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))} · ${esc(names[h.action]||h.action)} ${esc(h.username)}${h.reason?' · '+esc(h.reason):''}</li>`).join('')}</ol><label>확인·예외 처리 사유<textarea id="ci-reason" maxlength="1000" rows="2"></textarea></label><div class="ci-actions"><button type="button" data-ci-show-sql>조회 SQL</button><button type="button" data-ci-action="recheck">원래 날짜 복구 재검증</button>${r.status==='open'?'<button type="button" data-ci-action="acknowledge">확인만 기록</button><button type="button" data-ci-action="except">사유로 예외 처리</button>':r.status==='excepted'?'<button type="button" data-ci-action="reopen">예외 취소</button>':''}</div>`);
+            `<p><b>${esc(r.label||r.column||'전체 미수집')}</b> · ${statusText[r.status]}<br>발견 당시 ${r.observed_count}건${r.baseline!=null?' / 기준 '+r.baseline+'건':''} · 최근 확인 ${r.current_count}건</p><p>확인만 기록은 미해결을 유지합니다. 정상 확인은 해당 날짜·항목을 처리하며 통계에도 반영됩니다. 복구 재검증은 원래 날짜를 다시 조회합니다.</p><ol>${r.history.map(h=>`<li>${esc(new Date(h.created_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}))} · ${esc(names[h.action]||h.action)} ${esc(h.username)}${h.reason?' · '+esc(h.reason):''}</li>`).join('')}</ol><label>확인·예외 처리 사유<textarea id="ci-reason" maxlength="1000" rows="2"></textarea></label><div class="ci-actions">${r.review_target && ['open','confirmed'].includes(r.status) ? `<button type="button" data-ci-normal>${r.status === 'confirmed' ? '정상 확인 이력 · 취소' : '정상 확인 처리'}</button>` : ''}<button type="button" data-ci-show-sql>조회 SQL</button><button type="button" data-ci-action="recheck">원래 날짜 복구 재검증</button>${r.status==='open'?'<button type="button" data-ci-action="acknowledge">확인만 기록</button><button type="button" data-ci-action="except">사유로 예외 처리</button>':r.status==='excepted'?'<button type="button" data-ci-action="reopen">예외 취소</button>':''}</div>`);
     }
     host.addEventListener('click',async e=>{
         const b=e.target.closest('button');if(!b)return;
@@ -126,6 +129,7 @@
     });
     dialog.addEventListener('click',async e=>{
         const b=e.target.closest('button');if(!b)return;
+        if(b.hasAttribute('data-ci-normal')) return CollectionVolumeReview.open(selectedIssue.review_target);
         if(b.hasAttribute('data-ci-close'))return dialog.close();
         if(b.dataset.ciKind){kind=b.dataset.ciKind;return sqlView();}
         if(b.hasAttribute('data-ci-show-sql'))return showSql(selectedIssue,{queries});
@@ -143,6 +147,12 @@
                 const data=await request('/dx/layer1/api/collection-issues/'+selectedIssue.id+'/action/',{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':getCsrfToken()},body:JSON.stringify({action:b.dataset.ciAction,revision:selectedIssue.revision,reason})});
                 showDetail({...data,queries});load(selection,true);
             }catch(error){dialog.querySelector('#ci-message').textContent=error.message;dialog.querySelectorAll('[data-ci-action]').forEach(x=>x.disabled=false);}
+        }
+    });
+    window.addEventListener('collection-review-changed', async () => {
+        load(selection,true);
+        if (dialog.open && selectedIssue) {
+            try { showDetail(await request('/dx/layer1/api/collection-issues/'+selectedIssue.id+'/')); } catch (_) {}
         }
     });
     window.CollectionIssues={load,sql};

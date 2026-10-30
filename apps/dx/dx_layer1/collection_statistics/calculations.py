@@ -92,7 +92,7 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 6
+BSR_POLICY_VERSION = 7
 MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
 MAIN_REVIEW_PERCENT = 15
@@ -142,7 +142,7 @@ def exact_bsr(row, country):
     if country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco' and str(row['product']).upper() == 'TV':
         return False
     return (country, str(row['retailer']).strip().casefold()) in {
-        ('SEA', 'costco'), ('SEG', 'expert')}
+        ('SEA', 'costco'), ('SEG', 'expert'), ('SEUK', 'currys')}
 
 
 def _bsr_basis(row, history, country, saved_basis=None):
@@ -176,14 +176,6 @@ def _bsr_basis(row, history, country, saved_basis=None):
 
 def _compare_bsr(row, history, country, *, saved_basis=None):
     """Retain the historical reference even while a collection is absent."""
-    if country == 'SEUK':
-        # Five observed days are evidence for a later policy decision, not
-        # permission to automatically activate a fixed-100 or median threshold.
-        state = ('pending' if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error')
-                 else 'missing' if all((row.get(m) or 0) == 0 for m in (*METRICS, 'collected_count'))
-                 else row['observation_state'] if row.get('observation_state') in ('observing', 'unknown')
-                 else 'policy_pending')
-        return 'undecided', state, None, None
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     basis = _bsr_basis(row, history, country, saved_basis)
@@ -265,8 +257,6 @@ def comparison_rules(row, country):
         return {'bsr': {'baseline': 100, 'days': 0, 'rule': 'fixed_100', 'exact': True}} if exact_bsr(row, country) else {}
     rules = {}
     for metric in ('main', 'bsr'):
-        if country == 'SEUK' and metric == 'bsr':
-            continue
         variable = metric == 'main' or variable_bsr(row, country)
         basis = row.get('baselines', {}).get(metric, {})
         if variable:

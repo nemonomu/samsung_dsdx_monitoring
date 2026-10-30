@@ -1320,7 +1320,7 @@ function renderCatSpecSummaryContent(title, data) {
     const inline = isCatSpecInline();
 
     // 날짜 선택기: 모달에서만 표시 (인라인은 상단 필터바 사용)
-    let html = '';
+    let html = data.source_date ? `<p class="inline-detail-subtitle">검수일 ${esc(data.date)} · 수집일 ${esc(data.source_date)}${data.offset_days === -1 ? ' · D-1' : ''}</p>` : '';
     if (!inline) {
         html += `<div style="margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
             <label style="font-weight: 500;">조회 날짜:</label>

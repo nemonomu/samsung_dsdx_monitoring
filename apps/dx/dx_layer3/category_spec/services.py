@@ -2,6 +2,7 @@
 Layer 3 카테고리별 특성 서비스 레이어
 """
 
+from .dates import rule_source_date
 from apps.common.response import log_error
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.dx.dx_layer3.dashboard.services import (
@@ -77,7 +78,7 @@ def get_rules_summary(cursor, target_date, target_category, rules):
                     )
                 else:
                     total_query = f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s"
-                cursor.execute(total_query, (target_date,))
+                cursor.execute(total_query, (rule_source_date(target_date, table_name),))
             else:
                 total_query = f"SELECT COUNT(*) FROM {table_name}"
                 cursor.execute(total_query)
@@ -94,7 +95,7 @@ def get_rules_summary(cursor, target_date, target_category, rules):
             query = query.replace('%', '%%').replace('%%s', '%s')
 
             if has_date_filter:
-                cursor.execute(query, (target_date,))
+                cursor.execute(query, (rule_source_date(target_date, table_name),))
             else:
                 cursor.execute(query)
 
@@ -178,7 +179,7 @@ def get_rule_detail(cursor, target_date, rule_id, product_line, rules):
 
     # date_column이 있으면 날짜 파라미터 전달, 없으면 파라미터 없이 실행
     if has_date_filter:
-        cursor.execute(query, (target_date,))
+        cursor.execute(query, (rule_source_date(target_date, table_name),))
     else:
         cursor.execute(query)
 

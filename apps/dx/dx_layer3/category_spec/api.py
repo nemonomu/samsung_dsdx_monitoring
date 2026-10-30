@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from apps.common.db import dx_connection
 from apps.common.response import safe_error, log_error
 from . import services
+from .dates import rule_date_mapping
 
 
 def category_spec_detail(request):
@@ -42,6 +43,7 @@ def category_spec_detail(request):
 
                 return JsonResponse({
                     'date': str(target_date),
+                    **rule_date_mapping(target_date, 'tv_retail_com' if target_category == 'tv_retail' else ''),
                     'product_line': display_name or target_category.upper(),
                     'total_checked': total_checked,
                     'total_anomalies': total_anomalies,
@@ -63,6 +65,7 @@ def category_spec_detail(request):
 
             return JsonResponse({
                 'date': str(target_date),
+                **rule_date_mapping(target_date, table_name),
                 'product_line': target_rule.get('product_line', product_line).upper(),
                 'check_type': check_type,
                 'total_anomalies': len(anomalies),

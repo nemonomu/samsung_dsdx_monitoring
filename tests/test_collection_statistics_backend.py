@@ -415,7 +415,7 @@ class CalculationTests(SimpleTestCase):
                     source = sample(retailer=retailer, product=product, bsr=99,
                                     alerts=[main_alert], bsr_comparison_state='insufficient')
                     result = calc.current_bsr_decision(source, country)
-                    exception = country == 'SEUK' or calc.variable_bsr(source, country)
+                    exception = calc.variable_bsr(source, country)
                     self.assertEqual(not exception, any(a['metric'] == 'bsr' for a in result['alerts']))
                     self.assertIn(main_alert, result['alerts'])
                     self.assertEqual([main_alert], source['alerts'])

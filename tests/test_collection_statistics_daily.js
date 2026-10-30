@@ -79,6 +79,7 @@ const context = {
             baseline_dates: {SEA: previous, SEDA: previous, SEG: selected, SIEL: selected}})};
     },
 };
+context.window = {addEventListener() {}};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/collection-statistics.js', 'utf8'), context);
 
@@ -179,19 +180,19 @@ async function flush() {
     elements['cs-retailer'].value = 'Amazon';
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
-        /class="cs-day-cell low cs-bsr-low"[^>]*>56<small>이상<\/small>/);
+        /class="cs-day-cell low cs-bsr-low"[^>]*>56<small><button[^>]*>이상<\/button><\/small>/);
     assert(elements['cs-table-body'].innerHTML.includes('&lt;unsafe&gt;'));
     assert(!elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total low"'),
         'BSR-only shortages must highlight BSR, not the unchanged total');
     fixtureDay.alerts = [{metric: 'bsr', status: 'VOLUME_REVIEW', reason: 'BSR 15% 이상 감소 / 확인 필요'}];
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
-        /class="cs-day-cell high cs-bsr-review"[^>]*>56<small>확인 필요<\/small>/);
+        /class="cs-day-cell high cs-bsr-review"[^>]*>56<small><button[^>]*>확인 필요<\/button><\/small>/);
     assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
     fixtureDay.alerts = [{metric: 'main', status: 'VOLUME_REVIEW'}];
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
-        /class="cs-day-cell high cs-main-high"[^>]*>[^<]+<small>확인 필요<\/small>/);
+        /class="cs-day-cell high cs-main-high"[^>]*>[^<]+<small><button[^>]*>확인 필요<\/button><\/small>/);
     assert(!elements['cs-table-body'].innerHTML.includes('cs-total high'));
     fixtureDay.alerts = [];
     fixtureDay.bsr_comparison_state = 'insufficient';
@@ -210,7 +211,7 @@ async function flush() {
     Object.assign(fixtureDay, {main: 80, total: 80});
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
-        /class="cs-day-cell low cs-bsr-low"[^>]*>0<small>이상<\/small>/);
+        /class="cs-day-cell low cs-bsr-low"[^>]*>0<small><button[^>]*>이상<\/button><\/small>/);
     const walmart = weeks[0].rows.find(row => row.retailer === 'Bestbuy');
     walmart.retailer = 'Walmart';
     Object.assign(walmart.daily[6], {main: 299, bsr: 99, total: 321,
@@ -219,7 +220,7 @@ async function flush() {
     elements['cs-retailer'].value = 'Walmart';
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
-        /class="cs-day-cell low cs-bsr-low" title="BSR 기준 100개 \/ 수집 99개 \/ 1개 부족">99<small>이상<\/small>/);
+        /class="cs-day-cell low cs-bsr-low" title="BSR 기준 100개 \/ 수집 99개 \/ 1개 부족">99<small><button[^>]*>이상<\/button><\/small>/);
     walmart.daily[6].review = {action:'confirm', metrics:['bsr'], memo:'log정상 <페이지> 100개가 안됨 확인'};
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-confirmed[^>]*>99<small><button[^>]*data-cs-review="\d+"[^>]*>✓ 정상 확인<\/button>/);
@@ -231,7 +232,7 @@ async function flush() {
     delete walmart.daily[6].review;
     elements['cs-retailer'].fire('change');
     assert(!elements['cs-table-body'].innerHTML.includes('cs-review-memo'));
-    assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-low[^>]*>99<small>이상/);
+    assert.match(elements['cs-table-body'].innerHTML, /cs-bsr-low[^>]*>99<small><button[^>]*>이상/);
     elements['cs-retailer'].value = 'Amazon';
     Object.assign(fixtureDay, {state: 'complete', main: 60, bsr: 60, total: 60,
         observation_state: 'observing', observation_days: 3,

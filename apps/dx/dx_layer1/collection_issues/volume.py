@@ -49,13 +49,17 @@ def load_days(country, product, retailer, days, *, cache=None, strict=True):
 
 
 def confirmed(issue, index):
+    reviewed = review_decision(issue, index)
+    return reviewed.get('action') == 'confirm'
+
+
+def review_decision(issue, index):
     metric = issue.evidence.get('metric')
     row = issue.evidence.get('current_row')
     if metric not in METRICS or not row:
-        return False
-    reviewed = attach_review(row, issue.country, issue.product, row.get('retailer',issue.retailer),
-                             row['slot'], index).get('review', {})
-    return reviewed.get('action') == 'confirm' and metric in reviewed.get('metrics', [])
+        return {}
+    reviewed = attach_review(row, issue.country, issue.product, row.get('retailer',issue.retailer), row['slot'], index)
+    return reviewed.get('metric_reviews', {}).get(metric, {})
 
 
 def hide_confirmed(issues):

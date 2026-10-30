@@ -8,6 +8,7 @@ import json
 from datetime import date
 
 from django.db import IntegrityError, transaction
+from django.conf import settings
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -57,6 +58,11 @@ def serialize(record):
             'revision': record.revision, 'history': record.history}
 
 
+def visible(record):
+    return (record.context.get('version') != 2 or
+            record.context.get('environment') == ('test' if settings.DEBUG else 'production'))
+
+
 @require_http_methods(['GET', 'POST'])
 def reviews(request):
     if not request.user.is_authenticated:
@@ -67,12 +73,14 @@ def reviews(request):
             records = RetailNormalReview.objects.filter(inspection_date=day).order_by('id')
             previous = {}
             for record in RetailNormalReview.objects.filter(active=True, inspection_date__lt=day).order_by('-inspection_date', '-id').iterator():
+                if not visible(record):
+                    continue
                 context = record.context
                 # Keep the most recent confirmation for each scope and collected BSR count.
                 key = tuple(context.get(k) for k in ('country', 'product', 'retailer', 'slot')) + (context['counts'][1],)
                 if key not in previous:
                     previous[key] = serialize(record)
-            response = JsonResponse({'date': day.isoformat(), 'reviews': [serialize(r) for r in records],
+            response = JsonResponse({'date': day.isoformat(), 'reviews': [serialize(r) for r in records if visible(r)],
                                      'previous_reviews': list(previous.values())})
             response['Cache-Control'] = 'private, no-store'
             return response

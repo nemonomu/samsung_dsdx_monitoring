@@ -104,7 +104,7 @@ function renderCategorySpecDetail(data, ruleName, selectedRetailer) {
     const tableKey = productLine.includes('HHP') ? 'hhp' : 'tv';
 
     const inline = isCatSpecInline();
-    let html = '';
+    let html = data.source_date ? `<p class="inline-detail-subtitle">검수일 ${esc(data.date)} · 수집일 ${esc(data.source_date)}${data.offset_days === -1 ? ' · D-1' : ''}</p>` : '';
 
     // 뒤로가기 버튼 (모달에서만, 인라인은 상위 컨테이너에 있음)
     if (!inline) {

@@ -116,5 +116,20 @@ function record(item) {
         assert(badge().includes('이상</button>'));
         assert(sandbox.L1.retailStatus.bsrCell(row, 53).includes('cs-bsr-low'));
     }
+    // Metric reviews from statistics also decorate the dashboard, without hiding siblings.
+    check.check_type = 'retail';
+    row.status = 'VOLUME_LOW'; row.volume_alerts = [
+        {metric:'main',status:'VOLUME_REVIEW',baseline:200,actual:160,reason:'MAIN review'},
+        {metric:'bsr',status:'VOLUME_LOW',baseline:100,actual:53,rule:'fixed_100',exact:true,reason:'BSR low'}];
+    saved=[];await review.load(date);decorate();
+    const metricContext={...JSON.parse(JSON.stringify(row._reviewContext)),version:2,environment:'production',metric:'bsr',
+        basis:JSON.stringify({alerts:[['bsr',100,53,'fixed_100',true,'VOLUME_LOW']]})};
+    saved=[{context:metricContext,active:true,revision:1,history:[{action:'confirm',at:'2026-10-01T01:00:00Z',memo:'checked'}]}];
+    await review.load(date);decorate();
+    assert(review.reviewed(row,'bsr'));assert(!review.reviewed(row,'main'));assert(!review.reviewed(row));
+    assert(badge().includes('확인 필요'));assert(!badge().includes('>이상</button>'));
+    assert(sandbox.L1.retailStatus.bsrCell(row,53).includes('cs-bsr-confirmed'));
+    saved[0].active=false;saved[0].history.push({action:'cancel',at:'2026-10-01T02:00:00Z'});
+    await review.load(date);decorate();assert(!review.reviewed(row,'bsr'));
     console.log('Layer1 review scopes, tooltips, aggregates, cancellation and escaping passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

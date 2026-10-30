@@ -57,6 +57,10 @@
     function openReview(index) {
         const target = reviewTargets[index];
         if (!target) return;
+        if (target.entries.length === 1) {
+            return CollectionVolumeReview.open({country:target.country, product:target.product, retailer:target.retailer,
+                source_date:target.date, metric:target.metric, slot:target.entries[0].slot || 'daily'});
+        }
         reviewDialog?.close();
         const dialog = document.createElement('dialog');
         reviewDialog = dialog;
@@ -65,16 +69,20 @@
         const title = target.entries.every(day => day.review?.action === 'confirm') ? '정상 확인 이력' : '수집 확인 이력';
         dialog.innerHTML = `<h2 id="cs-review-title">${title}</h2>
             <p class="l1-review-target">${safe(target.country)} · ${safe(target.product)} · ${safe(target.retailer)}<br>데이터일 ${safe(target.date)} · ${safe(target.metric.toUpperCase())}</p>`
-            + target.entries.map(day => {
+            + target.entries.map((day, entryIndex) => {
                 const review = day.review;
                 const confirmed = review?.action === 'confirm';
                 const time = review?.at ? new Date(review.at).toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) + ' (KST)' : '';
                 return `<section><p class="l1-review-target">${safe(day.slot || 'daily')} · 배치 ${safe(day.batch_id || '정보 없음')}${review?.inspection_date ? '<br>검수일 ' + safe(review.inspection_date) : ''}</p>
                     <p>MAIN ${number(day.main)}건 · BSR ${number(day.bsr)}건 · 총 ${number(day.total)}건</p>`
-                    + (review ? `<p class="${confirmed ? 'l1-review-confirmed' : 'l1-review-rejected'}">${confirmed ? '✓ 정상 확인' : '이상 확정'}<strong class="l1-review-memo">${safe(review.memo)}</strong><span class="l1-review-author">${safe(review.username)} · ${safe(time)}</span></p>` : '<p>확인 필요 · 아직 처리하지 않은 수집입니다.</p>') + '</section>';
+                    + (review ? `<p class="${confirmed ? 'l1-review-confirmed' : 'l1-review-rejected'}">${confirmed ? '✓ 정상 확인' : '이상 확정'}<strong class="l1-review-memo">${safe(review.memo)}</strong><span class="l1-review-author">${safe(review.username)} · ${safe(time)}</span></p>` : '<p>확인 필요 · 아직 처리하지 않은 수집입니다.</p>') + `<button type="button" data-entry-review="${entryIndex}">정상 확인 · 취소</button></section>`;
             }).join('') + '<div class="l1-review-actions"><button type="button" data-close autofocus>닫기</button></div>';
         document.body.appendChild(dialog);
         dialog.querySelector('[data-close]').onclick = () => dialog.close();
+        dialog.querySelectorAll('[data-entry-review]').forEach(button => button.onclick = () => {
+            const day = target.entries[Number(button.dataset.entryReview)];
+            CollectionVolumeReview.open({country:target.country, product:target.product, retailer:target.retailer, source_date:target.date, metric:target.metric, slot:day.slot || 'daily'});
+        });
         dialog.addEventListener('close', () => {
             dialog.remove();
             if (reviewDialog === dialog) reviewDialog = null;
@@ -86,10 +94,12 @@
         const label = day[metric + 'Label'];
         if (!label) return '';
         const entries = day[metric + 'Reviews'] || [];
-        if (!entries.some(entry => entry.review)) return `<small>${safe(label)}</small>`;
+        if (!entries.length) return `<small>${safe(label)}</small>`;
         const index = reviewTargets.push({country:group.country, product:group.product, retailer:group.retailer, date, metric, entries}) - 1;
-        return `<small><button type="button" class="l1-review-label" data-cs-review="${index}" aria-haspopup="dialog" title="확인 이력 보기">${safe(label)}</button></small>`;
+        return `<small><button type="button" class="l1-review-label" data-cs-review="${index}" aria-haspopup="dialog" title="정상 확인 처리 · 이력 보기">${safe(label)}</button></small>`;
     }
+
+    window.addEventListener('collection-review-changed', () => { reviewDialog?.close(); load(); });
 
     function shiftDate(value, days) {
         const date = new Date(value + 'T00:00:00Z');
@@ -169,7 +179,7 @@
         const alerts = active.flatMap(visibleAlerts);
         function reviewInfo(metric) {
             const affected = active.filter(day => visibleAlerts(day).some(alert => alert.metric === metric));
-            const decision = day => day.review?.metrics?.includes(metric) ? day.review : null;
+            const decision = day => day.metric_reviews?.[metric] || (day.review?.metrics?.includes(metric) ? day.review : null);
             const confirmed = affected.length && affected.every(day => decision(day)?.action === 'confirm');
             const rejected = affected.some(day => decision(day)?.action === 'reject');
             return {confirmed, rejected, entries:affected.map(day => ({...day, review:decision(day)}))};

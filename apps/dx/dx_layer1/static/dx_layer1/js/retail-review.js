@@ -8,9 +8,54 @@
         return item && !Array.isArray(item) && typeof item === 'object'
             ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item;
     });
-    const reviewed = row => Boolean(row._normalReview && row._normalReview.active);
-    const rejected = row => Boolean(row._normalReview && !row._normalReview.active && row._normalReview.history.at(-1)?.action === 'reject');
+    const reviewed = (row, metric) => {
+        if (row._metricDecisions) {
+            const metrics = metric ? [metric] : [...new Set((row.volume_alerts || []).map(a=>a.metric).filter(m=>['main','bsr'].includes(m)))];
+            return metrics.length > 0 && metrics.every(m=>row._metricDecisions[m]?.action === 'confirm');
+        }
+        return Boolean(row._normalReview && row._normalReview.active);
+    };
+    const rejected = (row, metric) => row._metricDecisions
+        ? Object.entries(row._metricDecisions).some(([m, d])=>(!metric || metric===m) && d?.action==='reject')
+        : Boolean(row._normalReview && !row._normalReview.active && row._normalReview.history.at(-1)?.action === 'reject');
     const number = value => Number(value).toLocaleString('ko-KR', {maximumFractionDigits: 2});
+    const outstandingLow = row => row._metricDecisions
+        ? (row.volume_alerts || []).some(a=>a.status==='VOLUME_LOW' && !reviewed(row,a.metric))
+        : row.status === 'VOLUME_LOW' && !reviewed(row);
+
+    function alertBasis(alerts) {
+        return alerts.filter(a=>['main','bsr'].includes(a.metric)).map(a=>[a.metric,a.baseline,a.actual,
+            a.rule || (a.metric==='main'?'median_28d':null),!!a.exact,
+            a.metric==='bsr' && a.exact && a.status==='VOLUME_REVIEW'?'VOLUME_LOW':a.status]).sort((a,b)=>{
+                for (let i=0;i<a.length;i++) {
+                    if (a[i]===b[i]) continue;
+                    return typeof a[i]==='number' && typeof b[i]==='number' ? a[i]-b[i] : String(a[i]).localeCompare(String(b[i]));
+                }
+                return 0;
+            });
+    }
+
+    function attachMetricDecisions(row, context) {
+        const candidates = records.filter(r=>['country','product','retailer','slot','source_date','batch_id'].every(k=>r.context[k]===context[k]));
+        if (!candidates.some(r=>r.context.version===2)) return;
+        const current = alertBasis(JSON.parse(context.basis).alerts || []);
+        const decisions = {};
+        candidates.sort((a,b)=>(a.history.at(-1)?.at || '').localeCompare(b.history.at(-1)?.at || '')).forEach(record=>{
+            const c=record.context, metrics=c.version===2?[c.metric]:['main','bsr'];
+            metrics.forEach(m=>decisions[m]=null);
+            if (c.date!==context.date || stable(c.counts)!==stable(context.counts)) return;
+            try {
+                const basis=c.version===2?JSON.parse(c.basis).alerts:alertBasis(JSON.parse(c.basis).alerts || []);
+                const expected=c.version===2?current.filter(a=>a[0]===c.metric):current;
+                if (!basis.length || stable(basis)!==stable(expected)) return;
+                const event=record.history.at(-1);
+                if ((record.active && event?.action==='confirm') || (!record.active && event?.action==='reject')) {
+                    basis.forEach(a=>decisions[a[0]]=event);
+                }
+            } catch (_) {}
+        });
+        row._metricDecisions=decisions;
+    }
 
     function reasons(row) {
         const result = (row.volume_alerts || []).filter(alert => reviewStatuses.includes(alert.status)).map(alert =>
@@ -55,7 +100,7 @@
             reason:'신규 수집 · 관찰 중 (' + row.observation_days + '/5일) / 실제 수집 결과 확인 필요'});
         if ((!reviewStatuses.includes(row.status) || row.status === 'VOLUME_LOW') && requiresReview) row.status = 'VOLUME_REVIEW';
         // An exact-target retailer with an already normal 300/100 collection needs no manual observation review.
-        const exactTarget = (country === 'SEG' && row.retailer === 'Expert')
+        const exactTarget = (country === 'SEUK' && row.retailer === 'Currys') || (country === 'SEG' && row.retailer === 'Expert')
             || (country === 'SEA' && ((row.retailer === 'Costco' && product !== 'TV') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')));
         if (observing && exactTarget && row.status === 'VERIFYING' && row._volumeBaseStatus === 'OK'
             && counts.main === 300 && counts.bsr === 100 && !row.volume_alerts.length) row.status = 'OK';
@@ -84,6 +129,7 @@
                         row._reviewPreparedSignature = stable({status:row.status, volume_alerts:row.volume_alerts});
                         delete row._reviewContext;
                         delete row._normalReview;
+                        delete row._metricDecisions;
                         row._reviewReasons = reasons(row);
                         if (!reviewStatuses.includes(row.status) || L1.collectionVolume.metrics(row, country).main <= 0
                             || L1.collectionVolume.metrics(row, country).total <= 0) return;
@@ -104,6 +150,7 @@
                         };
                         row._reviewContext = context;
                         row._normalReview = records.find(record => stable(record.context) === stable(context));
+                        attachMetricDecisions(row, context);
                         row._reviewTarget = targets.push(row) - 1;
                     });
                     slot._reviewRows = rows;
@@ -120,7 +167,7 @@
         if (data.summary && !data.error) {
             const checked = (data.checks || []).filter(c=>c.is_target_date);
             data.summary.failed = checked.filter(c=> (c._reviewRows || []).length
-                ? c._reviewRows.some(row => rejected(row) || (!reviewed(row) && ['CRITICAL','VOLUME_LOW','ERROR'].includes(row.status)))
+                ? c._reviewRows.some(row => rejected(row) || outstandingLow(row) || ['CRITICAL','ERROR'].includes(row.status))
                 : ['CRITICAL','VOLUME_LOW','ERROR'].includes(c.status)).length;
         }
     }
@@ -136,6 +183,7 @@
         if (row._reviewContext && reviewStatuses.includes(status)) {
             const done = reviewed(row);
             const bad = rejected(row);
+            if (row._metricDecisions && status === 'VOLUME_LOW' && !outstandingLow(row)) status = 'VOLUME_REVIEW';
             const title = (done ? '정상 확인\n\n최초 사유\n' : '확인 필요\n')
                 + row._reviewReasons.join('\n\n') + '\n\n클릭하여 ' + (done ? '확인 이력 보기 · 확인 취소' : '검토');
             return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : status === 'VOLUME_LOW' ? 'critical' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (status === 'VOLUME_LOW' ? '이상' : '확인 필요')}</button>`;
@@ -143,7 +191,7 @@
         const rows = row._reviewRows || [];
         const reviews = rows.filter(item => item._reviewContext);
         if (!reviews.length || !['OK', ...reviewStatuses].includes(status)) return null;
-        if (reviews.some(rejected)) return '<span class="status-badge critical">이상 확정</span>';
+        if (reviews.some(item=>rejected(item))) return '<span class="status-badge critical">이상 확정</span>';
         const pending = reviews.filter(item => !reviewed(item));
         const done = !pending.length && rows.every(item => (item.status === 'OK' || reviewed(item)) && Number(item.batch_count || 0) < 2);
         // Confirmed reviews no longer mask siblings that are still collecting.
@@ -159,7 +207,7 @@
             return getStatusBadge(effective);
         }
         const title = reviews.map(item => `${item.retailer} · ${reviewed(item) ? '정상 확인' : '확인 필요'}\n${item._reviewReasons.join('\n')}`).join('\n\n');
-        const low = pending.some(item => item.status === 'VOLUME_LOW');
+        const low = pending.some(outstandingLow);
         return `<span class="status-badge ${done ? 'ok' : low ? 'critical' : 'volume-review'}" tabindex="0" title="${attr(title)}" aria-label="${attr(title)}">${done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (low ? '이상' : '확인 필요') + (pending.length ? ' · 미확인 ' + pending.length + '건' : '')}</span>`;
     }
 
@@ -198,6 +246,19 @@
         const row = targets[index];
         if (!row || !row._reviewContext) return;
         const context = row._reviewContext;
+        if (row._metricDecisions && window.CollectionVolumeReview) {
+            const metrics=[...new Set((row.volume_alerts || []).map(a=>a.metric).filter(m=>['main','bsr'].includes(m)))];
+            const launch = metric => CollectionVolumeReview.open({country:context.country,product:context.product,
+                retailer:context.retailer,slot:context.slot,source_date:context.source_date,metric});
+            if (metrics.length===1) return launch(metrics[0]);
+            const picker=document.createElement('dialog');
+            picker.className='l1-review-dialog';
+            picker.innerHTML='<h2>확인할 수집 항목</h2>'+metrics.map(m=>`<p><button type="button" data-metric="${m}">${m.toUpperCase()} · ${reviewed(row,m)?'정상 확인 완료':rejected(row,m)?'이상 확정':'미처리'}</button></p>`).join('')+'<button type="button" data-close>닫기</button>';
+            picker.querySelectorAll('[data-metric]').forEach(b=>b.onclick=()=>{picker.close();launch(b.dataset.metric);});
+            picker.querySelector('[data-close]').onclick=()=>picker.close();
+            picker.addEventListener('close',()=>picker.remove(),{once:true});
+            document.body.appendChild(picker);picker.showModal();return;
+        }
         const key = stable(context);
         const record = row._normalReview;
         const done = reviewed(row);
@@ -254,4 +315,9 @@
         dialog.showModal();
     }
     L1.retailReview = {load, decorate, badge, open, reviewed, rejected, reasons};
+    window.addEventListener?.('collection-review-changed', async () => {
+        if (typeof currentData === 'undefined' || !currentData) return;
+        await load(getSelectedDate());
+        repaint();
+    });
 })();

@@ -8,6 +8,7 @@ from datetime import timedelta
 from apps.common.null_review_evidence import load_page_exclusions
 from apps.common.db import get_dx_connection, dx_table
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
+from apps.dx.dx_layer3.category_spec.dates import rule_source_date
 from apps.common.response import log_error
 from apps.common.retail_validation import (
     apply_tv_validation_scope,
@@ -341,12 +342,11 @@ def validate_all_category_specs(target_date):
                         total_query = (
                             f"SELECT COUNT(*) FROM {table_name} "
                             f"WHERE DATE({date_col}) = %s "
-                            f"AND EXTRACT(HOUR FROM {date_col}) < 12 "
                             f"AND {get_tv_validation_condition()}"
                         )
                     else:
                         total_query = f"SELECT COUNT(*) FROM {table_name} WHERE DATE({date_col}) = %s"
-                    cursor.execute(total_query, (target_date,))
+                    cursor.execute(total_query, (rule_source_date(target_date, table_name),))
                 else:
                     total_query = f"SELECT COUNT(*) FROM {table_name}"
                     cursor.execute(total_query)
@@ -361,7 +361,7 @@ def validate_all_category_specs(target_date):
                 query = query.replace('%', '%%').replace('%%s', '%s')
 
                 if has_date_filter:
-                    cursor.execute(query, (target_date,))
+                    cursor.execute(query, (rule_source_date(target_date, table_name),))
                 else:
                     cursor.execute(query)
 

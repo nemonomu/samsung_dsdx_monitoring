@@ -42,8 +42,8 @@
             return '<td>' + value + '<small style="display:block;color:#64748b;">기준 결정 대기</small></td>';
         }
         var alerts = bsrAlerts(retailer || {});
-        var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer || {});
-        var rejected = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer || {});
+        var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer || {}, 'bsr');
+        var rejected = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer || {}, 'bsr');
         var reason = alerts.map(function(alert) { return alert.reason || 'BSR 수량 부족'; }).join(' · ');
         var low = rejected || (!normalReviewed && alerts.some(function(alert) { return alert.status === 'VOLUME_LOW'; }));
         var count = retailer._reviewContext ? '<button type="button" class="l1-review-count" onclick="event.stopPropagation();L1.retailReview.open(' + retailer._reviewTarget + ')" aria-label="BSR ' + esc(value) + '건 수집 결과 확인">' + esc(value) + '</button>' : esc(value);
@@ -92,22 +92,25 @@
                 var multiple = batchCount(retailer) >= 2;
                 var observing = retailer.observation_state === 'observing';
                 var failed = retailer.status === 'ERROR';
-                var bsr = bsrAlerts(retailer);
+                var unresolvedAlerts = (retailer.volume_alerts || []).filter(function(a) {
+                    return !(L1.retailReview && L1.retailReview.reviewed(retailer, a.metric));
+                });
+                var bsr = bsrAlerts(retailer).filter(function(a) { return unresolvedAlerts.includes(a); });
                 var bsrLow = bsr.filter(function(alert) { return alert.status === 'VOLUME_LOW'; });
                 var normalReviewed = L1.retailReview && L1.retailReview.reviewed(retailer);
                 var errorReviewed = L1.retailReview && L1.retailReview.rejected && L1.retailReview.rejected(retailer);
-                var rankMismatch = !normalReviewed && !errorReviewed && (retailer.volume_alerts || []).find(function(alert) {
+                var rankMismatch = !normalReviewed && !errorReviewed && unresolvedAlerts.find(function(alert) {
                     return alert.rule === 'main_lt_bsr';
                 });
                 var legacyReview = retailer.status === 'REVIEW' && !normalReviewed && !errorReviewed;
                 var bsrReview = normalReviewed || errorReviewed ? [] : bsr.filter(function(alert) { return alert.status === 'VOLUME_REVIEW'; });
-                var mainReview = !missing && !normalReviewed && !errorReviewed ? (retailer.volume_alerts || []).filter(function(alert) {
+                var mainReview = !missing && !normalReviewed && !errorReviewed ? unresolvedAlerts.filter(function(alert) {
                     return alert.metric === 'main' && alert.status === 'VOLUME_REVIEW';
                 }) : [];
                 var volumeLow = !missing && !normalReviewed && !errorReviewed && (retailer.status === 'VOLUME_LOW' || bsrLow.length > 0) &&
-                    (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_LOW');
+                    unresolvedAlerts.some(alert => alert.status === 'VOLUME_LOW');
                 var volumeHigh = !missing && !normalReviewed && !errorReviewed && retailer.status === 'VOLUME_HIGH' &&
-                    (retailer.volume_alerts || []).some(alert => alert.status === 'VOLUME_HIGH');
+                    unresolvedAlerts.some(alert => alert.status === 'VOLUME_HIGH');
                 if (!name || (!errorReviewed && !observing && !failed && !missing && !multiple && !volumeLow && !volumeHigh && !legacyReview && !bsrReview.length && !mainReview.length && !rankMismatch)) return;
                 var href = '#' + prefix + '-cat-' + checkIdx + '-' + catIdx;
                 var onclick = 'event.stopPropagation();L1.retailStatus.open(this, ' + checkIdx + ')';
@@ -153,7 +156,7 @@
                         items.push('<span class="retail-missing-item">' + link + esc(product) + ' '
                             + esc(alert.reason || 'BSR 수량 부족') + '</span>');
                     });
-                    if (!rankMismatch && (!bsrLow.length || (retailer.volume_alerts || []).some(function(alert) {
+                    if (!rankMismatch && (!bsrLow.length || unresolvedAlerts.some(function(alert) {
                         return alert.metric !== 'bsr' && alert.status === 'VOLUME_LOW';
                     }))) items.push('<span class="retail-missing-item">' + link + esc(product) + ' 건수 부족</span>');
                 } else if (volumeHigh) {

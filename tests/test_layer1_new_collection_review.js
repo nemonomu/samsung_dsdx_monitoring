@@ -4,6 +4,7 @@ const vm = require('vm');
 let saved = [], previous = [], day = '2026-10-13';
 const context = {document:{}, console, AbortController, setTimeout, clearTimeout,
     esc: String, fetch:async()=>({ok:true,json:async()=>({date:day,reviews:saved,previous_reviews:previous})})};
+context.window = context;
 vm.createContext(context);
 for (const name of ['layer1-common','collection-volume','retail-review','retail-status']) {
     vm.runInContext(fs.readFileSync(`apps/dx/dx_layer1/static/dx_layer1/js/${name}.js`, 'utf8'),context);

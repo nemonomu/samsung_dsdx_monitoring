@@ -48,7 +48,7 @@ def listing(request):
         if not jobs:
             raise ValueError()
         status = request.GET.get('status', 'open')
-        if status not in ('open', 'resolved', 'excepted', 'all'):
+        if status not in ('open', 'resolved', 'excepted', 'confirmed', 'all'):
             raise ValueError()
         records = Issue.objects.filter(environment=environment(), source_date__gte=START_DATE, **filters)
         for job in jobs:
@@ -65,10 +65,15 @@ def listing(request):
                 inspection_date, country, country.lower() + '_tv')['source_date']
             records = records.exclude(country=country, source_date__gte=current_source_date)
             cutoffs[country] = date.fromisoformat(current_source_date) - timedelta(days=1)
-        if status != 'all':
+        if status not in ('all', 'confirmed'):
             records = records.filter(status=status)
         rows = list(records.order_by('source_date', 'country', 'retailer', 'product', 'column'))
-        rows = volume.hide_confirmed(rows) if status == 'open' else rows
+        from apps.dx.dx_layer1.collection_statistics.reviews import review_index
+        reviews = review_index(min(r.source_date for r in rows), max(r.source_date for r in rows)) if rows else {}
+        if status == 'open':
+            rows = [r for r in rows if not volume.confirmed(r, reviews)]
+        elif status == 'confirmed':
+            rows = [r for r in rows if r.status == 'open' and volume.confirmed(r, reviews)]
         # Whole-collection incidents are one row, not one copy per affected field.
         whole = {(r.country,r.product,r.retailer,r.source_date) for r in rows if not r.column and r.status=='open'}
         rows = [r for r in rows if not r.column or r.column.startswith('__')
@@ -89,7 +94,7 @@ def listing(request):
                 or (last_due and scan['scanned_through'] < last_due))))
         return reply({'policy_version': POLICY_VERSION,
                       'start_date': str(START_DATE), 'inspection_date': inspection_date,
-                      'issues': [serialize(r) for r in rows],
+                      'issues': [serialize(r, reviews=reviews) for r in rows],
                       'scans': scans, 'target_count': len(jobs)})
     except (ValueError, TypeError):
         return reply({'error': '조회 조건을 확인해주세요.'}, 400)

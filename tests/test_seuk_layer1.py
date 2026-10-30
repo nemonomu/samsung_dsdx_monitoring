@@ -93,24 +93,21 @@ class SeukLayer1Tests(TestCase):
         self.assertNotIn('seuk_retail',before[2])
         self.assertIn('seuk_retail',after[2])
 
-    def test_five_days_do_not_automatically_activate_fixed_100(self):
-        row = sample(retailer='Currys',product='TV',main=300,bsr=60)
-        history = [dict(row,source_date=str(self.day+timedelta(days=i))) for i in range(5)]
-        for count in range(5):
-            current = calc.compare_rows([row],history[:count],'SEUK')[0]
-            self.assertEqual(count+1,current['observation_days'])
-            self.assertEqual('observing',current['bsr_comparison_state'])
-            self.assertFalse(current['alerts'])
-        current = calc.compare_rows([row],history,'SEUK')[0]
-        self.assertEqual('policy_pending',current['bsr_comparison_state'])
-        self.assertEqual('undecided',current['bsr_rule'])
-        self.assertEqual({'main'},set(calc.comparison_rules(current,'SEUK')))
-        self.assertFalse(current['alerts'])
-        dropped = calc.compare_rows([dict(row,main=200)],history,'SEUK')[0]
-        self.assertEqual(['main'],[a['metric'] for a in dropped['alerts']])
-        self.assertEqual(dropped['alerts'],calc.current_volume_decision(dropped,'SEUK')['alerts'])
-        old = [dict(row,source_date=str(date(2026,10,17)+timedelta(days=i))) for i in range(5)]
-        self.assertEqual(1,calc.compare_rows([row],old,'SEUK')[0]['observation_days'])
+    def test_fixed_100_for_all_products_before_and_after_observation(self):
+        for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
+            row = sample(retailer='Currys', product=product, main=300, bsr=100)
+            history = [dict(row, source_date=str(self.day+timedelta(days=i))) for i in range(5)]
+            for old in ([], history):
+                for count in (0, 99, 100, 101):
+                    current = calc.compare_rows([dict(row, bsr=count)], old, 'SEUK')[0]
+                    self.assertEqual('ready', current['bsr_comparison_state'])
+                    self.assertEqual('fixed_100', current['bsr_rule'])
+                    self.assertEqual(count != 100, any(a['metric']=='bsr' for a in current['alerts']))
+                    self.assertTrue(calc.comparison_rules(current, 'SEUK')['bsr']['exact'])
+            dropped = calc.compare_rows([dict(row, main=200)], history, 'SEUK')[0]
+            self.assertEqual(['main'], [a['metric'] for a in dropped['alerts']])
+            stale = dict(dropped, bsr_comparison_state='policy_pending', bsr_rule='undecided')
+            self.assertEqual('ready', calc.current_volume_decision(stale, 'SEUK')['bsr_comparison_state'])
 
     def test_column_counts_include_types_and_use_latest_original_day(self):
         self.assertEqual(4,len([s for s in columns.catalog() if s['country']=='SEUK']))
@@ -163,7 +160,7 @@ class SeukLayer1Tests(TestCase):
         with patch.object(live,'load_current_check',return_value=self.check()):
             snapshot=live.current_snapshot('SEUK',self.day)
         self.assertTrue(all(r['observation_prior_days']==0 for r in snapshot['rows']))
-        self.assertTrue(all(r['rules']=={} for r in snapshot['rows']))
+        self.assertTrue(all(set(r['rules']) == {'bsr'} and r['rules']['bsr']['exact'] for r in snapshot['rows']))
 
     def test_registration_sql_parses_and_does_not_write_source_data(self):
         try:
