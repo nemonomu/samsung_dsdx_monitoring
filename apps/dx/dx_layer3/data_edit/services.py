@@ -11,7 +11,7 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.retail_validation import get_tv_validation_condition
 from apps.common.seib_retail import (
     FIRST_SOURCE_DATE as SEIB_FIRST_SOURCE_DATE,
-    SEIB_SOURCE_CONFIG, RETAILER as SEIB_RETAILER,
+    SEIB_SOURCE_CONFIG, RETAILER as SEIB_RETAILER, latest_scope as seib_scope,
 )
 from apps.common.seuk_retail import SEUK_SOURCE_CONFIG, latest_scope as seuk_scope
 from apps.dx.dx_layer3.cross_field.seuk_services import EDITABLE_COLUMNS as SEUK_CROSSFIELD_COLUMNS
@@ -242,6 +242,12 @@ def _select_sea_record(
 def _select_seib_record(cursor, source, select_columns, row_id, inspection_date):
     mapping = resolve_monitoring_date(inspection_date, 'SEIB', source['source_key'])
     day = mapping['source_date']
+    if len(source['retailers']) > 1:
+        cte, scope, params = seib_scope(source, day, day, None)
+        columns = ', '.join('source.' + column.strip() for column in select_columns.split(','))
+        cursor.execute(f'{cte} SELECT {columns} {scope} AND source.id = %s FOR UPDATE OF source',
+                       [*params, row_id])
+        return
     if day < str(SEIB_FIRST_SOURCE_DATE):
         return
     source_day = source_date_sql('source.crawl_datetime')
@@ -264,7 +270,8 @@ def _select_seib_record(cursor, source, select_columns, row_id, inspection_date)
 
 def _select_seuk_record(cursor, source, select_columns, row_id, inspection_date):
     mapping = resolve_monitoring_date(inspection_date, 'SEUK', source['source_key'])
-    cte, scope, params = seuk_scope(source, mapping['source_date'], mapping['source_date'])
+    cte, scope, params = seuk_scope(source, mapping['source_date'], mapping['source_date'],
+                                  None if len(source['retailers']) > 1 else source['retailers'][0])
     columns = ', '.join('source.' + column.strip() for column in select_columns.split(','))
     cursor.execute(f'{cte} SELECT {columns} {scope} AND source.id = %s FOR UPDATE OF source',
                    [*params, row_id])
@@ -352,7 +359,7 @@ def _select_sem_record(
 
 def _select_seg_record(
         cursor, source, select_columns, row_id, inspection_date):
-    from apps.dx.dx_layer3.cross_field.seg_sources import record_scope
+    from apps.dx.dx_layer3.cross_field.seg_sources import record_scope, country_scope
     mapping = resolve_monitoring_date(
         inspection_date, SEG_COUNTRY, source['source_key']
     )
@@ -370,7 +377,7 @@ def _select_seg_record(
         FROM {table_name} source
         WHERE source.id = %s
           AND LEFT(BTRIM(CAST(source.{date_column} AS TEXT)), 10) = %s
-          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = %s
+          AND {country_scope(source)}
           {record_scope(source, source_date)}
           {redirect_scope}
           AND source.batch_id IS NOT DISTINCT FROM (
@@ -557,7 +564,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif seuk_context:
         editable_cols = SEUK_CROSSFIELD_COLUMNS if correction_type == 'cross_field' else ()
     elif seib_context:
-        editable_cols = SEIB_CROSSFIELD_COLUMNS if correction_type == 'cross_field' else ()
+        from apps.dx.dx_layer3.cross_field.seib_services import editable_columns
+        editable_cols = editable_columns(retailer) if correction_type == 'cross_field' else ()
     elif table_name in SEDA_TABLES:
         editable_cols = get_seda_crossfield_editable_columns(product_line, retailer)
     elif sem_context:
@@ -635,6 +643,11 @@ def save_review(cursor, conn, table_name, record_id, column_name,
         rules = load_active_rules(cursor, SEUK_TABLES[table_name])
         if not any(str(rule['rule_id']) == str(rule_id) for rule in rules):
             return {'error': '해당 제품군의 활성 검증 규칙이 아닙니다', 'status': 400}
+    if table_name in SEIB_TABLES and len(SEIB_TABLES[table_name]['retailers']) > 1:
+        from apps.dx.dx_layer3.cross_field.seib_services import load_active_rules
+        rules = load_active_rules(cursor, SEIB_TABLES[table_name])
+        if not any(str(rule['rule_id']) == str(rule_id) for rule in rules):
+            return {'error': '해당 제품군의 활성 검증 규칙이 아닙니다', 'status': 400}
     product_line = _get_product_line(table_name)
     sea_context = _get_sea_edit_context(table_name)
     seib_context = _get_seib_edit_context(table_name)
@@ -709,6 +722,14 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else None
+    if seuk_context or (seib_context and len(seib_context['retailers']) > 1):
+        matching = next((r for r in rules if str(r['rule_id']) == str(rule_id)), None)
+        if not matching or str(retailer).strip().casefold() not in {r.casefold() for r in matching['retailers']}:
+            return {'error': '해당 리테일러의 검증 규칙이 아닙니다', 'status': 400}
+        if seib_context:
+            from apps.dx.dx_layer3.cross_field.seib_services import editable_columns
+            if column_name not in editable_columns(retailer):
+                return {'error': '해당 리테일러의 크로스필드 대상 컬럼이 아닙니다', 'status': 403}
     if (table_name == 'public.ldy_dryer_retail' or costco_layer2.is_costco(retailer)) and correction_type == 'cross_field' and column_name not in (*costco_layer2.METRICS, *costco_layer2.PRICES):
         return {'error': '이 크로스필드는 평가·가격 컬럼만 검수할 수 있습니다', 'status': 403}
 

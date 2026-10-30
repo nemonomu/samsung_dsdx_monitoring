@@ -44,10 +44,10 @@ vm.runInContext(fs.readFileSync(`${root}/static/dx_layer3/js/common.js`, 'utf8')
         const html = fs.readFileSync(`${root}/templates/${file}`, 'utf8');
         for (const line of html.split('\n')) {
             if (line.includes('dx_layer3/js/common.js')) {
-                assert(line.includes('?v=20261023-seuk-crossfield'), `${file}: stale common.js version`);
+                assert(line.includes('?v=20261030-november-crossfield'), `${file}: stale common.js version`);
             }
             if (line.includes('dx_layer3/js/cross-field.js')) {
-                assert(line.includes('?v=20261023-seuk-crossfield'), `${file}: stale cross-field.js version`);
+                assert(line.includes('?v=20261030-november-crossfield'), `${file}: stale cross-field.js version`);
             }
         }
     }

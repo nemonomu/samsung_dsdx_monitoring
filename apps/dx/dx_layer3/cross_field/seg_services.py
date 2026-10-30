@@ -22,7 +22,7 @@ from .seg_sources import (
     get_seg_crossfield_editable_columns,
     get_seg_source,
     normalize_seg_product_line,
-    EXPERT_START_DATE, record_scope, retailer_start_date, active_retailers,
+    EXPERT_START_DATE, record_scope, country_scope, retailer_start_date, active_retailers,
     MEDIAMARKT_DRYER_RULES,
 )
 
@@ -466,6 +466,9 @@ def _retailer_supported(rule_key, retailer):
 def _rule_applies_to_retailer(rule, retailer):
     if not _retailer_supported(rule['rule_key'], retailer):
         return False
+    if (display_seg_retailer(retailer) == 'OTTO'
+            and rule.get('_exclude_otto')):
+        return False
     if (display_seg_retailer(retailer) == 'Expert'
             and rule.get('_exclude_expert')):
         return False
@@ -562,6 +565,9 @@ def load_active_seg_rules(cursor, product_line):
             (rule_key, 'expert' if expert_rule else 'shared')
             if rule_key in EXPERT_PRICE_RULES else rule_key
         )
+        # Keep new dryer approvals and rule IDs separate from existing retailers.
+        if key == 'seg_ldy_dryer' and display_seg_retailer(configured_retailer) == 'OTTO':
+            merge_key = (rule_key, 'otto')
         existing = rules_by_key.get(merge_key)
         if existing is None:
             rules_by_key[merge_key] = row
@@ -586,6 +592,12 @@ def load_active_seg_rules(cursor, product_line):
     for rule_key in EXPERT_PRICE_RULES:
         if (rule_key, 'expert') in rules_by_key and (rule_key, 'shared') in rules_by_key:
             rules_by_key[(rule_key, 'shared')]['_exclude_expert'] = True
+
+    if key == 'seg_ldy_dryer':
+        for merge_key, rule in rules_by_key.items():
+            if merge_key != (rule['rule_key'], 'otto'):
+                # Legacy ALL rules predate OTTO dryer onboarding.
+                rule['_exclude_otto'] = True
 
     return list(rules_by_key.values())
 
@@ -614,6 +626,7 @@ def load_latest_seg_rows(
     table_name = source['table_name']
     date_column = source['date_column']
     source_date_sql = raw_source_date_sql('source.' + date_column)
+    source_country = country_scope(source).replace('%s', "'SEG'")
     retailers = active_retailers(source, end_date)
     select_sql = 'source.*'
     order_sql = (f'{source_date_sql}, '
@@ -672,7 +685,7 @@ def load_latest_seg_rows(
             FROM {table_name} source
             WHERE {source_date_sql} >= %s
               AND {source_date_sql} <= %s
-              AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
+              AND {source_country}
               AND LOWER(BTRIM(CAST(source.account_name AS TEXT)))
                   IN ({retailers_sql})
               {record_scope(source, end_date, anchor=True)}
@@ -698,7 +711,7 @@ def load_latest_seg_rows(
          AND latest.batch_rank = 1
         WHERE {source_date_sql} >= %s
           AND {source_date_sql} <= %s
-          AND UPPER(BTRIM(CAST(source.country AS TEXT))) = 'SEG'
+          AND {source_country}
           {record_scope(source, end_date)}
           {expert_start_scope}
           {redirect_scope}

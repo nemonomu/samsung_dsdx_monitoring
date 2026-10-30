@@ -179,12 +179,12 @@ class NovemberDryerTests(TestCase):
             self.assertTrue(all(r['status'] == 'not_scheduled' for r in result['comparisons']))
             self.assertEqual(10, result['daily'][-1]['total'])
 
-    def test_no_new_format_or_crossfield_targets(self):
+    def test_new_crossfield_targets_do_not_enable_format_checks(self):
         self.assertNotIn('OTTO', seg2.SEG_FORMAT_SOURCE_CONFIG['seg_ldy_dryer']['retailers'])
-        self.assertNotIn('OTTO', seg_cross.SEG_SOURCE_CONFIG['seg_ldy_dryer']['retailers'])
+        self.assertIn('OTTO', seg_cross.SEG_SOURCE_CONFIG['seg_ldy_dryer']['retailers'])
         self.assertEqual((), sem_validation.get_review_allowed_columns('sem_ldy_dryer', 'format_check', 'Liverpool'))
-        self.assertEqual(('HomeDepot', 'Coppel'), sem_cross.active_sem_retailers('sem_ldy_dryer', LAUNCH))
-        self.assertNotIn('Liverpool', sem_cross.SEM_SOURCE_CONFIG['sem_ldy_dryer']['retailers'])
+        self.assertEqual(('HomeDepot', 'Coppel', 'Liverpool'), sem_cross.active_sem_retailers('sem_ldy_dryer', LAUNCH))
+        self.assertIn('Liverpool', sem_cross.SEM_SOURCE_CONFIG['sem_ldy_dryer']['retailers'])
         self.assertEqual([], sem_validation.format_detail(None, PREVIEW, 'sem_ldy_dryer', retailer='Liverpool')['results'])
 
     def test_registration_is_scoped_idempotent_and_environment_isolated(self):

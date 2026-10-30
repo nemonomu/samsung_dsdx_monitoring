@@ -10,7 +10,7 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.seuk_retail import (
     FIRST_SOURCE_DATE, RETAILER, SEUK_SOURCE_CONFIG, get_seuk_source,
-    latest_scope,
+    latest_scope, normalize_retailer, retailer_start_date,
 )
 from apps.common.source_dates import source_date_sql, source_date_value
 
@@ -130,6 +130,18 @@ def _rows(cursor):
     return [dict(zip(names, value)) for value in values]
 
 
+def rule_definitions(retailer):
+    return RULES
+
+
+def editable_columns(retailer):
+    return EDITABLE_COLUMNS
+
+
+def table_columns(source, retailer):
+    return source['columns']
+
+
 def load_active_rules(cursor, source):
     from apps.common.db import dx_table
     cursor.execute(f"""
@@ -140,27 +152,32 @@ def load_active_rules(cursor, source):
         ORDER BY sort_order, id
     """, (source['section_code'], source['table_name']))
     result = []
-    prefix = source['source_key'] + '_'
     for rule_id, detail_code, validation_type, retailer in cursor.fetchall():
+        try:
+            retailer = normalize_retailer(source, retailer)
+        except ValueError:
+            continue
+        prefix = source['source_key'] + ('_' if retailer == RETAILER else '_' + retailer.lower() + '_')
         code = str(detail_code or '')
         key = code[len(prefix):] if code.startswith(prefix) else ''
-        if key not in RULES or validation_type != key or str(retailer or '').casefold() != RETAILER.casefold():
+        definitions = rule_definitions(retailer)
+        if key not in definitions or validation_type != key:
             continue
-        name, field1, field2, description, fields = RULES[key]
+        name, field1, field2, description, fields = definitions[key]
         result.append({
             'rule_id': rule_id, 'detail_code': code, 'rule_key': key,
             'validation_type': key, 'detail_name': name, 'guide_name': name,
             'guide_description': description, 'error_message': description,
             'field1': field1, 'field2': field2, 'select_fields': fields,
-            'retailers': [RETAILER],
+            'retailers': [retailer],
         })
     return result
 
 
-def _load_rows(cursor, source, start, end):
-    if date.fromisoformat(str(end)) < FIRST_SOURCE_DATE:
+def _load_rows(cursor, source, start, end, retailer=RETAILER):
+    if date.fromisoformat(str(end)) < retailer_start_date(source, retailer):
         return []
-    cte, scope, params = latest_scope(source, start, end)
+    cte, scope, params = latest_scope(source, start, end, retailer)
     cursor.execute(f"{cte} SELECT source.* {scope} ORDER BY source.item, source.id", params)
     return _rows(cursor)
 
@@ -169,7 +186,8 @@ def _literal(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def display_query(source, source_date, days=3, items=None):
+def display_query(source, source_date, days=3, items=None, retailer=RETAILER):
+    retailer = normalize_retailer(source, retailer)
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
     day = source_date_sql('anchor.crawl_datetime')
@@ -181,15 +199,15 @@ def display_query(source, source_date, days=3, items=None):
     return f"""WITH latest AS (
     SELECT DISTINCT ON ({day}) {day} AS source_date, anchor.batch_id
     FROM {source['table_name']} anchor
-    WHERE {day} BETWEEN {_literal(max(start, FIRST_SOURCE_DATE))} AND {_literal(end)}
-      AND LOWER(BTRIM(anchor.account_name)) = 'currys'
+    WHERE {day} BETWEEN {_literal(max(start, retailer_start_date(source, retailer)))} AND {_literal(end)}
+      AND LOWER(BTRIM(anchor.account_name)) = {_literal(retailer.lower())}
     ORDER BY {day}, anchor.id DESC
 )
 SELECT source.*
 FROM {source['table_name']} source
 JOIN latest ON {source_day} = latest.source_date
   AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-WHERE LOWER(BTRIM(source.account_name)) = 'currys'{item_sql}
+WHERE LOWER(BTRIM(source.account_name)) = {_literal(retailer.lower())}{item_sql}
 ORDER BY source.item, source.crawl_datetime, source.id;"""
 
 
@@ -207,7 +225,9 @@ def _result(cursor, inspection_date, product_line, from_date=None):
     if not rules:
         return result
     start = resolve_monitoring_date(from_date or inspection_date, 'SEUK', source['source_key'])['source_date']
-    rows = _load_rows(cursor, source, start, mapping['source_date'])
+    retailers = list(dict.fromkeys(r['retailers'][0] for r in rules))
+    rows = [row for retailer in retailers
+            for row in _load_rows(cursor, source, start, mapping['source_date'], retailer)]
     rows, exclusions = exclude_page_absent_records(
         cursor, inspection_date, rows, table_name=source['table_name'],
         country='SEUK', product_line=source['category'],
@@ -223,11 +243,13 @@ def _result(cursor, inspection_date, product_line, from_date=None):
                    for value in cursor.fetchall()]
     normal = {(str(value['record_id']), str(value['rule_id'])) for value in corrections}
     for row in rows:
-        row['account_name'] = RETAILER
+        row['account_name'] = normalize_retailer(source, row['account_name'])
     evaluated = {str(row['id']): evaluate_seuk_row(row) for row in rows}
     for rule in rules:
         findings = []
         for row in rows:
+            if row['account_name'] not in rule['retailers']:
+                continue
             if source_date_value(row.get('crawl_datetime')) != mapping['source_date']:
                 continue
             if (str(row['id']), str(rule['rule_id'])) in normal:
@@ -251,7 +273,7 @@ def get_seuk_cross_field_summary(cursor, inspection_date, product_line):
         **{key: value for key, value in rule.items() if key != 'findings'},
         'error_count': len(rule['findings']), 'review_count': 0,
         'query': display_query(result['source'], result['source_date'],
-                               items=[row['item'] for row in rule['findings']] or None),
+                               items=[row['item'] for row in rule['findings']] or None, retailer=rule['retailers'][0]),
     } for rule in rules]
     return {
         **{key: value for key, value in result.items()
@@ -260,9 +282,13 @@ def get_seuk_cross_field_summary(cursor, inspection_date, product_line):
         'total_anomalies': sum(rule['error_count'] for rule in summaries),
         'passed_records': len(targets) - len(failed),
         'rule_summary': summaries, 'no_review_texts': '',
-        'retailers': [{'retailer': RETAILER, 'total_checked': len(targets),
-                       'failed_records': len(failed),
-                       'total_errors': sum(rule['error_count'] for rule in summaries)}],
+        'retailers': [dict(
+            retailer=retailer,
+            total_checked=sum(row['account_name'] == retailer for row in targets),
+            failed_records=len({str(row['id']) for rule in rules for row in rule['findings']
+                                if row['account_name'] == retailer}),
+            total_errors=sum(rule['error_count'] for rule in summaries if retailer in rule['retailers']),
+        ) for retailer in dict.fromkeys(r['retailers'][0] for r in rules)],
     }
 
 
@@ -273,28 +299,30 @@ def get_seuk_cross_field_rule_detail(cursor, inspection_date, product_line, rule
     rule = next((rule for rule in result['rules'] if str(rule['rule_id']) == str(rule_id)), None)
     if rule is None:
         return {'found': False}
+    retailer = rule['retailers'][0]
     targets = rule['findings']
     anomalies = build_detail_history(
-        result['rows'], targets, result['source_date'], result['date_col'], days,
+        [row for row in result['rows'] if row['account_name'] == retailer],
+        targets, result['source_date'], result['date_col'], days,
         date_of=lambda row, column: source_date_value(row.get(column)),
     )
     corrections = [row for row in result['corrections'] if str(row['rule_id']) == str(rule_id)]
     normal_reviews = {}
     for correction in corrections:
         payload = {key: str(correction.get(key) or '') for key in ('memo', 'reason', 'created_id', 'created_at')}
-        for column in EDITABLE_COLUMNS:
+        for column in editable_columns(retailer):
             normal_reviews[f"{correction['record_id']}_{column}"] = payload
     items = sorted({str(row['item']) for row in anomalies if _present(row.get('item'))})
-    query = display_query(result['source'], result['source_date'], days, items)
+    query = display_query(result['source'], result['source_date'], days, items, retailer)
     return {
         **{key: result[key] for key in ('date', 'inspection_date', 'source_date',
                                        'offset_days', 'product_line', 'table_name', 'date_col')},
         **{key: value for key, value in rule.items() if key != 'findings'},
         'found': True, 'days': days, 'anomalies': anomalies,
         'total_anomalies': len(targets), 'total_findings': len(targets),
-        'retailer_summary': {RETAILER: {'count': len(targets), 'review_count': 0, 'items': items}},
-        'editable_columns': list(EDITABLE_COLUMNS),
-        'retailer_columns': {RETAILER: list(result['source']['columns'])},
-        'retailer_editable_columns': {RETAILER: list(EDITABLE_COLUMNS)},
-        'normal_reviews': normal_reviews, 'query': query, 'queries': {RETAILER: query},
+        'retailer_summary': {retailer: {'count': len(targets), 'review_count': 0, 'items': items}},
+        'editable_columns': list(editable_columns(retailer)),
+        'retailer_columns': {retailer: list(table_columns(result['source'], retailer))},
+        'retailer_editable_columns': {retailer: list(editable_columns(retailer))},
+        'normal_reviews': normal_reviews, 'query': query, 'queries': {retailer: query},
     }

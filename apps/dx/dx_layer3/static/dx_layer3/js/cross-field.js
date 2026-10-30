@@ -104,7 +104,8 @@ function _cfUsesEqualReviewCounts(productLine, retailer) {
         || (/^SEA_(REF|LDY)$/.test(product) && account === 'lowes')
         || (product.startsWith('SEG_') && ['mediamarkt', 'otto', 'expert'].includes(account))
         || (product.startsWith('SEDA_') && account.replace(/\s/g, '') === 'casasbahia')
-        || (product.startsWith('SEUK_') && account === 'currys')
+        || (product.startsWith('SEUK_') && ['currys', 'ao'].includes(account))
+        || (product.startsWith('SEIB_') && account === 'eci')
         || (product.startsWith('TSE_') && account === 'homepro')
         || (product.startsWith('SEM_') && ['liverpool', 'homedepot'].includes(account));
 }
@@ -120,13 +121,15 @@ function _cfEditableColumns(retailer) {
     if (helper && triggers.some(field => helper.isPrice(field))) {
         helper.getPriceColumns().forEach(field => editable.add(field));
     }
-    if (_cfExpertWithoutSavings(retailer)) editable.delete('savings');
+    if (_cfWithoutSavings(retailer)) editable.delete('savings');
     return editable;
 }
 
-function _cfExpertWithoutSavings(retailer) {
-    return String(window.crossfieldProductLine || '').toUpperCase().startsWith('SEG_')
-        && String(retailer || '').trim().toLowerCase() === 'expert';
+function _cfWithoutSavings(retailer) {
+    const product = String(window.crossfieldProductLine || '').toUpperCase();
+    const account = String(retailer || '').trim().toLowerCase();
+    return (product.startsWith('SEG_') && account === 'expert')
+        || (product.startsWith('SEIB_') && account === 'eci');
 }
 
 function _cfOrderReviewDetailKeys(keys) {
@@ -218,9 +221,9 @@ function showRetailerDetail(retailer) {
         'id', 'item', 'account_name', 'page_type', 'finding_level', 'row_role',
         'row_source_date'
     ];
-    const expertWithoutSavings = _cfExpertWithoutSavings(retailer);
+    const withoutSavings = _cfWithoutSavings(retailer);
     let dynamicKeys = _cfDetailKeys(rows, excludeKeys);
-    if (expertWithoutSavings) dynamicKeys = dynamicKeys.filter(key => key !== 'savings');
+    if (withoutSavings) dynamicKeys = dynamicKeys.filter(key => key !== 'savings');
     dynamicKeys = _cfOrderReviewDetailKeys(dynamicKeys);
     const urlKey = dynamicKeys.find(k => k === 'product_url');
     const otherKeys = dynamicKeys.filter(k => k !== 'product_url');
@@ -315,7 +318,7 @@ function showRetailerDetail(retailer) {
     // 규칙에 정의된 기본 표시 컬럼 결정
     const selectFieldsRaw = window.crossfieldSelectFields || '';
     const ruleDisplayCols = _cfVisibleDetailKeys(selectFieldsRaw.split('|').map(f => f.trim()).filter(f => f))
-        .filter(key => !expertWithoutSavings || key !== 'savings');
+        .filter(key => !withoutSavings || key !== 'savings');
 
     // 기본 표시 컬럼: 고정 + 규칙 컬럼 (규칙 없으면 otherKeys 전체)
     const fixedKeys = [
@@ -332,7 +335,7 @@ function showRetailerDetail(retailer) {
             configuredDisplayKeys, dynamicKeys,
             ruleDisplayCols.concat(window.crossfieldRuleFields || [])
         ) : configuredDisplayKeys;
-    if (expertWithoutSavings) defaultDisplayKeys = defaultDisplayKeys.filter(key => key !== 'savings');
+    if (withoutSavings) defaultDisplayKeys = defaultDisplayKeys.filter(key => key !== 'savings');
 
     // 전체 컬럼 정의 (기본 표시 + 나머지 수집 컬럼)
     const allColumns = [
@@ -350,7 +353,7 @@ function showRetailerDetail(retailer) {
 
     // 리테일러 전체 수집 컬럼 추가 (컬럼 선택용, 기본 비표시)
     const retailerCols = ((window.crossfieldRetailerColumns || {})[retailer] || [])
-        .filter(col => !expertWithoutSavings || col !== 'savings');
+        .filter(col => !withoutSavings || col !== 'savings');
     const existingKeys = {};
     allColumns.forEach(c => { existingKeys[c.key] = true; });
     retailerCols.forEach(col => {
@@ -370,7 +373,7 @@ function showRetailerDetail(retailer) {
     const priceDisplayOrder = (window.RetailReviewColumns
         ? window.RetailReviewColumns.getPriceColumns()
         : ['original_sku_price', 'final_sku_price', 'savings'])
-        .filter(key => !expertWithoutSavings || key !== 'savings');
+        .filter(key => !withoutSavings || key !== 'savings');
     if (defaultDisplayKeys.some(key => priceDisplayOrder.includes(key))) {
         const priceIndexes = allColumns
             .map((column, index) => priceDisplayOrder.includes(column.key) ? index : -1)

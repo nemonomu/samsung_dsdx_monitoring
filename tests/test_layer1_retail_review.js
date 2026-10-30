@@ -46,6 +46,22 @@ function record(item) {
     assert.strictEqual(row.status, 'REVIEW', 'automatic status must remain intact');
     assert(!sandbox.L1.retailStatus.render(check, 0, 'sem_retail').includes('60건 감소'));
     const confirmed = JSON.parse(JSON.stringify(row));
+    // A not-yet-operating retailer must not hide a completed normal review.
+    const preview = {retailer:'AO', status:'PENDING', preview_mode:true,
+        actual:0, main_count:0, bsr_count:0, batch_count:0};
+    cat.retailers.push(preview); decorate();
+    assert(badge(cat).includes('✓ 정상 확인'));
+    assert(badge(check).includes('✓ 정상 확인'));
+    assert.strictEqual(preview.status, 'PENDING');
+    assert(sandbox.L1.retailStatus.rowBadge(preview).includes('수집 예정'));
+    // On launch, the same missing retailer participates in the verdict again.
+    preview.preview_mode = false; decorate();
+    assert(badge(check).includes('대기중'));
+    assert(!badge(check).includes('✓ 정상 확인'));
+    preview.preview_mode = true; preview.status = 'ERROR'; decorate();
+    assert(!badge(check).includes('✓ 정상 확인'));
+    assert.strictEqual(check.status, 'ERROR');
+    cat.retailers.pop(); decorate();
     // Confirmed Coppel plus uncollected siblings must show collection progress,
     // not a review warning with no outstanding reviews.
     const collecting = {retailer: 'HomeDepot', status: 'COLLECTING', batch_count: 0};

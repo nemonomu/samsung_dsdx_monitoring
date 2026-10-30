@@ -9,12 +9,12 @@ class Layer2SegSidebarTests(unittest.TestCase):
         config = {
             'siel_tv_retail': {'display_name': 'SIEL TV'},
             'sem_tv_retail': {'display_name': 'SEM TV'},
+            'seg_ldy_dryer_retail': {'display_name': 'SEG LDY_DRYER'},
             'youtube': {'display_name': 'YouTube'},
         }
         categories = [
             *config,
             'seg_tv_retail', 'seg_ref_retail', 'seg_ldy_retail',
-            'seg_ldy_dryer_retail',
         ]
         stubs = {
             'apps': package_stub('apps'),

@@ -150,7 +150,7 @@ class SeukCrossfieldTests(unittest.TestCase):
         self.assertIn('source.batch_id',cursor.calls[0][0])
         self.assertEqual(['2026-10-26','2026-10-26','currys','currys',2],cursor.calls[0][1])
         cursor=ScriptedCursor([{'fetchone':('£400.00','Currys','A')},{'fetchone':None},{'rowcount':1}])
-        with patch.object(svc,'load_active_rules',return_value=[{'rule_id':7}]):
+        with patch.object(svc,'load_active_rules',return_value=[{'rule_id':7,'retailers':['Currys']}]):
             result=edits.save_review(cursor,Mock(),table,2,'savings','normal','','checked',str(DAY),'cross_field','tester',7)
         self.assertTrue(result['success'])
         self.assertIn('source.id = %s FOR UPDATE OF source',cursor.calls[0][0])

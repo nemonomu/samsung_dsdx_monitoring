@@ -19,7 +19,14 @@
         delete item.volume_alerts;
         delete item.verification_reason;
     }
+    function operatingRows(rows) {
+        // Preview rows stay visible without holding back operating retailers.
+        // Keep explicit errors visible, including errors on preview sources.
+        const operating = rows.filter(row => !row.preview_mode || row.status === 'ERROR');
+        return operating.length ? operating : rows;
+    }
     function worst(rows, fallback = 'VERIFYING') {
+        rows = operatingRows(rows);
         const priority = {OK: 0, PENDING: 1, COLLECTING: 2, ANALYZING: 2, VERIFYING: 3, INSUFFICIENT: 3, POLICY_PENDING: 3,
             UNASSESSED: 3, REVIEW: 4, VOLUME_HIGH: 4, VOLUME_REVIEW: 4, WARNING: 5,
             VOLUME_LOW: 6, CRITICAL: 6, ERROR: 7};
@@ -196,5 +203,5 @@
         }
         return {inspection_date: day, policy_version: 4, snapshots: [], load_state: 'error'};
     }
-    L1.collectionVolume = {load, decorate, metrics};
+    L1.collectionVolume = {load, decorate, metrics, operatingRows};
 })();

@@ -724,8 +724,8 @@ function renderData(data) {
             [
                 { key: 'sea', title: 'SEA Retail', description: 'SEA TV/REF/LDY 크로스필드 검증' },
                 { key: 'seda', title: 'SEDA Retail', description: 'SEDA TV/REF/LDY 크로스필드 검증' },
-                { key: 'seib', title: 'SEIB Retail', description: '스페인 MediaMarkt TV/REF/LDY/LDY_DRYER 크로스필드 검증' },
-                { key: 'seuk', title: 'SEUK Retail', description: '영국 Currys TV/REF/LDY/LDY_DRYER 크로스필드 검증' },
+                { key: 'seib', title: 'SEIB Retail', description: '스페인 MediaMarkt·ECI 크로스필드 검증' },
+                { key: 'seuk', title: 'SEUK Retail', description: '영국 Currys·AO 크로스필드 검증' },
                 { key: 'siel', title: 'SIEL Retail', description: 'SIEL TV/REF/LDY 크로스필드 검증' },
                 { key: 'seg', title: 'SEG Retail', description: 'SEG TV/REF/LDY 크로스필드 검증' },
                 { key: 'sem', title: 'SEM Retail', description: 'SEM TV/REF/LDY 크로스필드 검증' },

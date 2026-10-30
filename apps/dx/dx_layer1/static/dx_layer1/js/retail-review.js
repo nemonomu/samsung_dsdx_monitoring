@@ -107,6 +107,7 @@
     }
 
     function aggregate(rows, fallback) {
+        rows = L1.collectionVolume.operatingRows(rows);
         const priority = {OK:0,PENDING:1,COLLECTING:2,ANALYZING:2,VERIFYING:3,INSUFFICIENT:3,POLICY_PENDING:3,UNASSESSED:3,
             REVIEW:4,VOLUME_HIGH:4,VOLUME_REVIEW:4,WARNING:5,VOLUME_LOW:6,CRITICAL:6,ERROR:7};
         return rows.reduce((status,row) => (priority[row.status] || 0) > (priority[status] || 0) ? row.status : status, rows.length ? 'OK' : fallback);
@@ -188,7 +189,7 @@
                 + row._reviewReasons.join('\n\n') + '\n\n클릭하여 ' + (done ? '확인 이력 보기 · 확인 취소' : '검토');
             return `<button type="button" class="status-badge ${bad ? 'critical' : done ? 'ok' : status === 'VOLUME_LOW' ? 'critical' : 'volume-review'} l1-review-badge" title="${attr(bad ? '이상 확정\n'+'\n클릭하여 이력 보기 · 확정 취소' : title)}" aria-label="${attr(bad ? '이상 확정' : title)}" onclick="event.stopPropagation();L1.retailReview.open(${row._reviewTarget})">${bad ? '이상 확정' : done ? '✓ 정상 확인' : '<span class="status-dot"></span>' + (status === 'VOLUME_LOW' ? '이상' : '확인 필요')}</button>`;
         }
-        const rows = row._reviewRows || [];
+        const rows = L1.collectionVolume.operatingRows(row._reviewRows || []);
         const reviews = rows.filter(item => item._reviewContext);
         if (!reviews.length || !['OK', ...reviewStatuses].includes(status)) return null;
         if (reviews.some(item=>rejected(item))) return '<span class="status-badge critical">이상 확정</span>';

@@ -76,4 +76,31 @@ const aoQuery = context.L1.retailQuery.buildQuery('SEUK','REF','AO','a1','2026-1
 assert(aoQuery.includes('dx_seuk.dx_seuk_ref_retail_com'));
 assert(aoQuery.toLowerCase().includes("'ao'"));
 assert(!aoQuery.toLowerCase().includes("'currys'"));
+// Currys normal + AO scheduled must stay normal at both product and country level.
+for (const previewCount of [0, 203]) {
+    const day = '2026-10-30';
+    const current = check(day,300);
+    for (const cat of current.categories) {
+        Object.assign(cat.retailers[0], {main_count:300,bsr_count:100});
+        if (cat.name !== 'TV') cat.retailers.push({retailer:'AO',actual:previewCount,
+            main_count:previewCount,bsr_count:0,preview_mode:true,
+            status:previewCount?'OK':'PENDING',collection_phase:previewCount?'complete':'pending'});
+    }
+    const payload = {policy_version:4,inspection_date:day,snapshots:[{
+        country:'SEUK',source_date:day,available:true,live:true,
+        rows:current.categories.map(cat=>({product:cat.name,retailer:'Currys',slot:'daily',
+            observation_state:'observing',observation_prior_days:1}))}]};
+    context.L1.collectionVolume.decorate({checks:[current]},payload,day);
+    assert.strictEqual(current.status,'OK');
+    assert(current.categories.every(cat=>cat.status==='OK'));
+    const ao=current.categories[1].retailers[1];
+    assert.strictEqual(ao.status,previewCount?'OK':'PENDING');
+    assert(context.L1.retailStatus.rowBadge(ao).includes(previewCount?'확인용':'수집 예정'));
+    ao.preview_mode=false;
+    ao.collection_phase='complete';
+    ao.actual=ao.main_count=0;
+    context.L1.collectionVolume.decorate({checks:[current]},payload,day);
+    assert.strictEqual(ao.status,'CRITICAL');
+    assert.strictEqual(current.status,'CRITICAL');
+}
 console.log('SEUK: launch, collection window, missing, observation, fixed-100 BSR, renderer and exact-day SQL passed.');

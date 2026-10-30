@@ -180,7 +180,7 @@ def build_sidebar_groups(section, focus=''):
         for category, info in sorted(
             config.items(), key=lambda item: _legacy_display_order(item[0])
         ):
-            if category.startswith(('seib_', 'seuk_')):
+            if category.startswith(('seg_', 'seib_', 'seuk_')):
                 continue
             if category in SEDA_RETAIL_CATEGORIES:
                 continue

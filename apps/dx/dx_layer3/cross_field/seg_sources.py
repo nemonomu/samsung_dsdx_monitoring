@@ -1,8 +1,8 @@
 """SEG cross-field sources, including Expert's collected-column contract."""
 from apps.common import seg_retail as legacy
 from apps.dx.dx_layer2.seg_sources import (
-    SEG_COUNTRY, SEG_FORMAT_SOURCE_CONFIG as SEG_SOURCE_CONFIG, SEG_TABLE_TO_PRODUCT_LINE,
-    get_seg_product_line, EXPERT_START_DATE, record_scope, retailer_start_date, active_retailers,
+    SEG_COUNTRY, SEG_SOURCE_CONFIG, SEG_TABLE_TO_PRODUCT_LINE,
+    get_seg_product_line, EXPERT_START_DATE, record_scope, country_scope, retailer_start_date, active_retailers,
 )
 
 SEG_RETAILERS = (*legacy.SEG_RETAILERS, 'Expert')
@@ -42,5 +42,5 @@ def get_seg_crossfield_editable_columns(product_line, retailer):
     if display_seg_retailer(retailer) == 'Expert':
         return list(EXPERT_EDITABLE)
     if key == 'seg_ldy_dryer':
-        return [*EXPERT_EDITABLE, 'savings'] if display_seg_retailer(retailer) == 'Mediamarkt' else []
+        return [*EXPERT_EDITABLE, 'savings'] if display_seg_retailer(retailer) in ('Mediamarkt', 'OTTO') else []
     return legacy.get_seg_crossfield_editable_columns(product_line, retailer)
