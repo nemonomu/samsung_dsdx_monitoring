@@ -65,3 +65,14 @@ def get_collection_status(target_date, now=None):
         rows.append(row)
     return {'source_date': str(target_date), 'timezone': 'Asia/Seoul',
             'checked_at': current.isoformat(), 'retailers': rows}
+
+
+def get_dday_collection_status(target_date, now=None):
+    from . import seda_collection
+
+    current = now or datetime.now(KST)
+    sea = get_collection_status(target_date, current)
+    return {**sea, 'countries': [
+        dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
+        seda_collection.get_collection_status(target_date, current),
+    ]}

@@ -1,5 +1,5 @@
 """SEUK duplicate inspection on the original collection day and latest batch."""
-from apps.common.seuk_retail import SEUK_SOURCE_CONFIG, enabled, product_line_for
+from apps.common.seuk_retail import SEUK_SOURCE_CONFIG, enabled, product_line_for, normalize_retailer, retailer_start_date
 from .seuk_null_validation import latest_rows
 from .sem_validation import _duplicate_groups
 
@@ -13,6 +13,8 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
             continue
         retailers = []
         for retailer in source['retailers']:
+            if str(target_date) < str(retailer_start_date(source, retailer)):
+                continue
             rows, mapping = latest_rows(cursor, target_date, source, retailer)
             groups = _duplicate_groups(rows)
             retailers.append({
@@ -34,15 +36,16 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
 
 def duplicate_detail(cursor, target_date, table, retailer, page=1, page_size=50):
     source = SEUK_SOURCE_CONFIG.get(product_line_for(table))
-    if source is None or str(retailer or '').strip().casefold() != 'currys':
+    if source is None:
         raise ValueError('Unsupported SEUK duplicate source or retailer')
+    retailer = normalize_retailer(source, retailer)
     page, page_size = max(1, int(page)), min(200, max(1, int(page_size)))
-    rows, mapping = latest_rows(cursor, target_date, source, 'Currys')
+    rows, mapping = latest_rows(cursor, target_date, source, retailer)
     groups = _duplicate_groups(rows)
     start = (page - 1) * page_size
     return {
         'date': mapping['inspection_date'], 'table': source['section_code'],
-        'retailer': 'Currys', 'actual_table': source['table_name'],
+        'retailer': retailer, 'actual_table': source['table_name'],
         'select_cols': {
             'group': ['duplicate_type', 'item', 'retailer_sku_name', 'dup_count', 'reason'],
             'record': ['id', 'sku', 'retailer_sku_name', 'final_sku_price',

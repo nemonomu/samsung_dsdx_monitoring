@@ -22,9 +22,10 @@ def history_range(country, last_due):
         if not any(row.get('bsr') is None for row in rows)
         and not any(is_preview(country, r['product'], r['retailer'], day) and r.get('collected_count', r.get('total', 0)) for r in rows)
         and all(day < spec['preview_from'] or any(
-            r['product'] == 'LDY_DRYER' and r['retailer'] == spec['retailer']
+            r['product'] == product and r['retailer'] == spec['retailer']
             and r.get('source_date_basis') == 'db_original' for r in rows)
-            for (code, _), spec in DRYER_SOURCES.items() if code == country)
+            for (code, _), spec in DRYER_SOURCES.items() if code == country
+            for product in spec.get('products', ('LDY_DRYER',)))
         and (country != 'SEA' or all(
             row.get('source_date_basis') == 'db_original'
             for row in rows if row['retailer'] in ('Costco', 'HomeDepot')))

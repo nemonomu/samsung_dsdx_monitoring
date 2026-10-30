@@ -29,6 +29,9 @@ function ddaySummary(rows) {
 }
 
 function renderDdayCollection(data) {
+    if (data.countries) return data.countries.map(renderDdayCollection).join('');
+    const country = data.country || 'SEA';
+    const countryLabel = country === 'SEDA' ? '🇧🇷 SEDA Retail' : '🇺🇸 SEA Retail';
     const overall = ddaySummary(data.retailers);
     const categories = ['TV', 'REF', 'LDY', 'LDY_DRYER'].map(function(product) {
         const rows = data.retailers.filter(row => row.product === product);
@@ -38,12 +41,12 @@ function renderDdayCollection(data) {
             const scheduled = String(row.scheduled_at || '').slice(0, 16).replace('T', ' ');
             const scheduledEnd = String(row.scheduled_end_at || '').slice(11, 16);
             const batch = row.batch_id ? ' <span class="dday-batch">/ ' + esc(row.batch_id) + '</span>' : '';
-            return '<tr aria-label="SEA ' + esc(row.retailer) + ' ' + product + '">' +
+            return '<tr aria-label="' + esc(country) + ' ' + esc(row.retailer) + ' ' + product + '">' +
                 '<td class="rt-name">' + esc(row.retailer) + batch + '</td>' +
                 '<td>' + (row.main_count == null ? '-' : Number(row.main_count).toLocaleString()) + '</td>' +
                 '<td>' + (row.bsr_count == null ? '-' : Number(row.bsr_count).toLocaleString()) + '</td>' +
                 '<td>' + (scheduled ? esc(scheduled) + (scheduledEnd ? ' ~ ' + esc(scheduledEnd) : '') + ' KST' : '미정') + '</td>' +
-                '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' KST' : '') + '</td>' +
+                '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' ' + esc(row.last_collected_timezone || 'KST') : '') + '</td>' +
                 '<td class="rt-total">' + (row.count === null ? '-' : Number(row.count).toLocaleString()) + '</td>' +
                 '<td class="rt-status ct-nc">' + ddayStatusBadge(row.status, row.status_reason) + '</td></tr>';
         }).join('');
@@ -67,9 +70,10 @@ function renderDdayCollection(data) {
             '</tbody></table></div></div></div></details>';
     }).join('');
     return '<details class="check-item" open><summary class="check-main retail-check-main">' +
-        '<div class="check-info"><div class="check-name"><span class="toggle-icon">▶</span> 🇺🇸 SEA Retail</div>' +
-        '<div class="check-description" id="dday-collection-date">수집 대상일: ' + esc(data.source_date) +
-        ' · 수집일: DB 원본 날짜 · 표시 시각: KST</div></div><div class="check-stats"><div class="check-stat">' +
+        '<div class="check-info"><div class="check-name"><span class="toggle-icon">▶</span> ' + countryLabel + '</div>' +
+        '<div class="check-description" id="dday-collection-date-' + esc(country) + '">수집 대상일: ' + esc(data.source_date) +
+        ' · 수집일: DB 원본 날짜 · 표시 시각: ' + esc(data.display_time_basis || 'KST') +
+        (data.collection_window ? ' · 수집 시간: ' + esc(data.collection_window) : '') + '</div></div><div class="check-stats"><div class="check-stat">' +
         '<div class="value">' + overall.count.toLocaleString() + '</div><div class="label">' +
         (overall.status === 'error' ? '확인된 수집량' : '총 수집량') + '</div></div>' +
         ddayStatusBadge(overall.status) + '</div></summary>' +

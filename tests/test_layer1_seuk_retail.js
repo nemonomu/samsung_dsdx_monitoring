@@ -58,4 +58,22 @@ const query=context.L1.retailQuery.buildQuery('SEUK','LDY_DRYER','Currys','c1','
 assert(query.includes('dx_seuk.dx_seuk_ldy_dryer_retail_com'));
 assert(query.includes("LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) = '2026-10-25'"));
 assert(!query.includes('AT TIME ZONE'));
+for (const count of [203, 0]) {
+    const preview = check('2026-10-30');
+    for (const cat of preview.categories.filter(c => c.name !== 'TV')) {
+        cat.retailers.push({retailer:'AO',actual:count,main_count:count,bsr_count:count?100:0,
+            raw_count:count,preview_mode:true,active_from:'2026-11-01',
+            status:count?'OK':'PENDING',collection_phase:count?'complete':'pending',
+            expected:null,status_basis:'historical_volume'});
+    }
+    const rendered = context.L1.renderers.seuk_retail(preview, 0);
+    assert(rendered.includes('Currys'));
+    assert(rendered.includes('AO'));
+    assert(rendered.includes(count ? '확인용' : '수집 예정'));
+    assert(!rendered.includes('운영 시작 전'));
+}
+const aoQuery = context.L1.retailQuery.buildQuery('SEUK','REF','AO','a1','2026-10-30');
+assert(aoQuery.includes('dx_seuk.dx_seuk_ref_retail_com'));
+assert(aoQuery.toLowerCase().includes("'ao'"));
+assert(!aoQuery.toLowerCase().includes("'currys'"));
 console.log('SEUK: launch, collection window, missing, observation, fixed-100 BSR, renderer and exact-day SQL passed.');

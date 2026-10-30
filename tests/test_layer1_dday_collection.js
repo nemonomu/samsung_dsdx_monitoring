@@ -105,6 +105,23 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.strictEqual(sandbox.ddaySummary(afternoon.retailers).status, 'partial');
     assert.strictEqual(sandbox.ddaySummary([afternoon.retailers[0]]).status, 'received');
     assert.strictEqual(sandbox.ddaySummary([afternoon.retailers[1]]).status, 'waiting');
+    const countries = {countries:[{...afternoon,country:'SEA'}, {
+        country:'SEDA',source_date:'2026-10-30',display_time_basis:'DB 원본',collection_window:'KST 09:00~15:00',
+        retailers:['TV','REF','LDY'].map(product => ({
+            retailer:'Casas Bahia',product,status:'received',count:300,main_count:300,bsr_count:100,
+            scheduled_at:'2026-10-30T09:00:00+09:00',scheduled_end_at:'2026-10-30T15:00:00+09:00',
+            last_collected_at:'2026-10-30 09:28:13',last_collected_timezone:'DB 원본'
+        }))
+    }]};
+    const countriesHtml = sandbox.renderDdayCollection(countries);
+    for (const text of ['SEA Retail','SEDA Retail','SEDA Casas Bahia TV','SEDA Casas Bahia REF',
+                        'SEDA Casas Bahia LDY','09:00 ~ 15:00 KST','09:28:13 DB 원본']) {
+        assert(countriesHtml.includes(text),text);
+    }
+    assert(!countriesHtml.includes('Magalu'));
+    assert(!countriesHtml.includes('SEDA Casas Bahia LDY_DRYER'));
+    assert.strictEqual((countriesHtml.match(/id="dday-collection-date-SEA"/g)||[]).length,1);
+    assert.strictEqual((countriesHtml.match(/id="dday-collection-date-SEDA"/g)||[]).length,1);
     respond(0, data('2026-09-20', ['waiting', 'waiting', 'waiting']));
     await old;
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);

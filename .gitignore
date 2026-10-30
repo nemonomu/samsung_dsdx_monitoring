@@ -52,6 +52,7 @@ config/create_admin.py
 !sql/setup_seg_ldy_dryer_backup.sql
 !sql/setup_sem_coppel_monitoring.sql
 !sql/setup_seib_backup.sql
+!sql/setup_seuk_ao_monitoring.sql
 !sql/setup_seuk_layer1.sql
 !sql/setup_seuk_null.sql
 !sql/setup_seuk_crossfield.sql

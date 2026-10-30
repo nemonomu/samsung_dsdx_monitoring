@@ -1,4 +1,4 @@
-"""November dryer onboarding; preview dates never become operating history."""
+"""November retail onboarding; preview dates never become operating history."""
 from datetime import date
 
 from apps.common.source_dates import source_date_value
@@ -14,13 +14,15 @@ SOURCES = {
     ('SEG', 'otto'): dict(retailer='OTTO', preview_from=date(2026, 10, 29)),
     ('SEM', 'liverpool'): dict(retailer='Liverpool', preview_from=date(2026, 10, 30)),
     ('SEIB', 'eci'): dict(retailer='ECI', preview_from=date(2026, 10, 29)),
+    ('SEUK', 'ao'): dict(retailer='AO', preview_from=date(2026, 10, 30),
+                         products=('REF', 'LDY', 'LDY_DRYER')),
 }
 
 
 def config(country, product, retailer):
-    if str(product).lower() not in ('ldy_dryer', str(country).lower() + '_ldy_dryer'):
-        return None
-    return SOURCES.get((country, str(retailer or '').strip().casefold()))
+    spec = SOURCES.get((country, str(retailer or '').strip().casefold()))
+    product = str(product).upper().removeprefix(str(country).upper() + '_')
+    return spec if spec and product in spec.get('products', ('LDY_DRYER',)) else None
 
 
 def is_preview(country, product, retailer, day):
@@ -28,7 +30,7 @@ def is_preview(country, product, retailer, day):
 
 
 def decorate_row(row, country, product, day):
-    """Only these three new selections get preview/launch metadata."""
+    """Only registered November selections get preview/launch metadata."""
     if not config(country, product, row['retailer']):
         return row
     row.update(active_from=str(OPERATIONAL_FROM),

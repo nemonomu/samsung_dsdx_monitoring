@@ -4,11 +4,12 @@ from collections.abc import Mapping
 from datetime import date, timedelta
 
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.dryer_onboarding import config as onboarding_config, is_preview, OPERATIONAL_FROM
 from apps.common.null_review_evidence import uses_new_policy
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.seuk_retail import (
     SEUK_COUNTRY, SEUK_SOURCE_CONFIG, FIRST_SOURCE_DATE, enabled, latest_scope,
-    get_seuk_null_columns,
+    get_seuk_null_columns, retailer_start_date,
     get_seuk_null_select_columns, product_line_for, seuk_retailer_key,
 )
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
@@ -73,7 +74,10 @@ def select_record(cursor, target_date, product_line, record_id, column, *, for_e
         raise ValueError('Unsupported SEUK validation column')
     source = SEUK_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
-    cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'])
+    if format_columns is None and len(source['retailers']) > 1:
+        cte, scope, params = latest_scope(source, mapping['source_date'], mapping['source_date'], None)
+    else:
+        cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'])
     # Lock the same current row that will be edited or manually confirmed.
     cursor.execute(f"""{cte}
         SELECT source.{column}, source.account_name, source.item, source.batch_id
@@ -110,6 +114,8 @@ def append_null_stats(cursor, target_date, validation, category=None):
         normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
         for retailer in source['retailers']:
+            if str(target_date) < str(retailer_start_date(source, retailer)):
+                continue
             rows, mapping = latest_rows(cursor, target_date, source, retailer)
             fields = list(get_seuk_null_columns(product_line, retailer))
             reviews = normal_reviews
@@ -130,7 +136,7 @@ def append_null_stats(cursor, target_date, validation, category=None):
             count = sum(counts.values())
             retailers.append({
                 'retailer': retailer, 'total': len(rows), 'total_null_count': count,
-                'fields_detail': counts, 'status': 'CRITICAL' if count else 'OK',
+                'fields_detail': counts, 'status': 'PENDING' if retailer == 'AO' and not rows else 'CRITICAL' if count else 'OK',
                 **mapping, **review_stats,
             })
         count = sum(retailer['total_null_count'] for retailer in retailers)
@@ -194,6 +200,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         'normal_reviews': normal_reviews, **review_stats,
         'supports_day_history': True, 'history_days': days,
         'date_column': source['date_column'], 'readonly': False,
-        'active_from': str(FIRST_SOURCE_DATE),
+        'active_from': str(OPERATIONAL_FROM if onboarding_config('SEUK', product_line, canonical_retailer) else FIRST_SOURCE_DATE),
+        'preview_mode': is_preview('SEUK', product_line, canonical_retailer, target_date),
         **mapping,
     }

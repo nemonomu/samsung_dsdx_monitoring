@@ -48,7 +48,7 @@ def _sources():
                       tuple(_retailer(r) for r in config['retailers']), has_page_type=False, collection_scope='all')
     for key, config in SEUK_SOURCE_CONFIG.items():
         yield _source(key, 'SEUK', config['category'], config['table_name'], 'crawl_datetime', 'text',
-                      (_retailer('Currys'),), has_page_type=False, collection_scope='all')
+                      tuple(_retailer(r) for r in config['retailers']), has_page_type=False, collection_scope='all')
     # Layer 1 onboarding must not enable unrequested Layer 4 reports.
     for source in EMAIL_REPORT_SOURCES:
         if source['country'] == 'SEA':

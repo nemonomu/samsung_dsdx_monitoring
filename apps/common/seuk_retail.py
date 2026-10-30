@@ -1,8 +1,9 @@
-"""UK Currys source contract, using the original collection date."""
+"""UK retail source contracts, using the original collection date."""
 from datetime import date, datetime, time
 
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql, source_date_value
+from apps.common.dryer_onboarding import config as onboarding_config
 
 SEUK_COUNTRY = 'SEUK'
 # Production monitoring starts with the original October 25 collection date.
@@ -22,7 +23,7 @@ SEUK_SOURCE_CONFIG = {
         'category': product.upper(), 'section_code': 'seuk_' + product + '_retail',
         'display_name': 'SEUK ' + product.upper(),
         'table_name': 'dx_seuk.dx_seuk_' + product + '_retail_com',
-        'date_column': 'crawl_datetime', 'retailers': (RETAILER,),
+        'date_column': 'crawl_datetime', 'retailers': (RETAILER,) if product == 'tv' else (RETAILER, 'AO'),
         'has_page_type': False, 'has_redirect': False,
         'required_columns': (*COMMON_REQUIRED, required),
         'columns': (*COMMON_COLUMNS, *extras),
@@ -56,9 +57,23 @@ def seuk_retailer_key(value):
 
 
 def get_seuk_null_columns(value, retailer=None):
-    if retailer is not None and seuk_retailer_key(retailer) != seuk_retailer_key(RETAILER):
-        raise ValueError('Unsupported SEUK retailer')
-    return get_seuk_source(value)['required_columns']
+    source = get_seuk_source(value)
+    if retailer is not None:
+        normalize_retailer(source, retailer)
+    return source['required_columns']
+
+
+def normalize_retailer(source, retailer):
+    for name in source['retailers']:
+        if seuk_retailer_key(name) == seuk_retailer_key(retailer):
+            return name
+    raise ValueError('Unsupported SEUK retailer')
+
+
+def retailer_start_date(source, retailer):
+    name = normalize_retailer(source, retailer)
+    spec = onboarding_config('SEUK', source['category'], name)
+    return spec['preview_from'] if spec else FIRST_SOURCE_DATE
 
 
 def get_seuk_null_select_columns(value):
@@ -82,10 +97,28 @@ def collection_phase(day, now=None):
 
 def latest_scope(source, start, end, retailer=RETAILER):
     """One latest batch per original source day; never infer a day from batch_id."""
-    if str(retailer).strip().casefold() != RETAILER.casefold():
-        raise ValueError('Unsupported SEUK retailer')
     day = source_date_sql('anchor.crawl_datetime')
     source_day = source_date_sql('source.crawl_datetime')
+    if retailer is None:
+        account = 'LOWER(BTRIM(anchor.account_name))'
+        clauses, params = [], [str(start), str(end)]
+        for name in source['retailers']:
+            clauses.append(f'({account} = %s AND {day} >= %s)')
+            params.extend((name.lower(), str(retailer_start_date(source, name))))
+        cte = f"""WITH latest AS (
+            SELECT DISTINCT ON ({day}, {account}) {day} AS source_date,
+                   {account} AS retailer_key, anchor.batch_id
+            FROM {source['table_name']} anchor
+            WHERE {day} BETWEEN %s AND %s AND ({' OR '.join(clauses)})
+            ORDER BY {day}, {account}, anchor.id DESC
+        )"""
+        scope = f"""FROM {source['table_name']} source
+            JOIN latest ON {source_day} = latest.source_date
+             AND LOWER(BTRIM(source.account_name)) = latest.retailer_key
+             AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+            WHERE TRUE"""
+        return cte, scope, params
+    retailer = normalize_retailer(source, retailer)
     cte = f"""WITH latest AS (
         SELECT DISTINCT ON ({day}) {day} AS source_date, anchor.batch_id
         FROM {source['table_name']} anchor
@@ -97,4 +130,4 @@ def latest_scope(source, start, end, retailer=RETAILER):
         JOIN latest ON {source_day} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
         WHERE LOWER(BTRIM(source.account_name)) = %s"""
-    return cte, scope, [max(str(start), str(FIRST_SOURCE_DATE)), str(end), RETAILER.lower(), RETAILER.lower()]
+    return cte, scope, [max(str(start), str(retailer_start_date(source, retailer))), str(end), retailer.lower(), retailer.lower()]
