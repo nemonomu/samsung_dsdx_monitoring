@@ -177,6 +177,46 @@ class NullReviewStateTests(unittest.TestCase):
 
 
 class CountryNullIntegrationTests(unittest.TestCase):
+    def test_sem_coppel_dryer_reuses_absence_in_summary_and_detail(self):
+        product_line = 'sem_ldy_dryer'
+        source = sem_validation.SEM_SOURCE_CONFIG[product_line]
+        context = dict(table_name=source['table_name'], country='SEM',
+                       product_line='LDY_DRYER', retailer='Coppel')
+        captured = captured_evidence(context)
+        captured.update(
+            inspection_date=date(2026, 10, 30),
+            reviewed_at=datetime(2026, 10, 30, 10, tzinfo=evidence.KOREA),
+            auto_apply_from=date(2026, 10, 31),
+        )
+        record = current_record(crawl_datetime='2026-10-31')
+        history = dict(record, id=41, crawl_datetime='2026-10-30')
+        mapping = dict(inspection_date='2026-10-31', source_date='2026-10-31')
+        with patch.object(sem_validation, '_latest_rows', return_value=([record], mapping)), \
+             patch.object(sem_validation, '_load_normal_reviews', return_value={}), \
+             patch.object(sem_validation, 'active_sem_retailers', return_value=('Coppel',)), \
+             patch.object(sem_validation, 'get_sem_required_columns', return_value=('sku',)), \
+             patch.object(sem_validation, '_history_rows', return_value=[history, record]):
+            cursor = ScriptedCursor([{'fetchall': [captured]}, {'fetchall': [captured]}])
+            validation = {'tables': []}
+            count = sem_validation.append_null_stats(
+                cursor, '2026-10-31', validation, source['section_code'],
+            )
+            detail = sem_validation.null_detail(
+                cursor, '2026-10-31', product_line, 'sku', days=3, retailer='Coppel',
+            )
+        self.assertEqual(0, count)
+        self.assertEqual(1, validation['tables'][0]['auto_reviewed_count'])
+        self.assertEqual('LDY_DRYER', validation['auto_null_reviews'][0]['product_line'])
+        self.assertEqual(1, detail['auto_reviewed_count'])
+        self.assertEqual(0, detail['manual_reviewed_count'])
+        self.assertEqual([41, 42], [row['id'] for row in detail['results']])
+        self.assertEqual({'42_sku'}, set(detail['normal_reviews']))
+        self.assertTrue(detail['normal_reviews']['42_sku']['auto_applied'])
+        self.assertEqual('2026-10-30', detail['normal_reviews']['42_sku']['original_crawl_date'])
+        self.assertEqual(51, detail['normal_reviews']['42_sku']['correction_id'])
+        for _query, params in cursor.calls:
+            self.assertEqual('LDY_DRYER', params[3])
+
     @classmethod
     def setUpClass(cls):
         cls.sea = load_module(
