@@ -17,6 +17,9 @@ POLICY_VERSION = 1
 PAGE_ABSENT_REASON = '상품페이지 없음'
 NON_TARGET_REASON = '수집 대상 제품 아님'
 RECORD_REVIEW_REASONS = (PAGE_ABSENT_REASON, NON_TARGET_REASON)
+# These NULL cells require a fresh decision for every collection. Same-record
+# page-absence links are handled separately and remain valid.
+NO_CARRY_FORWARD_COLUMNS = frozenset({'final_sku_price', 'star_rating'})
 NON_TARGET_REQUIRED_METRICS = frozenset({
     'final_sku_price', 'original_sku_price', 'savings',
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
@@ -159,6 +162,8 @@ def _as_dict(row):
 
 
 def _auto_exclusion_reason(evidence):
+    if evidence.get('column_name') in NO_CARRY_FORWARD_COLUMNS:
+        return '판매가·별점은 수집마다 확인'
     if (_text(evidence.get('retailer')).casefold() == 'costco'
             and evidence.get('column_name') in NON_TARGET_REQUIRED_METRICS):
         return '금액·평가 지표는 수집마다 확인'
@@ -556,6 +561,8 @@ def match_review(
         return None
     if manual_candidates:
         return _metadata(latest, automatic=False)
+    if column in NO_CARRY_FORWARD_COLUMNS:
+        return None
     if _text(retailer).casefold() == 'costco' and column in NON_TARGET_REQUIRED_METRICS:
         return None
     if (

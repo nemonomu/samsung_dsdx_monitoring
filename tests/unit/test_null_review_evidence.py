@@ -74,6 +74,29 @@ class NullReviewEvidenceTests(unittest.TestCase):
         self.assertFalse(result['auto_applied'])
         self.assertIsNone(self.match(row, day='2026-09-12'))
 
+    def test_price_and_rating_never_carry_but_keep_exact_manual_decisions(self):
+        for country in sorted(reviews.COUNTRIES):
+            for product in sorted(reviews.PRODUCT_LINES):
+                context = dict(self.context, country=country, product_line=product)
+                for column in ('final_sku_price', 'star_rating'):
+                    for reason in ('상품페이지 내 항목 부재', '해당값 정상 확인'):
+                        with self.subTest(country=country, product=product,
+                                          column=column, reason=reason):
+                            record = dict(self.record, **{column: None})
+                            metadata, row, _ = self.capture(
+                                record=record, context=context, column=column, reason=reason)
+                            self.assertFalse(metadata['auto_eligible'])
+                            self.assertEqual('판매가·별점은 수집마다 확인',
+                                             metadata['auto_exclusion_reason'])
+                            manual = self.match(row, record=record, context=context,
+                                                column=column, day='2026-09-12')
+                            self.assertFalse(manual['auto_applied'])
+                            self.assertEqual(reason, manual['reason'])
+                            for day in ('2026-09-13', '2026-11-03'):
+                                self.assertIsNone(self.match(
+                                    row, record=dict(record, id=43), context=context,
+                                    column=column, day=day))
+
     def test_changed_identity_field_or_scope_never_inherits(self):
         _, row, _ = self.capture()
         changes = [
@@ -314,8 +337,12 @@ class NullReviewEvidenceTests(unittest.TestCase):
                             record = dict(self.record, **{column: None})
                             _, row, _ = self.capture(record=record, context=context, column=column)
                             next_record = dict(record, id=43)
-                            self.assertTrue(self.match(row, record=next_record,
-                                                       context=context, column=column)['auto_applied'])
+                            matched = self.match(row, record=next_record,
+                                                 context=context, column=column)
+                            if column == 'star_rating':
+                                self.assertIsNone(matched)
+                            else:
+                                self.assertTrue(matched['auto_applied'])
                             self.assertIsNone(self.match(row, record=next_record,
                                                         context=dict(context, retailer='Another retailer'),
                                                         column=column))

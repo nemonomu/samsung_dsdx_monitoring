@@ -129,7 +129,7 @@ class NullReviewStateTests(unittest.TestCase):
             stats['raw_fields_detail'],
         )
         self.assertEqual(
-            {'sku': 1, 'final_sku_price': 1, 'star_rating': 0},
+            {'sku': 1, 'final_sku_price': 0, 'star_rating': 0},
             stats['auto_reviewed_fields_detail'],
         )
         self.assertEqual(
@@ -137,15 +137,16 @@ class NullReviewStateTests(unittest.TestCase):
             stats['manual_reviewed_fields_detail'],
         )
         self.assertEqual(
-            {'sku': 2, 'final_sku_price': 1, 'star_rating': 1},
+            {'sku': 2, 'final_sku_price': 0, 'star_rating': 1},
             stats['reviewed_fields_detail'],
         )
         self.assertEqual(5, stats['raw_null_count'])
-        self.assertEqual(2, stats['auto_reviewed_count'])
+        self.assertEqual(1, stats['auto_reviewed_count'])
         self.assertEqual(2, stats['manual_reviewed_count'])
-        self.assertEqual(4, stats['reviewed_null_count'])
+        self.assertEqual(3, stats['reviewed_null_count'])
+        self.assertNotIn('42_final_sku_price', reviews)
         self.assertNotIn('44_sku', reviews)
-        self.assertEqual(2, len(logs))
+        self.assertEqual(1, len(logs))
 
     def test_resolved_cell_metadata_before_cutoff_is_unchanged(self):
         context = dict(table_name='public.ref_retail_com', country='SEA',
@@ -339,6 +340,58 @@ class CountryNullIntegrationTests(unittest.TestCase):
         self.assertEqual(
             {'screen_size': 1}, detail['auto_reviewed_fields_detail'],
         )
+
+    def test_seda_ref_price_rating_stay_pending_except_same_record_page_absence(self):
+        product_line = 'seda_ref'
+        source = dict(seda_null_validation.SEDA_SOURCE_CONFIG[product_line],
+                      retailers=('Casas Bahia',))
+        context = dict(table_name=source['table_name'], country='SEDA',
+                       product_line='REF', retailer='Casas Bahia')
+        records = [current_record(
+            id=100 + i, item=f'item-{i}', account_name='CasasBahia',
+            final_sku_price=None, star_rating=None, count_of_reviews='0',
+            count_of_star_ratings='0', crawl_strdatetime='2026-09-12 20:00:00',
+        ) for i in range(5)]
+        mapping = dict(inspection_date=str(DAY), source_date='2026-09-12',
+                       offset_days=-1, source_key=product_line)
+        for reason in ('상품페이지 내 항목 부재', '해당값 정상 확인', evidence.PAGE_ABSENT_REASON):
+            page_absent = reason == evidence.PAGE_ABSENT_REASON
+            approvals = []
+            for record in records:
+                for column in ('final_sku_price', 'star_rating'):
+                    approvals.append(captured_evidence(
+                        context, record=dict(record, id=record['id'] - 10),
+                        column=column, reason='상품페이지 내 항목 부재' if page_absent else reason))
+                if page_absent:
+                    entry = captured_evidence(context, record=record,
+                                              column='final_sku_price', reason=reason)
+                    entry.update(inspection_date=DAY,
+                                 reviewed_at=datetime(2026, 9, 13, 10, tzinfo=evidence.KOREA))
+                    approvals.append(entry)
+            with self.subTest(reason=reason), \
+                    patch.object(seda_null_validation, 'SEDA_SOURCE_CONFIG', {product_line: source}), \
+                    patch.object(seda_null_validation, 'latest_rows', return_value=(records, mapping)), \
+                    patch.object(seda_null_validation, '_load_normal_reviews', return_value={}), \
+                    patch.object(evidence, 'load_evidence',
+                                 return_value=evidence._EvidenceCollection(approvals)):
+                validation = {'tables': []}
+                count = seda_null_validation.append_null_stats(Mock(), DAY, validation)
+                self.assertEqual(0 if page_absent else 10, count)
+                retailer = validation['tables'][0]['retailers'][0]
+                self.assertEqual('OK' if page_absent else 'CRITICAL', retailer['status'])
+                self.assertEqual(5 if page_absent else 0, retailer['auto_reviewed_count'])
+                self.assertEqual(5 if page_absent else 0, len(validation['auto_null_reviews']))
+                for column in ('final_sku_price', 'star_rating'):
+                    detail = seda_null_validation.null_detail(
+                        Mock(), DAY, product_line, 'CasasBahia', column, days=1)
+                    self.assertEqual(5, detail['raw_null_count'])
+                    self.assertEqual(5 if page_absent else 0, detail['reviewed_null_count'])
+                    if page_absent:
+                        review = detail['normal_reviews'][f'100_{column}']
+                        self.assertEqual(reason, review['reason'])
+                        self.assertEqual(column == 'star_rating', review['auto_applied'])
+                    else:
+                        self.assertEqual({}, detail['normal_reviews'])
 
     def test_tse_new_summary_and_detail_never_consult_old_carry_forward(self):
         runtime = self.tse._get_tse_runtime()
