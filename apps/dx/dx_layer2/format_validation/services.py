@@ -2924,6 +2924,10 @@ def get_format_rules(cursor, table_name, retailer):
     cols = [desc[0] for desc in cursor.description]
     rows = [dict(zip(cols, row)) for row in cursor.fetchall()]
 
+    from apps.common.format_exclusions import is_format_excluded
+    rows = [row for row in rows
+            if not is_format_excluded(table_name, row['column_name'], retailer)]
+
     if table_name == 'tv_retail_com' and is_costco(retailer):
         sea_product_key = 'tv'
     if sea_product_key:

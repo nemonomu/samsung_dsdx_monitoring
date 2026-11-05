@@ -636,6 +636,10 @@ def validate_field(table_name, field_name, value, account_name='Amazon', product
     Returns:
         str: 오류 메시지 (오류 시) 또는 None (정상)
     """
+    from apps.common.format_exclusions import is_format_excluded
+
+    if is_format_excluded(table_name, field_name, account_name):
+        return None
     if value is None:
         return None
     val = str(value).strip()
@@ -847,6 +851,8 @@ def build_format_error_sql(table_name, product_line='ALL', account_name=None):
     Returns:
         str: SQL WHERE 조건 (하나라도 오류 필드가 있는 행이면 TRUE)
     """
+    from apps.common.format_exclusions import is_format_excluded, excluded_format_retailers
+
     rules_cache = load_format_rules()
     table_rules = rules_cache.get(table_name, {})
 
@@ -860,6 +866,8 @@ def build_format_error_sql(table_name, product_line='ALL', account_name=None):
     field_conditions = []
 
     for field in sorted(all_fields):
+        if is_format_excluded(table_name, field, account_name):
+            continue
         # 필드별 규칙 수집 (product_line 우선, ALL 보충)
         field_rules = []
         if field in pl_field_rules:
@@ -917,6 +925,9 @@ def build_format_error_sql(table_name, product_line='ALL', account_name=None):
 
         # "오류" 조건 = NOT NULL AND NOT empty AND NOT bypassed AND (terminal 실패 OR 금지문자 포함)
         parts = [f"{field} IS NOT NULL", f"{trimmed} != ''"]
+        if not account_name:
+            for retailer in excluded_format_retailers(table_name, field):
+                parts.append(f"LOWER(TRIM(COALESCE(account_name, ''))) <> '{_sql_esc(retailer)}'")
 
         if bypass_values:
             escaped = ", ".join(f"'{_sql_esc(v)}'" for v in sorted(bypass_values))
@@ -945,6 +956,8 @@ def build_per_field_error_sql(table_name, product_line='ALL', account_name=None)
     Returns:
         list of dict: [{'field': 'published_at', 'cond': 'NOT NULL AND ... AND NOT(...)', 'error': '에러메시지'}, ...]
     """
+    from apps.common.format_exclusions import is_format_excluded, excluded_format_retailers
+
     rules_cache = load_format_rules()
     table_rules = rules_cache.get(table_name, {})
 
@@ -955,6 +968,8 @@ def build_per_field_error_sql(table_name, product_line='ALL', account_name=None)
     result = []
 
     for field in sorted(all_fields):
+        if is_format_excluded(table_name, field, account_name):
+            continue
         field_rules = []
         if field in pl_field_rules:
             field_rules.extend(pl_field_rules[field])
@@ -1004,6 +1019,9 @@ def build_per_field_error_sql(table_name, product_line='ALL', account_name=None)
             continue
 
         parts = [f"{field} IS NOT NULL", f"{trimmed} != ''"]
+        if not account_name:
+            for retailer in excluded_format_retailers(table_name, field):
+                parts.append(f"LOWER(TRIM(COALESCE(account_name, ''))) <> '{_sql_esc(retailer)}'")
         if bypass_values:
             escaped = ", ".join(f"'{_sql_esc(v)}'" for v in sorted(bypass_values))
             parts.append(f"{trimmed} NOT IN ({escaped})")
