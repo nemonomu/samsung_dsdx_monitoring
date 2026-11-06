@@ -63,11 +63,20 @@ def data(request):
         if status not in {'all', *service.STATUSES}:
             raise ValueError('처리 상태를 확인하세요.')
         options = {}
-        if kind == 'cross_field' and 'columns' in request.GET:
+        if kind in service.DETAIL_TOOLS and 'columns' in request.GET:
             selected = [c for c in request.GET['columns'].split(',') if c]
             if len(selected) > 100 or any(not service.audit.IDENTIFIER.fullmatch(c) for c in selected):
                 raise ValueError('추가 컬럼 선택을 확인하세요.')
             options['extra_columns'] = selected
+        for name, allowed, default in (
+                ('q_field', service.SEARCH_FIELDS, 'all'),
+                ('sort_by', ('', 'id', 'item'), ''),
+                ('sort_order', ('asc', 'desc'), 'asc')):
+            if name in request.GET:
+                value = request.GET.get(name, default)
+                if value not in allowed:
+                    raise ValueError('검색 항목과 정렬 조건을 확인하세요.')
+                options[name] = value
         return JsonResponse(service.records(day, kind, table, retailer, field, rule,
                             page_number, days, request.GET.get('q', '').strip(), status, **options))
     except (ValueError, TypeError) as exc:

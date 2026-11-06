@@ -6,6 +6,7 @@
     const body = document.getElementById('vr-body');
     const back = document.getElementById('vr-back');
     const kind = root.dataset.kind;
+    const hasDetailTools = kind === 'null_check' || kind === 'cross_field';
     const labels = {corrected: '값 수정', auto: '자동확인', normal: '수동확인', error: '오류 확인', reverted: '확인 취소'};
     const routes = {null_check: '/dx/layer2/null/', format_check: '/dx/layer2/format/', cross_field: '/dx/layer3/cross-field/', field_missing: '/dx/layer3/field-missing/'};
     let state = new URLSearchParams(location.search), serial = 0, controller;
@@ -49,13 +50,37 @@
             else navigate({table:row.table_name, retailer:row.retailer || '', label:row.country+' '+row.product});
         }));
     }
-    function crossTools(data) {
-        if (kind !== 'cross_field' || !data.available_columns) return '';
+    function columnControls(data) {
+        if (!hasDetailTools) return '';
         const selected = new Set(data.selected_columns || []);
-        return '<details class="vr-columns"><summary>컬럼 선택</summary><p class="vr-sub">기본 정보와 검수 대상 컬럼은 항상 표시됩니다. 추가 컬럼은 원본 현재값입니다.</p><div class="vr-column-options">'+
-            data.available_columns.map(c => '<label><input type="checkbox" name="vr-column" value="'+esc(c)+'"'+(selected.has(c)?' checked':'')+'> '+esc(c)+'</label>').join('')+
-            '</div><div class="vr-column-actions">'+button('적용','apply-columns')+button('기본 컬럼','default-columns')+'</div></details>'+
-            (data.query ? '<details class="vr-query" open><summary>'+esc(state.get('days') || 3)+'일치 Item 조회 SQL · 현재 페이지</summary>'+button('복사','copy-query')+'<pre tabindex="0">'+esc(data.query)+'</pre><small>선택한 컬럼과 현재 페이지의 Item에 대한 원본 현재값 조회 SQL입니다.</small></details>' : '');
+        return '<div class="vr-tool-actions"><div class="vr-column-wrap">'+
+            button('컬럼 선택','toggle-columns',!data.available_columns).replace('data-action="toggle-columns"','data-action="toggle-columns" aria-controls="vr-columns" aria-expanded="false"')+
+            '<div class="vr-columns" id="vr-columns" hidden><strong>컬럼 선택</strong><p class="vr-sub">기본 정보와 검수 대상 컬럼은 항상 표시됩니다. 추가 컬럼은 원본 현재값입니다.</p><div class="vr-column-options">'+
+            (data.available_columns || []).map(c => '<label><input type="checkbox" name="vr-column" value="'+esc(c)+'"'+(selected.has(c)?' checked':'')+'> '+esc(c)+'</label>').join('')+
+            '</div><div class="vr-column-actions">'+button('적용','apply-columns')+button('기본 컬럼','default-columns')+button('닫기','close-columns')+'</div></div></div>'+button('정렬 초기화','reset-sort')+'</div>';
+    }
+    function detailHeader(data) {
+        if (!hasDetailTools) return '<div class="vr-panel">'+title()+chips(data.counts)+'</div>';
+        const day = state.get('date') || '';
+        const parts = day.split('-').map(Number);
+        const weekday = parts.length === 3 ? '일월화수목금토'[new Date(parts[0],parts[1]-1,parts[2]).getDay()] : '';
+        const items = new Map();
+        data.groups.forEach(group => {
+            const row = group.rows[group.rows.length-1];
+            const missing = row.item == null || String(row.item).trim() === '';
+            items.set(missing?'id:'+row.id:'item:'+row.item, missing?'Item 없음 · ID '+row.id:String(row.item));
+        });
+        return '<div class="vr-panel vr-detail-panel"><div class="vr-detail-heading"><div>'+title()+'</div>'+
+            '<form id="vr-days" class="vr-days"><label>일수: <input name="days" type="number" min="1" max="30" required value="'+esc(state.get('days') || 3)+'"></label><button class="app-btn app-btn-primary" type="submit">조회</button><span>'+esc(day)+(weekday?'('+weekday+')':'')+'</span></form></div>'+
+            '<div class="vr-query-row"><details class="vr-items"><summary>Item 목록 ('+items.size+'개)</summary><ul>'+Array.from(items.values(), item=>'<li class="vr-copy" tabindex="0">'+esc(item)+'</li>').join('')+'</ul><small>현재 페이지 기준</small></details>'+
+            '<section class="vr-query"><div class="vr-query-heading"><span>'+esc(state.get('days') || 3)+'일치 Item 조회 SQL</span>'+button('복사','copy-query',!data.query)+'</div><pre tabindex="0">'+esc(data.query || '현재 페이지에 조회할 Item이 없습니다.')+'</pre></section></div></div>'+
+            '<div class="vr-review-status">'+chips(data.counts)+'<span>선택한 검수일의 처리 이력 · SQL은 현재 페이지 Item의 원본 조회</span></div>';
+    }
+    function sortHeading(key, label) {
+        if (!hasDetailTools) return '<th>'+label+'</th>';
+        const active = state.get('sort_by') === key;
+        const descending = state.get('sort_order') === 'desc';
+        return '<th aria-sort="'+(active?(descending?'descending':'ascending'):'none')+'"><button type="button" class="vr-sort" data-action="sort-'+key+'">'+label+' <span>'+ (active?(descending?'↓':'↑'):'↕')+'</span></button></th>';
     }
     async function copyQuery(text, control) {
         try {
@@ -76,12 +101,14 @@
     }
     function table(data) {
         const field = data.field;
-        const refs = kind === 'cross_field' && data.selected_columns
+        const refs = hasDetailTools && data.selected_columns
             ? data.selected_columns.filter(c => c !== field)
             : data.columns.filter(c => !['id','item','retailer_sku_name','product_url','account_name','batch_id','crawl_datetime','crawl_strdatetime',field].includes(c));
         const columns = [field,...refs];
         let number = (data.page-1)*10;
-        let html = '<div class="vr-panel">'+title()+chips(data.counts)+'</div><form class="vr-tools" id="vr-search"><label>검색 <input name="q" placeholder="Item · ID · 검증자 · 값" value="'+esc(state.get('q') || '')+'"></label><select name="status" aria-label="처리 상태"><option value="all">전체 처리</option>'+Object.entries(labels).map(([k,v]) => '<option value="'+k+'"'+(state.get('status')===k?' selected':'')+'>'+v+'</option>').join('')+'</select><label>일수 <input name="days" type="number" min="1" max="30" value="'+esc(state.get('days') || 3)+'"></label><button class="app-btn app-btn-md app-btn-primary">조회</button>'+button('해제','clear')+'</form><div class="vr-help"><span>셀 클릭 후 Ctrl+C로 복사 · 읽기 전용</span><span>수정 전·후: 저장된 검수 값'+(refs.length?' · 참고 열: 원본 현재값':'')+'</span></div><div class="vr-scroll"><table><thead><tr><th>No</th><th>id</th><th>수집일</th><th>item</th><th>retailer_sku_name</th>'+columns.map(c => '<th>'+esc(c)+(c!==field?' (참고)':'')+'</th>').join('')+'<th>검수 상태</th><th>product_url</th><th>확인 사유</th><th>확인 근거</th></tr></thead><tbody>';
+        const searchChoice = hasDetailTools ? '<label>항목 <select name="q_field">'+Object.entries({all:'전체',id:'id',item:'item',reviewer:'검증자',value:'값'}).map(([k,v])=>'<option value="'+k+'"'+((state.get('q_field') || 'all')===k?' selected':'')+'>'+v+'</option>').join('')+'</select></label>' : '<span>검색</span>';
+        const days = hasDetailTools ? '' : '<label>일수 <input name="days" type="number" min="1" max="30" value="'+esc(state.get('days') || 3)+'"></label>';
+        let html = detailHeader(data)+'<form class="vr-tools" id="vr-search">'+searchChoice+'<input name="q" aria-label="검색어" placeholder="검색어 입력..." value="'+esc(state.get('q') || '')+'"><select name="status" aria-label="처리 상태"><option value="all">전체 처리</option>'+Object.entries(labels).map(([k,v]) => '<option value="'+k+'"'+(state.get('status')===k?' selected':'')+'>'+v+'</option>').join('')+'</select>'+days+'<button class="app-btn app-btn-md app-btn-primary">조회</button>'+button('해제','clear')+columnControls(data)+'</form><div class="vr-help"><span>셀 클릭 후 Ctrl+C로 복사 · 읽기 전용</span><span>수정 전·후: 저장된 검수 값'+(refs.length?' · 참고 열: 원본 현재값':'')+'</span></div><div class="vr-scroll"><table><thead><tr><th>No</th>'+sortHeading('id','id')+'<th>수집일</th>'+sortHeading('item','item')+'<th>retailer_sku_name</th>'+columns.map(c => '<th>'+esc(c)+(c!==field?' (참고)':'')+'</th>').join('')+'<th>검수 상태</th><th>product_url</th><th>확인 사유</th><th>확인 근거</th></tr></thead><tbody>';
         data.groups.forEach(group => {
             number++;
             const last = group.rows[group.rows.length-1];
@@ -96,20 +123,34 @@
             });
         });
         html += '</tbody></table></div>'+(!data.groups.length?'<div class="vr-empty">조건에 맞는 처리 이력이 없습니다.</div>':'')+(data.groups.some(g=>g.truncated)?'<p class="vr-note">비교 이력이 많아 일부만 표시했습니다. 조회 일수를 줄여 주세요.</p>':'')+'<div class="vr-pagination"><span class="vr-total">검수 '+data.total+'건 · 페이지당 10건</span>'+button('이전','prev',data.page<=1)+'<span>'+data.page+' / '+data.pages+'</span>'+button('다음','next',data.page>=data.pages)+'</div>';
-        body.innerHTML = html.replace('</form>', '</form>'+crossTools(data));
+        body.innerHTML = html;
         document.getElementById('vr-search').addEventListener('submit', e => {
             e.preventDefault(); const form = new FormData(e.target);
-            navigate({q:form.get('q'), status:form.get('status'), days:form.get('days'), page:1});
+            navigate({q:form.get('q'), q_field:hasDetailTools?form.get('q_field'):null, status:form.get('status'), days:hasDetailTools?(state.get('days') || 3):form.get('days'), page:1});
+        });
+        if (hasDetailTools) document.getElementById('vr-days').addEventListener('submit', e => {
+            e.preventDefault(); navigate({days:new FormData(e.target).get('days'), page:1});
         });
         body.querySelectorAll('[data-action]').forEach(el => el.addEventListener('click', () => {
             const action=el.dataset.action;
             if (action==='copy-query') { copyQuery(data.query, el); return; }
+            if (action==='toggle-columns' || action==='close-columns') {
+                const panel = document.getElementById('vr-columns');
+                panel.hidden = action==='close-columns' || !panel.hidden;
+                body.querySelector('[data-action="toggle-columns"]').setAttribute('aria-expanded', String(!panel.hidden));
+                return;
+            }
+            if (action==='reset-sort') { navigate({sort_by:null,sort_order:null,page:1}); return; }
+            if (action==='sort-id' || action==='sort-item') {
+                const key=action.slice(5);
+                navigate({sort_by:key,sort_order:state.get('sort_by')===key && state.get('sort_order')!=='desc'?'desc':'asc',page:1}); return;
+            }
             if (action==='apply-columns') {
                 const columns = Array.from(body.querySelectorAll('input[name="vr-column"]:checked'), input => input.value);
                 navigate({columns:columns.join(',')}); return;
             }
             if (action==='default-columns') { navigate({columns:null}); return; }
-            navigate(action==='clear'?{q:null,status:null,page:1}:{page:data.page+(action==='prev'?-1:1)});
+            navigate(action==='clear'?{q:null,q_field:null,status:null,page:1}:{page:data.page+(action==='prev'?-1:1)});
         }));
         body.querySelectorAll('.vr-copy').forEach(el => el.addEventListener('click', () => {
             const selection=window.getSelection(), range=document.createRange(); range.selectNodeContents(el);selection.removeAllRanges();selection.addRange(range);
@@ -134,7 +175,7 @@
         }
     }
     back.addEventListener('click', () => {
-        if(state.has('field')) navigate({field:null,rule:null,view:null,page:null,q:null,status:null,columns:null});
+        if(state.has('field')) navigate({field:null,rule:null,view:null,page:null,q:null,q_field:null,status:null,columns:null,sort_by:null,sort_order:null});
         else if(state.has('table')) navigate({table:null,retailer:null,label:null});
         else location.assign(routes[kind]+'?date='+encodeURIComponent(state.get('date') || ''));
     });

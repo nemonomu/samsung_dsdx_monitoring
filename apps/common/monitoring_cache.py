@@ -24,8 +24,8 @@ TTL = 60
 
 
 def _root():
-    base = Path(getattr(settings, 'MONITORING_CACHE_DIR',
-                        settings.BASE_DIR / '.cache' / 'dx-monitoring'))
+    directory = getattr(settings, 'MONITORING_CACHE_DIR', None)
+    base = Path(directory) if directory is not None else settings.BASE_DIR / '.cache' / 'dx-monitoring'
     root = base / ('test' if settings.DEBUG else 'production')
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     return root
@@ -73,9 +73,57 @@ def _has_error(value):
                for key in ('status', 'overall_status')):
             return True
         return any(_has_error(item) for item in value.values())
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return any(_has_error(item) for item in value)
     return False
+
+
+def _value_digest(namespace, identity):
+    return hashlib.sha256(json.dumps(['value', namespace, identity],
+                                    sort_keys=True).encode()).hexdigest()
+
+
+def monitoring_cached_value(namespace, identity, loader=None, *, cacheable=None):
+    """Read a shared snapshot; optionally compute it once on a cache miss.
+
+    A lookup without a loader returns None on a miss. Callers may reuse a
+    broader snapshot without writing a narrower copy and extending its TTL.
+    FileBasedCache deserializes a fresh object for every hit, so source context
+    added to one review page cannot mutate another page's saved audit values.
+    """
+    if not getattr(settings, 'MONITORING_CACHE_ENABLED', True):
+        return loader() if loader else None
+    digest = _value_digest(namespace, identity)
+    result, computed, computing = None, False, False
+    try:
+        root = _root()
+        cache = _backend(root)
+        with (root / ('lock-' + digest[:2])).open('a+b') as lock:
+            if not locks.lock(lock, locks.LOCK_EX):
+                raise OSError('File locking unavailable')
+            try:
+                generation = _generation(root)
+                key = generation + ':' + digest
+                entry = cache.get(key)
+                if entry is not None:
+                    return entry['value']
+                if loader is None:
+                    return None
+                started = time.time()
+                computing = True
+                result = loader()
+                computing, computed = False, True
+                remaining = TTL - (time.time() - started)
+                if (remaining > 0 and generation == _generation(root)
+                        and (cacheable(result) if cacheable else not _has_error(result))):
+                    cache.set(key, {'value': result}, timeout=remaining)
+            finally:
+                locks.unlock(lock)
+    except (OSError, ValueError):
+        if computing:
+            raise
+        logger.warning('DX snapshot cache unavailable; using uncached result', exc_info=True)
+    return result if computed else loader() if loader else None
 
 
 def cached_monitoring_stats(view):

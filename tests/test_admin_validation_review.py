@@ -1,6 +1,8 @@
 """Administrator review regression tests; isolated settings, no production DB."""
 import json
 import sys
+import tempfile
+import time
 import unittest
 from contextlib import contextmanager
 from copy import deepcopy
@@ -11,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tests import test_collection_statistics_backend  # isolated Django settings
-from django.test import RequestFactory
+from django.test import RequestFactory, SimpleTestCase
 from django.test import override_settings
 from django.template import Engine, Context
 from django.urls import path, include
@@ -101,15 +103,64 @@ class AuthorizationTests(unittest.TestCase):
         base = dict(date='2026-11-06', type='null_check', view='records',
                     table=SOURCE['table_name'], retailer='MediaMarkt', field='sku')
         for changed in ({'date':'2026-13-06'}, {'type':'duplicate_check'}, {'days':'31'},
-                        {'days':'0'}, {'page':'0'}, {'rule':'not-a-number'}, {'status':'delete'}):
+                        {'days':'0'}, {'page':'0'}, {'rule':'not-a-number'}, {'status':'delete'},
+                        {'columns':'sku;DROP TABLE t'}, {'q_field':'other'},
+                        {'sort_by':'created_id;DROP TABLE t'}, {'sort_order':'invalid'}):
             request = self.request(**{**base, **changed})
             request.user.is_staff = True
             with patch.object(service, 'records') as read:
                 self.assertEqual(400, views.data(request).status_code)
             read.assert_not_called()
 
+    def test_null_and_cross_field_accept_column_search_and_sort_options(self):
+        for kind in ('null_check', 'cross_field'):
+            request = self.request(date='2026-11-06', type=kind, view='records',
+                                   table=SOURCE['table_name'], retailer='MediaMarkt', field='sku',
+                                   columns='count_of_reviews,star_rating', days='7',
+                                   q_field='item', q='A001', sort_by='id', sort_order='desc')
+            request.user.is_staff = True
+            with patch.object(service, 'records', return_value={'success':True}) as read:
+                self.assertEqual(200, views.data(request).status_code)
+            self.assertEqual({'extra_columns':['count_of_reviews','star_rating'],
+                              'q_field':'item','sort_by':'id','sort_order':'desc'}, read.call_args.kwargs)
+            self.assertEqual((7, 'A001'), read.call_args.args[7:9])
 
-class AuditValueTests(unittest.TestCase):
+
+@override_settings(MONITORING_CACHE_ENABLED=False)
+class AuditValueTests(SimpleTestCase):
+    def test_incomplete_automatic_validation_is_not_accepted_for_caching(self):
+        from apps.dx.dx_layer2.null_validation import services as null_service
+        with patch.object(null_service, 'uses_new_policy', return_value=True), \
+                patch.object(null_service, 'get_null_stats', return_value=(
+                    {'tables':[{'status':'ERROR'}], 'auto_null_reviews':[]}, 0)):
+            with self.assertRaises(RuntimeError):
+                null_service.get_auto_applied_null_reviews(None, date(2026,11,6), strict=True)
+            # Existing callers retain their original behavior.
+            self.assertEqual([], null_service.get_auto_applied_null_reviews(None, date(2026,11,6)))
+
+    def test_cold_detail_binds_filters_after_latest_decision_selection(self):
+        cursor = Cursor([log(correction_type='cross_field', rule_id=346)])
+        with patch.object(service.audit, '_sources', return_value=REGISTRY), \
+                patch.object(service.saved, '_current_source') as format_source:
+            result = service._load(cursor, date(2026,11,6), 'cross_field',
+                                   SOURCE['table_name'], ' MediaMarkt ', 'sku', 346)
+        format_source.assert_not_called()
+        sql, params = cursor.calls[0]
+        self.assertIn('current_rank = 1', sql)
+        self.assertIn('c.column_name = %s', sql)
+        self.assertIn('c.rule_id IS NOT DISTINCT FROM %s', sql)
+        self.assertEqual(['mediamarkt', 'sku', 346], params[-3:])
+        self.assertEqual(1, len(result))
+
+    def test_manual_null_decision_still_suppresses_auto_before_rule_filter(self):
+        cursor = Cursor([log(status='normal', rule_id=3)], [])
+        with patch.object(service.audit, '_sources', return_value=REGISTRY), \
+                patch('apps.dx.dx_layer2.null_validation.services.get_auto_applied_null_reviews',
+                      return_value=[log(id='auto:57')]):
+            result = service._load(cursor, date(2026,11,6), 'null_check',
+                                   SOURCE['table_name'], 'MediaMarkt', 'sku', None)
+        self.assertEqual([], result)
+
     def test_pairs_share_source_date_id_and_preserve_null_to_value(self):
         original = log(comparisons=[{'id': 40, '_source_date': '2026-11-05', 'sku': None}])
         before_copy = deepcopy(original)
@@ -134,7 +185,7 @@ class AuditValueTests(unittest.TestCase):
                         correction_type='format_check', review_source='format_review')
         cursor = Cursor([projected])
         with patch.object(service.audit, '_sources', return_value=REGISTRY), \
-             patch.object(service.saved, '_current_source', return_value=('saved c', ['2026-11-06'], {-1: projected})):
+             patch.object(service, '_source', return_value=('saved c', ['2026-11-06'], {-1: projected})):
             rows = service._load(cursor,date(2026,11,6),'format_check')
         before, after = service.paired_rows(rows[0])
         self.assertEqual('http://bad-url',before['sku'])
@@ -146,7 +197,7 @@ class AuditValueTests(unittest.TestCase):
         automatic = [auto, log(id='auto:58',record_id=58,evidence_id=92)]
         cursor = Cursor([log(status='normal')], [(91,1,{'type':'string','value':''}), (92,2,{'type':'number','value':'0'})])
         with patch.object(service.audit,'_sources',return_value=REGISTRY), \
-             patch.object(service.saved,'_current_source',return_value=('saved c',['2026-11-06'],{})), \
+             patch.object(service,'_source',return_value=('saved c',['2026-11-06'],{})), \
              patch('apps.dx.dx_layer2.null_validation.services.get_auto_applied_null_reviews',return_value=automatic):
             rows = service._load(cursor,date(2026,11,6),'null_check')
         self.assertEqual(2,len(rows))
@@ -161,20 +212,26 @@ class AuditValueTests(unittest.TestCase):
 
     def test_registered_sources_only_and_sql_values_bound(self):
         with patch.object(service.audit,'_sources',return_value=REGISTRY), \
-             patch.object(service.saved,'_current_source') as source:
+             patch.object(service,'_source') as source:
             with self.assertRaises(ValueError):
                 service._load(Cursor(),date(2026,11,6),'cross_field',"x; DROP TABLE t")
         source.assert_not_called()
         cursor=Cursor([log(correction_type='cross_field')])
         with patch.object(service.audit,'_sources',return_value=REGISTRY), \
-             patch.object(service.saved,'_current_source',return_value=('saved c',['2026-11-06'],{})):
+             patch.object(service,'_source',return_value=('saved c',['2026-11-06'],{})):
             service._load(cursor,date(2026,11,6),'cross_field')
         self.assertNotIn('cross_field',cursor.calls[0][0])
         self.assertIn('cross_field',cursor.calls[0][1])
 
 
-class ContextTests(unittest.TestCase):
+@override_settings(MONITORING_CACHE_ENABLED=False)
+class ContextTests(SimpleTestCase):
     available=[(c,) for c in ('id','account_name','item','sku','crawl_datetime','retailer_sku_name','product_url')]
+
+    def setUp(self):
+        registry = patch.object(service.audit, '_sources', return_value=REGISTRY)
+        registry.start()
+        self.addCleanup(registry.stop)
 
     def test_selected_columns_and_sql_preserve_identity_dates_and_saved_value(self):
         available=self.available+[(c,) for c in ('count_of_reviews','star_rating','detailed_review_content')]
@@ -220,13 +277,41 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(2,len(cursor.calls))  # SQL display itself does not query.
 
     def test_selected_columns_do_not_affect_other_validation_kinds(self):
-        for kind in ('null_check','format_check','field_missing'):
+        for kind in ('format_check','field_missing'):
             with patch.object(service,'dx_connection',return_value=connection(None)), \
                  patch.object(service,'_load',return_value=[log()]), \
                  patch.object(service,'_context',return_value=['sku']) as context:
                 result=service.records(date(2026,11,6),kind,SOURCE['table_name'],'MediaMarkt','sku',extra_columns=['count_of_reviews'])
             self.assertEqual({},context.call_args.kwargs)
             self.assertNotIn('query',result)
+
+    def test_null_and_cross_field_details_supply_selected_columns_and_sql(self):
+        available = self.available + [('count_of_reviews',)]
+        for kind in ('null_check', 'cross_field'):
+            cursor = Cursor(available, [], [])
+            with patch.object(service, 'dx_connection', return_value=connection(cursor)), \
+                    patch.object(service, '_load', return_value=[log(correction_type=kind)]):
+                result = service.records(date(2026,11,6), kind, SOURCE['table_name'],
+                                         'MediaMarkt', 'sku', extra_columns=['count_of_reviews'])
+            self.assertEqual(['count_of_reviews'], result['selected_columns'])
+            self.assertIn('source.count_of_reviews', result['query'])
+            self.assertIn("BETWEEN '2026-11-04' AND '2026-11-06'", result['query'])
+            self.assertEqual('WW90T554DAX', result['groups'][0]['rows'][-1]['sku'])
+            self.assertEqual(3, len(cursor.calls))  # SQL is displayed, not executed.
+
+    def test_search_field_and_sort_keep_review_pairs_together_before_pagination(self):
+        rows = [log(id=i, record_id=i, item=f'A{i:02}', new_value='needle') for i in range(1,22)]
+        with patch.object(service, '_load', side_effect=lambda *_args: deepcopy(rows)), \
+                patch.object(service, 'dx_connection', side_effect=lambda: connection(None)), \
+                patch.object(service, '_context', return_value=['sku']):
+            args = (date(2026,11,6), 'null_check', SOURCE['table_name'], 'MediaMarkt', 'sku')
+            result = service.records(*args, sort_by='id', sort_order='desc')
+            self.assertEqual(list(range(21,11,-1)), [group['id'] for group in result['groups']])
+            for group in result['groups']:
+                self.assertEqual(['수정 전','수정 후'], [row['_phase'] for row in group['rows']])
+            self.assertEqual(0, service.records(*args, q='needle', q_field='item')['total'])
+            self.assertEqual(21, service.records(*args, q='needle', q_field='value')['total'])
+            self.assertEqual([2], [group['id'] for group in service.records(*args, q='A02', q_field='item')['groups']])
 
     def test_raw_offset_date_same_target_identity_and_all_batches(self):
         target=dict(id=57,account_name=' MediaMarkt ',item='A001',sku='latest',
@@ -310,6 +395,89 @@ class TemplateTests(unittest.TestCase):
                 self.assertEqual(1,html.count('src="/static/js/validation-review.js'))
                 self.assertNotIn('id="admin-validation-review-link"',html)
                 self.assertIn('data-kind="'+kind+'"',html)
+
+
+class ReviewSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        settings = override_settings(MONITORING_CACHE_DIR=directory.name,
+                                     MONITORING_CACHE_ENABLED=True, DEBUG=False)
+        settings.enable()
+        self.addCleanup(settings.disable)
+        registry = patch.object(service.audit, '_sources', return_value=REGISTRY)
+        registry.start()
+        self.addCleanup(registry.stop)
+        db = patch.object(service, 'dx_connection', side_effect=lambda: connection(None))
+        db.start()
+        self.addCleanup(db.stop)
+
+    def test_list_drilldown_search_and_pages_reuse_one_snapshot(self):
+        rows = [log(id=i, record_id=i, old_value='', new_value=str(i),
+                    status='normal' if i == 21 else 'corrected') for i in range(1, 22)]
+        with patch.object(service, '_load', side_effect=lambda *_args: deepcopy(rows)) as load, \
+                patch.object(service, '_context', return_value=['sku']):
+            summary = service.summary(date(2026,11,6), 'null_check')
+            fields = service.summary(date(2026,11,6), 'null_check', SOURCE['table_name'], 'mediamarkt')
+            args = (date(2026,11,6), 'null_check', SOURCE['table_name'], 'MediaMarkt', 'sku')
+            first = service.records(*args)
+            second = service.records(*args, page=2)
+            searched = service.records(*args, q='21', status='normal')
+        self.assertEqual(load.call_count, 1)
+        self.assertEqual(summary['total'], fields['total'])
+        self.assertEqual((21, 3), (first['total'], first['pages']))
+        self.assertEqual(list(range(1,11)), [group['id'] for group in first['groups']])
+        self.assertEqual(list(range(11,21)), [group['id'] for group in second['groups']])
+        self.assertEqual([21], [group['id'] for group in searched['groups']])
+        self.assertEqual(20, searched['counts']['corrected'])
+
+    def test_broader_snapshot_expiry_is_not_extended_by_drilldown(self):
+        now = time.time()
+        with patch.object(service, '_load', side_effect=lambda *_args: [log()]) as load:
+            with patch('time.time', return_value=now):
+                service.summary(date(2026,11,6), 'null_check')
+            with patch('time.time', return_value=now + 50):
+                service.summary(date(2026,11,6), 'null_check', SOURCE['table_name'], 'MediaMarkt')
+            self.assertEqual(load.call_count, 1)
+            with patch('time.time', return_value=now + 61):
+                service.summary(date(2026,11,6), 'null_check', SOURCE['table_name'], 'MediaMarkt')
+            self.assertEqual(load.call_count, 2)
+
+    def test_errors_are_valid_review_decisions_and_writes_invalidate_all_kinds(self):
+        from apps.common.monitoring_cache import invalidate_monitoring_cache
+        with patch.object(service, '_load', side_effect=lambda *_args: [log(status='error')]) as load:
+            for kind in service.KINDS:
+                for _ in range(2):
+                    result = service.summary(date(2026,11,6), kind)
+                    self.assertEqual(1, result['counts']['error'])
+            self.assertEqual(load.call_count, 4)
+            invalidate_monitoring_cache()
+            for kind in service.KINDS:
+                service.summary(date(2026,11,6), kind)
+            self.assertEqual(load.call_count, 8)
+
+    def test_cached_admin_data_is_still_denied_to_regular_users(self):
+        request = RequestFactory().get('/dx/layer2/api/admin-review/',
+                                       {'date':'2026-11-06', 'type':'null_check'})
+        request.user = SimpleNamespace(is_authenticated=True, is_staff=True, is_superuser=False)
+        with patch.object(service, '_load', return_value=[log()]) as load:
+            self.assertEqual(200, views.data(request).status_code)
+            request.user.is_staff = False
+            self.assertEqual(403, views.data(request).status_code)
+            request.user.is_authenticated = False
+            self.assertEqual(403, views.data(request).status_code)
+            self.assertEqual(load.call_count, 1)
+
+    def test_cached_rows_do_not_keep_context_or_expose_other_dates(self):
+        with patch.object(service, '_load', side_effect=lambda *_args: [log()]) as load:
+            rows = service._review_rows(date(2026,11,6), 'null_check')
+            rows[0]['old_value'] = 'changed in this request'
+            rows[0]['target'] = {'sku':'current source value'}
+            fresh = service._review_rows(date(2026,11,6), 'null_check')
+            self.assertIsNone(fresh[0]['old_value'])
+            self.assertNotIn('target', fresh[0])
+            service._review_rows(date(2026,11,5), 'null_check')
+            self.assertEqual(load.call_count, 2)
 
 
 if __name__=='__main__':

@@ -149,6 +149,51 @@ assert view(request).status_code == 200
             view(self.request())
         self.assertEqual(len(calls), 1)
 
+    def test_value_snapshot_coalesces_threads_and_copies_results(self):
+        calls = []
+        barrier = threading.Barrier(4)
+        def load():
+            calls.append(1)
+            time.sleep(.05)
+            return [{'before': None, 'after': 'value'}]
+        def get(_):
+            barrier.wait(timeout=3)
+            return cache.monitoring_cached_value('test-review', ['2026-11-06'], load)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(get, range(4)))
+        self.assertEqual(len(calls), 1)
+        results[0][0]['before'] = 'mutated'
+        self.assertIsNone(cache.monitoring_cached_value('test-review', ['2026-11-06'])[0]['before'])
+
+    def test_value_snapshot_invalidation_during_read_and_empty_hit(self):
+        calls = []
+        def load():
+            calls.append(1)
+            if len(calls) == 1:
+                cache.invalidate_monitoring_cache()
+            return []
+        for _ in range(3):
+            self.assertEqual(cache.monitoring_cached_value('test-review', [], load), [])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(cache.monitoring_cached_value('test-review', []), [])
+        self.assertIsNone(cache.monitoring_cached_value('other-review', []))
+
+    def test_value_snapshot_never_caches_failed_reads(self):
+        with patch.object(cache, '_has_error', return_value=True):
+            calls = []
+            def load():
+                calls.append(1)
+                return {'status': 'ERROR'}
+            for _ in range(2):
+                cache.monitoring_cached_value('test-review', [], load)
+            self.assertEqual(len(calls), 2)
+        def fail():
+            calls.append(1)
+            raise ValueError('incomplete review snapshot')
+        with self.assertRaises(ValueError):
+            cache.monitoring_cached_value('test-review', [], fail)
+        self.assertEqual(len(calls), 3)
+
     def test_cache_io_failure_falls_back_and_failed_write_invalidates(self):
         @cache.cached_monitoring_stats
         def view(request):

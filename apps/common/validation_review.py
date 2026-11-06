@@ -4,11 +4,13 @@ Reuse the audit store and NULL worklist's automatic decisions. A corrected
 record need not still satisfy the anomaly predicate to be visible here.
 """
 from collections import defaultdict
+from contextlib import ExitStack
 from datetime import date, timedelta
 import json
 
 from apps.common.db import dx_connection
 from apps.common.inspection_dates import resolve_monitoring_date
+from apps.common.monitoring_cache import monitoring_cached_value
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer4.corrections import detail as audit, services as saved
 
@@ -20,6 +22,10 @@ KINDS = {
 }
 STATUSES = {'corrected': '값 수정', 'normal': '수동확인', 'auto': '자동확인',
             'error': '오류 확인', 'reverted': '확인 취소'}
+DETAIL_TOOLS = {'null_check', 'cross_field'}
+SEARCH_FIELDS = {'all': ('record_id', 'item', 'created_id', 'old_value', 'new_value'),
+                 'id': ('record_id',), 'item': ('item',), 'reviewer': ('created_id',),
+                 'value': ('old_value', 'new_value')}
 
 
 def table_key(value):
@@ -34,20 +40,51 @@ def _identity(row):
     return table_key(row['table_name']), str(row['record_id']), row['column_name'], account_key(row['retailer'])
 
 
-def _load(cursor, day, kind, table=''):
+def _source(day, kind):
+    # Format events are a separate store. Other kinds must not read/project
+    # every format decision merely to discard them in the PostgreSQL filter.
+    if kind == 'format_check':
+        return saved._current_source(day)
+    return f'({saved._CURRENT_CORRECTIONS_SQL}) c', [str(day)], {}
+
+
+def _matches(row, table='', retailer=None, field=None, rule=None):
+    return ((not table or table_key(row['table_name']) == table_key(table))
+            and (retailer is None or account_key(row['retailer']) == account_key(retailer))
+            and (field is None or (row['column_name'] == field and row.get('rule_id') == rule)))
+
+
+def _load(cursor, day, kind, table='', retailer=None, field=None, rule=None):
     registry = audit._sources()
     if table and table_key(table) not in registry:
         raise ValueError('등록된 원본을 선택하세요.')
-    source, params, projected = saved._current_source(day)
+    source, params, projected = _source(day, kind)
     aliases = sorted({alias for key, config in registry.items()
                       if not table or key == table_key(table)
                       for alias in (key, config['table_name'], 'public.' + key if '.' not in key else key)})
+    clauses = ['c.correction_type = %s', 'c.table_name = ANY(%s)']
+    params = [*params, kind, aliases]
+    if retailer is not None:
+        # Ordinary retailer names are ASCII. Keep non-ASCII/whitespace variants
+        # as candidates for Python's exact strip/casefold semantics below.
+        clauses.append("(LOWER(BTRIM(COALESCE(c.retailer, ''))) = %s OR c.retailer ~ '[^ -~]')")
+        params.append(account_key(retailer))
+    if field is not None:
+        clauses.append('c.column_name = %s')
+        params.append(field)
+        if kind != 'null_check':
+            clauses.append('c.rule_id IS NOT DISTINCT FROM %s')
+            params.append(rule)
     cursor.execute(f'''SELECT c.*, r.detail_name AS rule_name FROM {source}
                        LEFT JOIN monitoring_validation_rules r ON c.rule_id = r.id
-                       WHERE c.correction_type = %s AND c.table_name = ANY(%s)
+                       WHERE {' AND '.join(clauses)}
                        ORDER BY c.created_at DESC NULLS LAST, c.id DESC''',
-                   [*params, kind, aliases])
-    rows = audit._dicts(cursor)
+                   params)
+    # NULL's manual-over-auto identity does not include rule_id. Preserve all
+    # manual decisions for this cell until automatic entries are deduplicated.
+    rows = [row for row in audit._dicts(cursor)
+            if _matches(row, table, retailer, field,
+                        row.get('rule_id') if kind == 'null_check' else rule)]
     for row in rows:
         if row['id'] in projected:
             row.update(projected[row['id']])
@@ -61,12 +98,12 @@ def _load(cursor, day, kind, table=''):
         category = null_sources().get(table_key(table), {}).get('history_category') if table else None
         # This calls the same evidence matcher used by the worklist; never infer
         # a new automatic approval from an old correction or from today's value.
-        automatic = get_auto_applied_null_reviews(cursor, day, category=category)
+        automatic = get_auto_applied_null_reviews(cursor, day, category=category, strict=True)
         seen = {_identity(row) for row in rows}
         for entry in automatic:
             if table_key(entry['table_name']) not in registry:
                 continue
-            if table and table_key(entry['table_name']) != table_key(table):
+            if not _matches(entry, table, retailer, field, entry.get('rule_id')):
                 continue
             if _identity(entry) in seen:
                 continue
@@ -94,7 +131,35 @@ def _load(cursor, day, kind, table=''):
         # legacy log schema even when the confirmed old value was not NULL.
         if row['status'] != 'corrected':
             row['new_value'] = row.get('old_value')
-    return rows
+    return [row for row in rows if _matches(row, table, retailer, field, rule)]
+
+
+def _review_rows(day, kind, table='', retailer=None, field=None, rule=None, *, get_cursor=None):
+    """Reuse the list snapshot for drill-down, search and paging for at most 60s."""
+    if table and table_key(table) not in audit._sources():
+        raise ValueError('등록된 원본을 선택하세요.')
+    identity = [str(day), kind, table_key(table), account_key(retailer) if retailer is not None else None, field, rule]
+    broad = [str(day), kind, '', None, None, None]
+    candidates = [broad]
+    if table:
+        candidates.append([str(day), kind, table_key(table), None, None, None])
+    if retailer is not None:
+        candidates.append([str(day), kind, table_key(table), account_key(retailer), None, None])
+    for candidate in candidates:
+        if candidate == identity:
+            continue
+        rows = monitoring_cached_value('admin-review-v1', candidate)
+        if rows is not None:
+            # Do not cache a derived subset: it must expire with the source.
+            return [row for row in rows if _matches(row, table, retailer, field, rule)]
+
+    def read():
+        if get_cursor is not None:
+            return _load(get_cursor(), day, kind, table, retailer, field, rule)
+        with dx_connection() as (_, cursor):
+            return _load(cursor, day, kind, table, retailer, field, rule)
+    rows = monitoring_cached_value('admin-review-v1', identity, read, cacheable=lambda _rows: True)
+    return [row for row in rows if _matches(row, table, retailer, field, rule)]
 
 
 def _counts(rows):
@@ -105,10 +170,7 @@ def _counts(rows):
 
 
 def summary(day, kind, table='', retailer=None):
-    with dx_connection() as (_, cursor):
-        rows = _load(cursor, day, kind, table)
-    if retailer is not None:
-        rows = [r for r in rows if account_key(r['retailer']) == account_key(retailer)]
+    rows = _review_rows(day, kind, table, retailer)
     groups = defaultdict(list)
     for row in rows:
         key = (row['column_name'], row.get('rule_id')) if table and retailer is not None else (
@@ -230,25 +292,45 @@ def paired_rows(log):
     return [*history, before, after]
 
 
-def records(day, kind, table, retailer, field, rule=None, page=1, days=3, q='', status='all', extra_columns=None):
-    tools = {} if kind == 'cross_field' else None
-    with dx_connection() as (_, cursor):
-        logs = [r for r in _load(cursor, day, kind, table)
-                if account_key(r['retailer']) == account_key(retailer)
-                and r['column_name'] == field and r.get('rule_id') == rule]
+def records(day, kind, table, retailer, field, rule=None, page=1, days=3, q='', status='all', extra_columns=None,
+            q_field='all', sort_by='', sort_order='asc'):
+    if q_field not in SEARCH_FIELDS or sort_by not in ('', 'id', 'item') or sort_order not in ('asc', 'desc'):
+        raise ValueError('검색 항목과 정렬 조건을 확인하세요.')
+    tools = {} if kind in DETAIL_TOOLS else None
+    with ExitStack() as stack:
+        connection = []
+        def get_cursor():
+            if not connection:
+                connection.append(stack.enter_context(dx_connection()))
+            return connection[0][1]
+
+        logs = _review_rows(day, kind, table, retailer, field, rule, get_cursor=get_cursor)
         counts = _counts(logs)
         if status != 'all':
             logs = [r for r in logs if r['status'] == status]
         if q:
-            logs = [r for r in logs if q.casefold() in ' '.join(str(r[k]) if r.get(k) is not None else '' for k in (
-                'record_id', 'item', 'created_id', 'old_value', 'new_value')).casefold()]
+            logs = [r for r in logs if q.casefold() in ' '.join(
+                str(r[k]) if r.get(k) is not None else '' for k in SEARCH_FIELDS[q_field]).casefold()]
+        if sort_by:
+            # Sort whole review groups before pagination; before/after rows
+            # and their comparison history must always travel together.
+            key = 'record_id' if sort_by == 'id' else 'item'
+            def sort_value(row):
+                value = row.get(key)
+                if value is None:
+                    return 0 if sort_by == 'id' else ''
+                return int(value) if sort_by == 'id' else str(value).casefold()
+            logs = sorted(logs, key=sort_value, reverse=sort_order == 'desc')
+            logs.sort(key=lambda row: row.get(key) is None)
         total = len(logs)
         page_size = 10
         pages = max(1, (total + page_size - 1) // page_size)
         page = min(page, pages)
         logs = logs[(page - 1) * page_size:page * page_size]
         options = dict(extra_columns=extra_columns, tools=tools) if tools is not None else {}
-        columns = _context(cursor, logs, days, day, **options) if logs else []
+        columns = []
+        if logs:
+            columns = _context(get_cursor(), logs, days, day, **options)
     return dict(success=True, groups=[dict(id=r['id'], rows=paired_rows(r), truncated=r.get('truncated', False)) for r in logs],
                 columns=columns, field=field, total=total, counts=counts, page=page, pages=pages,
                 **(tools or {}))

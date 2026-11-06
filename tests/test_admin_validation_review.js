@@ -4,8 +4,9 @@ const vm = require('node:vm');
 const code = fs.readFileSync('static/js/validation-review.js','utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 class Element {
-    constructor(dataset={}) {this.dataset=dataset;this.handlers={};this.innerHTML='';}
+    constructor(dataset={}) {this.dataset=dataset;this.handlers={};this.innerHTML='';this.hidden=true;}
     addEventListener(name, fn) {this.handlers[name]=fn;}
+    setAttribute(name,value) {this[name]=value;}
     querySelectorAll(selector) {
         const attribute=selector==='[data-index]'?'index':selector==='[data-action]'?'action':null;
         if(!attribute) return [];
@@ -14,7 +15,7 @@ class Element {
     querySelector() {return this.retry ||= new Element();}
 }
 function setup(kind='null_check', query='', fetcher) {
-    const root=new Element({kind,label:kind,api:'/dx/layer2/api/admin-review/'}), body=new Element(), back=new Element(), form=new Element();
+    const root=new Element({kind,label:kind,api:'/dx/layer2/api/admin-review/'}), body=new Element(), back=new Element(), form=new Element(), daysForm=new Element(), columnsPanel=new Element();
     const requests=[], events={};
     const summary={success:true,counts:{corrected:1},items:[{table_name:'public.test',country:'SEIB',product:'LDY',retailer:'MediaMarkt',column_name:'sku',rule_id:2,total:1,counts:{corrected:1}}]};
     const base={id:57,item:'14383021',_source_date:'2026-11-06',retailer_sku_name:'<script>bad()</script>',product_url:'javascript:bad()',_known:true};
@@ -22,7 +23,7 @@ function setup(kind='null_check', query='', fetcher) {
         {...base,id:54,_source_date:'2026-11-05',sku:null,_phase:'비교 이력'},
         {...base,sku:null,_phase:'수정 전'},
         {...base,sku:'WW90T554DAX',_phase:'수정 후',_status:'corrected',_state:'값 수정',_reviewer:'reviewer',_reviewed_at:'2026-11-06 10:10:24'}]}]};
-    if(kind==='cross_field') Object.assign(detail,{available_columns:['count_of_reviews','star_rating'],selected_columns:['count_of_reviews'],query:"SELECT source.count_of_reviews FROM test WHERE item = 'A''001';"});
+    if(['null_check','cross_field'].includes(kind)) Object.assign(detail,{available_columns:['count_of_reviews','star_rating'],selected_columns:['count_of_reviews'],query:"SELECT source.count_of_reviews FROM test WHERE item = 'A''001';"});
     let capturedCards=[], capturedActions=[], checkedColumns=[];
     const oldQuery=body.querySelectorAll.bind(body);
     body.querySelectorAll=selector=> {
@@ -32,11 +33,11 @@ function setup(kind='null_check', query='', fetcher) {
         return result;
     };
     const copied=[];
-    const sandbox={console,URLSearchParams,AbortController,FormData,
+    const sandbox={console,URLSearchParams,AbortController,FormData:class {constructor(form){this.values=form.values || {};}get(key){return this.values[key] ?? null;}},
         location:{search:'?type='+kind+'&date=2026-11-06'+query,assign(url){this.assigned=url;}},
         history:{pushState(_a,_b,url){sandbox.location.search=url;},replaceState(_a,_b,url){sandbox.location.search=url;}},
         navigator:{clipboard:{writeText:async text=>copied.push(text)}},isSecureContext:true,
-        document:{getElementById:id=>({'validation-review':root,'vr-body':body,'vr-back':back,'vr-search':form}[id]),
+        document:{getElementById:id=>({'validation-review':root,'vr-body':body,'vr-back':back,'vr-search':form,'vr-days':daysForm,'vr-columns':columnsPanel}[id]),
             body:{appendChild(input){this.input=input;}},
             createElement:()=>({style:{},focus(){},select(){},remove(){}}),
             execCommand:()=>{copied.push(sandbox.document.body.input.value);return true;}},
@@ -46,7 +47,7 @@ function setup(kind='null_check', query='', fetcher) {
     sandbox.window=sandbox;
     Object.defineProperty(sandbox,'top',{value:sandbox,writable:false,configurable:false});
     vm.runInNewContext(code,sandbox);
-    return {body,back,form,requests,sandbox,events,summary,detail,copied,cards:()=>capturedCards,
+    return {body,back,form,daysForm,columnsPanel,requests,sandbox,events,summary,detail,copied,cards:()=>capturedCards,
         action:name=>capturedActions.find(el=>el.dataset.action===name),select:values=>checkedColumns=values};
 }
 (async()=>{
@@ -63,10 +64,15 @@ function setup(kind='null_check', query='', fetcher) {
         assert(!ui.body.innerHTML.includes('href="javascript:'));
         assert(!ui.body.innerHTML.includes('이력 보기'));
         assert(!ui.body.innerHTML.includes('>저장<'));
-        assert.equal(ui.body.innerHTML.includes('컬럼 선택'),kind==='cross_field');
-        if(kind==='cross_field') {
+        assert.equal(ui.body.innerHTML.includes('컬럼 선택'),['null_check','cross_field'].includes(kind));
+        if(['null_check','cross_field'].includes(kind)) {
             assert.match(ui.body.innerHTML,/count_of_reviews \(참고\)/);
             assert.match(ui.body.innerHTML,/Item 조회 SQL/);
+            assert.match(ui.body.innerHTML,/Item 목록 \(1개\)/);
+            assert.match(ui.body.innerHTML,/2026-11-06\(금\)/);
+            assert(ui.body.innerHTML.indexOf('vr-query-row')<ui.body.innerHTML.indexOf('id="vr-search"'));
+            ui.action('toggle-columns').handlers.click();assert.equal(ui.columnsPanel.hidden,false);
+            ui.action('close-columns').handlers.click();assert.equal(ui.columnsPanel.hidden,true);
             ui.action('copy-query').handlers.click();await tick();
             assert.equal(ui.copied[0],ui.detail.query);
             ui.sandbox.isSecureContext=false;
@@ -79,6 +85,19 @@ function setup(kind='null_check', query='', fetcher) {
             assert.equal(new URLSearchParams(ui.sandbox.location.search).get('columns'),'');
             ui.action('default-columns').handlers.click();await tick();
             assert(!new URLSearchParams(ui.sandbox.location.search).has('columns'));
+            ui.action('sort-item').handlers.click();await tick();
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('sort_order'),'asc');
+            ui.action('sort-item').handlers.click();await tick();
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('sort_order'),'desc');
+            ui.action('reset-sort').handlers.click();await tick();
+            assert(!new URLSearchParams(ui.sandbox.location.search).has('sort_by'));
+            ui.daysForm.values={days:'7'};ui.daysForm.handlers.submit({preventDefault(){},target:ui.daysForm});await tick();
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('days'),'7');
+            assert.match(ui.body.innerHTML,/7일치 Item 조회 SQL/);
+            ui.form.values={q_field:'item',q:'A001',status:'corrected'};
+            ui.form.handlers.submit({preventDefault(){},target:ui.form});await tick();
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('q_field'),'item');
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('days'),'7');
         }
         assert(ui.requests.every(r=>!r.options.method || r.options.method==='GET'));
         await ui.back.handlers.click();await tick();assert.match(ui.body.innerHTML,/vr-fields/);

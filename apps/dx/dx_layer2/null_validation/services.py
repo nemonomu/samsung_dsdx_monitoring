@@ -1313,7 +1313,7 @@ def get_tse_auto_applied_null_reviews(cursor, target_date):
     return auto_logs
 
 
-def get_auto_applied_null_reviews(cursor, target_date, category=None):
+def get_auto_applied_null_reviews(cursor, target_date, category=None, *, strict=False):
     """Use the same current-cell decisions as the NULL worklist and counts."""
     if not uses_new_policy(target_date, 'TSE'):
         return get_tse_auto_applied_null_reviews(cursor, target_date)
@@ -1333,6 +1333,10 @@ def get_auto_applied_null_reviews(cursor, target_date, category=None):
         **({'category': category} if category else {}),
         **history_options,
     )
+    if strict:
+        from apps.common.monitoring_cache import _has_error
+        if _has_error(validation):
+            raise RuntimeError('NULL 자동확인 이력을 완전히 조회하지 못했습니다.')
     return validation.get('auto_null_reviews', [])
 
 
