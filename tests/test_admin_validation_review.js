@@ -22,20 +22,32 @@ function setup(kind='null_check', query='', fetcher) {
         {...base,id:54,_source_date:'2026-11-05',sku:null,_phase:'비교 이력'},
         {...base,sku:null,_phase:'수정 전'},
         {...base,sku:'WW90T554DAX',_phase:'수정 후',_status:'corrected',_state:'값 수정',_reviewer:'reviewer',_reviewed_at:'2026-11-06 10:10:24'}]}]};
-    let capturedCards=[];
+    if(kind==='cross_field') Object.assign(detail,{available_columns:['count_of_reviews','star_rating'],selected_columns:['count_of_reviews'],query:"SELECT source.count_of_reviews FROM test WHERE item = 'A''001';"});
+    let capturedCards=[], capturedActions=[], checkedColumns=[];
     const oldQuery=body.querySelectorAll.bind(body);
-    body.querySelectorAll=selector=> {const result=oldQuery(selector);if(selector==='[data-index]')capturedCards=result;return result;};
+    body.querySelectorAll=selector=> {
+        if(selector==='input[name="vr-column"]:checked') return checkedColumns.map(value=>({value}));
+        const result=oldQuery(selector);if(selector==='[data-index]')capturedCards=result;
+        if(selector==='[data-action]')capturedActions=result;
+        return result;
+    };
+    const copied=[];
     const sandbox={console,URLSearchParams,AbortController,FormData,
         location:{search:'?type='+kind+'&date=2026-11-06'+query,assign(url){this.assigned=url;}},
         history:{pushState(_a,_b,url){sandbox.location.search=url;},replaceState(_a,_b,url){sandbox.location.search=url;}},
-        document:{getElementById:id=>({'validation-review':root,'vr-body':body,'vr-back':back,'vr-search':form}[id])},
+        navigator:{clipboard:{writeText:async text=>copied.push(text)}},isSecureContext:true,
+        document:{getElementById:id=>({'validation-review':root,'vr-body':body,'vr-back':back,'vr-search':form}[id]),
+            body:{appendChild(input){this.input=input;}},
+            createElement:()=>({style:{},focus(){},select(){},remove(){}}),
+            execCommand:()=>{copied.push(sandbox.document.body.input.value);return true;}},
         initFilterBar(){},getSelectedDate:()=> '2026-11-06',addEventListener:(name,fn)=>events[name]=fn,
         fetch: async(url,options)=> {requests.push({url,options});return fetcher?fetcher(url,options):{ok:true,json:async()=>url.includes('view=records')?detail:summary};},
     };
     sandbox.window=sandbox;
     Object.defineProperty(sandbox,'top',{value:sandbox,writable:false,configurable:false});
     vm.runInNewContext(code,sandbox);
-    return {body,back,form,requests,sandbox,events,summary,detail,cards:()=>capturedCards};
+    return {body,back,form,requests,sandbox,events,summary,detail,copied,cards:()=>capturedCards,
+        action:name=>capturedActions.find(el=>el.dataset.action===name),select:values=>checkedColumns=values};
 }
 (async()=>{
     for(const kind of ['null_check','cross_field','format_check','field_missing']) {
@@ -51,6 +63,23 @@ function setup(kind='null_check', query='', fetcher) {
         assert(!ui.body.innerHTML.includes('href="javascript:'));
         assert(!ui.body.innerHTML.includes('이력 보기'));
         assert(!ui.body.innerHTML.includes('>저장<'));
+        assert.equal(ui.body.innerHTML.includes('컬럼 선택'),kind==='cross_field');
+        if(kind==='cross_field') {
+            assert.match(ui.body.innerHTML,/count_of_reviews \(참고\)/);
+            assert.match(ui.body.innerHTML,/Item 조회 SQL/);
+            ui.action('copy-query').handlers.click();await tick();
+            assert.equal(ui.copied[0],ui.detail.query);
+            ui.sandbox.isSecureContext=false;
+            ui.action('copy-query').handlers.click();await tick();
+            assert.equal(ui.copied[1],ui.detail.query);
+            ui.select(['star_rating']);ui.action('apply-columns').handlers.click();await tick();
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('columns'),'star_rating');
+            assert(ui.requests.at(-1).url.includes('columns=star_rating'));
+            ui.select([]);ui.action('apply-columns').handlers.click();await tick();
+            assert.equal(new URLSearchParams(ui.sandbox.location.search).get('columns'),'');
+            ui.action('default-columns').handlers.click();await tick();
+            assert(!new URLSearchParams(ui.sandbox.location.search).has('columns'));
+        }
         assert(ui.requests.every(r=>!r.options.method || r.options.method==='GET'));
         await ui.back.handlers.click();await tick();assert.match(ui.body.innerHTML,/vr-fields/);
         await ui.back.handlers.click();await tick();assert.match(ui.body.innerHTML,/MediaMarkt/);

@@ -45,13 +45,40 @@
         }
         body.querySelectorAll('[data-index]').forEach(el => el.addEventListener('click', () => {
             const row = data.items[Number(el.dataset.index)];
-            if (state.has('table')) navigate({field: row.column_name, rule: row.rule_id == null ? null : row.rule_id, view:'records', page:1});
+            if (state.has('table')) navigate({field: row.column_name, rule: row.rule_id == null ? null : row.rule_id, view:'records', page:1, columns:null});
             else navigate({table:row.table_name, retailer:row.retailer || '', label:row.country+' '+row.product});
         }));
     }
+    function crossTools(data) {
+        if (kind !== 'cross_field' || !data.available_columns) return '';
+        const selected = new Set(data.selected_columns || []);
+        return '<details class="vr-columns"><summary>컬럼 선택</summary><p class="vr-sub">기본 정보와 검수 대상 컬럼은 항상 표시됩니다. 추가 컬럼은 원본 현재값입니다.</p><div class="vr-column-options">'+
+            data.available_columns.map(c => '<label><input type="checkbox" name="vr-column" value="'+esc(c)+'"'+(selected.has(c)?' checked':'')+'> '+esc(c)+'</label>').join('')+
+            '</div><div class="vr-column-actions">'+button('적용','apply-columns')+button('기본 컬럼','default-columns')+'</div></details>'+
+            (data.query ? '<details class="vr-query" open><summary>'+esc(state.get('days') || 3)+'일치 Item 조회 SQL · 현재 페이지</summary>'+button('복사','copy-query')+'<pre tabindex="0">'+esc(data.query)+'</pre><small>선택한 컬럼과 현재 페이지의 Item에 대한 원본 현재값 조회 SQL입니다.</small></details>' : '');
+    }
+    async function copyQuery(text, control) {
+        try {
+            let copied = false;
+            if (window.isSecureContext && navigator.clipboard) {
+                try { await navigator.clipboard.writeText(text); copied = true; } catch (_) { /* HTTP/fallback below. */ }
+            }
+            if (!copied) {
+                const active = document.activeElement;
+                const input = document.createElement('textarea');
+                input.value = text; input.style.position = 'fixed'; input.style.opacity = '0';
+                document.body.appendChild(input);
+                try { input.focus(); input.select(); copied = document.execCommand('copy'); }
+                finally { input.remove(); if (active) active.focus(); }
+            }
+            control.textContent = copied ? '복사됨' : '복사 실패 · SQL 선택 후 Ctrl+C';
+        } catch (_) { control.textContent = '복사 실패 · SQL 선택 후 Ctrl+C'; }
+    }
     function table(data) {
         const field = data.field;
-        const refs = data.columns.filter(c => !['id','item','retailer_sku_name','product_url','account_name','batch_id','crawl_datetime','crawl_strdatetime',field].includes(c));
+        const refs = kind === 'cross_field' && data.selected_columns
+            ? data.selected_columns.filter(c => c !== field)
+            : data.columns.filter(c => !['id','item','retailer_sku_name','product_url','account_name','batch_id','crawl_datetime','crawl_strdatetime',field].includes(c));
         const columns = [field,...refs];
         let number = (data.page-1)*10;
         let html = '<div class="vr-panel">'+title()+chips(data.counts)+'</div><form class="vr-tools" id="vr-search"><label>검색 <input name="q" placeholder="Item · ID · 검증자 · 값" value="'+esc(state.get('q') || '')+'"></label><select name="status" aria-label="처리 상태"><option value="all">전체 처리</option>'+Object.entries(labels).map(([k,v]) => '<option value="'+k+'"'+(state.get('status')===k?' selected':'')+'>'+v+'</option>').join('')+'</select><label>일수 <input name="days" type="number" min="1" max="30" value="'+esc(state.get('days') || 3)+'"></label><button class="app-btn app-btn-md app-btn-primary">조회</button>'+button('해제','clear')+'</form><div class="vr-help"><span>셀 클릭 후 Ctrl+C로 복사 · 읽기 전용</span><span>수정 전·후: 저장된 검수 값'+(refs.length?' · 참고 열: 원본 현재값':'')+'</span></div><div class="vr-scroll"><table><thead><tr><th>No</th><th>id</th><th>수집일</th><th>item</th><th>retailer_sku_name</th>'+columns.map(c => '<th>'+esc(c)+(c!==field?' (참고)':'')+'</th>').join('')+'<th>검수 상태</th><th>product_url</th><th>확인 사유</th><th>확인 근거</th></tr></thead><tbody>';
@@ -69,13 +96,19 @@
             });
         });
         html += '</tbody></table></div>'+(!data.groups.length?'<div class="vr-empty">조건에 맞는 처리 이력이 없습니다.</div>':'')+(data.groups.some(g=>g.truncated)?'<p class="vr-note">비교 이력이 많아 일부만 표시했습니다. 조회 일수를 줄여 주세요.</p>':'')+'<div class="vr-pagination"><span class="vr-total">검수 '+data.total+'건 · 페이지당 10건</span>'+button('이전','prev',data.page<=1)+'<span>'+data.page+' / '+data.pages+'</span>'+button('다음','next',data.page>=data.pages)+'</div>';
-        body.innerHTML = html;
+        body.innerHTML = html.replace('</form>', '</form>'+crossTools(data));
         document.getElementById('vr-search').addEventListener('submit', e => {
             e.preventDefault(); const form = new FormData(e.target);
             navigate({q:form.get('q'), status:form.get('status'), days:form.get('days'), page:1});
         });
         body.querySelectorAll('[data-action]').forEach(el => el.addEventListener('click', () => {
             const action=el.dataset.action;
+            if (action==='copy-query') { copyQuery(data.query, el); return; }
+            if (action==='apply-columns') {
+                const columns = Array.from(body.querySelectorAll('input[name="vr-column"]:checked'), input => input.value);
+                navigate({columns:columns.join(',')}); return;
+            }
+            if (action==='default-columns') { navigate({columns:null}); return; }
             navigate(action==='clear'?{q:null,status:null,page:1}:{page:data.page+(action==='prev'?-1:1)});
         }));
         body.querySelectorAll('.vr-copy').forEach(el => el.addEventListener('click', () => {
@@ -101,7 +134,7 @@
         }
     }
     back.addEventListener('click', () => {
-        if(state.has('field')) navigate({field:null,rule:null,view:null,page:null,q:null,status:null});
+        if(state.has('field')) navigate({field:null,rule:null,view:null,page:null,q:null,status:null,columns:null});
         else if(state.has('table')) navigate({table:null,retailer:null,label:null});
         else location.assign(routes[kind]+'?date='+encodeURIComponent(state.get('date') || ''));
     });

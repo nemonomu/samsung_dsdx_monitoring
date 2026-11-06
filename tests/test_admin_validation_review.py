@@ -52,6 +52,11 @@ class Cursor:
     def fetchall(self):
         return self.rows
 
+    def mogrify(self, sql, params):
+        from psycopg2.extensions import adapt
+        self.display_query = (sql, params)
+        return (sql % tuple(adapt(p).getquoted().decode('utf-8') for p in params)).encode('utf-8')
+
 
 @contextmanager
 def connection(cursor):
@@ -170,6 +175,58 @@ class AuditValueTests(unittest.TestCase):
 
 class ContextTests(unittest.TestCase):
     available=[(c,) for c in ('id','account_name','item','sku','crawl_datetime','retailer_sku_name','product_url')]
+
+    def test_selected_columns_and_sql_preserve_identity_dates_and_saved_value(self):
+        available=self.available+[(c,) for c in ('count_of_reviews','star_rating','detailed_review_content')]
+        target=dict(id=57,account_name='MediaMarkt',item="A'001",sku='current',
+                    count_of_reviews=5,_source_date='2026-11-06')
+        cursor=Cursor(available,[target],[])
+        logs=[log(item="A'001")]
+        tools={}
+        with patch.object(service.audit,'_sources',return_value=REGISTRY):
+            columns=service._context(cursor,logs,3,date(2026,11,6),['count_of_reviews'],tools)
+        self.assertIn('star_rating',tools['available_columns'])
+        self.assertIn('count_of_reviews',columns)
+        self.assertNotIn('detailed_review_content',columns)
+        self.assertIn('source.count_of_reviews',cursor.calls[1][0])
+        self.assertIn("A''001",tools['query'])
+        self.assertIn("BETWEEN '2026-11-04' AND '2026-11-06'",tools['query'])
+        self.assertTrue(tools['query'].startswith('SELECT'))
+        self.assertTrue(tools['query'].endswith('LIMIT 1500;'))
+        before,after=service.paired_rows(logs[0])
+        self.assertIsNone(before['sku'])
+        self.assertEqual('WW90T554DAX',after['sku'])
+        self.assertEqual(5,before['count_of_reviews'])
+        self.assertEqual(5,after['count_of_reviews'])
+
+    def test_column_validation_precedes_source_query(self):
+        for selected in (['not_a_column'],['sku;DROP TABLE t'],['sku']):
+            cursor=Cursor(self.available)
+            with patch.object(service.audit,'_sources',return_value=REGISTRY):
+                with self.assertRaises(ValueError):
+                    service._context(cursor,[log()],1,date(2026,11,6),selected,{})
+            self.assertEqual(1,len(cursor.calls))
+
+    def test_review_defaults_and_one_day_query_with_missing_item(self):
+        available=self.available+[(c,) for c in (*service.audit.RATING_FIELDS,'detailed_review_content')]
+        cursor=Cursor(available,[])
+        tools={}
+        with patch.object(service.audit,'_sources',return_value=REGISTRY):
+            service._context(cursor,[log(column_name='detailed_review_content',item=None)],1,date(2026,11,6),tools=tools)
+        self.assertIn('count_of_reviews',tools['selected_columns'])
+        self.assertIn('source.id = 57',tools['query'])
+        self.assertIn('source.item IS NOT DISTINCT FROM NULL',tools['query'])
+        self.assertIn("BETWEEN '2026-11-06' AND '2026-11-06'",tools['query'])
+        self.assertEqual(2,len(cursor.calls))  # SQL display itself does not query.
+
+    def test_selected_columns_do_not_affect_other_validation_kinds(self):
+        for kind in ('null_check','format_check','field_missing'):
+            with patch.object(service,'dx_connection',return_value=connection(None)), \
+                 patch.object(service,'_load',return_value=[log()]), \
+                 patch.object(service,'_context',return_value=['sku']) as context:
+                result=service.records(date(2026,11,6),kind,SOURCE['table_name'],'MediaMarkt','sku',extra_columns=['count_of_reviews'])
+            self.assertEqual({},context.call_args.kwargs)
+            self.assertNotIn('query',result)
 
     def test_raw_offset_date_same_target_identity_and_all_batches(self):
         target=dict(id=57,account_name=' MediaMarkt ',item='A001',sku='latest',

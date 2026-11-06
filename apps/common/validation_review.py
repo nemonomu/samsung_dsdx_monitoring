@@ -123,7 +123,7 @@ def summary(day, kind, table='', retailer=None):
     return dict(success=True, items=items, total=len(rows), counts=_counts(rows))
 
 
-def _context(cursor, logs, days, day):
+def _context(cursor, logs, days, day, extra_columns=None, tools=None):
     """Batch-read source context; saved values only overwrite the audited field.
 
     Other fields are current reference values, not fabricated audit snapshots.
@@ -139,6 +139,18 @@ def _context(cursor, logs, days, day):
     available = {r[0] for r in cursor.fetchall() if audit.IDENTIFIER.fullmatch(r[0])}
     field, stamp = logs[0]['column_name'], date_column(source)
     columns = audit.context_columns(available, stamp, field)
+    if tools is not None:
+        fixed = {'id', 'item', 'retailer_sku_name', 'product_url', field}
+        choices = sorted(available - fixed)
+        defaults = [c for c in columns if c not in fixed | {stamp, 'batch_id'}]
+        if field in (*audit.RATING_FIELDS, 'detailed_review_content', 'summarized_review_content'):
+            defaults.extend(c for c in ('sku', *audit.RATING_FIELDS, 'detailed_review_content')
+                            if c in choices and c not in defaults)
+        selected = list(dict.fromkeys(defaults if extra_columns is None else extra_columns))
+        if any(c not in choices for c in selected):
+            raise ValueError('원본에 존재하는 추가 컬럼을 선택하세요.')
+        columns = list(dict.fromkeys([c for c in columns if c in fixed | {stamp}] + selected))
+        tools.update(available_columns=choices, selected_columns=selected, default_columns=defaults, query='')
     fallback = resolve_monitoring_date(day, source['country'], source['key'])['source_date']
     for log in logs:
         log.update(source_date=str(log.get('source_date') or fallback), target=None, comparisons=[], context_available=False)
@@ -157,6 +169,22 @@ def _context(cursor, logs, days, day):
             log.update(target=target, source_date=str(target['_source_date']), context_available=True)
         if log.get('item') is not None and str(log['item']).strip():
             pairs.add((account_key(log['retailer']), log['item']))
+    if tools is not None:
+        # Display only a bounded, read-only source query for this page's items.
+        # Literal values are quoted by the DB driver, never by the browser.
+        clauses, params = [], []
+        for log in logs:
+            identity = 'LOWER(BTRIM(source.account_name)) IS NOT DISTINCT FROM %s AND source.item IS NOT DISTINCT FROM %s'
+            params.extend([account_key(log['retailer']) if log['retailer'] is not None else None, log.get('item')])
+            if log.get('item') is None or not str(log['item']).strip():
+                identity += ' AND source.id = %s'
+                params.append(log['record_id'])
+            start = str(date.fromisoformat(log['source_date']) - timedelta(days=days - 1))
+            clauses.append(f'({identity} AND ({date_expr}) BETWEEN %s AND %s)')
+            params.extend([start, log['source_date']])
+        query = (f'SELECT\n    {selection},\n    {date_expr} AS source_date\nFROM {table} source\n'
+                 f"WHERE {' OR '.join(clauses)}\nORDER BY source.item, ({date_expr}), source.id\nLIMIT 1500;")
+        tools['query'] = cursor.mogrify(query, params).decode('utf-8')
     if days == 1 or not pairs:
         return columns
     ends = [date.fromisoformat(r['source_date']) for r in logs]
@@ -202,7 +230,8 @@ def paired_rows(log):
     return [*history, before, after]
 
 
-def records(day, kind, table, retailer, field, rule=None, page=1, days=3, q='', status='all'):
+def records(day, kind, table, retailer, field, rule=None, page=1, days=3, q='', status='all', extra_columns=None):
+    tools = {} if kind == 'cross_field' else None
     with dx_connection() as (_, cursor):
         logs = [r for r in _load(cursor, day, kind, table)
                 if account_key(r['retailer']) == account_key(retailer)
@@ -218,6 +247,8 @@ def records(day, kind, table, retailer, field, rule=None, page=1, days=3, q='', 
         pages = max(1, (total + page_size - 1) // page_size)
         page = min(page, pages)
         logs = logs[(page - 1) * page_size:page * page_size]
-        columns = _context(cursor, logs, days, day) if logs else []
+        options = dict(extra_columns=extra_columns, tools=tools) if tools is not None else {}
+        columns = _context(cursor, logs, days, day, **options) if logs else []
     return dict(success=True, groups=[dict(id=r['id'], rows=paired_rows(r), truncated=r.get('truncated', False)) for r in logs],
-                columns=columns, field=field, total=total, counts=counts, page=page, pages=pages)
+                columns=columns, field=field, total=total, counts=counts, page=page, pages=pages,
+                **(tools or {}))
