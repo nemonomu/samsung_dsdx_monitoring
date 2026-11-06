@@ -23,7 +23,7 @@ assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20261106-screenshot-product-info"
+    "{% static 'ds_layer4/css/index.css' %}?v=20261106-sold-by-wrap"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/screenshot.js' %}?v=20261106-screenshot-product-info"
