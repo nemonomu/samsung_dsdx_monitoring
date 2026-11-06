@@ -5,10 +5,13 @@ from apps.dx.dx_layer2.format_validation import views as format_views, api as fo
 from apps.dx.dx_layer2.anomaly_validation import views as anomaly_views, api as anomaly_api
 from apps.dx.dx_layer2.data_edit import api as data_edit_api
 from apps.dx.dx_layer2.format_validation import review_api
+from apps.common import validation_review_views
 
 app_name = 'layer2'
 
 urlpatterns = [
+    path('admin-review/', validation_review_views.page, name='admin_review'),
+    path('api/admin-review/', validation_review_views.data, name='api_admin_review'),
     # 페이지
     path('', dashboard_views.dashboard, name='dashboard'),
     path('null/', null_views.null_validation, name='null_validation'),

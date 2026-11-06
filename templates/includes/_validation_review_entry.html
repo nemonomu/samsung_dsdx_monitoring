@@ -1,0 +1,11 @@
+{% if request.user.is_staff or request.user.is_superuser %}
+{% if not admin_review %}
+{% if section == 'null_validation' or section == 'format_validation' or section == 'cross_field' or section == 'field_missing' %}
+<div style="display:flex;justify-content:flex-end;margin:0 0 12px;">
+    <a class="app-btn app-btn-md app-btn-outline" id="admin-validation-review-link"
+       href="{% url 'dx_layer2:admin_review' %}?type={% if section == 'null_validation' %}null_check{% elif section == 'format_validation' %}format_check{% else %}{{ section }}{% endif %}"
+       onclick="var d=typeof getSelectedDate==='function'?getSelectedDate():'';if(d){var u=new URL(this.href);u.searchParams.set('date',d);this.href=u.toString();}">검수</a>
+</div>
+{% endif %}
+{% endif %}
+{% endif %}

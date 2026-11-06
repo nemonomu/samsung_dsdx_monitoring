@@ -1,0 +1,259 @@
+"""Administrator review regression tests; isolated settings, no production DB."""
+import json
+import sys
+import unittest
+from contextlib import contextmanager
+from copy import deepcopy
+from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tests import test_collection_statistics_backend  # isolated Django settings
+from django.test import RequestFactory
+from django.test import override_settings
+from django.template import Engine, Context
+from django.urls import path, include
+from apps.common import validation_review as service, validation_review_views as views
+
+SOURCE = dict(table_name='public.dx_test_retail', country='SEIB', product='LDY',
+              key='seib_ldy', date_column='crawl_datetime')
+REGISTRY = {'dx_test_retail': SOURCE}
+
+
+def log(**kwargs):
+    return dict(dict(id=1, table_name=SOURCE['table_name'], record_id=57,
+                     column_name='sku', retailer='MediaMarkt', item='A001',
+                     old_value=None, new_value='WW90T554DAX', status='corrected',
+                     rule_id=None, rule_name='', created_id='reviewer',
+                     created_at='2026-11-06 10:10:24', reason='', memo='모델명 확인',
+                     crawl_date='2026-11-06', correction_type='null_check',
+                     source_date='2026-11-06', value_known=True, context_available=False), **kwargs)
+
+
+class Cursor:
+    def __init__(self, *batches):
+        self.batches = list(batches)
+        self.calls = []
+
+    def execute(self, sql, params=None):
+        self.calls.append((sql, params))
+        assert sql.lstrip().startswith('SELECT'), sql
+        batch = self.batches.pop(0)
+        if batch and isinstance(batch[0], dict):
+            keys = list(batch[0])
+            self.description = [(k,) for k in keys]
+            self.rows = [tuple(r.get(k) for k in keys) for r in batch]
+        else:
+            self.rows = batch
+            self.description = []
+
+    def fetchall(self):
+        return self.rows
+
+
+@contextmanager
+def connection(cursor):
+    yield None, cursor
+
+
+class AuthorizationTests(unittest.TestCase):
+    def request(self, method='get', **query):
+        request = getattr(RequestFactory(), method)('/dx/layer2/api/admin-review/', query)
+        request.user = SimpleNamespace(is_authenticated=True, is_staff=False, is_superuser=False)
+        return request
+
+    def test_denied_before_reading_any_audit_store_or_page_context(self):
+        for authenticated in (True, False):
+            for endpoint in (views.data, views.page):
+                request = self.request(date='2026-11-06', type='null_check')
+                request.user.is_authenticated = authenticated
+                with patch.object(service, 'summary') as read, patch.object(views, 'render') as render:
+                    response = endpoint(request)
+                self.assertEqual(403, response.status_code)
+                self.assertIn('no-store', response['Cache-Control'])
+                read.assert_not_called()
+                render.assert_not_called()
+
+    def test_admin_types_get_only_and_no_store(self):
+        for role in ('is_staff', 'is_superuser'):
+            for kind in service.KINDS:
+                request = self.request(date='2026-11-06', type=kind)
+                setattr(request.user, role, True)
+                with patch.object(service, 'summary', return_value={'success': True}) as read:
+                    response = views.data(request)
+                self.assertEqual(200, response.status_code)
+                self.assertIn('no-store', response['Cache-Control'])
+                self.assertEqual(kind, read.call_args.args[1])
+        request = self.request('post', date='2026-11-06', type='null_check')
+        request.user.is_staff = True
+        with patch.object(service, 'summary') as read:
+            self.assertEqual(405, views.data(request).status_code)
+        read.assert_not_called()
+
+    def test_bad_parameters_do_not_reach_database(self):
+        base = dict(date='2026-11-06', type='null_check', view='records',
+                    table=SOURCE['table_name'], retailer='MediaMarkt', field='sku')
+        for changed in ({'date':'2026-13-06'}, {'type':'duplicate_check'}, {'days':'31'},
+                        {'days':'0'}, {'page':'0'}, {'rule':'not-a-number'}, {'status':'delete'}):
+            request = self.request(**{**base, **changed})
+            request.user.is_staff = True
+            with patch.object(service, 'records') as read:
+                self.assertEqual(400, views.data(request).status_code)
+            read.assert_not_called()
+
+
+class AuditValueTests(unittest.TestCase):
+    def test_pairs_share_source_date_id_and_preserve_null_to_value(self):
+        original = log(comparisons=[{'id': 40, '_source_date': '2026-11-05', 'sku': None}])
+        before_copy = deepcopy(original)
+        rows = service.paired_rows(original)
+        self.assertEqual(before_copy, original)
+        self.assertEqual(['비교 이력', '수정 전', '수정 후'], [r['_phase'] for r in rows])
+        self.assertEqual([57,57], [r['id'] for r in rows[-2:]])
+        self.assertEqual(['2026-11-06']*2, [r['_source_date'] for r in rows[-2:]])
+        self.assertIsNone(rows[-2]['sku'])
+        self.assertEqual('WW90T554DAX', rows[-1]['sku'])
+        self.assertEqual('reviewer', rows[-1]['_reviewer'])
+
+    def test_all_validation_kinds_and_empty_values(self):
+        for kind in service.KINDS:
+            for old, new in ((None,'sku'), ('', 'https://example.test'), ('NULL',0), (' ',False)):
+                before, after = service.paired_rows(log(correction_type=kind,old_value=old,new_value=new))
+                self.assertEqual(old,before['sku'])
+                self.assertEqual(new,after['sku'])
+
+    def test_format_confirmation_uses_snapshot_not_null_edit_marker(self):
+        projected = log(id=-1, status='normal', old_value=None, new_value='http://bad-url',
+                        correction_type='format_check', review_source='format_review')
+        cursor = Cursor([projected])
+        with patch.object(service.audit, '_sources', return_value=REGISTRY), \
+             patch.object(service.saved, '_current_source', return_value=('saved c', ['2026-11-06'], {-1: projected})):
+            rows = service._load(cursor,date(2026,11,6),'format_check')
+        before, after = service.paired_rows(rows[0])
+        self.assertEqual('http://bad-url',before['sku'])
+        self.assertEqual(before['sku'],after['sku'])
+        self.assertEqual('확인 후',after['_phase'])
+
+    def test_null_auto_uses_typed_evidence_and_manual_wins_same_cell(self):
+        auto = log(id='auto:57',status='auto',evidence_id=91)
+        automatic = [auto, log(id='auto:58',record_id=58,evidence_id=92)]
+        cursor = Cursor([log(status='normal')], [(91,1,{'type':'string','value':''}), (92,2,{'type':'number','value':'0'})])
+        with patch.object(service.audit,'_sources',return_value=REGISTRY), \
+             patch.object(service.saved,'_current_source',return_value=('saved c',['2026-11-06'],{})), \
+             patch('apps.dx.dx_layer2.null_validation.services.get_auto_applied_null_reviews',return_value=automatic):
+            rows = service._load(cursor,date(2026,11,6),'null_check')
+        self.assertEqual(2,len(rows))
+        self.assertEqual(['normal','auto'],[r['status'] for r in rows])
+        self.assertEqual(['','0'],[r['old_value'] for r in rows])
+        self.assertEqual(['','0'],[r['new_value'] for r in rows])
+
+    def test_unknown_auto_snapshot_is_not_claimed_to_be_sql_null(self):
+        rows=service.paired_rows(log(status='auto',value_known=False))
+        self.assertFalse(rows[0]['_known'])
+        self.assertFalse(rows[1]['_known'])
+
+    def test_registered_sources_only_and_sql_values_bound(self):
+        with patch.object(service.audit,'_sources',return_value=REGISTRY), \
+             patch.object(service.saved,'_current_source') as source:
+            with self.assertRaises(ValueError):
+                service._load(Cursor(),date(2026,11,6),'cross_field',"x; DROP TABLE t")
+        source.assert_not_called()
+        cursor=Cursor([log(correction_type='cross_field')])
+        with patch.object(service.audit,'_sources',return_value=REGISTRY), \
+             patch.object(service.saved,'_current_source',return_value=('saved c',['2026-11-06'],{})):
+            service._load(cursor,date(2026,11,6),'cross_field')
+        self.assertNotIn('cross_field',cursor.calls[0][0])
+        self.assertIn('cross_field',cursor.calls[0][1])
+
+
+class ContextTests(unittest.TestCase):
+    available=[(c,) for c in ('id','account_name','item','sku','crawl_datetime','retailer_sku_name','product_url')]
+
+    def test_raw_offset_date_same_target_identity_and_all_batches(self):
+        target=dict(id=57,account_name=' MediaMarkt ',item='A001',sku='latest',
+                    crawl_datetime='2026-11-06T23:59:00-04:00',_source_date='2026-11-06')
+        cursor=Cursor(self.available,[target],[dict(target,id=56,_source_date='2026-11-05'),
+                      dict(target,id=55,item='other',_source_date='2026-11-05'),target])
+        logs=[log()]
+        with patch.object(service.audit,'_sources',return_value=REGISTRY):
+            service._context(cursor,logs,3,date(2026,11,6))
+        self.assertEqual('2026-11-06',logs[0]['source_date'])
+        self.assertEqual([56],[r['id'] for r in logs[0]['comparisons']])
+        self.assertNotIn('AT TIME ZONE',cursor.calls[1][0])
+        self.assertNotIn('batch_id =',cursor.calls[2][0])
+        self.assertEqual(['2026-11-04','2026-11-06'],cursor.calls[2][1][-2:])
+        before,after=service.paired_rows(logs[0])[-2:]
+        self.assertIsNone(before['sku'])
+        self.assertEqual('WW90T554DAX',after['sku'])
+
+    def test_siel_exception_kept(self):
+        cursor=Cursor(self.available,[])
+        with patch.object(service.audit,'_sources',return_value={'dx_test_retail':{**SOURCE,'country':'SIEL','key':'siel_ldy'}}):
+            service._context(cursor,[log()],1,date(2026,11,6))
+        self.assertIn("AT TIME ZONE 'Asia/Seoul'",cursor.calls[1][0])
+
+    def test_missing_or_reused_source_row_does_not_hide_saved_pair(self):
+        for target in ([],[dict(id=57,account_name='other',item='A001',_source_date='2026-11-05')]):
+            cursor=Cursor(self.available,target)
+            logs=[log()]
+            with patch.object(service.audit,'_sources',return_value=REGISTRY):
+                service._context(cursor,logs,1,date(2026,11,6))
+            self.assertIsNone(logs[0]['target'])
+            self.assertFalse(logs[0]['context_available'])
+            self.assertEqual('WW90T554DAX',service.paired_rows(logs[0])[-1]['sku'])
+
+    def test_cross_field_rule_isolation_and_corrected_records_survive_filter(self):
+        rows=[log(correction_type='cross_field',rule_id=1),log(id=2,correction_type='cross_field',rule_id=2)]
+        with patch.object(service,'dx_connection',return_value=connection(None)), \
+             patch.object(service,'_load',return_value=rows), \
+             patch.object(service,'_context',return_value=['sku']):
+            result=service.records(date(2026,11,6),'cross_field',SOURCE['table_name'],'mediamarkt','sku',1)
+        self.assertEqual(1,result['total'])
+        self.assertEqual('수정 후',result['groups'][0]['rows'][-1]['_phase'])
+        self.assertEqual('WW90T554DAX',result['groups'][0]['rows'][-1]['sku'])
+
+
+class TemplateTests(unittest.TestCase):
+    def test_entry_is_admin_only_and_all_four_templates_render_once(self):
+        root = Path(__file__).resolve().parents[1]
+        urls = SimpleNamespace(urlpatterns=[
+            path('dx/layer2/', include(([
+                path('admin-review/', views.page, name='admin_review'),
+                path('api/admin-review/', views.data, name='api_admin_review'),
+            ], 'dx_layer2'), namespace='dx_layer2')),
+            path('accounts/', include(([
+                path('login/', views.page, name='login'), path('logout/', views.page, name='logout'),
+                path('admin/', views.page, name='admin_dashboard'),
+            ], 'accounts'), namespace='accounts')),
+        ])
+        # URL resolvers cache the module object; SimpleNamespace isn't hashable.
+        from types import ModuleType
+        module = ModuleType('admin_review_test_urls')
+        module.urlpatterns = urls.urlpatterns
+        engine = Engine(dirs=[str(root/'templates'),
+                              str(root/'apps/dx/dx_layer2/templates'),
+                              str(root/'apps/dx/dx_layer3/templates')],
+                        libraries={'static':'django.templatetags.static'})
+        with override_settings(ROOT_URLCONF=module, STATIC_URL='/static/'):
+            for kind,(label,layer,section) in service.KINDS.items():
+                request = RequestFactory().get('/')
+                request.user = SimpleNamespace(is_authenticated=True,is_staff=False,is_superuser=False)
+                context = dict(request=request,user=request.user,section=section,
+                               layer=dict(number=layer,color='#0d9488',name='검증'),
+                               base_template=f'base_layer{layer}.html',review_kind=kind,review_label=label)
+                entry=engine.get_template('includes/_validation_review_entry.html')
+                self.assertNotIn('admin-validation-review-link',entry.render(Context(context)))
+                request.user.is_staff=True
+                self.assertIn('admin-validation-review-link',entry.render(Context(context)))
+                context['admin_review']=True
+                html=engine.get_template('validation_review.html').render(Context(context))
+                self.assertEqual(1,html.count('id="validation-review"'))
+                self.assertEqual(1,html.count('src="/static/js/validation-review.js'))
+                self.assertNotIn('id="admin-validation-review-link"',html)
+                self.assertIn('data-kind="'+kind+'"',html)
+
+
+if __name__=='__main__':
+    unittest.main()
