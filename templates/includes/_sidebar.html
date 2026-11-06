@@ -10,17 +10,18 @@
             <span class="sidebar-icon">📊</span>
             <span class="sidebar-text">대시보드</span>
         </a>
+        {% include 'includes/_validation_review_menu.html' %}
         {% for group in sidebar_groups %}
         {% if group.href %}
         <a href="{{ group.href }}{% if target_date and not group.ignore_target_date %}?date={{ target_date|urlencode }}{% endif %}"
-           class="sidebar-item {% if group.active %}active{% endif %}">
+           class="sidebar-item {% if group.active and not admin_review %}active{% endif %}">
             <span class="sidebar-icon">{{ group.icon }}</span>
             <span class="sidebar-text">{{ group.label }}</span>
         </a>
         {% else %}
         <div class="sidebar-group {% if group.expanded %}expanded{% endif %}"
              data-sidebar-group="{{ group.key|escape }}">
-            <div class="sidebar-item-row {% if group.active %}active{% endif %}" onclick="toggleSidebarGroup(this)">
+            <div class="sidebar-item-row {% if group.active and not admin_review %}active{% endif %}" onclick="toggleSidebarGroup(this)">
                 <span class="sidebar-icon">{{ group.icon }}</span>
                 <span class="sidebar-text">{{ group.label }}</span>
                 <span class="sidebar-arrow">▶</span>

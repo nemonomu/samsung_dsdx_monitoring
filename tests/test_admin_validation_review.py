@@ -428,8 +428,11 @@ class TemplateTests(unittest.TestCase):
                 request.user = SimpleNamespace(is_authenticated=True,is_staff=False,is_superuser=False)
                 context = dict(request=request,user=request.user,section=section,
                                layer=dict(number=layer,color='#0d9488',name='검증'),
+                               sidebar_base_url=f'/dx/layer{layer}/',target_date='2026-11-06',
                                base_template=f'base_layer{layer}.html',review_kind=kind,review_label=label)
                 entry=engine.get_template('includes/_validation_review_entry.html')
+                menu=engine.get_template('includes/_validation_review_menu.html')
+                self.assertNotIn('data-review-kind',menu.render(Context(context)))
                 self.assertNotIn('admin-validation-review-link',entry.render(Context(context)))
                 request.user.is_staff=True
                 self.assertIn('admin-validation-review-link',entry.render(Context(context)))
@@ -439,6 +442,19 @@ class TemplateTests(unittest.TestCase):
                 self.assertEqual(1,html.count('src="/static/js/validation-review.js'))
                 self.assertNotIn('id="admin-validation-review-link"',html)
                 self.assertIn('data-kind="'+kind+'"',html)
+                self.assertEqual(2,html.count('data-review-kind="'))
+                self.assertEqual(1,html.count('aria-current="page"'))
+                self.assertIn(f'?type={kind}&amp;date=2026-11-06',html)
+                for other,(_,other_layer,_) in service.KINDS.items():
+                    self.assertEqual(other_layer==layer, f'data-review-kind="{other}"' in html)
+                request.user.is_staff=False
+                request.user.is_superuser=True
+                self.assertIn('data-review-kind',menu.render(Context(context)))
+                request.user.is_authenticated=False
+                self.assertNotIn('data-review-kind',menu.render(Context(context)))
+                request.user.is_authenticated=True
+                context['sidebar_base_url']='/ds/layer2/'
+                self.assertNotIn('data-review-kind',menu.render(Context(context)))
 
 
 class ReviewSnapshotTests(unittest.TestCase):

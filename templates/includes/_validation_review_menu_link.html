@@ -1,0 +1,3 @@
+<a class="sidebar-subitem {% if admin_review and review_kind == kind %}active{% endif %}"
+   data-review-kind="{{ kind }}" {% if admin_review and review_kind == kind %}aria-current="page"{% endif %}
+   href="{% url 'dx_layer2:admin_review' %}?type={{ kind }}{% if target_date %}&amp;date={{ target_date|urlencode }}{% endif %}">{{ label }}</a>
