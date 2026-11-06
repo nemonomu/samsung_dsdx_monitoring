@@ -1,6 +1,25 @@
 from django.db import models
 
 
+class AdminValidationReviewCheck(models.Model):
+    """Administrator acknowledgement only; never changes validation decisions."""
+
+    environment = models.CharField(max_length=10)
+    inspection_date = models.DateField()
+    kind = models.CharField(max_length=20)
+    table_name = models.CharField(max_length=200)
+    retailer = models.CharField(max_length=200)
+    checked = models.BooleanField(default=False)
+    actor = models.CharField(max_length=150)
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=['environment', 'inspection_date', 'kind', 'table_name', 'retailer'],
+            name='unique_admin_validation_check',
+        )]
+
+
 class FormatReviewScope(models.Model):
     """Review metadata lives in Django's DB, separate from collected source rows."""
 

@@ -1,4 +1,4 @@
-/* Administrator-only, read-only validation audit. No mutation endpoints. */
+/* Read-only validation audit with separate administrator completion checks. */
 (function () {
     'use strict';
     const root = document.getElementById('validation-review');
@@ -36,19 +36,49 @@
         return '<h2>'+esc(field ? field+' '+root.dataset.label+' 검수 조회' : state.get('retailer') !== null ? state.get('retailer')+' · '+root.dataset.label+' 검수' : root.dataset.label+' 검수')+'</h2>'+
             '<p class="vr-sub">'+esc(state.get('label') || '')+(state.get('retailer') !== null ? ' | '+esc(state.get('retailer')) : '')+' · 검수일 '+esc(state.get('date'))+'</p>';
     }
+    function checkInfo(check) {
+        return check && check.checked ? '확인: '+(check.actor || '')+(check.updated_at?' · '+check.updated_at.slice(0,19).replace('T',' '):'') : '';
+    }
+    function retailerCard(row) {
+        const check = row.check || {};
+        return '<div class="vr-retailer-card"><button type="button" class="vr-card" data-index="'+row.index+'"><div class="vr-card-head"><h3>'+esc(row.retailer || '(리테일러 없음)')+'</h3><strong>검수 '+row.total+'건</strong></div>'+chips(row.counts)+'</button>'+
+            '<div class="vr-check-row"><label><input type="checkbox" data-check-index="'+row.index+'"'+(check.checked?' checked':'')+' aria-label="'+esc(row.retailer || '리테일러 없음')+' 검수 완료"> 검수 완료</label><span class="vr-check-info" role="status">'+esc(checkInfo(check))+'</span></div></div>';
+    }
+    async function saveCheck(input, row) {
+        const previous = !!(row.check && row.check.checked);
+        const info = input.closest('.vr-check-row').querySelector('.vr-check-info');
+        input.disabled = true;
+        info.textContent = '저장 중…';
+        try {
+            const response = await fetch(root.dataset.checkApi, {
+                method:'POST', credentials:'same-origin',
+                headers:{'Content-Type':'application/json','X-CSRFToken':root.querySelector('[name=csrfmiddlewaretoken]').value},
+                body:JSON.stringify({date:state.get('date'),type:kind,table:row.table_name,retailer:row.retailer || '',checked:input.checked}),
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data || !data.success) throw new Error(data && data.error || '체크 저장에 실패했습니다. 다시 시도해 주세요.');
+            row.check = data.check;
+            input.checked = !!data.check.checked;
+            info.textContent = checkInfo(data.check) || '체크 해제됨';
+        } catch(error) {
+            input.checked = previous;
+            info.textContent = error.message || '체크 저장에 실패했습니다. 다시 시도해 주세요.';
+        } finally { input.disabled = false; }
+    }
     function list(data) {
         if (state.has('table')) {
             body.innerHTML = '<div class="vr-panel">'+title()+chips(data.counts)+'<div class="vr-fields">'+data.items.map((r,i) => '<button class="vr-card" data-index="'+i+'"><div class="vr-card-head">'+esc(r.column_name)+(r.rule_name?'<div class="vr-sub">'+esc(r.rule_name)+'</div>':'')+'<strong>검수 '+r.total+'건</strong></div>'+chips(r.counts)+'</button>').join('')+'</div>'+(!data.items.length?'<div class="vr-empty">선택한 검수일의 처리 이력이 없습니다.</div>':'')+'</div>';
         } else {
             const groups = new Map();
             data.items.forEach((r,i) => {const k=r.country+' '+r.product;if(!groups.has(k))groups.set(k,[]);groups.get(k).push({...r,index:i});});
-            body.innerHTML = '<div class="vr-panel">'+title()+chips(data.counts)+'</div>'+Array.from(groups, ([name, rows]) => '<div class="vr-panel"><h2>'+esc(name)+'</h2><p class="vr-sub">검수일 '+esc(state.get('date'))+'</p>'+rows.map(r => '<button class="vr-card" data-index="'+r.index+'"><div class="vr-card-head"><h3>'+esc(r.retailer || '(리테일러 없음)')+'</h3><strong>검수 '+r.total+'건</strong></div>'+chips(r.counts)+'</button>').join('')+'</div>').join('')+(!data.items.length?'<div class="vr-panel vr-empty">선택한 검수일의 처리 이력이 없습니다.</div>':'');
+            body.innerHTML = '<div class="vr-panel">'+title()+chips(data.counts)+'</div>'+Array.from(groups, ([name, rows]) => '<div class="vr-panel"><h2>'+esc(name)+'</h2><p class="vr-sub">검수일 '+esc(state.get('date'))+'</p>'+rows.map(retailerCard).join('')+'</div>').join('')+(!data.items.length?'<div class="vr-panel vr-empty">선택한 검수일의 처리 이력이 없습니다.</div>':'');
         }
         body.querySelectorAll('[data-index]').forEach(el => el.addEventListener('click', () => {
             const row = data.items[Number(el.dataset.index)];
             if (state.has('table')) navigate({field: row.column_name, rule: row.rule_id == null ? null : row.rule_id, view:'records', page:1, columns:null});
             else navigate({table:row.table_name, retailer:row.retailer || '', label:row.country+' '+row.product});
         }));
+        body.querySelectorAll('[data-check-index]').forEach(input => input.addEventListener('change', () => saveCheck(input, data.items[Number(input.dataset.checkIndex)])));
     }
     function columnControls(data) {
         if (!hasDetailTools) return '';

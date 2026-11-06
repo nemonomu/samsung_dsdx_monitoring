@@ -1,14 +1,17 @@
-"""Administrator-only, GET-only validation review pages and data."""
+"""Administrator review: read-only audit data and separate completion checks."""
+import json
 from functools import wraps
 
 from django.http import JsonResponse
 from django.shortcuts import render
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.cache import never_cache
 
 from apps.common.params import parse_date
 from apps.common.response import safe_error
 from . import validation_review as service
+from . import validation_review_checks as checks
 
 
 def administrator(view):
@@ -18,7 +21,7 @@ def administrator(view):
         if not (user.is_authenticated and (user.is_staff or user.is_superuser)):
             return JsonResponse({'error': '관리자만 검수 이력을 조회할 수 있습니다.'}, status=403)
         return view(request, *args, **kwargs)
-    return never_cache(require_GET(guarded))
+    return never_cache(guarded)
 
 
 def arguments(request):
@@ -30,6 +33,7 @@ def arguments(request):
 
 
 @administrator
+@require_GET
 def page(request):
     try:
         day, kind = arguments(request)
@@ -47,13 +51,17 @@ def page(request):
 
 
 @administrator
+@require_GET
 def data(request):
     try:
         day, kind = arguments(request)
         table = request.GET.get('table', '')
         retailer = request.GET.get('retailer')
         if request.GET.get('view') != 'records':
-            return JsonResponse(service.summary(day, kind, table, retailer))
+            result = service.summary(day, kind, table, retailer)
+            if not table:
+                checks.attach(result.get('items', []), day, kind)
+            return JsonResponse(result)
         field = request.GET.get('field', '')
         rule = int(request.GET['rule']) if request.GET.get('rule') else None
         page_number, days = int(request.GET.get('page', 1)), int(request.GET.get('days', 3))
@@ -83,3 +91,24 @@ def data(request):
         return JsonResponse({'error': str(exc)}, status=400)
     except Exception as exc:
         return safe_error(exc, 'admin_validation_review')
+
+
+@administrator
+@require_POST
+@csrf_protect
+def check(request):
+    try:
+        body = json.loads(request.body)
+        if not isinstance(body, dict):
+            raise ValueError('요청을 확인하세요.')
+        day = parse_date(body.get('date'), default=None)
+        if day is None:
+            raise ValueError('검수 날짜를 확인하세요.')
+        result = checks.set_checked(day, body.get('type'), body.get('table'),
+                                    body.get('retailer'), body.get('checked'),
+                                    request.user.get_username())
+        return JsonResponse({'success': True, 'check': result})
+    except (ValueError, TypeError) as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except Exception as exc:
+        return safe_error(exc, 'save')

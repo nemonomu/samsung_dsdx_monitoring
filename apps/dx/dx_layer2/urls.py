@@ -12,6 +12,7 @@ app_name = 'layer2'
 urlpatterns = [
     path('admin-review/', validation_review_views.page, name='admin_review'),
     path('api/admin-review/', validation_review_views.data, name='api_admin_review'),
+    path('api/admin-review/check/', validation_review_views.check, name='api_admin_review_check'),
     # 페이지
     path('', dashboard_views.dashboard, name='dashboard'),
     path('null/', null_views.null_validation, name='null_validation'),

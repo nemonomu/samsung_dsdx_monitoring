@@ -408,6 +408,7 @@ class TemplateTests(unittest.TestCase):
             path('dx/layer2/', include(([
                 path('admin-review/', views.page, name='admin_review'),
                 path('api/admin-review/', views.data, name='api_admin_review'),
+                path('api/admin-review/check/', views.check, name='api_admin_review_check'),
             ], 'dx_layer2'), namespace='dx_layer2')),
             path('accounts/', include(([
                 path('login/', views.page, name='login'), path('logout/', views.page, name='logout'),
@@ -520,13 +521,15 @@ class ReviewSnapshotTests(unittest.TestCase):
         request = RequestFactory().get('/dx/layer2/api/admin-review/',
                                        {'date':'2026-11-06', 'type':'null_check'})
         request.user = SimpleNamespace(is_authenticated=True, is_staff=True, is_superuser=False)
-        with patch.object(service, '_load', return_value=[log()]) as load:
+        with patch.object(service, '_load', return_value=[log()]) as load, \
+                patch.object(views.checks, 'attach') as attach:
             self.assertEqual(200, views.data(request).status_code)
             request.user.is_staff = False
             self.assertEqual(403, views.data(request).status_code)
             request.user.is_authenticated = False
             self.assertEqual(403, views.data(request).status_code)
             self.assertEqual(load.call_count, 1)
+            self.assertEqual(attach.call_count, 1)
 
     def test_cached_rows_do_not_keep_context_or_expose_other_dates(self):
         with patch.object(service, '_load', side_effect=lambda *_args: [log()]) as load:

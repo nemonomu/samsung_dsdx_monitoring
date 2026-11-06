@@ -32,3 +32,12 @@
 .vr-sort span{color:#7a96bc}
 .vr-sort:focus-visible{outline:2px solid #80aaff;outline-offset:4px}
 @media(max-width:760px){.vr-detail-heading{flex-direction:column;gap:10px}.vr-query-row{grid-template-columns:1fr;gap:8px}.vr-tool-actions{width:100%;justify-content:flex-end;position:relative}.vr-column-wrap{position:static}.vr-columns{width:430px;max-width:100%}.vr-column-options{grid-template-columns:1fr}.vr-help{overflow-wrap:anywhere}.vr-days{flex-wrap:wrap}}
+
+/* Keep checked retailer cards visible and their detail buttons available. */
+.vr-retailer-card{border:1px solid #dce5f2;border-left:3px solid #3169ff;border-radius:6px;margin-top:12px;overflow:hidden;background:#fff}
+.vr-retailer-card .vr-card{border:0;margin:0;border-radius:0}
+.vr-check-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:0 18px 14px}
+.vr-check-row label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:#475569}
+.vr-check-row input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:#0d9488;cursor:pointer}
+.vr-check-row input:disabled{cursor:wait}
+.vr-check-info{font-size:11px;color:#647e9f;overflow-wrap:anywhere}
