@@ -185,6 +185,69 @@ def summary(day, kind, table='', retailer=None):
     return dict(success=True, items=items, total=len(rows), counts=_counts(rows))
 
 
+def _display_query(cursor, source, columns, logs, days, tools, stamp_type, context_rows=()):
+    """Compact, copyable SELECT for the visible source columns and page items."""
+    stamp = date_column(source)
+    shown = [c for c in dict.fromkeys((
+        'id', stamp, 'item', 'retailer_sku_name', logs[0]['column_name'],
+        *tools['selected_columns'], 'product_url',
+    )) if c in columns]
+    observed = [log.get('target') or {} for log in logs] + list(context_rows)
+    truncated = len(context_rows) > 1500
+    if source['country'] == 'SIEL':
+        date_filter = f"{stamp} AT TIME ZONE 'Asia/Seoul'"
+    elif not truncated and stamp_type in ('text', 'character varying', 'character', 'date', 'timestamp without time zone'):
+        date_filter = stamp
+        values = [row.get(stamp) for row in observed]
+        if any(isinstance(value, str) and value != value.strip(' ') for value in values):
+            date_filter = f'BTRIM({stamp})'
+    else:
+        # Unknown/native timezone types retain the registered date policy.
+        date_filter = day_sql(source).replace('source.', '')
+
+    groups = defaultdict(list)
+    for log in logs:
+        groups[(log['source_date'], account_key(log['retailer']))].append(log)
+    clauses, params = [], []
+    for (end, retailer), entries in groups.items():
+        end = date.fromisoformat(end)
+        parts = [f'{date_filter} >= %s', f'{date_filter} < %s']
+        params.extend([str(end - timedelta(days=days - 1)), str(end + timedelta(days=1))])
+        names = list(dict.fromkeys(row['account_name'] for row in observed
+                     if 'account_name' in row and account_key(row['account_name']) == retailer))
+        if not names:
+            # No source row remains: use the saved retailer spelling.
+            names = list(dict.fromkeys(entry['retailer'] for entry in entries))
+        if truncated:
+            parts.append('LOWER(BTRIM(account_name)) = %s')
+            params.append(retailer)
+        elif names == [None]:
+            parts.append('account_name IS NULL')
+        else:
+            parts.append('account_name = %s' if len(names) == 1 else 'account_name IN %s')
+            params.append(names[0] if len(names) == 1 else tuple(names))
+        items = list(dict.fromkeys(entry['item'] for entry in entries
+                     if entry.get('item') is not None and str(entry['item']).strip()))
+        item_parts = []
+        if items:
+            item_parts.append('item IN %s')
+            params.append(tuple(items))
+        for entry in entries:
+            item = entry.get('item')
+            if item is not None and str(item).strip():
+                continue
+            item_parts.append('(item IS NULL AND id = %s)' if item is None else '(item = %s AND id = %s)')
+            params.extend([entry['record_id']] if item is None else [item, entry['record_id']])
+        parts.append(item_parts[0] if len(item_parts) == 1 else '(' + ' OR '.join(item_parts) + ')')
+        clauses.append('\n  AND '.join(parts))
+    where = clauses[0] if len(clauses) == 1 else '(' + ')\n   OR ('.join(clauses) + ')'
+    table = source['table_name']
+    table = table if '.' in table else 'public.' + table
+    selection = ',\n       '.join(', '.join(shown[i:i+4]) for i in range(0, len(shown), 4))
+    query = f'SELECT {selection}\nFROM {table}\nWHERE {where}\nORDER BY item, {stamp};'
+    tools['query'] = cursor.mogrify(query, params).decode('utf-8')
+
+
 def _context(cursor, logs, days, day, extra_columns=None, tools=None):
     """Batch-read source context; saved values only overwrite the audited field.
 
@@ -196,9 +259,10 @@ def _context(cursor, logs, days, day, extra_columns=None, tools=None):
     schema, name = table.split('.') if '.' in table else ('public', table)
     if not all(audit.IDENTIFIER.fullmatch(p) for p in (schema, name)):
         raise ValueError('원본 설정이 올바르지 않습니다.')
-    cursor.execute('''SELECT column_name FROM information_schema.columns
+    cursor.execute('''SELECT column_name, data_type FROM information_schema.columns
                       WHERE table_schema = %s AND table_name = %s''', [schema, name])
-    available = {r[0] for r in cursor.fetchall() if audit.IDENTIFIER.fullmatch(r[0])}
+    types = {r[0]: r[1] if len(r) > 1 else None for r in cursor.fetchall() if audit.IDENTIFIER.fullmatch(r[0])}
+    available = set(types)
     field, stamp = logs[0]['column_name'], date_column(source)
     columns = audit.context_columns(available, stamp, field)
     if tools is not None:
@@ -231,23 +295,9 @@ def _context(cursor, logs, days, day, extra_columns=None, tools=None):
             log.update(target=target, source_date=str(target['_source_date']), context_available=True)
         if log.get('item') is not None and str(log['item']).strip():
             pairs.add((account_key(log['retailer']), log['item']))
-    if tools is not None:
-        # Display only a bounded, read-only source query for this page's items.
-        # Literal values are quoted by the DB driver, never by the browser.
-        clauses, params = [], []
-        for log in logs:
-            identity = 'LOWER(BTRIM(source.account_name)) IS NOT DISTINCT FROM %s AND source.item IS NOT DISTINCT FROM %s'
-            params.extend([account_key(log['retailer']) if log['retailer'] is not None else None, log.get('item')])
-            if log.get('item') is None or not str(log['item']).strip():
-                identity += ' AND source.id = %s'
-                params.append(log['record_id'])
-            start = str(date.fromisoformat(log['source_date']) - timedelta(days=days - 1))
-            clauses.append(f'({identity} AND ({date_expr}) BETWEEN %s AND %s)')
-            params.extend([start, log['source_date']])
-        query = (f'SELECT\n    {selection},\n    {date_expr} AS source_date\nFROM {table} source\n'
-                 f"WHERE {' OR '.join(clauses)}\nORDER BY source.item, ({date_expr}), source.id\nLIMIT 1500;")
-        tools['query'] = cursor.mogrify(query, params).decode('utf-8')
     if days == 1 or not pairs:
+        if tools is not None:
+            _display_query(cursor, source, columns, logs, days, tools, types.get(stamp))
         return columns
     ends = [date.fromisoformat(r['source_date']) for r in logs]
     clauses, params = [], []
@@ -267,6 +317,8 @@ def _context(cursor, logs, days, day, extra_columns=None, tools=None):
                    and start <= str(r['_source_date']) <= log['source_date']]
         log['comparisons'] = list(reversed(matches[:60]))
         log['truncated'] = len(comparisons) > 1500 or len(matches) > 60
+    if tools is not None:
+        _display_query(cursor, source, columns, logs, days, tools, types.get(stamp), comparisons)
     return columns
 
 

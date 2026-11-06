@@ -226,7 +226,7 @@ class AuditValueTests(SimpleTestCase):
 
 @override_settings(MONITORING_CACHE_ENABLED=False)
 class ContextTests(SimpleTestCase):
-    available=[(c,) for c in ('id','account_name','item','sku','crawl_datetime','retailer_sku_name','product_url')]
+    available=[(c, 'text') for c in ('id','account_name','item','sku','crawl_datetime','retailer_sku_name','product_url')]
 
     def setUp(self):
         registry = patch.object(service.audit, '_sources', return_value=REGISTRY)
@@ -247,9 +247,10 @@ class ContextTests(SimpleTestCase):
         self.assertNotIn('detailed_review_content',columns)
         self.assertIn('source.count_of_reviews',cursor.calls[1][0])
         self.assertIn("A''001",tools['query'])
-        self.assertIn("BETWEEN '2026-11-04' AND '2026-11-06'",tools['query'])
+        self.assertIn("crawl_datetime >= '2026-11-04'",tools['query'])
+        self.assertIn("crawl_datetime < '2026-11-07'",tools['query'])
         self.assertTrue(tools['query'].startswith('SELECT'))
-        self.assertTrue(tools['query'].endswith('LIMIT 1500;'))
+        self.assertTrue(tools['query'].endswith('ORDER BY item, crawl_datetime;'))
         before,after=service.paired_rows(logs[0])
         self.assertIsNone(before['sku'])
         self.assertEqual('WW90T554DAX',after['sku'])
@@ -271,9 +272,10 @@ class ContextTests(SimpleTestCase):
         with patch.object(service.audit,'_sources',return_value=REGISTRY):
             service._context(cursor,[log(column_name='detailed_review_content',item=None)],1,date(2026,11,6),tools=tools)
         self.assertIn('count_of_reviews',tools['selected_columns'])
-        self.assertIn('source.id = 57',tools['query'])
-        self.assertIn('source.item IS NOT DISTINCT FROM NULL',tools['query'])
-        self.assertIn("BETWEEN '2026-11-06' AND '2026-11-06'",tools['query'])
+        self.assertIn('id = 57',tools['query'])
+        self.assertIn('item IS NULL',tools['query'])
+        self.assertIn("crawl_datetime >= '2026-11-06'",tools['query'])
+        self.assertIn("crawl_datetime < '2026-11-07'",tools['query'])
         self.assertEqual(2,len(cursor.calls))  # SQL display itself does not query.
 
     def test_selected_columns_do_not_affect_other_validation_kinds(self):
@@ -294,8 +296,9 @@ class ContextTests(SimpleTestCase):
                 result = service.records(date(2026,11,6), kind, SOURCE['table_name'],
                                          'MediaMarkt', 'sku', extra_columns=['count_of_reviews'])
             self.assertEqual(['count_of_reviews'], result['selected_columns'])
-            self.assertIn('source.count_of_reviews', result['query'])
-            self.assertIn("BETWEEN '2026-11-04' AND '2026-11-06'", result['query'])
+            self.assertIn('count_of_reviews', result['query'])
+            self.assertIn("crawl_datetime >= '2026-11-04'", result['query'])
+            self.assertIn("crawl_datetime < '2026-11-07'", result['query'])
             self.assertEqual('WW90T554DAX', result['groups'][0]['rows'][-1]['sku'])
             self.assertEqual(3, len(cursor.calls))  # SQL is displayed, not executed.
 
@@ -332,9 +335,50 @@ class ContextTests(SimpleTestCase):
 
     def test_siel_exception_kept(self):
         cursor=Cursor(self.available,[])
+        tools={}
         with patch.object(service.audit,'_sources',return_value={'dx_test_retail':{**SOURCE,'country':'SIEL','key':'siel_ldy'}}):
-            service._context(cursor,[log()],1,date(2026,11,6))
+            service._context(cursor,[log()],1,date(2026,11,6),tools=tools)
         self.assertIn("AT TIME ZONE 'Asia/Seoul'",cursor.calls[1][0])
+        self.assertIn("crawl_datetime AT TIME ZONE 'Asia/Seoul'",tools['query'])
+
+    def test_display_groups_items_and_selects_only_visible_columns(self):
+        logs=[log(item=str(i), source_date='2026-11-05', retailer='casasbahia',
+                  target={'account_name':'CasasBahia'}) for i in range(5)]
+        columns=['id','crawl_datetime','item','retailer_sku_name','sku','product_url','savings','account_name']
+        tools={'selected_columns':['savings']}
+        service._display_query(Cursor(), SOURCE, columns, logs, 3, tools, 'text')
+        query=tools['query']
+        self.assertIn("item IN ('0', '1', '2', '3', '4')", query)
+        self.assertIn("account_name = 'CasasBahia'", query)
+        self.assertEqual(1,query.count('account_name'))
+        self.assertIn("crawl_datetime >= '2026-11-03'",query)
+        self.assertIn("crawl_datetime < '2026-11-06'",query)
+        self.assertEqual({'id','crawl_datetime','item','retailer_sku_name','sku','savings','product_url'},
+                         set(query.split('FROM')[0].removeprefix('SELECT').replace('\n','').replace(' ','').split(',')))
+        for unnecessary in ('source.', ' OR ', 'LEFT(', 'CAST(', 'source_date', 'LIMIT', 'SELECT *'):
+            self.assertNotIn(unnecessary,query)
+
+    def test_display_preserves_distinct_date_windows_and_account_spellings(self):
+        logs=[log(item='A',source_date='2026-11-05',target={'account_name':'MediaMarkt'}),
+              log(item='B',source_date='2026-11-06',target={'account_name':'mediamarkt'})]
+        tools={'selected_columns':[]}
+        service._display_query(Cursor(), SOURCE, ['id','item','sku','crawl_datetime'], logs, 1, tools, 'text')
+        first,second=tools['query'].split('\n   OR ')
+        self.assertIn("crawl_datetime < '2026-11-06'",first)
+        self.assertIn("item IN ('A')",first)
+        self.assertIn("crawl_datetime >= '2026-11-06'",second)
+        self.assertIn("item IN ('B')",second)
+        self.assertIn("account_name IN ('MediaMarkt', 'mediamarkt')",first)
+
+    def test_display_offset_text_keeps_raw_day_and_trims_only_when_needed(self):
+        for timestamp,expression in [('2026-11-06T23:59:00-04:00','crawl_datetime'),
+                                     (' 2026-11-06T23:59:00-04:00 ','BTRIM(crawl_datetime)')]:
+            tools={'selected_columns':[]}
+            logs=[log(target={'account_name':'MediaMarkt','crawl_datetime':timestamp})]
+            service._display_query(Cursor(), SOURCE, ['id','item','sku','crawl_datetime'], logs, 1, tools, 'text')
+            self.assertIn(f"{expression} >= '2026-11-06'",tools['query'])
+            self.assertIn(f"{expression} < '2026-11-07'",tools['query'])
+            self.assertNotIn('AT TIME ZONE',tools['query'])
 
     def test_missing_or_reused_source_row_does_not_hide_saved_pair(self):
         for target in ([],[dict(id=57,account_name='other',item='A001',_source_date='2026-11-05')]):
