@@ -21,13 +21,20 @@ function getScreenshotAnomaly(anomalyId) {
 
 function renderScreenshotProductInfo(anomalyId) {
     const anomaly = getScreenshotAnomaly(anomalyId);
-    [['screenshotPrice', anomaly?.retailprice], ['screenshotSoldBy', anomaly?.sold_by]].forEach(([id, value]) => {
-        const element = document.getElementById(id);
-        const text = String(value ?? '').trim();
-        const missing = !text || text.toUpperCase() === 'NULL';
-        element.textContent = missing ? 'NULL' : text;
-        element.classList.toggle('missing-value', missing);
-    });
+    const fields = [
+        ['SKU', anomaly?.retailersku],
+        ['제목', anomaly?.title],
+        ['IMAGEURL', anomaly?.imageurl, true],
+        ['가격', anomaly?.retailprice],
+        ['SHIPS FROM', anomaly?.ships_from],
+        ['SOLD BY', anomaly?.sold_by],
+        ['URL', anomaly?.producturl, true],
+    ];
+    // 이동 시 표 전체를 교체하여 이전 상품의 값과 선택 상태를 남기지 않는다.
+    document.getElementById('screenshotProductValues').innerHTML = '<tr>' + fields.map(([label, value, link]) => {
+        const missing = value == null || !String(value).trim() || String(value).trim().toUpperCase() === 'NULL';
+        return renderReportValueCell(label, missing ? null : value, {link});
+    }).join('') + '</tr>';
 }
 
 function getScreenshotCauseValue() {

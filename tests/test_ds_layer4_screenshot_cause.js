@@ -23,17 +23,25 @@ assert.ok(screenshotCss.includes('min-width: 220px;'));
 assert.ok(screenshotCss.includes('z-index: 10010 !important;'));
 assert.ok(!screenshotSource.includes('변경사항을 버릴까요?'));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/css/index.css' %}?v=20261106-imageurl-copy"
+    "{% static 'ds_layer4/css/index.css' %}?v=20261106-screenshot-product-info"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/screenshot.js' %}?v=20261002-cause-memo"
+    "{% static 'ds_layer4/js/screenshot.js' %}?v=20261106-screenshot-product-info"
 ));
 assert.ok(layer4Template.includes(
     "{% static 'ds_layer4/js/index.js' %}?v=20261002-report-close"
 ));
 assert.ok(layer4Template.includes(
-    "{% static 'ds_layer4/js/report.js' %}?v=20261106-imageurl-copy"
+    "{% static 'ds_layer4/js/report.js' %}?v=20261106-screenshot-product-info"
 ));
+const screenshotTemplate = fs.readFileSync(
+    'apps/ds/ds_layer4/templates/ds_layer4/partials/_layer4_screenshot_modal.html', 'utf8'
+);
+assert.ok(!screenshotTemplate.includes('id="screenshotPrice"'));
+assert.ok(!screenshotTemplate.includes('id="screenshotSoldBy"'));
+assert.ok(!screenshotTemplate.includes('report-copy-panel'));
+assert.deepStrictEqual([...screenshotTemplate.matchAll(/<th>(.*?)<\/th>/g)].map(match => match[1]),
+    ['SKU', '제목', 'IMAGEURL', '가격', 'SHIPS FROM', 'SOLD BY', 'URL']);
 
 function fakeClassList() {
     const values = new Set();
@@ -79,8 +87,7 @@ const elements = {
     screenshotCauseSaveBtn: fakeElement(),
     screenshotCauseReadonly: fakeElement(),
     screenshotDeleteBtn: fakeElement(),
-    screenshotPrice: fakeElement(),
-    screenshotSoldBy: fakeElement(),
+    screenshotProductValues: fakeElement(),
     screenshotModal: fakeElement(),
     screenshotTitle: fakeElement(),
     screenshotBody: fakeElement(),
@@ -139,6 +146,16 @@ vm.createContext(sandbox);
 vm.runInContext(indexSource, sandbox);
 vm.runInContext(reportSource, sandbox);
 vm.runInContext(screenshotSource, sandbox);
+
+function assertScreenshotField(label, expected, missing = expected === 'NULL') {
+    const cells = elements.screenshotProductValues.innerHTML.match(/<td\b[\s\S]*?<\/td>/g) || [];
+    assert.strictEqual(cells.length, 7);
+    const cell = cells.find(html => html.includes(`data-copy-label="${label}"`));
+    assert.ok(cell, `Missing field: ${label}`);
+    assert.ok(cell.includes(`data-copy-text="${sandbox.esc(expected)}"`));
+    assert.ok(cell.includes(`<span class="report-cell-value${missing ? ' null-value' : ''}">${sandbox.esc(expected)}</span>`));
+    return cell;
+}
 
 function setReportData(cause) {
     vm.runInContext(`
@@ -306,7 +323,9 @@ assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
     vm.runInContext(`
         isClosed = false;
         reportData.anomalies = [
-            { id: 101, retailer: 'Amazon_GB', screenshot_id: 501, retailprice: '399.99', sold_by: 'TechAzonia®' },
+            { id: 101, retailer: 'Amazon_GB', screenshot_id: 501, retailprice: '399.99', sold_by: 'TechAzonia®',
+              retailersku: 'SKU-101', title: 'SSD "2TB" <상품>', ships_from: 'Amazon',
+              imageurl: 'https://example.com/image.jpg?size=1600&label="한글"', producturl: 'https://example.com/product/101' },
             { id: 102, retailer: 'Amazon_GB', screenshot_id: 502, retailprice: null, sold_by: '  ' },
             { id: 103, retailer: 'Amazon_GB', screenshot_id: 503, retailprice: 0, sold_by: '<판매자 & 이름>' }
         ];
@@ -319,46 +338,53 @@ assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
         });
     }
     const firstImage = sandbox.showScreenshot(501, 101);
-    assert.strictEqual(elements.screenshotPrice.textContent, '399.99');
-    assert.strictEqual(elements.screenshotSoldBy.textContent, 'TechAzonia®');
-    assert.strictEqual(elements.screenshotPrice.classList.contains('missing-value'), false);
+    assertScreenshotField('가격', '399.99');
+    assertScreenshotField('SOLD BY', 'TechAzonia®');
+    assertScreenshotField('SKU', 'SKU-101');
+    assertScreenshotField('제목', 'SSD "2TB" <상품>');
+    assertScreenshotField('SHIPS FROM', 'Amazon');
+    assert.ok(assertScreenshotField('IMAGEURL', 'https://example.com/image.jpg?size=1600&label="한글"')
+        .includes('rel="noopener noreferrer"'));
+    assertScreenshotField('URL', 'https://example.com/product/101');
     const nextImage = sandbox.navigateScreenshot(1);
-    assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
-    assert.strictEqual(elements.screenshotSoldBy.textContent, 'NULL');
-    assert.strictEqual(elements.screenshotPrice.classList.contains('missing-value'), true);
-    assert.strictEqual(elements.screenshotSoldBy.classList.contains('missing-value'), true);
+    assertScreenshotField('가격', 'NULL');
+    assertScreenshotField('SOLD BY', 'NULL');
+    assert.ok(!assertScreenshotField('IMAGEURL', 'NULL').includes('href='));
+    assertScreenshotField('URL', 'NULL');
     completeImage(502);
     await nextImage;
     completeImage(501);
     await firstImage;
     assert.strictEqual(elements.screenshotTitle.textContent, '502.png');
     assert.ok(elements.screenshotBody.innerHTML.includes('/image/502.png'));
-    assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
+    assertScreenshotField('가격', 'NULL');
 
     const thirdImage = sandbox.navigateScreenshot(1);
     completeImage(503);
     await thirdImage;
-    assert.strictEqual(elements.screenshotPrice.textContent, '0');
-    assert.strictEqual(elements.screenshotPrice.classList.contains('missing-value'), false);
-    assert.strictEqual(elements.screenshotSoldBy.textContent, '<판매자 & 이름>');
-    assert.strictEqual(elements.screenshotSoldBy.innerHTML, '');
+    assertScreenshotField('가격', '0');
+    assertScreenshotField('SOLD BY', '<판매자 & 이름>');
     const previousImage = sandbox.navigateScreenshot(-1);
     completeImage(502);
     await previousImage;
     assert.strictEqual(elements.screenshotTitle.textContent, '502.png');
-    assert.strictEqual(elements.screenshotPrice.textContent, 'NULL');
+    assertScreenshotField('가격', 'NULL');
     sandbox.renderScreenshotProductInfo(999);
-    assert.strictEqual(elements.screenshotSoldBy.textContent, 'NULL');
+    assertScreenshotField('SOLD BY', 'NULL');
 
     vm.runInContext(`reportData.anomalies[1].cause_history = { status: 'automatic', source: {
         id: 88, crawl_date: '2026-09-22', screenshot_id: 900, retailprice: '299.00',
-        sold_by: '과거 판매자', cause: '과거 원인'
+        sold_by: '과거 판매자', cause: '과거 원인', title: '과거 상품',
+        imageurl: 'https://example.com/history.jpg'
     }};`, sandbox);
     const historicalImage = sandbox.showCauseHistoryScreenshot(102);
     completeImage(900);
     await historicalImage;
-    assert.strictEqual(elements.screenshotPrice.textContent, '299.00');
-    assert.strictEqual(elements.screenshotSoldBy.textContent, '과거 판매자');
+    assertScreenshotField('가격', '299.00');
+    assertScreenshotField('SOLD BY', '과거 판매자');
+    assertScreenshotField('제목', '과거 상품');
+    assertScreenshotField('IMAGEURL', 'https://example.com/history.jpg');
+    assertScreenshotField('URL', 'NULL'); // 과거에 없는 URL을 현재 상품 값으로 채우지 않는다.
     assert.strictEqual(elements.screenshotCauseReadonly.textContent, '과거 원인');
     assert.strictEqual(elements.screenshotCauseSaveBtn.hidden, true);
     assert.strictEqual(elements.screenshotDeleteBtn.style.display, 'none');
@@ -369,7 +395,8 @@ assert.strictEqual(elements.screenshotCauseSaveBtn.disabled, false);
     const currentImage = sandbox.showScreenshot(501, 101);
     completeImage(501);
     await currentImage;
-    assert.strictEqual(elements.screenshotPrice.textContent, '399.99');
+    assertScreenshotField('가격', '399.99');
+    assertScreenshotField('IMAGEURL', 'https://example.com/image.jpg?size=1600&label="한글"');
     assert.strictEqual(elements.screenshotCauseSaveBtn.hidden, false);
 
     // 메모 입력란 없이 원인만 저장하며 기존 메모를 지우는 payload를 보내지 않는다.

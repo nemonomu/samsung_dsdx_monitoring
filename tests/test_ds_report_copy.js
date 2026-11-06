@@ -133,5 +133,14 @@ assert.strictEqual(selection.range, selectedRange); // Controls/links keep their
     assert.equal(panel['.report-copy-value'].value, '');
     assert.equal(panel['.report-copy-selected'].disabled, true);
     assert(!classes.has('report-cell-selected'));
+    // 캡처 팝업은 별도 전체 값 패널 없이 동일한 셀 선택/복사를 사용한다.
+    section.querySelector = () => null;
+    sandbox.selectReportValueCell(cell);
+    assert.strictEqual(selection.range.node, valueNode);
+    assert(classes.has('report-cell-selected'));
+    await sandbox.copyReportValue(cell.dataset.copyText);
+    assert.equal(copied.at(-1), imageUrl);
+    sandbox.handleReportValueKey({target: cell, key: 'Escape'}, cell);
+    assert(!classes.has('report-cell-selected'));
     console.log('DS report image URL, full-value selection, escaping and clipboard fallback tests passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

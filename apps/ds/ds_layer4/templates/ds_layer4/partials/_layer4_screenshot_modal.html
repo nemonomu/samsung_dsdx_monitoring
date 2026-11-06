@@ -8,8 +8,6 @@
             <div class="screenshot-modal-heading">
                 <span class="screenshot-modal-title" id="screenshotTitle">스크린샷</span>
                 <span class="screenshot-counter" id="screenshotCounter"></span>
-                <span class="screenshot-product-field">가격: <strong id="screenshotPrice" class="missing-value">NULL</strong></span>
-                <span class="screenshot-product-field">Sold By: <strong id="screenshotSoldBy" class="missing-value">NULL</strong></span>
             </div>
             <div class="screenshot-cause-editor" id="screenshotCauseEditor">
                 <label for="screenshotCauseSelect">원인</label>
@@ -21,6 +19,20 @@
             <div class="screenshot-modal-actions">
                 <button class="screenshot-delete-btn" id="screenshotDeleteBtn" onclick="deleteScreenshot()" title="스크린샷 삭제" style="display:none;">🗑 삭제</button>
                 <button class="screenshot-modal-close" onclick="closeScreenshotModal()">&times;</button>
+            </div>
+        </div>
+        <div class="screenshot-product-info report-copy-section">
+            <div class="report-copy-hint">셀 클릭 → Ctrl+C로 복사 · 복사 아이콘 한 번 클릭 · ↗ 새 창에서 열기</div>
+            <div class="screenshot-product-scroll">
+                <table class="screenshot-product-table" aria-label="캡처 상품 정보">
+                    <colgroup>
+                        <col style="width:120px;"><col><col style="width:25%;">
+                        <col style="width:95px;"><col style="width:110px;">
+                        <col style="width:180px;"><col style="width:20%;">
+                    </colgroup>
+                    <thead><tr><th>SKU</th><th>제목</th><th>IMAGEURL</th><th>가격</th><th>SHIPS FROM</th><th>SOLD BY</th><th>URL</th></tr></thead>
+                    <tbody id="screenshotProductValues"></tbody>
+                </table>
             </div>
         </div>
         <div class="screenshot-modal-body" id="screenshotBody">

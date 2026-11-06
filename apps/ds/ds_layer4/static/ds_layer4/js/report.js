@@ -251,9 +251,13 @@ function selectReportValueCell(cell, event) {
     const section = cell.closest('.report-copy-section');
     section.querySelectorAll('.report-cell-selected').forEach(td => td.classList.remove('report-cell-selected'));
     cell.classList.add('report-cell-selected');
-    section.querySelector('.report-copy-label').textContent = cell.dataset.copyLabel + ' · 전체 값';
-    section.querySelector('.report-copy-value').value = cell.dataset.copyText;
-    section.querySelector('.report-copy-selected').disabled = false;
+    // 캡처 팝업에서는 별도 전체 값 영역 없이 셀 선택/복사만 제공한다.
+    const valueField = section.querySelector('.report-copy-value');
+    if (valueField) {
+        section.querySelector('.report-copy-label').textContent = cell.dataset.copyLabel + ' · 전체 값';
+        valueField.value = cell.dataset.copyText;
+        section.querySelector('.report-copy-selected').disabled = false;
+    }
     cell.focus({preventScroll: true});
     const range = document.createRange();
     range.selectNodeContents(cell.querySelector('.report-cell-value'));
@@ -274,9 +278,12 @@ function handleReportValueKey(event, cell) {
         cell.classList.remove('report-cell-selected');
         window.getSelection().removeAllRanges();
         const section = cell.closest('.report-copy-section');
-        section.querySelector('.report-copy-label').textContent = '선택한 셀 · 전체 값';
-        section.querySelector('.report-copy-value').value = '';
-        section.querySelector('.report-copy-selected').disabled = true;
+        const valueField = section.querySelector('.report-copy-value');
+        if (valueField) {
+            section.querySelector('.report-copy-label').textContent = '선택한 셀 · 전체 값';
+            valueField.value = '';
+            section.querySelector('.report-copy-selected').disabled = true;
+        }
     }
 }
 
