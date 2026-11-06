@@ -210,6 +210,111 @@ function renderCauseHistory(anomaly) {
     </div>`;
 }
 
+// 원문은 data-copy-text에 보존하고 화면에서만 말줄임 처리한다.
+function renderReportValueCell(label, raw, options = {}) {
+    const missing = raw == null || String(raw).trim() === '';
+    const value = missing ? 'NULL' : String(raw);
+    // esc()는 텍스트 노드용이므로 HTML 속성의 따옴표를 추가로 이스케이프한다.
+    const attribute = text => esc(text).replace(/"/g, '&quot;');
+    const href = options.link && !missing && /^https?:\/\//i.test(value.trim()) ? value.trim() : '';
+    return `<td class="report-copy-cell${options.link ? ' report-link-cell' : ''}" tabindex="0"
+        data-copy-text="${attribute(value)}" data-copy-label="${attribute(label)}"
+        title="${attribute(value)} · 클릭 후 Ctrl+C로 복사"
+        onclick="selectReportValueCell(this, event)" onkeydown="handleReportValueKey(event, this)">
+        <div class="report-cell-content">
+            <span class="report-cell-value${missing ? ' null-value' : ''}">${esc(value)}</span>
+            <button type="button" class="report-cell-action report-cell-copy" title="${attribute(label)} 복사" aria-label="${attribute(label)} 복사"
+                onclick="event.stopPropagation();selectReportValueCell(this.closest('td'));copyReportValue(this.closest('td').dataset.copyText)">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+            ${href ? `<a class="report-cell-action" href="${attribute(href)}" target="_blank" rel="noopener noreferrer"
+                title="${attribute(label)} 새 창에서 열기" aria-label="${attribute(label)} 새 창에서 열기" onclick="event.stopPropagation()">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg>
+            </a>` : ''}
+        </div>
+    </td>`;
+}
+
+function renderReportCopyPanel() {
+    return `<div class="report-copy-panel">
+        <div class="report-copy-panel-header"><strong class="report-copy-label">선택한 셀 · 전체 값</strong>
+            <button type="button" class="app-btn app-btn-sm app-btn-outline report-copy-selected" disabled
+                onclick="copyReportValue(this.closest('.report-copy-panel').querySelector('textarea').value)">전체 값 복사</button>
+        </div>
+        <textarea class="report-copy-value" aria-label="선택한 셀의 전체 값" readonly rows="2"
+            placeholder="표의 셀을 클릭하면 생략되지 않은 전체 값을 확인할 수 있습니다."></textarea>
+    </div>`;
+}
+
+function selectReportValueCell(cell, event) {
+    if (event && event.target.closest('button, a, input, select, textarea')) return;
+    const section = cell.closest('.report-copy-section');
+    section.querySelectorAll('.report-cell-selected').forEach(td => td.classList.remove('report-cell-selected'));
+    cell.classList.add('report-cell-selected');
+    section.querySelector('.report-copy-label').textContent = cell.dataset.copyLabel + ' · 전체 값';
+    section.querySelector('.report-copy-value').value = cell.dataset.copyText;
+    section.querySelector('.report-copy-selected').disabled = false;
+    cell.focus({preventScroll: true});
+    const range = document.createRange();
+    range.selectNodeContents(cell.querySelector('.report-cell-value'));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+function handleReportValueKey(event, cell) {
+    if (event.target !== cell) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectReportValueCell(cell);
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        event.preventDefault();
+        copyReportValue(cell.dataset.copyText);
+    } else if (event.key === 'Escape') {
+        cell.classList.remove('report-cell-selected');
+        window.getSelection().removeAllRanges();
+        const section = cell.closest('.report-copy-section');
+        section.querySelector('.report-copy-label').textContent = '선택한 셀 · 전체 값';
+        section.querySelector('.report-copy-value').value = '';
+        section.querySelector('.report-copy-selected').disabled = true;
+    }
+}
+
+async function copyReportValue(value) {
+    try {
+        let copied = false;
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(value);
+                copied = true;
+            } catch (error) { /* HTTP/권한 제한 환경은 선택 복사로 대체 */ }
+        }
+        if (!copied) {
+            const previousFocus = document.activeElement;
+            const selection = window.getSelection();
+            const previousRange = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+            const input = document.createElement('textarea');
+            input.value = value;
+            input.style.cssText = 'position:fixed;left:-9999px;top:0';
+            document.body.appendChild(input);
+            try {
+                input.focus();
+                input.select();
+                copied = document.execCommand('copy');
+            } finally {
+                input.remove();
+                if (previousFocus) previousFocus.focus({preventScroll: true});
+                selection.removeAllRanges();
+                if (previousRange) selection.addRange(previousRange);
+            }
+            if (!copied) throw new Error('Clipboard copy failed');
+        }
+        showToast('전체 값을 복사했습니다.', 'success');
+    } catch (error) {
+        showToast('자동 복사가 제한되었습니다. 전체 값을 선택한 후 Ctrl+C로 복사해주세요.', 'warning');
+    }
+}
+
 function renderAnomalyItems(anomalies, retailer) {
     if (anomalies.length === 0) {
         return '<div style="text-align: center; color: var(--text-secondary); padding: 20px;">저장된 이상치가 없습니다.</div>';
@@ -224,16 +329,19 @@ function renderAnomalyItems(anomalies, retailer) {
     const anomalyIds = sortedAnomalies.map(a => a.id);
 
     let html = `
+        <div class="report-copy-section">
+        <div class="report-copy-hint">셀 클릭 → Ctrl+C로 전체 값 복사 · 복사 아이콘은 한 번 클릭 · ↗ 아이콘은 링크 열기</div>
         <table class="anomaly-table" data-retailer="${retailer}" data-anomaly-ids="${anomalyIds.join(',')}">
             <thead>
                 <tr>
                     ${isClosed ? '' : `<th style="width: 35px;"><input type="checkbox" id="anomalySelectAll_${safeRetailerId}" class="memo-checkbox" onchange="toggleAnomalySelectAll('${escRetailer}', '${safeRetailerId}')"></th>`}
                     <th style="width: 100px;">SKU</th>
                     <th style="width: 150px;">제목</th>
+                    <th style="width: 210px;">IMAGEURL</th>
                     <th style="width: 80px;">가격</th>
                     <th style="width: 100px;">Ships From</th>
                     <th style="width: 100px;">Sold By</th>
-                    <th style="width: 45px;">URL</th>
+                    <th style="width: 110px;">URL</th>
                     <th style="width: 60px;">스크린샷</th>
                     <th style="width: 200px;">
                         <div>원인</div>
@@ -251,9 +359,6 @@ function renderAnomalyItems(anomalies, retailer) {
 
     sortedAnomalies.forEach(a => {
         const missingCause = !normalizeReportCause(a.cause);
-        const escTitle = (a.title || '(제목 없음)').replace(/"/g, '&quot;');
-        const escShipsFrom = (a.ships_from || 'NULL').replace(/"/g, '&quot;');
-        const escSoldBy = (a.sold_by || 'NULL').replace(/"/g, '&quot;');
         html += `
             <tr class="${missingCause ? 'missing-cause-row' : ''}">
                 ${isClosed ? '' : `
@@ -261,14 +366,13 @@ function renderAnomalyItems(anomalies, retailer) {
                     <input type="checkbox" id="anomalyCheck_${a.id}" class="memo-checkbox anomaly-checkbox anomaly-checkbox-${safeRetailerId}" onchange="toggleAnomalyInput(${a.id}, '${safeRetailerId}')">
                 </td>
                 `}
-                <td class="text-center">${a.retailersku || '-'}</td>
-                <td class="title-cell" title="${escTitle}">${a.title || '(제목 없음)'}</td>
-                <td class="${!a.retailprice ? 'null-value' : ''}">${a.retailprice || 'NULL'}</td>
-                <td class="overflow-cell ${!a.ships_from ? 'null-value' : ''}" title="${escShipsFrom}">${a.ships_from || 'NULL'}</td>
-                <td class="overflow-cell ${!a.sold_by ? 'null-value' : ''}" title="${escSoldBy}">${a.sold_by || 'NULL'}</td>
-                <td class="text-center">
-                    ${a.producturl ? AppButton.iconHtml('copy', `copyProductUrl('${a.producturl.replace(/'/g, "\\'")}', this)`, { style: 'ghost', title: '링크 복사' }) : '-'}
-                </td>
+                ${renderReportValueCell('SKU', a.retailersku)}
+                ${renderReportValueCell('제목', a.title)}
+                ${renderReportValueCell('IMAGEURL', a.imageurl, {link: true})}
+                ${renderReportValueCell('가격', a.retailprice)}
+                ${renderReportValueCell('SHIPS FROM', a.ships_from)}
+                ${renderReportValueCell('SOLD BY', a.sold_by)}
+                ${renderReportValueCell('URL', a.producturl, {link: true})}
                 <td class="text-center">
                     ${a.screenshot_id
                         ? AppButton.iconHtml('📷', `showScreenshot(${a.screenshot_id}, ${a.id})`, { style: 'ghost', title: '스크린샷 보기' })
@@ -288,7 +392,7 @@ function renderAnomalyItems(anomalies, retailer) {
         `;
     });
 
-    html += '</tbody></table>';
+    html += '</tbody></table>' + renderReportCopyPanel();
 
     // 저장 버튼 추가 (마감 전에만)
     if (!isClosed) {
@@ -298,7 +402,7 @@ function renderAnomalyItems(anomalies, retailer) {
             </div>
         `;
     }
-    return html;
+    return html + '</div>';
 }
 
 // 전체 이상치 테이블 렌더링
@@ -321,16 +425,18 @@ function renderAllAnomaliesTable(data) {
     }
 
     let html = `
+        <div class="report-copy-section">
+        <div class="report-copy-hint">셀 클릭 → Ctrl+C로 전체 값 복사 · 복사 아이콘은 한 번 클릭 · ↗ 아이콘은 링크 열기</div>
         <table class="all-anomaly-table">
             <thead>
                 <tr>
-                    <th style="width: 45px;">ID</th>
+                    <th style="width: 90px;">ID</th>
                     <th style="width: 100px;">리테일러</th>
                     <th style="width: 150px;">제목</th>
+                    <th style="width: 210px;">IMAGEURL</th>
                     <th style="width: 80px;">가격</th>
                     <th style="width: 100px;">Ships From</th>
                     <th style="width: 100px;">Sold By</th>
-                    <th style="width: 50px;">이미지</th>
                     <th style="width: 200px;">원인</th>
                     <th>원인 적용 이력</th>
                     ${isClosed ? '' : '<th style="width: 60px;">관리</th>'}
@@ -340,20 +446,15 @@ function renderAllAnomaliesTable(data) {
     `;
 
     data.anomalies.forEach(a => {
-        const escTitle = (a.title || '(제목 없음)').replace(/"/g, '&quot;');
-        const escShipsFrom = (a.ships_from || 'NULL').replace(/"/g, '&quot;');
-        const escSoldBy = (a.sold_by || 'NULL').replace(/"/g, '&quot;');
         html += `
             <tr>
-                <td class="text-center">${a.id}</td>
-                <td><span class="retailer-badge">${a.retailer}</span></td>
-                <td class="title-cell" title="${escTitle}">${a.title || '<span class="null-value">(제목 없음)</span>'}</td>
-                <td class="${!a.retailprice ? 'null-value' : ''}">${a.retailprice || 'NULL'}</td>
-                <td class="overflow-cell ${!a.ships_from ? 'null-value' : ''}" title="${escShipsFrom}">${a.ships_from || 'NULL'}</td>
-                <td class="overflow-cell ${!a.sold_by ? 'null-value' : ''}" title="${escSoldBy}">${a.sold_by || 'NULL'}</td>
-                <td class="text-center ${!a.imageurl ? 'null-value' : ''}">
-                    ${a.imageurl ? `<a href="${a.imageurl}" target="_blank" style="color: #2563eb;">보기</a>` : 'NULL'}
-                </td>
+                ${renderReportValueCell('ID', a.id)}
+                ${renderReportValueCell('리테일러', a.retailer)}
+                ${renderReportValueCell('제목', a.title)}
+                ${renderReportValueCell('IMAGEURL', a.imageurl, {link: true})}
+                ${renderReportValueCell('가격', a.retailprice)}
+                ${renderReportValueCell('SHIPS FROM', a.ships_from)}
+                ${renderReportValueCell('SOLD BY', a.sold_by)}
                 <td>
                     <select id="cause_all_${a.id}" class="inline-select" ${isClosed ? 'disabled' : ''}>
                         ${getCauseOptionsHtml(a.retailer, a.cause)}
@@ -371,7 +472,7 @@ function renderAllAnomaliesTable(data) {
         `;
     });
 
-    html += '</tbody></table>';
+    html += '</tbody></table>' + renderReportCopyPanel() + '</div>';
     content.innerHTML = html;
 
     // 컬럼 리사이즈 적용
