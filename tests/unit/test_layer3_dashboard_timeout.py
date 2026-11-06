@@ -42,6 +42,8 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 'django.http': module_stub('django.http', JsonResponse=dict),
                 'apps': package_stub('apps'),
                 'apps.common': package_stub('apps.common'),
+                'apps.common.monitoring_cache': module_stub(
+                    'apps.common.monitoring_cache', cached_monitoring_stats=lambda view: view),
                 'apps.common.db': module_stub(
                     'apps.common.db', dx_connection=lambda: None
                 ),
@@ -74,6 +76,8 @@ class Layer3DashboardTimeoutTests(unittest.TestCase):
                 'apps.dx.dx_layer3.cross_field': package_stub(
                     'apps.dx.dx_layer3.cross_field'
                 ),
+                'apps.dx.dx_layer3.cross_field.seib_services': module_stub('apps.dx.dx_layer3.cross_field.seib_services'),
+                'apps.dx.dx_layer3.cross_field.seuk_services': module_stub('apps.dx.dx_layer3.cross_field.seuk_services'),
                 'apps.dx.dx_layer3.cross_field.tse_services': module_stub(
                     'apps.dx.dx_layer3.cross_field.tse_services'
                 ),

@@ -3,12 +3,14 @@ Layer 2 Dashboard API: HTTP 래퍼 (request 파싱 + services 호출 + JsonRespo
 """
 
 from django.http import JsonResponse
+from apps.common.monitoring_cache import cached_monitoring_stats
 from apps.common.db import dx_connection
 from apps.common.response import log_error
 from apps.common.params import parse_date
 from apps.dx.dx_layer2.dashboard import services
 
 
+@cached_monitoring_stats
 def layer_stats(request):
     """Layer 2 통계 API - 검증유형별, 테이블별 구조화"""
     target_date = parse_date(request.GET.get('date'))

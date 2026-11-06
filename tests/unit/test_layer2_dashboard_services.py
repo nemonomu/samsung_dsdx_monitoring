@@ -317,6 +317,8 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
                 'django.http': module_stub(
                     'django.http', JsonResponse=lambda data, status=200: SimpleNamespace(data=data, status_code=status),
                 ),
+                'apps.common.monitoring_cache': module_stub(
+                    'apps.common.monitoring_cache', cached_monitoring_stats=lambda view: view),
                 'apps.common.db': module_stub('apps.common.db', dx_connection=connection),
                 'apps.common.response': module_stub('apps.common.response', log_error=str),
                 'apps.common.params': module_stub('apps.common.params', parse_date=date.fromisoformat),

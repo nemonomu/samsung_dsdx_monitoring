@@ -2425,17 +2425,23 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 date_where += ' AND ' + get_non_product_exclusion_condition(
                     query_parts['table_name'], **master_options)
 
-            query = f"""
-                SELECT COUNT(*) as total,
-                       {', '.join(query_parts['count_parts'])}
-                FROM {query_parts['table_name']}
-                WHERE {date_where}
-            """
-            cursor.execute(query, params)
+            review_source = siel_source or sea_source
+            review_country = 'SIEL' if siel_source else 'SEA'
+            new_review_policy = review_source and uses_new_policy(target_date, review_country)
+            for column in query_parts['column_names']:
+                if column not in all_cat_fields:
+                    all_cat_fields.append(column)
+            if not new_review_policy:
+                query = f"""
+                    SELECT COUNT(*) as total,
+                           {', '.join(query_parts['count_parts'])}
+                    FROM {query_parts['table_name']}
+                    WHERE {date_where}
+                """
+                cursor.execute(query, params)
 
-            row = cursor.fetchone()
+                row = cursor.fetchone()
 
-            if row:
                 total = row[0] or 0
                 fields_detail = {}
                 total_null_count = 0
@@ -2474,74 +2480,73 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                         fields_detail[correction_col] = max(0, fields_detail[correction_col] - correction_count)
                         total_null_count = max(0, total_null_count - correction_count)
 
-                review_stats = {}
-                review_source = siel_source or sea_source
-                review_country = 'SIEL' if siel_source else 'SEA'
-                if review_source and uses_new_policy(target_date, review_country):
-                    columns = query_parts['column_names']
-                    record_columns = list(dict.fromkeys((
-                        'id', 'item', 'retailer_sku_name', *columns,
-                    )))
-                    cursor.execute(f"""
-                        SELECT {', '.join(record_columns)}
-                        FROM {query_parts['table_name']}
-                        WHERE {date_where}
-                    """, params)
-                    current_rows = [
-                        dict(zip(record_columns, source_row))
-                        for source_row in cursor.fetchall()
-                    ]
-                    manual_reviews = _load_current_null_reviews(
-                        cursor, query_parts['table_name'], target_date,
-                        columns, retailer_name,
-                    )
-                    column_config = get_null_check_config(
-                        category, check_name,
-                    )['columns']
-                    normal_reviews, review_stats, auto_logs = review_state(
-                        cursor, target_date, current_rows, columns,
-                        manual_reviews, table_name=query_parts['table_name'],
-                        country=review_country,
-                        product_line=review_source['source_key'],
-                        retailer=retailer_name,
-                        is_null=lambda value, field: _is_field_null(
-                            value, column_config[field].get('check_type', 'both'),
-                        ),
-                    )
-                    fields_detail = {
-                        field: (review_stats['raw_fields_detail'][field]
-                                - review_stats['reviewed_fields_detail'][field])
-                        for field in columns
-                    }
-                    total_null_count = sum(fields_detail.values())
-                    null_validation.setdefault('auto_null_reviews', []).extend(
-                        auto_logs,
-                    )
-
-                retailer_stats = {
-                    'retailer': retailer_name,
-                    'total': total,
-                    'total_null_count': total_null_count,
-                    'status': get_status(total_null_count),
-                    'fields_detail': fields_detail,
-                    **review_stats,
+            review_stats = {}
+            if new_review_policy:
+                columns = query_parts['column_names']
+                record_columns = list(dict.fromkeys((
+                    'id', 'item', 'retailer_sku_name', *columns,
+                )))
+                cursor.execute(f"""
+                    SELECT {', '.join(record_columns)}
+                    FROM {query_parts['table_name']}
+                    WHERE {date_where}
+                """, params)
+                current_rows = [
+                    dict(zip(record_columns, source_row))
+                    for source_row in cursor.fetchall()
+                ]
+                total = len(current_rows)
+                manual_reviews = _load_current_null_reviews(
+                    cursor, query_parts['table_name'], target_date,
+                    columns, retailer_name,
+                )
+                column_config = get_null_check_config(
+                    category, check_name,
+                )['columns']
+                normal_reviews, review_stats, auto_logs = review_state(
+                    cursor, target_date, current_rows, columns,
+                    manual_reviews, table_name=query_parts['table_name'],
+                    country=review_country,
+                    product_line=review_source['source_key'],
+                    retailer=retailer_name,
+                    is_null=lambda value, field: _is_field_null(
+                        value, column_config[field].get('check_type', 'both'),
+                    ),
+                )
+                fields_detail = {
+                    field: (review_stats['raw_fields_detail'][field]
+                            - review_stats['reviewed_fields_detail'][field])
+                    for field in columns
                 }
-                if sea_source and is_homedepot(retailer_name) and total == 0:
-                    retailer_stats.update(status='PENDING',
-                        validation_label=homedepot_inspection_label(target_date))
-                if sea_source and (is_costco(retailer_name) or sea_source['product_key'] == 'ldy_dryer') and total == 0:
-                    retailer_stats.update(status='PENDING', validation_label='미수집')
-                if monitoring_date:
-                    retailer_stats.update({
-                        'inspection_date': monitoring_date['inspection_date'],
-                        'source_date': monitoring_date['source_date'],
-                        'offset_days': monitoring_date['offset_days'],
-                        'source_key': monitoring_date['source_key'],
-                        'batch_id': anchor_batch_id,
-                    })
-                cat_retailers.append(retailer_stats)
-                cat_total_records += total
-                cat_total_issues += total_null_count
+                total_null_count = sum(fields_detail.values())
+                null_validation.setdefault('auto_null_reviews', []).extend(
+                    auto_logs,
+                )
+
+            retailer_stats = {
+                'retailer': retailer_name,
+                'total': total,
+                'total_null_count': total_null_count,
+                'status': get_status(total_null_count),
+                'fields_detail': fields_detail,
+                **review_stats,
+            }
+            if sea_source and is_homedepot(retailer_name) and total == 0:
+                retailer_stats.update(status='PENDING',
+                    validation_label=homedepot_inspection_label(target_date))
+            if sea_source and (is_costco(retailer_name) or sea_source['product_key'] == 'ldy_dryer') and total == 0:
+                retailer_stats.update(status='PENDING', validation_label='미수집')
+            if monitoring_date:
+                retailer_stats.update({
+                    'inspection_date': monitoring_date['inspection_date'],
+                    'source_date': monitoring_date['source_date'],
+                    'offset_days': monitoring_date['offset_days'],
+                    'source_key': monitoring_date['source_key'],
+                    'batch_id': anchor_batch_id,
+                })
+            cat_retailers.append(retailer_stats)
+            cat_total_records += total
+            cat_total_issues += total_null_count
 
         table_stats = {
             'table': category,

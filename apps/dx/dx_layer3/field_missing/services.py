@@ -124,7 +124,7 @@ def field_missing_detection(
             case_prev.append(f"MAX(CASE WHEN DATE({date_column}) IN ('{prev_date_1}', '{prev_date_2}') AND {safe_col} IS NOT NULL AND CAST({safe_col} AS TEXT) != '' THEN 1 ELSE 0 END) as prev_{col.replace(' ', '_')}")
 
             # exclude 조건 적용
-            exclude_conds = get_missing_exclude_conditions(ret, table_name, col)
+            exclude_conds = get_missing_exclude_conditions(ret, table_name, col, cursor=cursor)
             exclude_conds = [c for c in exclude_conds if validate_exclude_condition(c)]
             exclude_sql = ""
             if exclude_conds:
@@ -169,7 +169,7 @@ def field_missing_detection(
                 safe_col = f'"{col}"'
                 placeholders = ', '.join(['%s'] * len(stats['missing_items']))
                 # exclude 조건 적용
-                exclude_conds = get_missing_exclude_conditions(ret, table_name, col)
+                exclude_conds = get_missing_exclude_conditions(ret, table_name, col, cursor=cursor)
                 exclude_conds = [c for c in exclude_conds if validate_exclude_condition(c)]
                 exclude_sql = ""
                 if exclude_conds:

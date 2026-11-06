@@ -12,12 +12,12 @@ from . import services
 from .services import get_field_missing_excluded_columns
 
 
-def _validation_columns(product_line, retailer):
+def _validation_columns(product_line, retailer, *, cursor=None):
     fixed = services.get_field_missing_validation_columns(product_line)
     if fixed:
         return fixed
     from apps.common.retail_columns import get_retail_columns_for_retailer
-    return get_retail_columns_for_retailer(product_line, retailer)
+    return get_retail_columns_for_retailer(product_line, retailer, **({"cursor": cursor} if cursor is not None else {}))
 
 
 def _columns_with_related(product_line, retailer):
@@ -81,14 +81,15 @@ def field_missing_detection(request):
     )
 
     # DB에서 리테일러별 수집 필드 로드 (skip_missing_check=TRUE인 필드 제외)
-    retail_columns = {}
-    for ret in services.get_field_missing_retailers(product_line):
-        cols = _validation_columns(product_line, ret)
-        if cols:
-            retail_columns[ret] = cols
-
     try:
         with dx_connection() as (conn, cursor):
+            retail_columns = {}
+            for ret in services.get_field_missing_retailers(product_line):
+                if retailer != 'all' and ret != retailer:
+                    continue
+                cols = _validation_columns(product_line, ret, cursor=cursor)
+                if cols:
+                    retail_columns[ret] = cols
             result = services.field_missing_detection(
                 cursor, target_date, product_line, retailer, retail_columns,
                 inspection_date=_inspection_date,

@@ -4,6 +4,7 @@ Layer 3 대시보드 API — 전체 통계 오케스트레이터
 
 from datetime import date, datetime, timedelta
 from django.http import JsonResponse
+from apps.common.monitoring_cache import cached_monitoring_stats
 from apps.common.db import dx_connection
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.monitoring_exclusions import DISABLED_SOURCE_TABLES
@@ -64,6 +65,7 @@ def _count_timeseries_anomalies(cursor, count_sql, params):
     return anomaly_count
 
 
+@cached_monitoring_stats
 def layer_stats(request):
     """Layer 3 통계 API - 이상치 탐지 및 크로스 필드 검증"""
     date_str = request.GET.get('date')

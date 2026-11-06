@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta, timezone as tz
 
 from django.http import JsonResponse
+from apps.common.monitoring_cache import cached_monitoring_stats
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -85,6 +86,7 @@ def current_snapshot(country, inspection_date):
 
 
 @require_GET
+@cached_monitoring_stats
 def current(request):
     try:
         country = request.GET.get('country')

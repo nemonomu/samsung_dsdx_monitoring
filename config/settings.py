@@ -59,6 +59,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'apps.accounts.middleware.LoginRequiredMiddleware',  # 로그인 필수
+    'apps.common.monitoring_cache.MonitoringCacheInvalidationMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'

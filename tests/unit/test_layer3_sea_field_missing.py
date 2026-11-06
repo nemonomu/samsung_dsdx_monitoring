@@ -58,7 +58,7 @@ services = load_module(
         'apps.common.inspection_dates': inspection_dates,
         'apps.common.retail_columns': module_stub(
             'apps.common.retail_columns',
-            get_missing_exclude_conditions=lambda *_args: [],
+            get_missing_exclude_conditions=lambda *_args, **_kwargs: [],
         ),
         'apps.common.retail_validation': module_stub(
             'apps.common.retail_validation',
@@ -112,6 +112,27 @@ api = load_module(
 
 
 class SeaFieldMissingDateTests(unittest.TestCase):
+    def test_detection_reads_only_selected_retailer_on_the_existing_connection(self):
+        cursor = ScriptedCursor([])
+        connections = []
+        @contextmanager
+        def connection():
+            connections.append(cursor)
+            yield (None, cursor)
+
+        request = SimpleNamespace(GET={
+            'type': 'tv', 'retailer': 'Amazon', 'date': '2026-11-06',
+        })
+        with patch.object(api, 'dx_connection', connection), \
+                patch.object(api, '_validation_columns', return_value=['sku']) as columns, \
+                patch.object(services, 'field_missing_detection', return_value={}) as detect:
+            result = api.field_missing_detection(request)
+        self.assertEqual(connections, [cursor])
+        columns.assert_called_once_with('tv', 'Amazon', cursor=cursor)
+        self.assertIs(detect.call_args.args[0], cursor)
+        self.assertEqual(detect.call_args.args[4], {'Amazon': ['sku']})
+        self.assertEqual(result['source_date'], '2026-11-05')
+
     def test_ref_ldy_detail_enables_missing_fields_without_database_edit_flags(self):
         @contextmanager
         def connection():

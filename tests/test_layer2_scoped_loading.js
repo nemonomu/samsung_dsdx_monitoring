@@ -50,9 +50,10 @@ function cold() {
 function start(table) {
     const first = requests.length;
     const pending = sandbox.fetchDXStats(table);
-    return { pending, requests: requests.slice(first) };
+    return { pending, first, requests: requests.slice(first) };
 }
 function complete(request, issueOverride) {
+    request.done = true;
     const type = typeBySection[request.url.searchParams.get('section')];
     const focus = request.url.searchParams.get('table');
     const counts = type === 'null' ? [9, 2, 2, 3, 4, 0]
@@ -81,155 +82,132 @@ function assertGlobalBadges() {
     assert.strictEqual(badges.get('format_validation').total, 81);
     assert.strictEqual(badges.get('anomaly_validation').total, 0);
 }
+async function finish(load, failSection) {
+    let finished = false;
+    load.pending.then(() => { finished = true; });
+    for (let turn = 0; turn < 20 && !finished; turn++) {
+        for (const request of requests.slice(load.first).filter(request => !request.done)) {
+            if (request.url.searchParams.get('section') === failSection && !request.url.searchParams.has('table')) {
+                request.done = true;
+                request.resolve({ ok: false, status: 500 });
+            } else complete(request);
+        }
+        await flush();
+    }
+    assert(finished, 'all requested work must settle');
+    await load.pending;
+}
 (async function() {
     for (const section of Object.keys(typeBySection)) {
         sandbox.window.LAYER2.section = section;
-        for (const [index, country] of countries.entries()) {
+        for (const country of countries) {
             cold();
             const focus = country + '_ref_retail';
             const load = start(focus);
-            assert.strictEqual(load.requests.length, 4);
-            const [detail, ...sidebar] = load.requests;
+            assert.strictEqual(load.requests.length, 1, 'only the selected table starts immediately');
+            const detail = load.requests[0];
             assert.strictEqual(detail.url.searchParams.get('section'), section);
             assert.strictEqual(detail.url.searchParams.get('table'), focus);
-            assert(sidebar.every(request => !request.url.searchParams.has('table')));
             const beforeRender = rendered.length;
-            if (index % 2 === 0) {
-                complete(detail);
+            complete(detail);
+            await flush();
+            assert.strictEqual(rendered.at(-1).scoped_table, focus);
+            assert.strictEqual(badges.size, 0, 'scoped data must not become global totals');
+            for (let i = 0; i < 3; i++) {
+                const pending = requests.slice(load.first).filter(request => !request.done);
+                assert.strictEqual(pending.length, 1, 'global sections run sequentially after detail');
+                assert(!pending[0].url.searchParams.has('table'));
+                complete(pending[0]);
                 await flush();
-                assert.strictEqual(rendered.at(-1).scoped_table, focus, 'detail must not wait for sidebar');
-                assert.strictEqual(badges.size, 0, 'scoped response must not supply global counts');
-                sidebar.forEach(request => complete(request));
-            } else {
-                sidebar.forEach(request => complete(request));
-                await flush();
-                assertGlobalBadges();
-                assert.strictEqual(rendered.length, beforeRender, 'sidebar must not replace body');
-                complete(detail);
             }
-            await load.pending;
+            await finish(load);
             assertGlobalBadges();
-            assert.strictEqual(rendered.length, beforeRender + 1);
-            assert.strictEqual(elements.get('dx-validation-container').innerHTML, focus);
+            assert.strictEqual(rendered.length, beforeRender + 1, 'sidebar never replaces detail');
         }
     }
     sandbox.window.LAYER2.section = 'null_validation';
-    cold();
-    const cached = start('sea_ref_retail');
-    complete(cached.requests[0]);
-    await flush();
-    const beforeCachedClick = requests.length;
+    const fresh = start('sea_ref_retail');
+    await finish(fresh);
+    assert.strictEqual(requests.length - fresh.first, 1, 'fresh sidebar avoids all global reads');
+    const beforeClick = requests.length;
     sandbox.showTableDetailByName('sea_ref_retail');
-    assert.strictEqual(requests.length, beforeCachedClick, 'loaded country needs no new request');
-    cached.requests.slice(1).forEach(request => complete(request));
-    await cached.pending;
-    assertGlobalBadges();
+    assert.strictEqual(requests.length, beforeClick, 'loaded country needs no new request');
 
-    const beforeCountryClick = requests.length;
-    sandbox.onSubitemClick('null_validation', 'SEDA REF', 'seda_ref_retail');
-    const countryRequests = requests.slice(beforeCountryClick);
-    assert.strictEqual(countryRequests.length, 1, 'fresh counts must avoid three full-country queries');
-    assert.strictEqual(countryRequests[0].url.searchParams.get('table'), 'seda_ref_retail');
-    countryRequests.forEach(request => complete(request));
-    await flush();
-    assert.strictEqual(rendered.at(-1).scoped_table, 'seda_ref_retail');
-    assertGlobalBadges();
-
+    // Obsolete details cannot launch sidebar sweeps or overwrite the new date.
     for (const changeDate of [false, true]) {
         cold();
         const old = start('sea_ref_retail');
         if (changeDate) selectedDate = '2026-09-19';
         sandbox.invalidateLayer2SidebarStats(selectedDate);
         const latest = start('seg_ref_retail');
-        latest.requests.forEach(request => complete(request));
-        await latest.pending;
-        old.requests.forEach(request => complete(request, 99));
+        await finish(latest);
+        const before = requests.length;
+        complete(old.requests[0], 99);
         await old.pending;
+        assert.strictEqual(requests.length, before);
         assertGlobalBadges();
         assert.strictEqual(rendered.at(-1).scoped_table, 'seg_ref_retail');
         assert.strictEqual(rendered.at(-1).date, selectedDate);
     }
     cold();
-    const failedSidebar = start('sea_ref_retail');
-    const [detail, ...sidebar] = failedSidebar.requests;
-    complete(detail);
-    sidebar.forEach(request => request.url.searchParams.get('section') === 'format_validation'
-        ? request.resolve({ ok: false, status: 500 }) : complete(request));
-    await failedSidebar.pending;
+    const failed = start('sea_ref_retail');
+    await finish(failed, 'format_validation');
     assert.strictEqual(rendered.at(-1).scoped_table, 'sea_ref_retail');
-    assert.strictEqual(badges.get('null_validation').total, 20);
-    assert(!badges.has('format_validation'), 'failed section must not invent zero counts');
+    assert(!badges.has('format_validation'), 'errors must not invent zero counts');
     assert.strictEqual(errors.length, 1);
-    const first = requests.length;
-    vm.runInContext('ViewStack.stack = [{loadOverview: true}]; ViewStack.pop();', sandbox);
-    const overview = requests.slice(first);
-    assert.strictEqual(overview.length, 2, 'reuse overview and cached duplicate counts; retry failed format');
-    assert(overview.every(request => !request.url.searchParams.has('table')));
-    assert.strictEqual(location.searchParams.has('focus'), false);
-    overview.forEach(request => complete(request));
-    await flush();
+    const retry = start('sea_ref_retail');
+    await finish(retry);
+    assert.strictEqual(requests.length - retry.first, 2, 'retry only failed sidebar section');
     assertGlobalBadges();
-    assert.strictEqual(rendered.at(-1).scoped_table, null);
+
     sandbox.window.LAYER2.section = 'dashboard';
     const dashboard = start();
     assert.strictEqual(dashboard.requests.length, 3);
-    dashboard.requests.forEach(request => complete(request));
-    await dashboard.pending;
+    await finish(dashboard);
     assertGlobalBadges();
     assert.strictEqual(rendered.at(-1).summary.total_issues, 101);
-    // Simulate navigating from the dashboard into a fresh document in the same tab.
     sandbox.window.LAYER2.section = 'null_validation';
     vm.runInContext('layer2SidebarSnapshot = null; layer2SidebarDate = null;', sandbox);
     badges.clear();
     const fromDashboard = start('sea_ref_retail');
-    assertGlobalBadges(); // Synchronous: no API response has arrived yet.
-    assert.strictEqual(fromDashboard.requests.length, 1, 'only selected product is queried within 30 seconds');
-    complete(fromDashboard.requests[0]);
-    await fromDashboard.pending;
-    assert(!Array.from(storage.values()).join('').includes('retailer_sku_name'));
+    assertGlobalBadges();
+    await finish(fromDashboard);
+    assert.strictEqual(requests.length - fromDashboard.first, 1);
 
     now += 31000;
     const refresh = start('sea_ref_retail');
-    assertGlobalBadges(); // Stale counts remain visible during background refresh.
-    assert.strictEqual(refresh.requests.length, 4);
+    assertGlobalBadges(); // Keep old badges visible during refresh.
+    complete(refresh.requests[0]);
+    await flush();
+    const globalPending = requests.at(-1);
     const switching = start('seda_ref_retail');
-    assert.strictEqual(switching.requests.length, 1, 'reuse three in-flight global queries on rapid navigation');
-    refresh.requests.forEach(request => complete(request));
-    switching.requests.forEach(request => complete(request));
-    await Promise.all([refresh.pending, switching.pending]);
+    complete(switching.requests[0]);
+    await flush();
+    assert.strictEqual(requests.filter(request => !request.done).length, 1, 'reuse the running global read');
+    complete(globalPending);
+    await finish(switching);
+    await refresh.pending;
     assertGlobalBadges();
 
     sandbox.invalidateLayer2SidebarStats(selectedDate);
     const afterSave = start('sea_ref_retail');
-    assert.strictEqual(afterSave.requests.length, 4, 'save/search invalidates even a fresh snapshot');
-    assertGlobalBadges();
-    afterSave.requests.forEach(request => complete(request));
-    await afterSave.pending;
-
+    await finish(afterSave);
+    assert.strictEqual(requests.length - afterSave.first, 4, 'save invalidates all sections');
     selectedDate = '2026-09-20';
     const nextDate = start('sea_ref_retail');
-    assert.strictEqual(badges.size, 0, 'never display another date\'s counts');
-    nextDate.requests.forEach(request => complete(request));
-    await nextDate.pending;
+    assert.strictEqual(badges.size, 0, 'never display another date counts');
+    await finish(nextDate);
     assertGlobalBadges();
 
     cold();
-    const sessionStorage = sandbox.window.sessionStorage;
     sandbox.window.sessionStorage = { getItem() { throw Error('disabled'); }, setItem() { throw Error('disabled'); } };
-    const noStorage = start('sea_ref_retail');
-    noStorage.requests.forEach(request => complete(request));
-    await noStorage.pending;
+    await finish(start('sea_ref_retail'));
     const memoryOnly = start('seda_ref_retail');
-    assertGlobalBadges();
-    assert.strictEqual(memoryOnly.requests.length, 1);
-    complete(memoryOnly.requests[0]);
-    await memoryOnly.pending;
-    sandbox.window.sessionStorage = sessionStorage;
+    await finish(memoryOnly);
+    assert.strictEqual(requests.length - memoryOnly.first, 1);
     for (const file of fs.readdirSync('apps/dx/dx_layer2/templates')) {
         const source = fs.readFileSync('apps/dx/dx_layer2/templates/' + file, 'utf8');
-        if (source.includes('dx_layer2/js/dashboard.js')) {
-            assert(source.includes("dashboard.js' %}?v=20261023-seuk-format-duplicate"), file);
-        }
+        if (source.includes('dx_layer2/js/dashboard.js')) assert(source.includes("dashboard.js' %}?v=20261106-query-performance"), file);
     }
-    console.log('Layer2: synchronous dashboard cache restore, 30s reuse, in-flight deduplication, save invalidation, date isolation and all-country navigation passed.');
+    console.log('Layer2: detail priority, sequential sidebar, cache, races, save invalidation and date isolation passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

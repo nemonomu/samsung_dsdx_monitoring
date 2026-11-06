@@ -675,6 +675,8 @@ def load_latest_seg_rows(
         f"'{name.lower()}' OR {source_date_sql} >= '{retailer_start_date(source, name)}')"
         for name in retailers if retailer_start_date(source, name)
     )
+    # Materialize the ranking once: an inlined nested-loop join otherwise
+    # repeats the same aggregation/window sort for every matching source row.
     cursor.execute(f"""
         WITH main_batches AS (
             SELECT
@@ -692,7 +694,7 @@ def load_latest_seg_rows(
               {expert_start_scope}
               {redirect_scope}
             GROUP BY {source_date_sql}, source.account_name, source.batch_id
-        ), ranked_batches AS (
+        ), ranked_batches AS MATERIALIZED (
             SELECT source_date, account_name, batch_id,
                    ROW_NUMBER() OVER (
                        PARTITION BY source_date,

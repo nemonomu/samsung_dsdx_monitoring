@@ -83,8 +83,12 @@ def ds_connection(existing=None):
             conn.close()
 
 
-def execute_dx_query(query, params=None):
+def execute_dx_query(query, params=None, *, cursor=None):
     """DX DB 쿼리 실행 후 결과 반환"""
+    if cursor is not None:
+        cursor.execute(query, params or ())
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
     conn = get_dx_connection()
     cursor = conn.cursor()
     try:

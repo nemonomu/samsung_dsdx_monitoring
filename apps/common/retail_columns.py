@@ -274,7 +274,7 @@ def get_retail_duplicate_keys(product_line):
         return ['item', 'account_name']  # 기본값
 
 
-def get_retail_columns_for_retailer(product_line, retailer):
+def get_retail_columns_for_retailer(product_line, retailer, *, cursor=None):
     """
     특정 제품라인/리테일러의 컬럼 목록 반환 (skip_missing_check 제외)
 
@@ -293,7 +293,7 @@ def get_retail_columns_for_retailer(product_line, retailer):
                   AND skip_missing_check = FALSE AND is_active = TRUE
             ORDER BY id
         """
-        rows = execute_dx_query(query, (product_line.lower(), retailer.lower()))
+        rows = execute_dx_query(query, (product_line.lower(), retailer.lower()), **({"cursor": cursor} if cursor is not None else {}))
         return [row['column_name'] for row in rows]
     except Exception as e:
         log_error(e, 'db')
@@ -335,7 +335,7 @@ _missing_exclude_cache_time = None
 _MISSING_EXCLUDE_TTL = 60  # 캐시 유효시간 (초)
 
 
-def load_missing_exclude_rules():
+def load_missing_exclude_rules(*, cursor=None):
     """
     DB에서 필드 누락 예외 규칙 로드 (60초 TTL 캐시)
     테이블: monitoring_missing_exclude_rules
@@ -362,7 +362,7 @@ def load_missing_exclude_rules():
             WHERE is_active = TRUE
             ORDER BY id
         """
-        rows = execute_dx_query(query)
+        rows = execute_dx_query(query, **({"cursor": cursor} if cursor is not None else {}))
 
         for row in rows:
             key = (row['retailer'], row['table_name'], row['field_name'])
@@ -379,7 +379,7 @@ def load_missing_exclude_rules():
     return result
 
 
-def get_missing_exclude_conditions(retailer, table_name, field_name):
+def get_missing_exclude_conditions(retailer, table_name, field_name, *, cursor=None):
     """
     특정 리테일러/테이블/필드의 예외 조건 목록 반환
 
@@ -391,7 +391,7 @@ def get_missing_exclude_conditions(retailer, table_name, field_name):
     Returns:
         list: exclude_condition 문자열 리스트
     """
-    rules = load_missing_exclude_rules()
+    rules = load_missing_exclude_rules(**({"cursor": cursor} if cursor is not None else {}))
     return rules.get((retailer, table_name, field_name), [])
 
 

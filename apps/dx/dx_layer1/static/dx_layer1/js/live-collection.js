@@ -2,6 +2,10 @@
 (function () {
     const countries = {retail:'SEA', seda_retail:'SEDA', siel_retail:'SIEL', seg_retail:'SEG',
         sem_retail:'SEM', tse_retail:'TSE', seib_retail:'SEIB', seuk_retail:'SEUK'};
+    const currentDay = () => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    };
     const clone = value => JSON.parse(JSON.stringify(value));
     const isInspecting = () => Boolean(document.querySelector(
         'dialog[open], .modal.show, .modal-overlay.show, .l1-batch-toggle[aria-expanded="true"]'));
@@ -11,14 +15,14 @@
         const controllers = new Set();
         const schedule = () => {
             clearTimeout(timer);
-            if (!stopped) timer = setTimeout(() => refresh(), 15000);
+            if (!stopped && context()?.date === currentDay()) timer = setTimeout(() => refresh(), 60000);
         };
         async function refresh(force = false) {
             if (stopped) return;
             const scope = context();
             const key = JSON.stringify(scope);
             if (running && key === signature && !force) return;
-            if (document.hidden || !scope || !scope.countries.length || isInspecting()) {
+            if (document.hidden || !scope || (!force && scope.date !== currentDay()) || !scope.countries.length || isInspecting()) {
                 schedule(); return;
             }
             clearTimeout(timer);

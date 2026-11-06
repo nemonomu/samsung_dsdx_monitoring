@@ -439,20 +439,21 @@ async function fetchDXStats(tableTarget) {
             if (container) container.innerHTML =
                 '<div class="loading"><p style="color: var(--color-critical);">DX 데이터 로딩 실패</p></div>';
         });
-        const sidebarTasks = Object.values(LAYER2_SIDEBAR_GROUP_BY_TYPE).map(function(statsSection) {
-            // Reuse the overview response when it already includes every country.
-            const request = !table && statsSection === section
-                ? detailRequest : fetchLayer2SidebarStats(date, statsSection);
-            return request.then(function(data) {
-                if (!data || sidebarRequestId !== layer2SidebarRequestId) return;
+        // Prioritize the selected table; global counts run one section at a time.
+        await detailTask;
+        for (const statsSection of Object.values(LAYER2_SIDEBAR_GROUP_BY_TYPE)) {
+            if (requestId !== layer2StatsRequestId || sidebarRequestId !== layer2SidebarRequestId) return;
+            try {
+                const data = await (!table && statsSection === section
+                    ? detailRequest : fetchLayer2SidebarStats(date, statsSection));
+                if (!data || sidebarRequestId !== layer2SidebarRequestId) continue;
                 if (!table && statsSection === section) rememberLayer2SidebarStats(date, data);
                 updateLayer2SidebarIssueBadges(data);
-            }).catch(function(error) {
+            } catch (error) {
                 if (sidebarRequestId !== layer2SidebarRequestId) return;
                 console.error(`DX sidebar ${statsSection} Error:`, error);
-            });
-        });
-        await Promise.allSettled([detailTask, ...sidebarTasks]);
+            }
+        }
         return;
     }
 

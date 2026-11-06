@@ -63,7 +63,7 @@ async function loadStats() {
                 liveSnapshots.set(snapshot.country, snapshot);
                 if (!L1.liveCollection.isInspecting()) L1.liveCollection.preserveView(render);
             });
-            liveCollectionPoll.refresh();
+            // The initial response already contains current counts; wait for the next sweep.
         }
         await Promise.allSettled([statusRequest, summaryRequest]);
     } catch (error) {

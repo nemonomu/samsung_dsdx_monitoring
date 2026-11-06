@@ -15,7 +15,8 @@ function snapshot(main=199, bsr=100, total=204, date=day) {
 function setup(fetch) {
     let now=0, serial=0, modal=false;
     const timers=new Map(), events={}, documentEvents={};
-    const context={L1:{}, URLSearchParams, AbortController, console, fetch,
+    class TestDate extends Date { constructor(...args) { super(...(args.length ? args : [day + 'T12:00:00'])); } }
+    const context={Date:TestDate,L1:{}, URLSearchParams, AbortController, console, fetch,
         document:{hidden:false, querySelector:()=>modal,
             addEventListener:(name,fn)=>{documentEvents[name]=fn;}, removeEventListener:name=>delete documentEvents[name]},
         window:{addEventListener:(name,fn)=>{events[name]=fn;}, removeEventListener:name=>delete events[name]},
@@ -43,21 +44,21 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     });
     const row=()=>data.checks[0].categories[0].time_slots[0].retailers[0];
     await poll.refresh(); assert.equal(row().status,'CRITICAL');
-    current=snapshot(); await env.tick(15000);
+    current=snapshot(); await env.tick(60000);
     assert.equal(row().status,'OK'); assert.equal(row().count,204);
     assert.equal(row()._volumeCounts,undefined,'Old SEA summary must not replace live counts');
     assert.equal(data.checks[0].display_group,'daily');
-    current=snapshot(100,50,105); await env.tick(15000); assert.equal(row().status,'VOLUME_LOW');
-    current=snapshot(0,0,0); await env.tick(15000); assert.equal(row().status,'CRITICAL');
-    current=snapshot();current.rows[0].rules={}; await env.tick(15000);assert.equal(row().status,'INSUFFICIENT');
+    current=snapshot(100,50,105); await env.tick(60000); assert.equal(row().status,'VOLUME_LOW');
+    current=snapshot(0,0,0); await env.tick(60000); assert.equal(row().status,'CRITICAL');
+    current=snapshot();current.rows[0].rules={}; await env.tick(60000);assert.equal(row().status,'INSUFFICIENT');
     env.context.fetch=async()=>{calls++;throw Error('offline');};
-    await env.tick(15000);assert.equal(row().status,'ERROR');assert.equal(row().count,204);
+    await env.tick(60000);assert.equal(row().status,'ERROR');assert.equal(row().count,204);
     env.context.fetch=async()=>{calls++;return response(snapshot());};
-    await env.tick(15000);assert.equal(row().status,'OK');
+    await env.tick(60000);assert.equal(row().status,'OK');
     env.context.document.hidden=true; env.documentEvents.visibilitychange();
     const before=calls;await env.tick(60000);assert.equal(calls,before);
     env.context.document.hidden=false;env.documentEvents.visibilitychange();await flush();assert.equal(calls,before+1);
-    env.setModal(true);await env.tick(15000);assert.equal(calls,before+1);
+    env.setModal(true);await env.tick(60000);assert.equal(calls,before+1);
     env.setModal(false);env.events.focus();await flush();assert.equal(calls,before+2);
     poll.stop();await env.tick(30000);assert.equal(calls,before+2);
 
@@ -70,7 +71,7 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     });
     const seen=[];
     const racePoll=race.context.L1.liveCollection.poll(()=>({date:selected,countries:['SEA']}),item=>seen.push(item.inspection_date));
-    const old=racePoll.refresh();await flush();selected='2026-10-22';await racePoll.refresh();
+    const old=racePoll.refresh();await flush();selected='2026-10-22';await racePoll.refresh(true);
     resolveOld(response(snapshot()));await old;
     assert.deepEqual(seen,['2026-10-22']);racePoll.stop();
 
@@ -90,6 +91,8 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/dashboard.js','utf8'),dashboard.context);
     vm.runInContext('renderLayer1Stats=recordRender;',dashboard.context);
     await dashboard.context.loadStats();await flush();
+    assert.notDeepEqual(renders.at(-1),['OK',204], 'no immediate duplicate country read');
+    await dashboard.tick(60000);
     assert.deepEqual(renders.at(-1),['OK',204]);
     const oldSnapshot=snapshot(0,0,0);oldSnapshot.rows[0].rules={};oldSnapshot.live=false;
     resolveSaved(response(oldSnapshot));await flush();
@@ -107,5 +110,10 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     const sweep=many.refresh();await flush();parallel.events.focus();assert.equal(pending.length,3);
     while(pending.length){pending.splice(0).forEach(resolve=>resolve());await flush();}
     await sweep;assert.equal(peak,3);many.stop();
+    const past=setup(async()=>{throw Error('past days must not poll');});
+    let pastReads=0;past.context.fetch=async()=>{pastReads++;return response(snapshot());};
+    const pastPoll=past.context.L1.liveCollection.poll(()=>({date:'2026-10-22',countries:['SEA']}),()=>{});
+    await past.tick(60000);await pastPoll.refresh();past.events.focus();await flush();
+    assert.equal(pastReads,0);pastPoll.stop();
     console.log('Live collection: recollection, deletion, insufficient history, failure recovery, date races, visibility, dialogs and concurrency passed.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
