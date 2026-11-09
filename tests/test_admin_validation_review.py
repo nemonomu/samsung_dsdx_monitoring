@@ -401,6 +401,84 @@ class ContextTests(SimpleTestCase):
         self.assertEqual('WW90T554DAX',result['groups'][0]['rows'][-1]['sku'])
 
 
+class AutoReviewOptimizationTests(unittest.TestCase):
+    def test_scope_is_conservative_and_normalizes_source_and_retailer(self):
+        from apps.dx.dx_layer2.null_validation.auto_review_scope import load_scope
+        cursor=Cursor([('public.tv_retail_com',' AMAZON '),('ref_retail_com','Amazon')])
+        scope=load_scope(cursor,date(2026,11,9))
+        self.assertTrue(scope('tv_retail_com','amazon'))
+        self.assertTrue(scope('public.ref_retail_com'))
+        self.assertFalse(scope('tv_retail_com','Other'))
+        self.assertFalse(scope('unknown'))
+        self.assertIn('inspection_date <= %s',cursor.calls[0][0])
+        # Do not omit newer revoked decisions or same-day linked evidence.
+        for exclusion in ('revoked_at IS NULL','auto_apply_from','reason ='):
+            self.assertNotIn(exclusion,cursor.calls[0][0])
+
+    def test_partitions_are_disjoint_and_keep_every_source(self):
+        from apps.dx.dx_layer2.null_validation.auto_review_scope import ReviewScope
+        scopes={str(i):{str(n) for n in range(i+1)} for i in range(8)}
+        parts=ReviewScope(scopes).partitions()
+        self.assertEqual(3,len(parts))
+        keys=[key for part in parts for key in part.scopes]
+        self.assertEqual(len(set(keys)),len(keys))
+        self.assertEqual(set(scopes),set(keys))
+        self.assertEqual([],ReviewScope({}).partitions())
+
+    def test_no_evidence_skips_country_source_reads(self):
+        from apps.dx.dx_layer2 import seda_null_validation,seib_null_validation,seuk_null_validation,seg_validation,sem_validation
+        from apps.dx.dx_layer2.null_validation import services
+        for module in (seda_null_validation,seib_null_validation,seuk_null_validation,seg_validation,sem_validation):
+            cursor=Cursor()
+            result=module.append_null_stats(cursor,date(2026,11,9),{'tables':[]},review_filter=lambda *_:False)
+            self.assertEqual(0,result)
+            self.assertEqual([],cursor.calls)
+        cursor=Cursor()
+        self.assertEqual(([],0),services._get_tse_null_tables(cursor,date(2026,11,9),
+                         {'sources':{'tv':{'table_name':'tv'}}},{},review_filter=lambda *_:False))
+        self.assertEqual([],cursor.calls)
+
+    def test_parallel_reads_own_connections_and_return_all_rows(self):
+        import threading
+        from apps.common import db
+        from apps.dx.dx_layer2.null_validation import auto_review_scope as scopes,services
+        barrier=threading.Barrier(3)
+        opened,closed=[],[]
+        @contextmanager
+        def connect():
+            token=object()
+            opened.append(token)
+            try: yield None,token
+            finally: closed.append(token)
+        def read(cursor,day,review_filter):
+            self.assertIn(cursor,opened)
+            barrier.wait(timeout=5)
+            return {'auto_null_reviews':list(review_filter.scopes)},0
+        with patch.object(db,'dx_connection',connect),patch.object(services,'get_null_stats',read):
+            rows=scopes.collect(scopes.ReviewScope({'a':{'A'},'b':{'B'},'c':{'C'}}),date(2026,11,9),strict=True)
+        self.assertEqual(['a','b','c'],sorted(rows))
+        self.assertEqual(3,len(set(opened)))
+        self.assertEqual(set(opened),set(closed))
+
+    def test_partial_results_raise_and_empty_scope_does_not_connect(self):
+        from apps.common import db
+        from apps.dx.dx_layer2.null_validation import auto_review_scope as scopes,services
+        with patch.object(db,'dx_connection',return_value=connection(None)) as connect, \
+                patch.object(services,'get_null_stats',return_value=({'tables':[{'status':'ERROR'}]},0)):
+            self.assertEqual([],scopes.collect(scopes.ReviewScope({}),date(2026,11,9),strict=True))
+            connect.assert_not_called()
+            with self.assertRaises(RuntimeError):
+                scopes.collect(scopes.ReviewScope({'a':{'A'}}),date(2026,11,9),strict=True)
+
+    def test_legacy_dates_keep_original_automatic_policy(self):
+        from apps.dx.dx_layer2.null_validation import services,auto_review_scope
+        with patch.object(services,'get_tse_auto_applied_null_reviews',return_value=['legacy']) as old, \
+                patch.object(auto_review_scope,'load_scope') as scope:
+            self.assertEqual(['legacy'],services.get_auto_applied_null_reviews(None,date(2026,9,11),review_only=True))
+            old.assert_called_once()
+            scope.assert_not_called()
+
+
 class TemplateTests(unittest.TestCase):
     def test_entry_is_admin_only_and_all_four_templates_render_once(self):
         root = Path(__file__).resolve().parents[1]

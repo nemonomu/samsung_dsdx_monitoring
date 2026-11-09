@@ -1313,11 +1313,18 @@ def get_tse_auto_applied_null_reviews(cursor, target_date):
     return auto_logs
 
 
-def get_auto_applied_null_reviews(cursor, target_date, category=None, *, strict=False):
+def get_auto_applied_null_reviews(cursor, target_date, category=None, *, strict=False,
+                                  review_only=False):
     """Use the same current-cell decisions as the NULL worklist and counts."""
     if not uses_new_policy(target_date, 'TSE'):
         return get_tse_auto_applied_null_reviews(cursor, target_date)
     history_options = {}
+    if review_only:
+        from .auto_review_scope import load_scope, collect
+        scope = load_scope(cursor, target_date)
+        if category is None:
+            return collect(scope, target_date, strict=strict)
+        history_options['review_filter'] = scope
     if category == 'tv_retail':
         # The history reads public retail rows. Some local runtimes map the
         # master to an absent test table; use the matching public master only
@@ -1507,13 +1514,15 @@ def get_tse_null_review_logs(cursor, target_date):
     }
 
 
-def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
+def _get_tse_null_tables(cursor, target_date, runtime, tse_config, review_filter=None):
     """Return TSE NULL cards using only each retailer's latest daily batch."""
     tables = []
     total_issues = 0
     target_date_text = str(target_date)
 
     for product_line, source in runtime['sources'].items():
+        if review_filter is not None and not review_filter(source['table_name']):
+            continue
         retailer_rows = []
         table_auto_logs = []
         table_total = 0
@@ -1524,6 +1533,8 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
         country_scope = _build_tse_country_scope()
 
         for display_name, retailer_config in product_configs.items():
+            if review_filter is not None and not review_filter(canonical_table, retailer_config['retailer']):
+                continue
             required_columns = _safe_tse_required_columns(
                 product_line, retailer_config, runtime
             )
@@ -1774,7 +1785,7 @@ def _get_tse_null_tables(cursor, target_date, runtime, tse_config):
     return tables, total_issues
 
 
-def _append_tse_null_stats(cursor, target_date, validation, category=None):
+def _append_tse_null_stats(cursor, target_date, validation, category=None, review_filter=None):
     """Append TSE stats behind a savepoint so legacy stats still render."""
     runtime = _get_tse_runtime()
     if not runtime:
@@ -1798,7 +1809,8 @@ def _append_tse_null_stats(cursor, target_date, validation, category=None):
     cursor.execute(f'SAVEPOINT {savepoint}')
     try:
         tables, issue_count = _get_tse_null_tables(
-            cursor, target_date, runtime, tse_config
+            cursor, target_date, runtime, tse_config,
+            **({'review_filter': review_filter} if review_filter is not None else {}),
         )
     except Exception as exc:
         cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
@@ -2309,7 +2321,7 @@ def get_non_product_exclusion_condition(table_name, use_public_master=False):
 
 
 def get_null_stats(cursor, target_date, include_youtube=False, category=None,
-                   use_public_tv_master=False):
+                   use_public_tv_master=False, review_filter=None):
     """NULL 검증 통계 — 대시보드용"""
     total_null_issues = 0
 
@@ -2371,6 +2383,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                 continue
 
             retailer_name = check_info['display_name']
+            if review_filter is not None and not review_filter(query_parts['table_name'], retailer_name):
+                continue
             if sea_source and sea_date and costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.lowes_dryer.enabled(sea_date['source_date']):
                 continue
             if sea_source and sea_date and costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.homedepot_dryer.enabled(sea_date['source_date']):
@@ -2572,25 +2586,30 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
         add_review_totals(table_stats, cat_retailers)
         total_null_issues += cat_total_issues
 
+    review_options = {'review_filter': review_filter} if review_filter is not None else {}
     total_null_issues += _append_tse_null_stats(
         cursor, target_date, null_validation,
+        **review_options,
         **({'category': requested_category} if requested_category else {})
     )
     total_null_issues += seg_validation.append_null_stats(
         cursor, target_date, null_validation,
+        **review_options,
         **({'category': requested_category} if requested_category else {})
     )
     total_null_issues += seuk_null_validation.append_null_stats(
-        cursor, target_date, null_validation, category=requested_category)
+        cursor, target_date, null_validation, category=requested_category, **review_options)
     total_null_issues += seib_null_validation.append_null_stats(
-        cursor, target_date, null_validation, category=requested_category)
+        cursor, target_date, null_validation, category=requested_category, **review_options)
     total_null_issues += seda_null_validation.append_null_stats(
         cursor, target_date, null_validation,
+        **review_options,
         **({'category': requested_category} if requested_category else {})
     )
     if any(sem_validation.product_line_for(category) for category in config):
         total_null_issues += sem_validation.append_null_stats(
             cursor, target_date, null_validation,
+            **review_options,
             **({'category': requested_category} if requested_category else {})
         )
     null_validation['total_issues'] = total_null_issues

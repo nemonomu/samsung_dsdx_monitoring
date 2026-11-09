@@ -113,6 +113,16 @@ assert view(request).status_code == 200
         view(self.request())
         self.assertEqual(len(calls), 4)
 
+    def test_completion_check_keeps_snapshot_but_real_edits_still_invalidate(self):
+        key = ['2026-11-09', 'null_check', '', None, None, None]
+        cache.monitoring_cached_value('admin-review-v1', key, lambda: [1, 2, 3])
+        middleware = cache.MonitoringCacheInvalidationMiddleware(lambda request: JsonResponse({'ok': True}))
+        for path in ('/dx/layer2/api/admin-review/check/', '/layer2/api/admin-review/check/'):
+            middleware(self.factory.post(path))
+            self.assertEqual([1, 2, 3], cache.monitoring_cached_value('admin-review-v1', key))
+        middleware(self.factory.post('/dx/layer2/api/update-cell/'))
+        self.assertIsNone(cache.monitoring_cached_value('admin-review-v1', key))
+
     def test_inflight_read_cannot_repopulate_cache_after_write(self):
         calls = []
         @cache.cached_monitoring_stats

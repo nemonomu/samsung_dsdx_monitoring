@@ -508,10 +508,12 @@ def _load_normal_reviews(cursor, target_date, product_line,
     return reviews
 
 
-def append_null_stats(cursor, target_date, validation, category=None):
+def append_null_stats(cursor, target_date, validation, category=None, review_filter=None):
     total_issues = 0
     for product_line, source in SEG_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
+            continue
+        if review_filter is not None and not review_filter(source['table_name']):
             continue
         retailers = active_retailers(source, target_date)
         if not retailers:
@@ -523,6 +525,8 @@ def append_null_stats(cursor, target_date, validation, category=None):
         table_mapping = _mapping(target_date, source)
 
         for retailer in retailers:
+            if review_filter is not None and not review_filter(source['table_name'], retailer):
+                continue
             rows, mapping = _latest_rows(cursor, target_date, source, retailer)
             normal_reviews = _load_normal_reviews(
                 cursor, target_date, product_line, 'null_check'

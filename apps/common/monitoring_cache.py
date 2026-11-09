@@ -190,6 +190,11 @@ old result after a write. Legacy layer URLs use the same invalidation path.
         self.get_response = get_response
 
     def __call__(self, request):
+        # This acknowledgement changes no collected values or validation decisions.
+        # Check metadata is read uncached; retain the expensive validation snapshot.
+        if request.path_info in ('/dx/layer2/api/admin-review/check/',
+                                 '/layer2/api/admin-review/check/'):
+            return self.get_response(request)
         invalidate = (request.method not in ('GET', 'HEAD', 'OPTIONS')
                       and request.path_info.startswith((
                           '/dx/', '/layer1/', '/layer2/', '/layer3/', '/layer4/', '/layer5/')))

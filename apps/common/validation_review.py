@@ -98,7 +98,8 @@ def _load(cursor, day, kind, table='', retailer=None, field=None, rule=None):
         category = null_sources().get(table_key(table), {}).get('history_category') if table else None
         # This calls the same evidence matcher used by the worklist; never infer
         # a new automatic approval from an old correction or from today's value.
-        automatic = get_auto_applied_null_reviews(cursor, day, category=category, strict=True)
+        automatic = get_auto_applied_null_reviews(cursor, day, category=category, strict=True,
+                                                 review_only=True)
         seen = {_identity(row) for row in rows}
         for entry in automatic:
             if table_key(entry['table_name']) not in registry:

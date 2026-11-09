@@ -129,14 +129,18 @@ def _load_normal_reviews(cursor, target_date, source):
     }
 
 
-def append_null_stats(cursor, target_date, validation, category=None):
+def append_null_stats(cursor, target_date, validation, category=None, review_filter=None):
     total = 0
     for product_line, source in SEDA_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
             continue
+        if review_filter is not None and not review_filter(source['table_name']):
+            continue
         normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
         for retailer in source['retailers']:
+            if review_filter is not None and not review_filter(source['table_name'], retailer):
+                continue
             rows, mapping = latest_rows(cursor, target_date, source, retailer)
             fields = list(get_seda_null_columns(product_line, retailer))
             reviews = normal_reviews

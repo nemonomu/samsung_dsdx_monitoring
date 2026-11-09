@@ -104,16 +104,20 @@ def _load_normal_reviews(cursor, target_date, source):
     }
 
 
-def append_null_stats(cursor, target_date, validation, category=None):
+def append_null_stats(cursor, target_date, validation, category=None, review_filter=None):
     total = 0
     for product_line, source in SEUK_SOURCE_CONFIG.items():
         if not enabled(target_date):
             continue
         if category and category != source['section_code']:
             continue
+        if review_filter is not None and not review_filter(source['table_name']):
+            continue
         normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
         for retailer in source['retailers']:
+            if review_filter is not None and not review_filter(source['table_name'], retailer):
+                continue
             if str(target_date) < str(retailer_start_date(source, retailer)):
                 continue
             rows, mapping = latest_rows(cursor, target_date, source, retailer)

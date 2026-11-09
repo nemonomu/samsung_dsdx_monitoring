@@ -493,12 +493,14 @@ def _serialize(row, product_line, retailer=SEM_RETAILER):
     return result
 
 
-def append_null_stats(cursor, target_date, validation, category=None):
+def append_null_stats(cursor, target_date, validation, category=None, review_filter=None):
     total_issues = 0
     for product_line, source in SEM_SOURCE_CONFIG.items():
         if product_line == 'sem_ldy_dryer' and str(target_date)[:10] < str(SEM_DRYER_FIRST_SOURCE_DATE):
             continue
         if category and category != source['section_code']:
+            continue
+        if review_filter is not None and not review_filter(source['table_name']):
             continue
         normal_reviews = _load_normal_reviews(
             cursor, target_date, product_line, 'null_check'
@@ -507,6 +509,8 @@ def append_null_stats(cursor, target_date, validation, category=None):
         retailers = []
         mapping = _mapping(target_date, source)
         for retailer in active_sem_retailers(product_line, mapping['source_date']):
+            if review_filter is not None and not review_filter(source['table_name'], retailer):
+                continue
             retailer_fields = get_sem_required_columns(product_line, retailer)
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             reviews = normal_reviews
