@@ -1,7 +1,8 @@
 <section id="validation-review" class="vr" data-kind="{{ review_kind }}"
          data-label="{{ review_label }}" data-api="{% url 'dx_layer2:api_admin_review' %}"
-         data-check-api="{% url 'dx_layer2:api_admin_review_check' %}">
+         data-check-api="{% url 'dx_layer2:api_admin_review_check' %}" data-review-user="{{ request.user.pk }}">
     <div hidden>{% csrf_token %}</div>
     <nav class="vr-nav"><button type="button" class="app-btn app-btn-md app-btn-back" id="vr-back">← 검증 화면</button><span>관리자 검수</span></nav>
+    <div id="vr-save-status" class="vr-note" role="status" hidden></div>
     <div id="vr-body" aria-live="polite">검수 이력을 불러오는 중입니다.</div>
 </section>

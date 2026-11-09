@@ -106,7 +106,8 @@ class CompletionTests(TestCase):
         data=dict(date='2026-11-06',type='null_check',table='tv_retail_com',retailer='Amazon',checked=True)
         client=Client(enforce_csrf_checks=True)
         self.assertEqual(403,client.post('/check/',data,content_type='application/json').status_code)
-        self.assertEqual(405,client.get('/check/').status_code)
+        self.assertEqual(400,client.get('/check/').status_code)
+        self.assertEqual(405,client.put('/check/',data,content_type='application/json').status_code)
         for authenticated in (False,True):
             request=RequestFactory().post('/check/',data,content_type='application/json')
             request.user=SimpleNamespace(is_authenticated=authenticated,is_staff=False,is_superuser=False)
@@ -120,6 +121,24 @@ class CompletionTests(TestCase):
         self.assertEqual(200,response.status_code)
         self.assertTrue(response.json()['check']['checked'])
         self.assertIn('no-store',response['Cache-Control'])
+
+    def test_status_poll_reads_persisted_check_without_loading_validation(self):
+        client=Client()
+        query=dict(date='2026-11-06',type='null_check',table='public.tv_retail_com',retailer='AMAZON')
+        with patch.object(checks.review,'_review_rows',side_effect=AssertionError('no validation recalculation')):
+            self.assertFalse(client.get('/check/',query).json()['check']['checked'])
+            self.save()
+            response=client.get('/check/',query)
+            self.assertTrue(response.json()['check']['checked'])
+            self.assertEqual('admin',response.json()['check']['actor'])
+            self.assertIn('no-store',response['Cache-Control'])
+            self.save(False)
+            self.assertFalse(client.get('/check/',query).json()['check']['checked'])
+        self.assertEqual(1,AdminValidationReviewCheck.objects.count())
+        for authenticated in (False,True):
+            request=RequestFactory().get('/check/',query)
+            request.user=SimpleNamespace(is_authenticated=authenticated,is_staff=False,is_superuser=False)
+            self.assertEqual(403,views.check(request).status_code)
 
     def test_summary_keeps_checked_retailer_and_original_totals(self):
         self.save()

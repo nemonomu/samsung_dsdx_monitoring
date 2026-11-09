@@ -4,7 +4,7 @@ from functools import wraps
 
 from django.http import JsonResponse
 from django.shortcuts import render
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.cache import never_cache
 
@@ -94,19 +94,22 @@ def data(request):
 
 
 @administrator
-@require_POST
+@require_http_methods(['GET', 'POST'])
 @csrf_protect
 def check(request):
     try:
-        body = json.loads(request.body)
+        body = request.GET if request.method == 'GET' else json.loads(request.body)
         if not isinstance(body, dict):
             raise ValueError('요청을 확인하세요.')
         day = parse_date(body.get('date'), default=None)
         if day is None:
             raise ValueError('검수 날짜를 확인하세요.')
-        result = checks.set_checked(day, body.get('type'), body.get('table'),
-                                    body.get('retailer'), body.get('checked'),
-                                    request.user.get_username())
+        if request.method == 'GET':
+            result = checks.get_checked(day, body.get('type'), body.get('table'), body.get('retailer'))
+        else:
+            result = checks.set_checked(day, body.get('type'), body.get('table'),
+                                        body.get('retailer'), body.get('checked'),
+                                        request.user.get_username())
         return JsonResponse({'success': True, 'check': result})
     except (ValueError, TypeError) as exc:
         return JsonResponse({'error': str(exc)}, status=400)

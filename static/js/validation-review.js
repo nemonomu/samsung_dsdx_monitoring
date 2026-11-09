@@ -10,6 +10,56 @@
     const labels = {corrected: '값 수정', auto: '자동확인', normal: '수동확인', error: '오류 확인', reverted: '확인 취소'};
     const routes = {null_check: '/dx/layer2/null/', format_check: '/dx/layer2/format/', cross_field: '/dx/layer3/cross-field/', field_missing: '/dx/layer3/field-missing/'};
     let state = new URLSearchParams(location.search), serial = 0, controller;
+    const saving = new Set();
+    let leaving=false, recovering;
+    window.addEventListener('pagehide',()=>{leaving=true;});
+    window.addEventListener('pageshow',()=>{leaving=false;});
+    const pendingKey = 'validation-review-pending:'+root.dataset.reviewUser;
+    function pendingChecks() {
+        try { const value=JSON.parse(sessionStorage.getItem(pendingKey) || '{}'); return value && typeof value==='object' && !Array.isArray(value)?value:{}; }
+        catch (_) { return {}; }
+    }
+    function rememberCheck(id, value) {
+        try {
+            const pending=pendingChecks();
+            if(value) pending[id]=value; else delete pending[id];
+            if(Object.keys(pending).length) sessionStorage.setItem(pendingKey,JSON.stringify(pending));
+            else sessionStorage.removeItem(pendingKey);
+        } catch (_) { /* keepalive still protects the request if storage is unavailable. */ }
+    }
+    function saveStatus(message) {
+        const status=document.getElementById('vr-save-status');
+        if(status) { status.textContent=message;status.hidden=!message; }
+    }
+    async function recoverChecks() {
+        const pending=Object.entries(pendingChecks());
+        if(!pending.length) return;
+        saveStatus('진행 중이던 체크 저장을 확인하고 있습니다…');
+        const results=await Promise.all(pending.map(async ([id,entry]) => {
+            try {
+                if(!entry || !entry.payload || typeof entry.payload.checked!=='boolean') return false;
+                const {checked,...scope}=entry.payload;
+                for(let attempt=0;attempt<20;attempt++) {
+                    const abort=new AbortController();
+                    const timer=setTimeout(()=>abort.abort(),4000);
+                    let response,data;
+                    try {
+                        response=await fetch(root.dataset.checkApi+'?'+new URLSearchParams(scope),{
+                            credentials:'same-origin',cache:'no-store',signal:abort.signal,
+                        });
+                        data=await response.json();
+                    } finally { clearTimeout(timer); }
+                    if(!response.ok || !data.success) return false;
+                    if(data.check.checked===checked) return true;
+                    if(Date.now()-entry.startedAt>60000) return false;
+                    await new Promise(resolve=>setTimeout(resolve,400));
+                }
+                return false;
+            } catch (_) { return false; }
+            finally { rememberCheck(id,null); }
+        }));
+        saveStatus(results.every(Boolean)?'':'체크 저장을 확인하지 못했습니다. 현재 저장된 상태를 표시합니다. 체크 상태를 확인해 주세요.');
+    }
     const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const button = (label, action, disabled) => '<button type="button" class="app-btn app-btn-md app-btn-outline" data-action="'+action+'"'+(disabled?' disabled':'')+'>'+label+'</button>';
     const chips = counts => '<div class="vr-chips">'+Object.keys(labels).filter(k => counts[k]).map(k => '<span class="vr-chip '+k+'">'+labels[k]+' '+counts[k]+'건</span>').join('')+'</div>';
@@ -49,11 +99,15 @@
         const info = input.closest('.vr-check-row').querySelector('.vr-check-info');
         input.disabled = true;
         info.textContent = '저장 중…';
+        saveStatus('');
+        const payload={date:state.get('date'),type:kind,table:row.table_name,retailer:row.retailer || '',checked:input.checked};
+        const id=Date.now()+':'+Math.random().toString(36).slice(2);
+        rememberCheck(id,{payload,startedAt:Date.now()});
         try {
             const response = await fetch(root.dataset.checkApi, {
-                method:'POST', credentials:'same-origin',
+                method:'POST', credentials:'same-origin', keepalive:true,
                 headers:{'Content-Type':'application/json','X-CSRFToken':root.querySelector('[name=csrfmiddlewaretoken]').value},
-                body:JSON.stringify({date:state.get('date'),type:kind,table:row.table_name,retailer:row.retailer || '',checked:input.checked}),
+                body:JSON.stringify(payload),
             });
             const data = await response.json().catch(() => null);
             if (!response.ok || !data || !data.success) throw new Error(data && data.error || '체크 저장에 실패했습니다. 다시 시도해 주세요.');
@@ -63,7 +117,7 @@
         } catch(error) {
             input.checked = previous;
             info.textContent = error.message || '체크 저장에 실패했습니다. 다시 시도해 주세요.';
-        } finally { input.disabled = false; }
+        } finally { if(!leaving) rememberCheck(id,null);input.disabled = false; }
     }
     function list(data) {
         if (state.has('table')) {
@@ -78,7 +132,11 @@
             if (state.has('table')) navigate({field: row.column_name, rule: row.rule_id == null ? null : row.rule_id, view:'records', page:1, columns:null});
             else navigate({table:row.table_name, retailer:row.retailer || '', label:row.country+' '+row.product});
         }));
-        body.querySelectorAll('[data-check-index]').forEach(input => input.addEventListener('change', () => saveCheck(input, data.items[Number(input.dataset.checkIndex)])));
+        body.querySelectorAll('[data-check-index]').forEach(input => input.addEventListener('change', () => {
+            const promise=saveCheck(input,data.items[Number(input.dataset.checkIndex)]);
+            saving.add(promise);
+            promise.finally(()=>saving.delete(promise));
+        }));
     }
     function columnControls(data) {
         if (!hasDetailTools) return '';
@@ -193,6 +251,12 @@
         back.textContent = state.has('field')?'← 상세목록':state.has('table')?'← 목록':'← 검증 화면';
         body.innerHTML='<div class="vr-panel vr-empty">검수 이력을 불러오는 중입니다.</div>';
         try {
+            if(saving.size) await Promise.allSettled(Array.from(saving));
+            if(Object.keys(pendingChecks()).length) {
+                if(!recovering) recovering=recoverChecks().finally(()=>{recovering=null;});
+                await recovering;
+            }
+            if(sequence!==serial) return;
             const response=await fetch(root.dataset.api+'?'+state.toString(), {signal:controller.signal, credentials:'same-origin', cache:'no-store'});
             const data=await response.json();
             if(sequence!==serial) return;
