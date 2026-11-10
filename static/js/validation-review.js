@@ -91,10 +91,37 @@
     }
     function retailerCard(row) {
         const check = row.check || {};
-        return '<div class="vr-retailer-card"><button type="button" class="vr-card" data-index="'+row.index+'"><div class="vr-card-head"><h3>'+esc(row.retailer || '(리테일러 없음)')+'</h3><strong>검수 '+row.total+'건</strong></div>'+chips(row.counts)+'</button>'+
+        return '<div class="vr-retailer-card" data-card-index="'+row.index+'"><button type="button" class="vr-card" data-index="'+row.index+'"><div class="vr-card-head"><h3>'+esc(row.retailer || '(리테일러 없음)')+'</h3><strong>검수 '+row.total+'건</strong></div>'+chips(row.counts)+'</button>'+
             '<div class="vr-check-row"><label><input type="checkbox" data-check-index="'+row.index+'"'+(check.checked?' checked':'')+' aria-label="'+esc(row.retailer || '리테일러 없음')+' 검수 완료"> 검수 완료</label><span class="vr-check-info" role="status">'+esc(checkInfo(check))+'</span></div></div>';
     }
-    async function saveCheck(input, row) {
+    function reviewPriority(row) {
+        if(row.check && row.check.checked) return 1;
+        // Mixed cards and other manual decisions remain in the pending group.
+        return Object.keys(row.counts || {}).some(key=>key!=='auto' && row.counts[key]>0)?0:2;
+    }
+    function groupedCards(data, renderCard=retailerCard) {
+        const groups=[new Map(),new Map(),new Map()];
+        data.items.forEach((row,index)=>{
+            const group=groups[reviewPriority(row)],name=row.country+' '+row.product;
+            if(!group.has(name)) group.set(name,[]);
+            group.get(name).push({...row,index});
+        });
+        return groups.map((group,priority)=>!group.size?'':'<section data-review-priority="'+priority+'"><h2>'+['검수 대기','검수 완료','자동확인'][priority]+'</h2>'+Array.from(group,([name,rows])=>'<div class="vr-panel"><h2>'+esc(name)+'</h2><p class="vr-sub">검수일 '+esc(state.get('date'))+'</p>'+rows.map(renderCard).join('')+'</div>').join('')+'</section>').join('');
+    }
+    function reorderCards(data) {
+        const container=body.querySelector('.vr-list-groups');
+        if(!container) return;
+        const focused=document.activeElement;
+        const restoreFocus=container.contains(focused);
+        const cards=new Map(Array.from(container.querySelectorAll('[data-card-index]'),card=>[card.dataset.cardIndex,card]));
+        const holder=document.createElement('div');
+        holder.innerHTML=groupedCards(data,row=>'<div data-card-slot="'+row.index+'"></div>');
+        holder.querySelectorAll('[data-card-slot]').forEach(slot=>slot.replaceWith(cards.get(slot.dataset.cardSlot)));
+        // Move existing nodes so other in-flight saves, focus and messages survive.
+        container.replaceChildren(...holder.childNodes);
+        if(restoreFocus) focused.focus({preventScroll:true});
+    }
+    async function saveCheck(input, row, listData) {
         const previous = !!(row.check && row.check.checked);
         const info = input.closest('.vr-check-row').querySelector('.vr-check-info');
         input.disabled = true;
@@ -114,6 +141,7 @@
             row.check = data.check;
             input.checked = !!data.check.checked;
             info.textContent = checkInfo(data.check) || '체크 해제됨';
+            if(input.isConnected) reorderCards(listData);
         } catch(error) {
             input.checked = previous;
             info.textContent = error.message || '체크 저장에 실패했습니다. 다시 시도해 주세요.';
@@ -123,9 +151,7 @@
         if (state.has('table')) {
             body.innerHTML = '<div class="vr-panel">'+title()+chips(data.counts)+'<div class="vr-fields">'+data.items.map((r,i) => '<button class="vr-card" data-index="'+i+'"><div class="vr-card-head">'+esc(r.column_name)+(r.rule_name?'<div class="vr-sub">'+esc(r.rule_name)+'</div>':'')+'<strong>검수 '+r.total+'건</strong></div>'+chips(r.counts)+'</button>').join('')+'</div>'+(!data.items.length?'<div class="vr-empty">선택한 검수일의 처리 이력이 없습니다.</div>':'')+'</div>';
         } else {
-            const groups = new Map();
-            data.items.forEach((r,i) => {const k=r.country+' '+r.product;if(!groups.has(k))groups.set(k,[]);groups.get(k).push({...r,index:i});});
-            body.innerHTML = '<div class="vr-panel">'+title()+chips(data.counts)+'</div>'+Array.from(groups, ([name, rows]) => '<div class="vr-panel"><h2>'+esc(name)+'</h2><p class="vr-sub">검수일 '+esc(state.get('date'))+'</p>'+rows.map(retailerCard).join('')+'</div>').join('')+(!data.items.length?'<div class="vr-panel vr-empty">선택한 검수일의 처리 이력이 없습니다.</div>':'');
+            body.innerHTML = '<div class="vr-panel">'+title()+chips(data.counts)+'</div><div class="vr-list-groups">'+groupedCards(data)+'</div>'+(!data.items.length?'<div class="vr-panel vr-empty">선택한 검수일의 처리 이력이 없습니다.</div>':'');
         }
         body.querySelectorAll('[data-index]').forEach(el => el.addEventListener('click', () => {
             const row = data.items[Number(el.dataset.index)];
@@ -133,7 +159,7 @@
             else navigate({table:row.table_name, retailer:row.retailer || '', label:row.country+' '+row.product});
         }));
         body.querySelectorAll('[data-check-index]').forEach(input => input.addEventListener('change', () => {
-            const promise=saveCheck(input,data.items[Number(input.dataset.checkIndex)]);
+            const promise=saveCheck(input,data.items[Number(input.dataset.checkIndex)],data);
             saving.add(promise);
             promise.finally(()=>saving.delete(promise));
         }));
