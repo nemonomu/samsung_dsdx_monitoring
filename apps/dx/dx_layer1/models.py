@@ -1,6 +1,20 @@
 from django.db import models
 
 
+class RetailRankReview(models.Model):
+    """Audit of the exact three-day product comparison viewed by a reviewer."""
+    fingerprint = models.CharField(max_length=64, unique=True)
+    environment = models.CharField(max_length=10)
+    source_date = models.DateField(db_index=True)
+    context = models.JSONField()
+    result = models.CharField(max_length=40, default='미확인')
+    memo = models.TextField(blank=True)
+    revision = models.PositiveIntegerField(default=0)
+    updated_by = models.CharField(max_length=150)
+    updated_at = models.DateTimeField()
+    history = models.JSONField(default=list)
+
+
 class ColumnCheckLink(models.Model):
     environment = models.CharField(max_length=10)
     country = models.CharField(max_length=4)

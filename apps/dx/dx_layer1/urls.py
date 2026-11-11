@@ -4,10 +4,16 @@ from apps.dx.dx_layer1.common import api as check_api
 from apps.dx.dx_layer1.common.retail_review_api import reviews as retail_reviews
 from apps.dx.dx_layer1.collection_statistics.volume_review_api import review as volume_review
 from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
+from apps.dx.dx_layer1.rank_monitoring import api as rank_api
 
 app_name = 'layer1'
 
 urlpatterns = [
+    path('rank/api/data/', rank_api.data, name='api_rank_data'),
+    path('rank/api/detail/', rank_api.detail, name='api_rank_detail'),
+    path('rank/api/export/', rank_api.export, name='api_rank_export'),
+    path('rank/api/review/', rank_api.save_review, name='api_rank_review'),
+    path('rank/<str:mode>/<str:country>/', rank_api.page, name='rank_monitoring'),
     path('api/volume-review/', volume_review, name='api_volume_review'),
     path('api/retail-reviews/', retail_reviews, name='api_retail_reviews'),
     path('', include('apps.dx.dx_layer1.dashboard.urls')),

@@ -137,6 +137,7 @@ _backup/
 *.md
 !/AGENTS.md
 !docs/collection_statistics.md
+!docs/retail_rank_monitoring.md
 !CLAUDE.md
 
 !sql/setup_seuk_backup.sql

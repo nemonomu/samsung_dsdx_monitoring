@@ -109,6 +109,16 @@ def _build_sidebar_groups(section):
             'active': section in period_keys,
             'items': period_sections,
         })
+    rank_countries = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK')
+    for mode, label in (('all', '전체 상품 순위'), ('samsung', '삼성 제품 순위')):
+        prefix = f'rank_{mode}_'
+        groups.append({
+            'key': f'rank_{mode}', 'icon': '▤', 'label': label,
+            'expanded': section.startswith(prefix), 'active': section.startswith(prefix),
+            'items': [{'name': f'{country} Retail', 'active': section == prefix + country,
+                       'href': f'/dx/layer1/rank/{mode}/{country}/', 'ignore_target_date': True}
+                      for country in rank_countries],
+        })
     groups.append({
         'key': 'collection_statistics', 'icon': '📈', 'label': '수집데이터 통계',
         'href': '/dx/layer1/collection-statistics/', 'ignore_target_date': True,

@@ -59,6 +59,17 @@ class Layer1SidebarContextTests(unittest.TestCase):
         self.assertEqual(['소비자 물가 지수'], [item['name'] for item in period['items']])
         self.assertTrue(period['items'][0]['active'])
 
+    def test_rank_menus_have_country_children_and_do_not_reuse_inspection_date(self):
+        groups = self._load_context()._build_sidebar_groups('rank_samsung_SEG')
+        rank_groups = [g for g in groups if g['key'].startswith('rank_')]
+        self.assertEqual(['전체 상품 순위', '삼성 제품 순위'], [g['label'] for g in rank_groups])
+        self.assertFalse(rank_groups[0]['active'])
+        self.assertTrue(rank_groups[1]['expanded'])
+        self.assertEqual(8, len(rank_groups[0]['items']))
+        selected = [item for item in rank_groups[1]['items'] if item['active']]
+        self.assertEqual('/dx/layer1/rank/samsung/SEG/', selected[0]['href'])
+        self.assertTrue(all(item['ignore_target_date'] for group in rank_groups for item in group['items']))
+
 
 if __name__ == '__main__':
     unittest.main()

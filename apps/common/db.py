@@ -25,14 +25,15 @@ DX_SHARE_TOKEN_TABLE = dx_table('monitoring_share_tokens')
 DS_SHARE_TOKEN_TABLE = ds_table('ssd_crawl_db.ds_monitoring_share_tokens')
 
 
-def get_dx_connection():
+def get_dx_connection(*, connect_timeout=None):
     """DX PostgreSQL 연결"""
     return psycopg2.connect(
         host=DB_CONFIG['host'],
         port=DB_CONFIG['port'],
         user=DB_CONFIG['user'],
         password=DB_CONFIG['password'],
-        database='postgres'
+        database='postgres',
+        **({'connect_timeout': connect_timeout} if connect_timeout is not None else {}),
     )
 
 
@@ -50,9 +51,9 @@ def get_ds_connection():
 
 
 @contextmanager
-def dx_connection():
+def dx_connection(*, connect_timeout=None):
     """DX PostgreSQL 커넥션 컨텍스트 매니저 (에러 시 rollback, 자동 close)"""
-    conn = get_dx_connection()
+    conn = get_dx_connection(connect_timeout=connect_timeout) if connect_timeout is not None else get_dx_connection()
     cursor = conn.cursor()
     try:
         yield conn, cursor

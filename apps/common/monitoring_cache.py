@@ -45,6 +45,11 @@ def _generation(root):
         return 'initial'
 
 
+def monitoring_cache_generation():
+    """Source/validation write generation, also observed by isolated rank caches."""
+    return _generation(_root())
+
+
 def invalidate_monitoring_cache():
     """Invalidate all products together, including shared normal approvals."""
     path = None
@@ -193,7 +198,8 @@ old result after a write. Legacy layer URLs use the same invalidation path.
         # This acknowledgement changes no collected values or validation decisions.
         # Check metadata is read uncached; retain the expensive validation snapshot.
         if request.path_info in ('/dx/layer2/api/admin-review/check/',
-                                 '/layer2/api/admin-review/check/'):
+                                 '/layer2/api/admin-review/check/',
+                                 '/dx/layer1/rank/api/review/'):
             return self.get_response(request)
         invalidate = (request.method not in ('GET', 'HEAD', 'OPTIONS')
                       and request.path_info.startswith((
