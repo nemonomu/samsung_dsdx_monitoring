@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright, expect
 from apps.dx.dx_layer1.rank_monitoring.api import page as render_page
 from apps.dx.dx_layer1.rank_monitoring.comparison import compare
 from apps.dx.dx_layer1.rank_monitoring.listing import filtered, lightweight
-from tests.rank_monitoring_fixtures import DAY, samples
+from tests.rank_monitoring_fixtures import DAY, samples, row
 
 OUT=ROOT/'output/diagnostics/rank-monitoring'
 OUT.mkdir(parents=True,exist_ok=True)
@@ -30,6 +30,8 @@ reviews={}
 errors=[]
 posts=[]
 pending_once=True
+list_requests=[]
+fail_page_once=None
 
 
 def response(mode):
@@ -54,7 +56,7 @@ with sync_playwright() as pw:
     page=browser.new_page(viewport={'width':1600,'height':1100})
     page.on('pageerror',lambda error:errors.append(str(error)))
     def handle(route):
-        global pending_once
+        global pending_once, fail_page_once
         url=urlparse(route.request.url)
         if '/static/' in url.path:
             path=finders.find(url.path.split('/static/',1)[1])
@@ -66,6 +68,10 @@ with sync_playwright() as pw:
                 pending_once=False
                 return route.fulfill(status=202,json={'cache_state':{'state':'pending'}})
             params={key:values[0] for key,values in parse_qs(url.query).items()}
+            list_requests.append(params)
+            if int(params.get('page','1'))==fail_page_once:
+                fail_page_once=None
+                return route.fulfill(status=503,json={'error':'일시적인 조회 실패입니다. 다시 불러오세요.'})
             data=response(params.get('mode','all'))
             products=filtered(data['products'],params)
             number=int(params.get('page','1'))
@@ -140,6 +146,44 @@ with sync_playwright() as pw:
     page.set_viewport_size({'width':760,'height':1000})
     assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
     page.screenshot(path=str(OUT/'mobile.png'),full_page=True)
+
+    # Scroll through 120 products without replacing existing rows or source scope.
+    raw[:]=[row(day,item,item) for day in (9,10,11) for item in range(1,121)]
+    page.set_viewport_size({'width':1600,'height':1100})
+    list_requests.clear()
+    page.goto(f'http://rank.test/dx/layer1/rank/all/SEA/?date={DAY}')
+    expect(page.locator('#rm-table-body tr')).to_have_count(20)
+    assert page.locator('#rm-next, #rm-prev, #rm-pages').count()==0
+    expect(page.locator('#rm-range')).to_have_text('20 / 120개 표시')
+    page.evaluate('window.firstRankRow=document.querySelector("#rm-table-body tr")')
+    page.locator('#rm-scroll-end').scroll_into_view_if_needed()
+    expect(page.locator('#rm-table-body tr')).to_have_count(40)
+    fail_page_once=3
+    page.locator('#rm-scroll-end').scroll_into_view_if_needed()
+    expect(page.locator('#rm-more')).to_be_visible()
+    expect(page.locator('#rm-more-status')).to_contain_text('일시적인 조회 실패')
+    expect(page.locator('#rm-table-body tr')).to_have_count(40)
+    page.locator('#rm-more').click()
+    expect(page.locator('#rm-table-body tr')).to_have_count(60)
+    for count in (80,100,120):
+        page.locator('#rm-scroll-end').scroll_into_view_if_needed()
+        expect(page.locator('#rm-table-body tr')).to_have_count(count)
+    assert page.evaluate('window.firstRankRow===document.querySelector("#rm-table-body tr")')
+    keys=page.locator('#rm-table-body [data-key]').evaluate_all('(nodes)=>nodes.map(node=>node.dataset.key)')
+    assert keys==[f'item:{item}' for item in range(1,121)]
+    assert [int(p['page']) for p in list_requests]==[1,2,3,3,4,5,6]
+    assert all(p['snapshot']=='fixture-snapshot' for p in list_requests[1:])
+    expect(page.locator('#rm-more-status')).to_have_text('모든 상품을 표시했습니다.')
+    expect(page.locator('#rm-range')).to_have_text('120 / 120개 표시')
+    page.locator('#rm-scroll-end').scroll_into_view_if_needed()
+    page.screenshot(path=str(OUT/'continuous-scroll.png'))
+    page.locator('[data-key="item:105"]').click()
+    expect(page.locator('#rm-detail')).to_contain_text('SKU-105')
+    page.locator('#rm-close').click()
+    page.locator('#rm-search').fill('SKU-105')
+    expect(page.locator('#rm-table-body tr')).to_have_count(1)
+    expect(page.locator('#rm-range')).to_have_text('1 / 1개 표시')
+    assert list_requests[-1]['page']=='1'
     assert not errors,errors
     browser.close()
-print('PASS: rendered monitoring shell; all-products default; nine columns; review priority; SKU search; dialog audit save; escaped text; country menus; Samsung scope; responsive layout.')
+print('PASS: monitoring shell; all/review filters; detail audit; export; responsive layout; 120 continuous scroll rows; pinned incremental reads; retry retains rows; filter resets list.')

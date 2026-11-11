@@ -1,7 +1,7 @@
 {% extends 'base_layer1.html' %}
 {% load static %}
 {% block page_title %}상품 순위 비교{% endblock %}
-{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/rank-monitoring.css' %}?v=1">{% endblock %}
+{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/rank-monitoring.css' %}?v=2">{% endblock %}
 {% block collection_issues_panel %}{% endblock %}
 {% block layer1_content %}
 <section id="rank-monitor" class="rm-page" aria-label="상품 순위 모니터링">
@@ -40,7 +40,11 @@
             <div class="rm-scroll" tabindex="0" role="region" aria-label="상품별 3일 순위 비교">
                 <table class="rm-table rm-products"><thead id="rm-table-head"></thead><tbody id="rm-table-body"></tbody></table>
             </div>
-            <div class="rm-pagination"><span id="rm-range"></span><div><button id="rm-prev" type="button" aria-label="이전 페이지">←</button><span id="rm-pages"></span><button id="rm-next" type="button" aria-label="다음 페이지">→</button></div></div>
+            <div id="rm-scroll-end" class="rm-list-progress" aria-busy="false">
+                <span id="rm-range"></span>
+                <span id="rm-more-status" role="status" aria-live="polite"></span>
+                <button id="rm-more" type="button" hidden>상품 더 보기</button>
+            </div>
         </section>
         <p class="rm-footnote">유지율 90%·70%·50%, 인접 수집일 간 40위 이상 이동은 검토용 기준입니다. 미발견은 오류 확정이 아닙니다. 전체 목록은 3일 중 한 번이라도 300위 안에 있는 상품 및 식별값·순위 확인 대상이며, 구간별 지표는 전일 상품 기준입니다. 다음 날 데이터가 없으면 복귀 여부를 평가하지 않습니다.</p>
         <p class="rm-footnote">날짜별 최신 배치를 비교하며 수집 진행 중인 결과는 잠정값입니다. 새 조회는 1분간 완료 결과를 재사용하며 갱신 중에는 최대 5분 전 결과를 시각과 함께 표시합니다. 목록·상세는 같은 조회 시점으로 고정됩니다. 최신 결과는 조회 버튼으로 확인하세요. 확인 기록은 자동 점검 신호를 해제하거나 원본 수집값을 수정하지 않습니다.</p>
@@ -60,4 +64,4 @@
 </section>
 {{ rank_config|json_script:'rm-config' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=2"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=3"></script>{% endblock %}

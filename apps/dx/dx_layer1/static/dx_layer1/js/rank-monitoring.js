@@ -27,8 +27,11 @@
     const config = JSON.parse(document.getElementById('rm-config').textContent);
     const el = id => document.getElementById('rm-' + id);
     const state = {view:'all', signal:'all', tier:'all', sort:'rank', query:'', page:1};
-    const pageSize = 20;
     let result = null, selected = null, controller = null, requestNumber = 0, detailNumber = 0, searchTimer = null;
+    let loading = false, moreController = null, moreNumber = 0, moreLoading = false, moreError = '', moreExpired = false;
+    const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) loadMore();
+    }, {rootMargin:'300px 0px'});
     const badge = (status, label) => `<span class="rm-badge ${status}">${esc(label)}</span>`;
     const reasons = {
         data:'배치 ID·ITEM 누락·유효하지 않은 순위·동일 ITEM의 복수 순위를 확인하세요.',
@@ -60,6 +63,7 @@
         el('retailer').innerHTML = product.retailers.map(r => `<option>${esc(r)}</option>`).join('');
     }
     function dirty() {
+        stopMore(); clearTimeout(searchTimer); loading = false;
         requestNumber++; controller?.abort(); el('load').disabled = false;
         result = null; selected = null; el('results').hidden = true;
         if (el('dialog').open) el('dialog').close();
@@ -73,6 +77,7 @@
     }
     async function load(event, pinned=false) {
         event?.preventDefault(); clearTimeout(searchTimer);
+        stopMore(); loading = true; moreError = ''; moreExpired = false;
         const seq = ++requestNumber;
         controller?.abort(); controller = new AbortController();
         const signal = controller.signal;
@@ -108,9 +113,57 @@
         } catch (error) {
             if (seq !== requestNumber || error.name === 'AbortError') return;
             message(error.message || '조회에 실패했습니다.',true);
-        } finally { if (seq === requestNumber) el('load').disabled = false; }
+        } finally {
+            if (seq === requestNumber) {
+                loading = false; el('load').disabled = false;
+                renderProgress();
+            }
+        }
     }
     function loadPage() { if (result) load(null,true); }
+    function stopMore() {
+        observer?.disconnect(); moreNumber++; moreController?.abort(); moreLoading = false;
+    }
+    function renderProgress() {
+        observer?.disconnect();
+        if (!result || el('results').hidden) return;
+        const hasMore = result.pagination.page < result.pagination.pages;
+        el('range').textContent = `${result.products.length} / ${result.pagination.count}개 표시`;
+        el('more-status').textContent = moreError || (moreLoading ? '상품을 이어서 불러오는 중…' :
+            hasMore ? '아래로 스크롤하면 상품이 계속 표시됩니다.' : result.products.length ? '모든 상품을 표시했습니다.' : '조건에 맞는 상품이 없습니다.');
+        el('more-status').classList.toggle('error', Boolean(moreError));
+        el('more').hidden = !hasMore || moreLoading || moreExpired || (observer !== null && !moreError);
+        el('more').disabled = loading || moreLoading;
+        el('more').textContent = moreError ? '다시 불러오기' : '상품 더 보기';
+        el('scroll-end').setAttribute('aria-busy', String(moreLoading));
+        if (hasMore && !loading && !moreLoading && !moreError) observer?.observe(el('scroll-end'));
+    }
+    async function loadMore() {
+        if (!result || loading || moreLoading || moreError || el('results').hidden || result.pagination.page >= result.pagination.pages) return;
+        const basis = result, seq = requestNumber, moreSeq = ++moreNumber;
+        const next = result.pagination.page + 1;
+        const params = paramsFor(); params.set('page', String(next));
+        moreController = new AbortController(); moreLoading = true; renderProgress();
+        try {
+            const response = await fetch('/dx/layer1/rank/api/data/?' + params, {signal:moreController.signal});
+            if (response.redirected) throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
+            const data = await response.json();
+            if (seq !== requestNumber || moreSeq !== moreNumber || basis !== result) return;
+            if (response.status === 409) moreExpired = true;
+            if (!response.ok || response.status === 202) throw new Error(data.error || '상품을 이어서 불러오지 못했습니다.');
+            if (data.pagination.page !== next || !data.products.length) throw new Error('목록을 이어서 불러오지 못했습니다. 조회 버튼으로 다시 확인해주세요.');
+            // Keep the same snapshot and existing DOM rows while appending the next batch.
+            result.products.push(...data.products); result.pagination = data.pagination; state.page = next;
+            el('table-body').insertAdjacentHTML('beforeend', rowsHtml(data.products));
+        } catch (error) {
+            if (seq !== requestNumber || moreSeq !== moreNumber || error.name === 'AbortError') return;
+            moreError = error.message || '상품을 이어서 불러오지 못했습니다.';
+        } finally {
+            if (seq === requestNumber && moreSeq === moreNumber && basis === result) {
+                moreLoading = false; renderProgress();
+            }
+        }
+    }
     function renderSummary() {
         el('basis').textContent = `${result.country} / ${result.product} / ${result.retailer} · ${result.basis} · 조회 ${new Date(result.updated_at).toLocaleString('ko-KR')}` +
             (config.mode === 'samsung' ? ' · 삼성 판별: 상품명에 Samsung 또는 삼성이 명시된 상품. 전체 리테일러 순위 유지.' : '') +
@@ -127,11 +180,11 @@
         document.querySelectorAll('[data-view]').forEach(button => {const active = button.dataset.view === state.view;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
         el('tab-note').textContent = state.view === 'all' ? '전체 상품을 전일 순위순으로 확인' : '식별/순위 오류 → 일시 누락 → 미발견 → 급변';
         el('signals').innerHTML = '<span class="rm-muted">점검 신호</span>' + [['all','전체 신호'],['return','일시 누락 의심'],['missing','D 미발견'],['next_missing','D+1 미발견'],['swing','순위 급변'],['data','식별값 / 순위 확인']].map(([key,label])=>`<button type="button" data-signal="${key}" aria-pressed="${state.signal===key}" class="${state.signal===key?'active':''}">${label} ${key==='all'?'':result.counts[key]}</button>`).join('') + '<span class="rm-muted">신호 간 중복 포함</span>';
-        const {pages,count} = result.pagination;
-        const visible = result.products;
-        el('table-body').innerHTML = visible.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status]}</div></td><td><div class="rm-record">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('') || '<tr><td colspan="9" class="rm-empty">조건에 맞는 상품이 없습니다.</td></tr>';
-        el('range').textContent = `${count ? (state.page-1)*pageSize+1 : 0}–${Math.min(state.page*pageSize,count)} / ${count}개`;
-        el('pages').textContent = `${state.page} / ${pages}`;el('prev').disabled=state.page===1;el('next').disabled=state.page===pages;
+        el('table-body').innerHTML = rowsHtml(result.products) || '<tr><td colspan="9" class="rm-empty">조건에 맞는 상품이 없습니다.</td></tr>';
+        renderProgress();
+    }
+    function rowsHtml(products) {
+        return products.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status]}</div></td><td><div class="rm-record">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
     }
     function history() {
         el('history').innerHTML = selected.review.history.slice().reverse().map(r=>`<div class="rm-history-entry"><b>${esc(r.result)}</b> · ${esc(r.username)} · ${esc(r.at)}<br>${esc(r.memo)}</div>`).join('') || '<p class="rm-muted">확인 이력이 없습니다.</p>';
@@ -193,9 +246,9 @@
     el('signals').addEventListener('click',e=>{const button=e.target.closest('[data-signal]');if(button){state.signal=button.dataset.signal;state.page=1;loadPage();}});
     el('tier').addEventListener('change',e=>{state.tier=e.target.value;state.page=1;loadPage();});
     el('sort').addEventListener('change',e=>{state.sort=e.target.value;state.page=1;loadPage();});
-    el('search').addEventListener('input',e=>{state.query=e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(loadPage,250);});
+    el('search').addEventListener('input',e=>{stopMore();state.query=e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(loadPage,250);});
     el('table-body').addEventListener('click',e=>{const button=e.target.closest('[data-key]');if(button)detail(button.dataset.key);});
-    el('prev').addEventListener('click',()=>{state.page--;loadPage();});el('next').addEventListener('click',()=>{state.page++;loadPage();});
+    el('more').addEventListener('click',()=>{moreError='';loadMore();});
     el('close').addEventListener('click',()=>{detailNumber++;el('dialog').close();});el('review-form').addEventListener('submit',save);el('export').addEventListener('click',exportCsv);
     load();
 })();
