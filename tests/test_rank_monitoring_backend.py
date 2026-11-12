@@ -106,6 +106,33 @@ class QueryTests(TestCase):
         from apps.dx.dx_layer1.column_statistics.dates import date_column
         return {c:'text' for c in ('id','item','account_name','retailer_sku_name','product_url','batch_id','main_rank',date_column(source),'page_type','sku')}
 
+    def test_sem_rank_catalog_matches_collection_without_changing_shared_sources(self):
+        from copy import deepcopy
+        from apps.common.sem_retail import SEM_SOURCE_CONFIG
+        from apps.dx.dx_layer1.column_statistics.services import _sources
+        from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
+        shared = deepcopy(list(_sources()))
+        email = deepcopy(EMAIL_REPORT_SOURCES)
+        actual = {s['product']:s['retailers'] for s in catalog('SEM')}
+        for config in SEM_SOURCE_CONFIG.values():
+            self.assertEqual(list(config['retailers']), actual[config['category']])
+        for product in ('REF', 'LDY'):
+            source, retailer = select_source('SEM', product, 'Coppel')
+            sql, params, basis = query_spec(source, retailer, self.columns(source), DAY)
+            self.assertEqual(['coppel', '2026-11-09', '2026-11-11'], params)
+            self.assertIn('날짜별 최신 배치', basis)
+            self.assertNotIn('source.page_type', sql)
+            self.assertNotIn('AT TIME ZONE', sql)
+        with self.assertRaises(ValueError):
+            select_source('SEM', 'TV', 'Coppel')
+        self.assertEqual(shared, list(_sources()))
+        self.assertEqual(email, EMAIL_REPORT_SOURCES)
+        for source in shared:
+            if source['country'] != 'SEM':
+                for retailer in source['retailers']:
+                    self.assertEqual((source, retailer), select_source(
+                        source['country'], source['product'], retailer['name']))
+
     def test_date_policy_and_latest_batch_before_rank_validation(self):
         source, retailer=select_source('SEA','TV','Amazon')
         sql,params,basis=query_spec(source,retailer,self.columns(source),DAY)
