@@ -341,6 +341,53 @@ class ContextTests(SimpleTestCase):
         self.assertIn("AT TIME ZONE 'Asia/Seoul'",cursor.calls[1][0])
         self.assertIn("crawl_datetime AT TIME ZONE 'Asia/Seoul'",tools['query'])
 
+    def test_seda_alias_restores_url_name_and_comparison_history(self):
+        source = {**SOURCE, 'country':'SEDA', 'key':'seda_tv'}
+        target = dict(id=57, account_name='CasasBahia', item='A001',
+                      retailer_sku_name='TV cabinet', product_url='https://example.test/A001',
+                      crawl_datetime='2026-11-05T23:59:00-04:00', _source_date='2026-11-05')
+        history = [dict(target, id=56, account_name=' CASAS BAHIA ', _source_date='2026-11-04'),
+                   dict(target, id=55, account_name='Magalu'), dict(target, id=54, item='other')]
+        for status in ('normal', 'auto'):
+            with self.subTest(status=status):
+                cursor = Cursor(self.available, [target], history)
+                logs = [log(retailer='Casas Bahia', status=status, old_value=None, new_value=None)]
+                tools = {}
+                with patch.object(service.audit, '_sources', return_value={'dx_test_retail':source}):
+                    service._context(cursor, logs, 3, date(2026,11,6), tools=tools)
+                self.assertTrue(logs[0]['context_available'])
+                self.assertEqual([56], [row['id'] for row in logs[0]['comparisons']])
+                for row in service.paired_rows(logs[0])[-2:]:
+                    self.assertEqual(target['product_url'], row['product_url'])
+                    self.assertEqual('TV cabinet', row['retailer_sku_name'])
+                    self.assertEqual('2026-11-05', row['_source_date'])
+                    self.assertIsNone(row['sku'])
+                self.assertIn("LOWER(REPLACE(BTRIM(source.account_name), ' ', '')) = %s", cursor.calls[2][0])
+                self.assertEqual(['casasbahia', 'A001', '2026-11-03', '2026-11-05'], cursor.calls[2][1])
+                self.assertIn("LOWER(REPLACE(BTRIM(account_name), ' ', '')) = 'casasbahia'", tools['query'])
+                self.assertIn("crawl_datetime >= '2026-11-03'", tools['query'])
+                self.assertIn("crawl_datetime < '2026-11-06'", tools['query'])
+                self.assertNotIn('AT TIME ZONE', tools['query'])
+
+    def test_seda_missing_source_sql_still_matches_aliases(self):
+        source = {**SOURCE, 'country':'SEDA', 'key':'seda_tv'}
+        cursor = Cursor(self.available, [])
+        logs, tools = [log(retailer='Casas Bahia')], {}
+        with patch.object(service.audit, '_sources', return_value={'dx_test_retail':source}):
+            service._context(cursor, logs, 1, date(2026,11,6), tools=tools)
+        self.assertFalse(logs[0]['context_available'])
+        self.assertIn("LOWER(REPLACE(BTRIM(account_name), ' ', '')) = 'casasbahia'", tools['query'])
+
+    def test_alias_handling_keeps_item_and_other_country_identity_checks(self):
+        for country, key, item in (('SEDA', 'seda_tv', 'other'), ('SEIB', 'seib_ldy', 'A001')):
+            cursor = Cursor(self.available, [dict(id=57, account_name='CasasBahia', item=item)])
+            logs = [log(retailer='Casas Bahia')]
+            source = {**SOURCE, 'country':country, 'key':key}
+            with patch.object(service.audit, '_sources', return_value={'dx_test_retail':source}):
+                service._context(cursor, logs, 1, date(2026,11,6))
+            self.assertFalse(logs[0]['context_available'])
+            self.assertIsNone(logs[0]['target'])
+
     def test_display_groups_items_and_selects_only_visible_columns(self):
         logs=[log(item=str(i), source_date='2026-11-05', retailer='casasbahia',
                   target={'account_name':'CasasBahia'}) for i in range(5)]

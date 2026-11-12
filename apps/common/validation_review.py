@@ -11,6 +11,7 @@ import json
 from apps.common.db import dx_connection
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.monitoring_cache import monitoring_cached_value
+from apps.common.seda_retail import seda_retailer_key
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer4.corrections import detail as audit, services as saved
 
@@ -34,6 +35,17 @@ def table_key(value):
 
 def account_key(value):
     return str(value or '').strip().casefold()
+
+
+def _source_account_key(source, value):
+    """Match SEDA source aliases using the collection's existing policy."""
+    return seda_retailer_key(value) if source['country'] == 'SEDA' else account_key(value)
+
+
+def _source_account_sql(source, column):
+    if source['country'] == 'SEDA':
+        return f"LOWER(REPLACE(BTRIM({column}), ' ', ''))"
+    return f'LOWER(BTRIM({column}))'
 
 
 def _identity(row):
@@ -208,19 +220,20 @@ def _display_query(cursor, source, columns, logs, days, tools, stamp_type, conte
 
     groups = defaultdict(list)
     for log in logs:
-        groups[(log['source_date'], account_key(log['retailer']))].append(log)
+        groups[(log['source_date'], _source_account_key(source, log['retailer']))].append(log)
     clauses, params = [], []
     for (end, retailer), entries in groups.items():
         end = date.fromisoformat(end)
         parts = [f'{date_filter} >= %s', f'{date_filter} < %s']
         params.extend([str(end - timedelta(days=days - 1)), str(end + timedelta(days=1))])
         names = list(dict.fromkeys(row['account_name'] for row in observed
-                     if 'account_name' in row and account_key(row['account_name']) == retailer))
+                     if 'account_name' in row and _source_account_key(source, row['account_name']) == retailer))
         if not names:
             # No source row remains: use the saved retailer spelling.
             names = list(dict.fromkeys(entry['retailer'] for entry in entries))
-        if truncated:
-            parts.append('LOWER(BTRIM(account_name)) = %s')
+        if truncated or source['country'] == 'SEDA':
+            # Include historical aliases even if the current row is missing.
+            parts.append(f"{_source_account_sql(source, 'account_name')} = %s")
             params.append(retailer)
         elif names == [None]:
             parts.append('account_name IS NULL')
@@ -292,10 +305,10 @@ def _context(cursor, logs, days, day, extra_columns=None, tools=None):
     pairs = set()
     for log in logs:
         target = targets.get(str(log['record_id']))
-        if target and account_key(target.get('account_name')) == account_key(log['retailer']) and target.get('item') == log.get('item'):
+        if target and _source_account_key(source, target.get('account_name')) == _source_account_key(source, log['retailer']) and target.get('item') == log.get('item'):
             log.update(target=target, source_date=str(target['_source_date']), context_available=True)
         if log.get('item') is not None and str(log['item']).strip():
-            pairs.add((account_key(log['retailer']), log['item']))
+            pairs.add((_source_account_key(source, log['retailer']), log['item']))
     if days == 1 or not pairs:
         if tools is not None:
             _display_query(cursor, source, columns, logs, days, tools, types.get(stamp))
@@ -303,7 +316,7 @@ def _context(cursor, logs, days, day, extra_columns=None, tools=None):
     ends = [date.fromisoformat(r['source_date']) for r in logs]
     clauses, params = [], []
     for retailer, item in sorted(pairs, key=str):
-        clauses.append('(LOWER(BTRIM(source.account_name)) = %s AND source.item = %s)')
+        clauses.append(f"({_source_account_sql(source, 'source.account_name')} = %s AND source.item = %s)")
         params.extend([retailer, item])
     cursor.execute(f'''SELECT {selection}, {date_expr} AS _source_date FROM {table} source
                        WHERE ({' OR '.join(clauses)}) AND ({date_expr}) BETWEEN %s AND %s
@@ -313,7 +326,7 @@ def _context(cursor, logs, days, day, extra_columns=None, tools=None):
     for log in logs:
         start = str(date.fromisoformat(log['source_date']) - timedelta(days=days - 1))
         matches = [r for r in comparisons[:1500]
-                   if account_key(r.get('account_name')) == account_key(log['retailer'])
+                   if _source_account_key(source, r.get('account_name')) == _source_account_key(source, log['retailer'])
                    and r.get('item') == log.get('item') and str(r['id']) != str(log['record_id'])
                    and start <= str(r['_source_date']) <= log['source_date']]
         log['comparisons'] = list(reversed(matches[:60]))
