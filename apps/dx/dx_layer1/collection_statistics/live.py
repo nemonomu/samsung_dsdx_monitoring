@@ -13,12 +13,13 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from apps.common.db import dx_connection
+from apps.common.dryer_onboarding import initial_bsr_policy, OPERATIONAL_FROM
 from apps.dx.dx_layer1.common.retail_batches import add_batch_counts
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .api import selected_date
 from .calculations import (
     COUNTRIES, OFFSETS, MAIN_POLICY_VERSION, MINIMUM_DAYS, normalize_check,
-    compare_rows, comparison_rules, observation_key, SOURCE_START_DATES,
+    compare_rows, comparison_rules, observation_key, SOURCE_START_DATES, row_key, remember_initial_bsr,
 )
 from .reviews import review_index, attach_review
 
@@ -66,7 +67,24 @@ def current_snapshot(country, inspection_date):
                      else row.get('observation_days', 0))
             key = observation_key(row)
             prior_counts[key] = max(prior_counts.get(key, 0), count or 0)
-    rows = compare_rows(current, history, country, prior_observation_counts=prior_counts)
+    initial_samples = {}
+    initial_keys = {row_key(row) for row in current
+                    if not row.get('preview_mode') and source_day > OPERATIONAL_FROM
+                    and initial_bsr_policy(country, row['product'], row['retailer'])}
+    if initial_keys:
+        # Read original saved daily counts from launch, not a moving 28-day window.
+        # Stop once every applicable source has its first five completed days.
+        initial_query = Daily.objects.filter(country=country, refresh_error=False,
+            source_date__gte=OPERATIONAL_FROM, source_date__lt=source_day).order_by('source_date')
+        for snapshot in initial_query.only('source_date', 'rows').iterator(chunk_size=50):
+            remember_initial_bsr(initial_samples, snapshot.rows, str(snapshot.source_date), country)
+            if all(len(initial_samples.get(key, {})) == MINIMUM_DAYS for key in initial_keys):
+                break
+        for row in current:
+            key = observation_key(row)
+            prior_counts[key] = max(prior_counts.get(key, 0), len(initial_samples.get(row_key(row), {})))
+    rows = compare_rows(current, history, country, prior_observation_counts=prior_counts,
+                        initial_bsr_samples=initial_samples)
     reviews = review_index(source_day, source_day)
     for row in rows:
         # No saved evidence is not proof that an established retailer is new.

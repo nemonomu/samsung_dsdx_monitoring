@@ -318,6 +318,12 @@ async function flush() {
     const readyBaseline = elements['cs-table-body'].innerHTML.match(/<td class="cs-baseline">(.*?)<\/td>/s)[1];
     assert(readyBaseline.includes('<strong>100</strong>'));
     assert(!readyBaseline.includes('고정 기준'));
+    baselineDay.baselines.bsr = {value: 25, days: 5, rule: 'median_first_5d', origin: 'first_5_days'};
+    elements['cs-retailer'].fire('change');
+    const initialBaseline = elements['cs-table-body'].innerHTML.match(/<td class="cs-baseline">(.*?)<\/td>/s)[1];
+    assert(initialBaseline.includes('<strong>25</strong>'));
+    assert(initialBaseline.includes('최초 5일 중앙값'));
+    baselineDay.baselines.bsr = {value: 100, days: 28, rule: 'median_28d'};
     // Apply the same live country payload used by the dashboard over a saved zero.
     let liveReceive, refreshes=0;
     context.L1={liveCollection:{isInspecting:()=>false,poll(_scope,receive){liveReceive=receive;return {stop(){},refresh(){refreshes++;}};},

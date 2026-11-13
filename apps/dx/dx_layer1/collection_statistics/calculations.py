@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from statistics import median
 from apps.common.dryer_onboarding import (config as dryer_config, OPERATIONAL_FROM,
-    is_preview, bsr_policy_pending, operating_history)
+    is_preview, initial_bsr_policy, operating_history)
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
@@ -100,7 +100,7 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 7
+BSR_POLICY_VERSION = 8
 MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
 MAIN_REVIEW_PERCENT = 15
@@ -124,6 +124,31 @@ def remember_observation(days, rows, source_date):
         key = observation_key(row)
         if observation_eligible(row) and len(days[key]) < MINIMUM_DAYS:
             days[key].add(source_date)
+
+
+def remember_initial_bsr(samples, rows, source_date, country):
+    """Accumulate the first five distinct completed source dates, in date order."""
+    for row in rows:
+        if (initial_bsr_policy(country, row['product'], row['retailer'])
+                and operating_history(row, country, source_date) and observation_eligible(row)
+                and isinstance(row.get('bsr'), int) and row['bsr'] >= 0):
+            days = samples.setdefault(row_key(row), {})
+            if source_date in days or len(days) < MINIMUM_DAYS:
+                days[source_date] = row['bsr']
+
+
+def initial_bsr_basis(row):
+    samples = row.get('bsr_initial_samples', [])
+    if len(samples) != MINIMUM_DAYS or len({s['date'] for s in samples}) != MINIMUM_DAYS:
+        return None
+    values = [s['value'] for s in samples]
+    if all(value == 100 for value in values):
+        value, rule = 100, 'fixed_100'
+    elif all(0 <= value < 100 for value in values) and median(values) > 0:
+        value, rule = median(values), 'median_first_5d'
+    else:
+        return None
+    return {'value': value, 'days': MINIMUM_DAYS, 'rule': rule, 'origin': 'first_5_days'}
 
 
 def tiered_bsr(row, country):
@@ -155,8 +180,8 @@ def exact_bsr(row, country):
 
 def _bsr_basis(row, history, country, saved_basis=None):
     """A prior-day reference does not depend on today's receipt or completion."""
-    if bsr_policy_pending(country, row['product'], row['retailer']):
-        return None
+    if initial_bsr_policy(country, row['product'], row['retailer']):
+        return initial_bsr_basis(row) if row.get('observation_state') == 'ready' else None
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
@@ -189,13 +214,17 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
     variable = variable_bsr(row, country)
     rule = 'median_28d' if variable else 'fixed_100'
     basis = _bsr_basis(row, history, country, saved_basis)
+    initial = initial_bsr_policy(country, row['product'], row['retailer'])
+    if initial:
+        rule = basis['rule'] if basis else 'policy_pending'
+        variable = rule == 'median_first_5d'
     if not row['complete'] or row.get('base_status') == 'ERROR' or row.get('refresh_error'):
         return rule, 'pending', basis, None
     if all((row.get(metric) or 0) == 0 for metric in (*METRICS, 'collected_count')):
         return rule, 'missing', basis, None
     if row.get('observation_state') in ('observing', 'unknown') and not exact_bsr(row, country):
         return rule, row['observation_state'], basis, None
-    if bsr_policy_pending(country, row['product'], row['retailer']):
+    if initial and basis is None:
         return 'policy_pending', 'policy_pending', None, None
     current = row.get('bsr')
     if current is None or basis is None:
@@ -214,7 +243,7 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
                  'status': 'VOLUME_REVIEW' if review else 'VOLUME_LOW', 'rule': rule,
                  'reason': (f'BSR 기준 100개 / 수집 {current}개 / 기준 불일치' if exact_bsr(row, country) else f'BSR 기준 100개 / 수집 {current}개 / {100-current}개 부족'
                             if not variable else
-                            f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / {threshold}% 이상 감소'
+                            f'BSR {"최초 5일" if initial else "과거"} 중앙값 {baseline:g}개 / 수집 {current}개 / {threshold}% 이상 감소'
                             + (' / 확인 필요' if review else ''))}
     return rule, 'ready', basis, alert
 
@@ -269,7 +298,12 @@ def comparison_rules(row, country):
         return {'bsr': {'baseline': 100, 'days': 0, 'rule': 'fixed_100', 'exact': True}} if exact_bsr(row, country) else {}
     rules = {}
     for metric in ('main', 'bsr'):
-        if metric == 'bsr' and bsr_policy_pending(country, row['product'], row['retailer']):
+        if metric == 'bsr' and initial_bsr_policy(country, row['product'], row['retailer']):
+            basis = initial_bsr_basis(row)
+            if basis:
+                rules[metric] = {'baseline': basis['value'], 'days': basis['days'],
+                                 'rule': basis['rule'], 'origin': basis['origin'], 'exact': False,
+                                 'low_percent': 30, 'review_percent': None, 'high_percent': None}
             continue
         variable = metric == 'main' or variable_bsr(row, country)
         basis = row.get('baselines', {}).get(metric, {})
@@ -343,11 +377,17 @@ def current_volume_decision(row, country):
     return {**result, 'alerts': alerts + rank_alerts, 'baselines': baselines, 'comparison_state': state}
 
 
-def compare_rows(rows, history, country=None, *, observed_dates=None, prior_observation_counts=None):
+def compare_rows(rows, history, country=None, *, observed_dates=None, prior_observation_counts=None,
+                 initial_bsr_samples=None):
     """history contains only the previous 28 source dates, never the target day."""
     if country == 'SEUK':
         history = [r for r in history if r.get('source_date', '') >= str(SEUK_START_DATE)]
     history = [r for r in history if operating_history(r, country, r.get('source_date', ''))]
+    if initial_bsr_samples is None:
+        initial_bsr_samples = {}
+        for old in sorted(history, key=lambda r: r.get('source_date', '')):
+            if old.get('source_date'):
+                remember_initial_bsr(initial_bsr_samples, [old], old['source_date'], country)
     groups = defaultdict(list)
     for old in history:
         # Legacy minimum-count failures are not part of the MAIN/BSR policy.
@@ -375,6 +415,9 @@ def compare_rows(rows, history, country=None, *, observed_dates=None, prior_obse
                'observation_days': min(MINIMUM_DAYS, prior_days + (observation_key(row) in collected_today)),
                'observation_prior_days': prior_days,
                'observation_policy_version': OBSERVATION_POLICY_VERSION}
+        if initial_bsr_policy(country, row['product'], row['retailer']):
+            row['bsr_initial_samples'] = [{'date': day, 'value': value} for day, value in
+                                         sorted(initial_bsr_samples.get(row_key(row), {}).items())]
         baselines, alerts = {}, []
         if not observing:
             values = list({old.get('source_date', index): old['main']

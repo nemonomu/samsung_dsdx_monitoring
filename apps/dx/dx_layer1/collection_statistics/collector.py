@@ -14,8 +14,8 @@ from apps.dx.dx_layer1.models import (
     CollectionStatisticsLease as Lease,
 )
 from .calculations import (COUNTRIES, OFFSETS, BSR_POLICY_VERSION, MAIN_POLICY_VERSION,
-                           OBSERVATION_POLICY_VERSION, remember_observation,
-                           normalize_check, compare_rows, week_start, build_week, SOURCE_START_DATES)
+                           OBSERVATION_POLICY_VERSION, remember_observation, remember_initial_bsr,
+                           normalize_check, compare_rows, week_start, build_week, SOURCE_START_DATES, row_key)
 
 SERVICE_MODULES = {
     country: f'apps.dx.dx_layer1.{country.lower()}_retail.{country.lower()}_retail_services'
@@ -131,26 +131,36 @@ def rebuild(country, start, end, last_due):
     # stored summaries in chunks so a long outage never resets an established
     # retailer to new. No raw source queries or schema changes are needed.
     observed_dates = defaultdict(set)
+    initial_bsr_samples = {}
     older = Daily.objects.filter(country=country)
     if country in SOURCE_START_DATES:
         older = older.filter(source_date__gte=SOURCE_START_DATES[country])
     for old in older.filter(source_date__lt=history_start,
                                    refresh_error=False).only('source_date', 'rows').order_by('source_date').iterator(chunk_size=100):
         remember_observation(observed_dates, old.rows, str(old.source_date))
+        remember_initial_bsr(initial_bsr_samples, old.rows, str(old.source_date), country)
     updated = []
     for snapshot in snapshots:
         if not start <= snapshot.source_date <= end:
             if not snapshot.refresh_error:
                 remember_observation(observed_dates, snapshot.rows, str(snapshot.source_date))
+                remember_initial_bsr(initial_bsr_samples, snapshot.rows, str(snapshot.source_date), country)
             continue
         history = [{**row, 'source_date': str(older.source_date)} for older in snapshots
                    if snapshot.source_date - timedelta(days=28) <= older.source_date < snapshot.source_date
                    and not older.refresh_error for row in older.rows]
         snapshot.rows = compare_rows(
             [{**row, 'refresh_error': snapshot.refresh_error} for row in snapshot.rows],
-            history, country=country, observed_dates=observed_dates)
+            history, country=country, observed_dates=observed_dates, initial_bsr_samples=initial_bsr_samples)
         if not snapshot.refresh_error:
             remember_observation(observed_dates, snapshot.rows, str(snapshot.source_date))
+            remember_initial_bsr(initial_bsr_samples, snapshot.rows, str(snapshot.source_date), country)
+            # Save completed observation evidence immediately (including day five),
+            # while this day's verdict still uses strictly prior-day evidence.
+            for row in snapshot.rows:
+                if 'bsr_initial_samples' in row:
+                    row['bsr_initial_samples'] = [{'date': day, 'value': value} for day, value in
+                                                 sorted(initial_bsr_samples.get(row_key(row), {}).items())]
         updated.append(snapshot)
     with transaction.atomic():
         if updated:

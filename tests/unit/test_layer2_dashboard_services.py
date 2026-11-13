@@ -105,6 +105,35 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
         self.assertEqual(14, result['manual_reviewed_count'])
         self.assertEqual(0, result['total'])
 
+    def test_sem_dryer_review_refresh_keeps_manual_and_automatic_counts(self):
+        day, category = date(2026, 11, 13), 'sem_ldy_dryer_retail'
+        api = self.load_api()
+        for retailer in ('Liverpool', 'Coppel', 'HomeDepot'):
+            validation = {'tables': [{'table': category, 'retailers': [{
+                'retailer': retailer, 'total': 71, 'total_null_count': 0,
+                'fields_detail': {'sku': 0}, 'raw_fields_detail': {'sku': 2},
+                'reviewed_fields_detail': {'sku': 2},
+                'manual_reviewed_fields_detail': {'sku': 1},
+                'auto_reviewed_fields_detail': {'sku': 1},
+                'raw_null_count': 2, 'reviewed_null_count': 2,
+                'manual_reviewed_count': 1, 'auto_reviewed_count': 1,
+                'supports_null_auto_review': True,
+            }]}]}
+            request = SimpleNamespace(GET={
+                'type': 'null', 'table': category, 'retailer': retailer, 'date': str(day),
+            })
+            with self.subTest(retailer=retailer), patch.object(
+                    self.service, 'get_null_stats', return_value=(validation, 0)) as stats:
+                response = api.retailer_detail(request)
+                self.assertEqual(200, response.status_code)
+                self.assertNotIn('error', response.data)
+                self.assertEqual({'sku': 0}, response.data['field_counts'])
+                self.assertEqual({'sku': 2}, response.data['reviewed_fields_detail'])
+                self.assertEqual(1, response.data['manual_reviewed_count'])
+                self.assertEqual(1, response.data['auto_reviewed_count'])
+                self.assertTrue(response.data['supports_null_auto_review'])
+                self.assertEqual(category, stats.call_args.kwargs['category'])
+
     def test_each_validation_receives_only_requested_country_product(self):
         for section, function in (
             ('null_validation', 'get_null_stats'),
@@ -332,6 +361,8 @@ class Layer2DashboardIsolationTests(unittest.TestCase):
         api = self.load_api()
         for table, validation, day, expected_status in [
             ('sem_tv_retail', 'null', '2026-09-12', 200),
+            ('sem_ldy_dryer_retail', 'null', '2026-11-13', 200),
+            ('sem_ldy_dryer_retail', 'format', '2026-11-13', 400),
             ('sea_ref_retail', 'null', '2026-09-13', 200),
             ('seda_tv_retail', 'null', '2026-09-12', 200),
             ('unknown_tv_retail', 'null', '2026-09-12', 400),

@@ -49,8 +49,12 @@
         var count = retailer._reviewContext ? '<button type="button" class="l1-review-count" onclick="event.stopPropagation();L1.retailReview.open(' + retailer._reviewTarget + ')" aria-label="BSR ' + esc(value) + '건 수집 결과 확인">' + esc(value) + '</button>' : esc(value);
         var label = rejected ? '이상 확정' : low ? '이상' : normalReviewed ? '✓ 정상 확인' : '확인 필요';
         if (retailer._reviewContext && (normalReviewed || rejected)) label = '<button type="button" class="l1-review-label" onclick="event.stopPropagation();L1.retailReview.open(' + retailer._reviewTarget + ')" aria-haspopup="dialog">' + label + '</button>';
+        var basis = retailer.bsr_baseline_rule;
+        var basisLabel = basis && basis.origin === 'first_5_days'
+            ? '<small style="display:block;color:#64748b;">BSR 기준 ' + esc(basis.baseline)
+                + (basis.rule === 'median_first_5d' ? ' · 최초 5일 중앙값' : ' · 고정') + '</small>' : '';
         return '<td' + (alerts.length ? ' class="' + (low ? 'cs-bsr-low' : normalReviewed ? 'cs-bsr-confirmed' : 'cs-bsr-review') + '" title="' + esc(reason).replace(/"/g, '&quot;') + '"' : '') + '>'
-            + count + (alerts.length ? '<small style="display:block">' + label + '</small>' : '') + '</td>';
+            + count + (alerts.length ? '<small style="display:block">' + label + '</small>' : '') + basisLabel + '</td>';
     }
 
     function rowBadge(retailer) {

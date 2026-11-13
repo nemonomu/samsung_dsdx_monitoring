@@ -44,7 +44,8 @@ def decorate_row(row, country, product, day):
     return row
 
 
-def bsr_policy_pending(country, product, retailer):
+def initial_bsr_policy(country, product, retailer):
+    """Sources whose BSR policy is selected from their first five operating days."""
     return country in ('SEM', 'SEIB') and bool(config(country, product, retailer))
 
 

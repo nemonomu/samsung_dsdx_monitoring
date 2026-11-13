@@ -44,6 +44,53 @@ def check_for(total=300, **extra):
 
 
 class CalculationTests(SimpleTestCase):
+    def test_initial_bsr_selects_first_five_and_preserves_thresholds(self):
+        for country, retailer in [('SEM', 'Liverpool'), ('SEIB', 'ECI')]:
+            for values, baseline, rule in [([100] * 5, 100, 'fixed_100'),
+                                           ([24, 25, 26, 25, 27], 25, 'median_first_5d')]:
+                history = [sample(product='LDY_DRYER', retailer=retailer, bsr=value,
+                                  source_date=f'2026-11-{i+1:02}') for i, value in enumerate(values)]
+                target = sample(product='LDY_DRYER', retailer=retailer, bsr=baseline)
+                fifth = calc.compare_rows([target], history[:4], country)[0]
+                self.assertEqual(('observing', 5), (fifth['observation_state'], fifth['observation_days']))
+                self.assertNotIn('bsr', fifth['baselines'])
+                for current, low in ([(100, False), (99, True), (101, False)] if baseline == 100
+                                     else [(25, False), (18, False), (17, True)]):
+                    sixth = calc.compare_rows([{**target, 'bsr': current}], history, country)[0]
+                    for result in (sixth, calc.current_volume_decision(sixth, country)):
+                        self.assertEqual((baseline, rule), (result['baselines']['bsr']['value'], result['bsr_rule']))
+                        self.assertEqual(low, any(a['metric'] == 'bsr' for a in result['alerts']))
+                        self.assertEqual(rule, calc.comparison_rules(result, country)['bsr']['rule'])
+                    self.assertEqual(values, [s['value'] for s in sixth['bsr_initial_samples']])
+                # Later low days must not lower the initial reference.
+                later = history + [dict(target, bsr=1, source_date=f'2026-11-{i:02}') for i in range(6, 20)]
+                self.assertEqual(baseline, calc.compare_rows([target], later, country)[0]['baselines']['bsr']['value'])
+
+    def test_initial_bsr_mixed_values_remain_pending_and_invalid_days_do_not_count(self):
+        target = sample(product='LDY_DRYER', retailer='Liverpool', bsr=25)
+        history = [dict(target, bsr=v, source_date=f'2026-11-{i+1:02}')
+                   for i, v in enumerate([100, 100, 99, 100, 100])]
+        result = calc.compare_rows([target], history, 'SEM')[0]
+        self.assertEqual('policy_pending', result['bsr_comparison_state'])
+        self.assertNotIn('bsr', calc.comparison_rules(result, 'SEM'))
+        later = history + [dict(target, source_date=f'2026-11-{i:02}') for i in range(6, 20)]
+        self.assertEqual('policy_pending', calc.compare_rows([target], later, 'SEM')[0]['bsr_comparison_state'])
+        samples = {}
+        for extra in ({'complete': False}, {'base_status': 'ERROR'}, {'refresh_error': True},
+                      {'preview_mode': True}, {'main': 0, 'bsr': 0, 'total': 0}):
+            calc.remember_initial_bsr(samples, [{**target, **extra}], '2026-11-01', 'SEM')
+        calc.remember_initial_bsr(samples, [target], '2026-10-31', 'SEM')
+        self.assertEqual({}, samples)
+        calc.remember_initial_bsr(samples, [target, target], '2026-11-01', 'SEM')
+        self.assertEqual({'2026-11-01': 25}, samples[calc.row_key(target)])
+
+    def test_initial_bsr_exact_thirty_percent_boundary(self):
+        target = sample(product='LDY_DRYER', retailer='ECI', bsr=80)
+        history = [dict(target, source_date=f'2026-11-{i:02}') for i in range(1, 6)]
+        for count, low in [(57, False), (56, True)]:
+            row = calc.compare_rows([{**target, 'bsr': count}], history, 'SEIB')[0]
+            self.assertEqual(low, any(a['metric'] == 'bsr' for a in row['alerts']))
+
     def test_main_below_bsr_without_history_and_after_recovery(self):
         for country in calc.COUNTRIES:
             for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
@@ -446,6 +493,52 @@ class CalculationTests(SimpleTestCase):
 
 
 class StoreTests(TestCase):
+    def test_initial_bsr_rebuild_upgrade_and_live_reference_survive_28_day_window(self):
+        from apps.dx.dx_layer1.collection_statistics import live
+        start, end = date(2026, 11, 1), date(2026, 12, 10)
+        for offset in range(40):
+            day = start + timedelta(days=offset)
+            value = [24, 25, 26, 25, 27][offset] if offset < 5 else 10
+            row = sample(product='LDY_DRYER', retailer='Liverpool', bsr=value,
+                         bsr_policy_version=7, bsr_rule='policy_pending')
+            Daily.objects.create(country='SEM', inspection_date=day, source_date=day,
+                                 rows=[row], digest='initial', updated_at=timezone.now())
+        collector.rebuild('SEM', end, end, end)
+        saved = Daily.objects.get(country='SEM', source_date=end).rows[0]
+        self.assertEqual(25, saved['baselines']['bsr']['value'])
+        self.assertEqual('2026-11-01', saved['bsr_initial_samples'][0]['date'])
+        self.assertEqual(8, saved['bsr_policy_version'])
+        fifth = Daily.objects.get(country='SEM', source_date=start + timedelta(days=4)).rows[0]
+        self.assertEqual('observing', fifth['bsr_comparison_state'])
+        self.assertEqual(5, len(fifth['bsr_initial_samples']))
+        self.assertNotIn('bsr', calc.current_volume_decision(fifth, 'SEM')['baselines'])
+        check = check_for(300, retailer='Liverpool', bsr_count=17)
+        check['categories'][0]['name'] = 'LDY_DRYER'
+        with patch.object(live, 'load_current_check', return_value=check):
+            current = live.current_snapshot('SEM', end)['rows'][0]
+        self.assertEqual(saved['bsr_initial_samples'], current['bsr_initial_samples'])
+        self.assertEqual(25, current['rules']['bsr']['baseline'])
+        self.assertTrue(any(a['metric'] == 'bsr' for a in current['alerts']))
+        dashboard = json.loads(api.alerts(self.factory.get('/', {'date': str(end)})).content)
+        self.assertEqual('median_first_5d', dashboard['snapshots'][0]['rows'][0]['rules']['bsr']['rule'])
+        weekly = json.loads(api.weekly(self.factory.get('/', {'date': str(end), 'country': 'SEM'})).content)
+        displayed = next(d for w in weekly['weeks'] for r in w['rows'] for d in r['daily'] if d['date'] == str(end))
+        self.assertEqual(saved['baselines']['bsr'], displayed['baselines']['bsr'])
+        # Idempotent rebuilds use original counts, including the first days now outside 28 days.
+        collector.rebuild('SEM', end, end, end)
+        self.assertEqual(saved['bsr_initial_samples'], Daily.objects.get(country='SEM', source_date=end).rows[0]['bsr_initial_samples'])
+        # The lifetime accumulator also retains the original basis after a long outage.
+        resumed = date(2027, 4, 10)
+        Daily.objects.create(country='SEM', inspection_date=resumed, source_date=resumed,
+                             rows=[sample(product='LDY_DRYER', retailer='Liverpool', bsr=17)],
+                             digest='resumed', updated_at=timezone.now())
+        collector.rebuild('SEM', resumed, resumed, resumed)
+        restored = Daily.objects.get(country='SEM', source_date=resumed).rows[0]
+        self.assertEqual(saved['bsr_initial_samples'], restored['bsr_initial_samples'])
+        self.assertEqual(25, restored['baselines']['bsr']['value'])
+        with patch.object(live, 'load_current_check', return_value=check):
+            self.assertEqual(25, live.current_snapshot('SEM', resumed)['rows'][0]['rules']['bsr']['baseline'])
+
     def test_window_end_rechecks_same_batch_and_counts_without_early_normal(self):
         self.refresh(self.end - timedelta(days=5), self.end - timedelta(days=1), country='SEM',
                      loader=lambda *_: check_for(300, retailer='Coppel', bsr_count=80))
@@ -862,6 +955,20 @@ class StatisticsReviewTests(TestCase):
 
 
 class LiveCollectionTests(TestCase):
+    def test_initial_bsr_can_use_old_raw_summaries_before_policy_rebuild(self):
+        for offset in range(5):
+            day = date(2026, 11, 1) + timedelta(days=offset)
+            Daily.objects.create(country='SEM', inspection_date=day, source_date=day,
+                rows=[sample(product='LDY_DRYER', retailer='Liverpool', bsr=100)],
+                digest='raw', updated_at=timezone.now())
+        check = check_for(300, retailer='Liverpool', bsr_count=99)
+        check['categories'][0]['name'] = 'LDY_DRYER'
+        with patch.object(self.live, 'load_current_check', return_value=check):
+            row = self.live.current_snapshot('SEM', date(2027, 1, 10))['rows'][0]
+        self.assertEqual('ready', row['observation_state'])
+        self.assertEqual(100, row['rules']['bsr']['baseline'])
+        self.assertTrue(any(a['metric'] == 'bsr' for a in row['alerts']))
+
     def setUp(self):
         from apps.dx.dx_layer1.collection_statistics import live
         self.live = live

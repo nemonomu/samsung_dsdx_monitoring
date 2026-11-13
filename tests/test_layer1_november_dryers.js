@@ -54,4 +54,25 @@ const operatingRow = operating.checks[0].categories[0].retailers[0];
 assert.equal(operatingRow.status, 'POLICY_PENDING');
 assert(context.L1.retailStatus.bsrCell(operatingRow, '86').includes('기준 결정 대기'));
 assert.equal(operatingRow.volume_alerts.length, 0);
+for (const [rule, baseline, actual, expected] of [
+    ['fixed_100', 100, 100, 'OK'], ['fixed_100', 100, 99, 'VOLUME_LOW'],
+    ['median_first_5d', 25, 25, 'OK'], ['median_first_5d', 25, 18, 'OK'],
+    ['median_first_5d', 25, 17, 'VOLUME_LOW']]) {
+    const data = payload('SEM', 'Liverpool', 100, false, '2026-11-10');
+    const row = data.checks[0].categories[0].retailers[0];
+    row.bsr_count = actual;
+    context.L1.collectionVolume.decorate(data, {policy_version:4, inspection_date:'2026-11-10', snapshots:[{
+        country:'SEM', available:true, live:true, source_date:'2026-11-10', rows:[{
+            product:'LDY_DRYER', retailer:'Liverpool', slot:'daily', observation_state:'ready',
+            bsr_comparison_state:'ready', rules:{
+                main:{baseline:100, days:5, rule:'median_28d', low_percent:30},
+                bsr:{baseline, days:5, rule, origin:'first_5_days', low_percent:30, exact:false}}
+        }]
+    }]}, '2026-11-10');
+    assert.equal(row.status, expected);
+    const cell = context.L1.retailStatus.bsrCell(row, actual);
+    assert(cell.includes('BSR 기준 ' + baseline));
+    assert(!cell.includes('기준 결정 대기'));
+    if (rule === 'median_first_5d') assert(cell.includes('최초 5일 중앙값'));
+}
 console.log('November dryers: preview, deletion, post-launch missing, ECI deadline and BSR policy waiting passed.');

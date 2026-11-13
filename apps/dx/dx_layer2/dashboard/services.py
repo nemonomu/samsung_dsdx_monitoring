@@ -27,6 +27,7 @@ NULL_REVIEW_TABLES = {
     'sea_ref_retail': 'sea_ref_retail',
     'sea_ldy_retail': 'sea_ldy_retail',
     'sea_ldy_dryer_retail': 'sea_ldy_dryer_retail',
+    'sem_ldy_dryer_retail': 'sem_ldy_dryer_retail',
     'seg_ldy_dryer_retail': 'seg_ldy_dryer_retail',
     'seib_ldy_dryer_retail': 'seib_ldy_dryer_retail',
     'seuk_ldy_dryer_retail': 'seuk_ldy_dryer_retail',

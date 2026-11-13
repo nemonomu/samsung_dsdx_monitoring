@@ -220,7 +220,7 @@
                 const valid = basis && Number.isFinite(basis.value) && basis.value > 0
                     && (fixed || (Number.isFinite(basis.days) && basis.days >= 5
                         && !['observing', 'unknown'].includes(day.observation_state)
-                        && (metric === 'main' || basis.rule === 'median_28d')))
+                        && (metric === 'main' || ['median_28d', 'median_first_5d'].includes(basis.rule))))
                     && !['future', 'unknown'].includes(day.state);
                 const missing = day.state === 'pending'
                     ? day.verification_state === 'waiting' ? '검증 대기'
@@ -229,7 +229,7 @@
                     : day.observation_state === 'observing' ? '관찰 중'
                     : ['unknown', 'future'].includes(day.state) ? '기준값 없음' : '비교 이력 부족';
                 return `<div class="cs-baseline-metric"><span>${metric.toUpperCase()}</span> `
-                    + (valid ? `<strong>${number(basis.value)}</strong>${fixed ? ' <span class="cs-baseline-note">(고정 기준)</span>' : ''}`
+                    + (valid ? `<strong>${number(basis.value)}</strong>${fixed ? ' <span class="cs-baseline-note">(고정 기준)</span>' : basis.rule === 'median_first_5d' ? ' <span class="cs-baseline-note">(최초 5일 중앙값)</span>' : ''}`
                         : `<span class="cs-baseline-note">— ${missing}</span>`) + '</div>';
             }).join('');
             return `<div class="cs-baseline-slot">${active.length > 1 ? `<small>${safe(day.slot || 'daily')}</small>` : ''}${metrics}</div>`;

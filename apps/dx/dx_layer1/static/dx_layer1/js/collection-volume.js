@@ -18,6 +18,7 @@
         delete item._volumeBatchId;
         delete item.volume_alerts;
         delete item.verification_reason;
+        delete item.bsr_baseline_rule;
     }
     function operatingRows(rows) {
         // Preview rows stay visible without holding back operating retailers.
@@ -51,13 +52,14 @@
     function compare(metric, current, rule) {
         if (!rule || !Number.isInteger(current) || current < 0 || !Number.isFinite(rule.baseline) || rule.baseline <= 0) return null;
         const fixed = metric === 'bsr' && rule.rule === 'fixed_100' && rule.baseline === 100;
-        if (!fixed && (rule.rule !== 'median_28d' || !Number.isFinite(rule.days) || rule.days < 5 || !Number.isFinite(rule.low_percent))) return null;
+        const medianRule = rule.rule === 'median_28d' || (metric === 'bsr' && rule.rule === 'median_first_5d');
+        if (!fixed && (!medianRule || !Number.isFinite(rule.days) || rule.days < 5 || !Number.isFinite(rule.low_percent))) return null;
         const baseline = rule.baseline, change = (current - baseline) * 100;
         let status, reason;
         if (fixed ? (rule.exact ? current !== baseline : current < baseline) : change <= -baseline * rule.low_percent) {
             status = 'VOLUME_LOW';
             reason = fixed ? `BSR 기준 100개 / 수집 ${current}개 / 기준 불일치`
-                : `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.low_percent}% 이상 감소`;
+                : `${metric.toUpperCase()} ${rule.rule === 'median_first_5d' ? '최초 5일' : '과거'} 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.low_percent}% 이상 감소`;
         } else if (rule.review_percent != null && change <= -baseline * rule.review_percent) {
             status = 'VOLUME_REVIEW';
             reason = `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.review_percent}% 이상 감소 / 확인 필요`;
@@ -107,6 +109,7 @@
                             ? Math.min(5, Number(saved.observation_prior_days || 0) + (collectedToday(check, slots, row.retailer, country) ? 1 : 0)) : null;
                         row.volume_alerts = [];
                         row.bsr_comparison_state = saved && saved.bsr_comparison_state;
+                        row.bsr_baseline_rule = saved && saved.rules && saved.rules.bsr;
                         row.volume_comparison_state = 'unavailable';
                         row.verification_state = row.status === 'ERROR' ? 'error' : complete ? 'waiting' : received(row, country) ? 'waiting' : 'collecting';
                         if (row.status === 'ERROR') return;
