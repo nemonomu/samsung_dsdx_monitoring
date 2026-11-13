@@ -1,6 +1,26 @@
 from django.db import models
 
 
+class ColumnNormalReview(models.Model):
+    """A manual decision on an exact source-day column comparison."""
+    fingerprint = models.CharField(max_length=64, unique=True)
+    environment = models.CharField(max_length=10)
+    source_date = models.DateField(db_index=True)
+    context = models.JSONField()
+    active = models.BooleanField(default=False)
+    revision = models.PositiveIntegerField(default=0)
+    history = models.JSONField(default=list)
+
+
+class ColumnReviewImage(models.Model):
+    review = models.ForeignKey(ColumnNormalReview, on_delete=models.PROTECT, related_name='images')
+    revision = models.PositiveIntegerField()
+    content = models.BinaryField()
+    content_type = models.CharField(max_length=32)
+    digest = models.CharField(max_length=64)
+    created_at = models.DateTimeField()
+
+
 class RetailRankReview(models.Model):
     """Audit of the exact three-day product comparison viewed by a reviewer."""
     fingerprint = models.CharField(max_length=64, unique=True)

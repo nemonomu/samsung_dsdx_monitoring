@@ -70,5 +70,15 @@ const reply = (req, ok = true) => req.resolve({ok, json:async () => structuredCl
     reply(blocked.requests[0]); await fallback;
     await blocked.cache.load(jobs[3], date);
     assert.equal(blocked.requests.length, 1, 'storage denial falls back to in-page reuse');
+    const reviewed = page('review-images');
+    reviewed.cache.remember(jobs[0],date,{...result,comparisons:[{...result.comparisons[0],
+        review:{active:true,history:[{memo:'private evidence',images:['secret image']}],revision:2}}]});
+    assert.equal((await reviewed.cache.load(jobs[0],date)).comparisons[0].review.active,true);
+    assert(![...storage.values()].join('').includes('private evidence'));
+    assert(![...storage.values()].join('').includes('secret image'));
+    reviewed.cache.invalidate(jobs[0],date);
+    const invalidated=reviewed.cache.load(jobs[0],date);
+    assert.equal(reviewed.requests.length,1,'a saved decision invalidates cached counts');
+    reply(reviewed.requests[0]); await invalidated;
     console.log('Column alert cache: 37 → 0 repeat requests, refresh, TTL, isolation, failures, cancellation and storage denial passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

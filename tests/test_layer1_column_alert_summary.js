@@ -111,5 +111,13 @@ function setup(section = 'dashboard') {
     stats.nodes.get('ccs-date').value = '2026-09-22'; stats.nodes.get('ccs-filters').listeners.submit();
     assert(stats.pending[0].options.signal.aborted);
     assert(stats.pending[2].url.includes('date=2026-09-22'));
+    const reviewed = setup();
+    const reviewedRun = reviewed.sandbox.ColumnAlertSummary.load('2026-09-23');
+    reviewed.respond(reviewed.pending[0], [], true, {comparisons:[
+        {status:'abnormal',review:{active:true}}, {status:'review',review:{active:true}}, {status:'abnormal'}]});
+    reviewed.respond(reviewed.pending[1], []); await tick();
+    reviewed.respond(reviewed.pending[2], []); await reviewedRun;
+    assert.equal(reviewed.nodes.get('l1-column-alert-total').textContent,'1');
+    assert.equal(reviewed.badge().textContent,'1','confirmed columns no longer count as alerts');
     console.log('Layer1 column alert summary: global badge, totals, links, loading, retries, failures, stale dates and statistics pages passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});

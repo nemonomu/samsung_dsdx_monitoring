@@ -17,6 +17,7 @@ from apps.dx.dx_layer1.collection_issues.errors import storage_error
 
 
 @require_GET
+@ensure_csrf_cookie
 def page(request):
     return render(request, 'dx_layer1_column_statistics.html', {
         **build_context('column_statistics', request), 'column_catalog': catalog(),
@@ -79,6 +80,12 @@ def daily(request):
             result['issue_history_diagnostic'] = storage_error(exc, 'remember_comparison')
         result['daily'] = result['daily'][-days:]
         result['dates'] = result['dates'][-days:]
+        if getattr(getattr(request, 'user', None), 'is_authenticated', False):
+            try:
+                from .reviews import attach_reviews
+                attach_reviews(result)
+            except Exception:
+                result['review_error'] = True
     except Exception:
         # Never convert a failed query into zero collected values or expose DB details.
         return JsonResponse({'error': '수집 통계를 조회하지 못했습니다. 잠시 후 다시 조회해주세요.'}, status=503)

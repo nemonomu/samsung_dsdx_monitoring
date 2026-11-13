@@ -5,10 +5,13 @@ from apps.dx.dx_layer1.common.retail_review_api import reviews as retail_reviews
 from apps.dx.dx_layer1.collection_statistics.volume_review_api import review as volume_review
 from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
 from apps.dx.dx_layer1.rank_monitoring import api as rank_api
+from apps.dx.dx_layer1.column_statistics import reviews as column_reviews
 
 app_name = 'layer1'
 
 urlpatterns = [
+    path('api/column-review/', column_reviews.review, name='api_column_review'),
+    path('api/column-review/images/<int:image_id>/', column_reviews.image, name='api_column_review_image'),
     path('rank/api/data/', rank_api.data, name='api_rank_data'),
     path('rank/api/detail/', rank_api.detail, name='api_rank_detail'),
     path('rank/api/export/', rank_api.export, name='api_rank_export'),

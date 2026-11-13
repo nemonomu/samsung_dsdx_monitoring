@@ -1,7 +1,7 @@
 {% extends 'base_layer1.html' %}
 {% load static %}
 {% block page_title %}컬럼별 수집데이터 통계{% endblock %}
-{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=2">{% endblock %}
+{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=2"><link rel="stylesheet" href="{% static 'dx_layer1/css/column-review.css' %}?v=20261113-evidence">{% endblock %}
 {% block layer1_content %}
 <section class="cs-page ccs-page" aria-label="컬럼별 수집데이터 통계">
     <div class="cs-intro"><div><p class="cs-eyebrow">collected fields</p><p>수집 항목별 건수와 평소 기준 대비 변화를 확인하세요.</p></div><span id="ccs-updated" class="cs-muted"></span></div>
@@ -27,4 +27,4 @@
 </section>
 {{ column_catalog|json_script:'ccs-catalog' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=20261020-source-day"></script><script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=20261020-source-day"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=20261113-evidence"></script><script src="{% static 'dx_layer1/js/column-review.js' %}?v=20261113-evidence"></script><script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=20261113-evidence"></script>{% endblock %}

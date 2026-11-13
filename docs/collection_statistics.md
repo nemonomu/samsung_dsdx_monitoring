@@ -170,3 +170,25 @@ python tests/test_collection_issues_browser.py
 node tests/test_layer1_column_comparison.js
 node tests/test_column_alert_progress.js
 ```
+
+## 컬럼 수집 이상 정상 확인과 이미지 근거
+
+검수 판정의 `이상 확인` 또는 `확인 필요`에서 캡처를 Ctrl+V로 붙여넣거나 파일로 첨부하고
+`정상 확인`을 저장한다. 이미지는 필수이며 설명은 선택이다. 최대 5장, 한 장 5MB,
+합계 15MB의 PNG·JPEG·WEBP 정지 이미지를 허용한다.
+
+`ColumnNormalReview`는 운영/테스트, 국가, 제품군, 리테일러, 원본 수집일, 컬럼과
+실제로 확인한 수집 건수·기준값·자동 판정을 보존한다. 저장 직전에 원본을 다시 집계하고
+서명된 판정·검수 버전을 비교한다. 다른 데이터일이나 제품군에는 확인 결과를 전파하지 않는다.
+자동 수치와 판정은 그대로 두고, 정상 확인 항목은 별도 필터로 표시하며 알림 건수에서는 제외한다.
+이 기능은 값 형식에 대한 공유 정상 승인이나 과거 미해결 점검의 자동 복구 판정을 변경하지 않는다.
+
+`ColumnReviewImage`는 검수 버전에 연결된 이미지 원본을 DB에 보관한다. 이미지 저장과
+정상 확인은 하나의 트랜잭션이며 취소해도 감사 이력과 이미지를 지우지 않는다.
+이미지 조회는 DX 접근 권한과 운영/테스트 범위를 확인한다. 브라우저 건수 캐시에는
+정상 확인 여부만 담고 이미지나 설명은 보관하지 않는다.
+
+배포에는 `0009_column_review_evidence` 마이그레이션이 필요하다. 기존 `scripts/deploy.sh`의
+Layer 1 마이그레이션 단계에 포함되며, 개발 중에는 운영 DB를 변경하지 않는다.
+
+검증: `python -B tests/test_column_review_backend.py`, `python -B tests/test_column_review_browser.py`.

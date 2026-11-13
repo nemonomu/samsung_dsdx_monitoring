@@ -58,8 +58,8 @@
                         const diagnostic = data.issue_history_diagnostic || {};
                         historyFailures.push(`${job.country} · ${job.product} · ${job.retailer}: ${diagnostic.error || '이력 저장 오류'} ${diagnostic.action || '다시 조회해 주세요.'}`);
                     }
-                    abnormal += data.comparisons.filter(row => row.status === 'abnormal').length;
-                    review += data.comparisons.filter(row => row.status === 'review').length;
+                    abnormal += data.comparisons.filter(row => row.status === 'abnormal' && !row.review?.active).length;
+                    review += data.comparisons.filter(row => row.status === 'review' && !row.review?.active).length;
                     missing += data.comparisons.some(row => row.status === 'uncollected') ? 1 : 0;
                 } catch (_) {
                     if (current.signal.aborted) return;
@@ -97,6 +97,7 @@
     }
     window.ColumnAlertSummary = {load};
     // Statistics pages have their own date form instead of the common FilterBar.
+    document.addEventListener('column-review-saved', () => {if (selectedDate) load(selectedDate, true);});
     document.addEventListener('DOMContentLoaded', () => {
         for (const prefix of ['cs', 'ccs']) {
             const form = document.getElementById(prefix + '-filters');

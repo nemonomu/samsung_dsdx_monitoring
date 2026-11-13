@@ -67,6 +67,11 @@
             message.className = 'cs-message error';
             message.textContent = '수집 건수는 조회했지만 미해결 이력을 저장하지 못했습니다. 다시 조회해주세요.';
         }
+        if (data.review_error) {
+            message.hidden = false;
+            message.className = 'cs-message error';
+            message.textContent = '수집 건수는 조회했지만 검수 기록을 불러오지 못했습니다. 다시 조회해주세요.';
+        }
         const scroll = document.querySelector('.ccs-scroll');
         scroll.scrollLeft = scroll.scrollWidth;
         const focused = document.querySelector('.ccs-focused');
@@ -107,5 +112,9 @@
         }
     }
     form.addEventListener('submit', event => {event.preventDefault(); load();});
+    document.addEventListener('column-review-saved', event => {
+        if (loadedData && ['country','product','retailer'].every(k => loadedData[k] === event.detail.target[k])
+            && loadedData.comparison_date === event.detail.target.source_date) load();
+    });
     load();
 })();

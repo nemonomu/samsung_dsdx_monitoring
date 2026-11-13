@@ -41,6 +41,7 @@
         endDay.setCustomValidity(startDay.value > endDay.value ? '검수 종료일은 시작일과 같거나 이후여야 합니다.' : '');
     }
     let rows = [], status = 'alerts', page = 1, controller, finished = false;
+    let refreshProgress = () => {};
     const pageSize = 50;
     function sidebar(state, count = 0, label = '') {
         window.setSidebarIssueBadge(sidebarLink, state === 'complete' ? count : 0);
@@ -64,6 +65,7 @@
     }
     function invalidate() {
         if (controller) controller.abort();
+        refreshProgress = () => {};
         rows = []; finished = false; page = 1;
         loading.hidden = true;
         sidebar('idle');
@@ -89,6 +91,15 @@
             const row = rows[Number(button.dataset.collectionSql)];
             window.CollectionIssues.sql({...row, source_date: row.comparison_date});
         }
+    });
+    document.addEventListener('column-review-saved', event => {
+        const {target, comparison} = event.detail;
+        rows.forEach(row => {
+            if (['country','product','retailer','column','inspection_date'].every(key => row[key] === target[key])
+                && row.comparison_date === target.source_date) Object.assign(row, comparison);
+        });
+        refreshProgress();
+        render();
     });
     async function load(force = false) {
         validateRange();
@@ -117,8 +128,8 @@
         sidebar('loading');
         function update() {
             finished = completed === jobs.length;
-            const abnormal = rows.filter(row => row.status === 'abnormal').length;
-            const review = rows.filter(row => row.status === 'review').length;
+            const abnormal = rows.filter(row => c.matches(row, 'abnormal')).length;
+            const review = rows.filter(row => c.matches(row, 'review')).length;
             const missing = rows.filter(row => row.status === 'uncollected').length;
             loading.hidden = finished;
             progressBar.max = jobs.length || 1;
@@ -136,13 +147,16 @@
             if (finished && historyFailed.length) {
                 progress.textContent += ` · 이력 저장 실패 ${historyFailed.length}개 (${historyFailed.join(', ')}) — 현재 조회 결과는 표시했지만 이력 보존은 서버 확인이 필요합니다.`;
             }
+            if (rows.some(row => row.review_error)) progress.textContent += ' · 검수 기록 조회 실패: 다시 조회해주세요.';
             render();
         }
+        refreshProgress = update;
         async function worker() {
             while (next < jobs.length && !current.signal.aborted) {
                 const {date, ...job} = jobs[next++];
                 try {
-                    const data = await window.ColumnAlertCache.load(job, date, {signal: current.signal, force});
+                    // Review decisions are live state, not part of the short-lived count cache.
+                    const data = await window.ColumnAlertCache.load(job, date, {signal: current.signal, force:true});
                     if (current.signal.aborted) return;
                     if (data.issue_history_error) {
                         const diagnostic = data.issue_history_diagnostic || {};
@@ -151,7 +165,7 @@
                     const comparisons = data.comparisons.some(row => row.status === 'uncollected')
                         ? [{column: '전체 미수집', status: 'uncollected', current: 0, baseline: null, history_days: 0, ratio: null, delta: null}]
                         : data.comparisons;
-                    rows.push(...comparisons.map(row => ({...row, ...job, comparison_date: data.comparison_date, inspection_date: data.inspection_date || date})));
+                    rows.push(...comparisons.map(row => ({...row, ...job, review_error:!!data.review_error, comparison_date: data.comparison_date, inspection_date: data.inspection_date || date})));
                 } catch (error) {
                     if (current.signal.aborted) return;
                     failed.push(`${date} ${job.country} ${job.product} ${job.retailer}`);

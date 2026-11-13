@@ -1,0 +1,18 @@
+.column-review-dialog{box-sizing:border-box;width:min(850px,94vw);max-height:90vh;overflow:auto;padding:24px;border:1px solid #ccd7e7;border-radius:12px;color:#263954;background:white}
+.column-review-dialog::backdrop{background:#18223880}
+.column-review-dialog h2{font-size:20px;margin:0 0 12px}
+.column-review-dialog p{line-height:1.7}
+.column-review-dialog fieldset{min-width:0;border:0;padding:0;margin:18px 0}
+.column-review-dialog input[type=file]{display:block;max-width:100%}
+.column-review-dialog textarea{display:block;width:100%;box-sizing:border-box;border:1px solid #cad5e7;border-radius:6px;padding:10px;margin-top:6px;font:inherit}
+.column-review-paste{border:2px dashed #8da7cd;border-radius:10px;padding:18px;background:#f5f8fe;line-height:1.9}
+.column-review-paste:focus{outline:3px solid #84a7df}
+.column-review-paste small{display:block;color:#59708f}
+.column-review-images{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}
+.column-review-images figure,.column-review-images a{width:180px;margin:0;display:flex;flex-direction:column;gap:6px}
+.column-review-images img{width:100%;height:130px;object-fit:contain;background:#f0f3f8;border:1px solid #dce3ef;border-radius:5px}
+.column-review-images button{padding:5px;border:1px solid #ccd7e7;background:white;border-radius:5px;cursor:pointer}
+.column-review-entry{border-top:1px solid #dce3ef;padding:12px 0}
+.column-review-memo{white-space:pre-wrap;overflow-wrap:anywhere}
+.column-review-dialog [data-error]{color:#a53b36;white-space:pre-wrap}
+button.ccs-badge{cursor:pointer;text-decoration:underline;text-underline-offset:3px}
