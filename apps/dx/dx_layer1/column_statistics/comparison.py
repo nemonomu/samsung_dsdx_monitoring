@@ -91,6 +91,8 @@ def compare_columns(data, target, completed):
             status = 'uncollected'
         elif current['total'] == 0:
             status = 'no_scoped_rows'
+        elif costco.optional_null_column(data.get('country'), data.get('retailer'), column):
+            status = 'normal'
         elif baseline is None:
             status = 'insufficient'
         elif baseline == 0:

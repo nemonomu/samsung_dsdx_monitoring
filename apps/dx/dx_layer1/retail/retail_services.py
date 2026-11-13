@@ -653,6 +653,8 @@ def get_retail_summary(target_date, product_line):
             if retailer == 'Costco' or source['product_key'] == 'ldy_dryer':
                 check_columns = [c for c in costco.COLUMNS[source['product_key']]
                                  if c not in ('id', source['date_column'], 'main_rank', 'bsr_rank')]
+            check_columns = [column for column in check_columns
+                             if not costco.optional_null_column('SEA', retailer, column)]
             for column in check_columns:
                 if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
                     raise ValueError(f'허용되지 않은 컬럼명: {column}')

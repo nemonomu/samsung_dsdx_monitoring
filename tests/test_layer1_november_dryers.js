@@ -57,10 +57,11 @@ assert.equal(operatingRow.volume_alerts.length, 0);
 for (const [rule, baseline, actual, expected] of [
     ['fixed_100', 100, 100, 'OK'], ['fixed_100', 100, 99, 'VOLUME_LOW'],
     ['median_first_5d', 25, 25, 'OK'], ['median_first_5d', 25, 18, 'OK'],
-    ['median_first_5d', 25, 17, 'VOLUME_LOW']]) {
+    ['median_first_5d', 25, 17, 'VOLUME_LOW'], ['median_first_5d', 85, 99, 'OK']]) {
     const data = payload('SEM', 'Liverpool', 100, false, '2026-11-10');
     const row = data.checks[0].categories[0].retailers[0];
     row.bsr_count = actual;
+    if (baseline === 85) row.status = 'POLICY_PENDING';
     context.L1.collectionVolume.decorate(data, {policy_version:4, inspection_date:'2026-11-10', snapshots:[{
         country:'SEM', available:true, live:true, source_date:'2026-11-10', rows:[{
             product:'LDY_DRYER', retailer:'Liverpool', slot:'daily', observation_state:'ready',

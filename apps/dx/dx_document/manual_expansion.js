@@ -55,7 +55,7 @@ renderTable = function() {
 };
 routeInfo = function() {
   const p=profile(),link=entry();
-  openInfo(p.name+' 방문 방법','<h3>MAIN · BSR 목록</h3><p>MAIN은 검색 목록, BSR은 설정된 카테고리·정렬 목록에서의 상품 순서입니다.</p><p>'+esc(p.mainSort||'MAIN 방문 기준을 등록해 주세요.')+'</p><p>'+esc(p.bsrSort||'BSR 방문 기준을 등록해 주세요.')+'</p>'+
+  openInfo(p.name+' 방문 방법','<h3>MAIN · BSR 목록</h3><p>MAIN은 검색 목록, BSR은 설정된 카테고리·정렬 목록에서의 상품 순서입니다.</p><h3>MAIN</h3><p class="manual-route-description">'+esc(manualRouteText(p,'main'))+'</p><h3>BSR</h3><p class="manual-route-description">'+esc(manualRouteText(p,'bsr'))+'</p>'+
     (link?'<p><a href="'+esc(link)+'" target="_blank" rel="noopener">쇼핑몰 열기 ↗</a></p>':'<p>등록된 쇼핑몰 주소가 없습니다.</p>')+'<p>'+esc(p.summary)+'</p><p>'+esc(p.warning)+'</p>');
 };
 $('routeDetails').onclick=routeInfo;

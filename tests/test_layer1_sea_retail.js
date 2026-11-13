@@ -172,6 +172,31 @@ function categoryFromSummary(key) {
     assert.strictEqual(context.currentRetailSummary.ref, summaries.ref);
     assert.strictEqual(context.currentNullData.ldy, summaries.ldy.null_columns);
 
+    // NULL alerts open their product and country even when volume is normal.
+    const nullRow = (retailer, columns) => ({retailer,
+        time_slots: [{time_slot: '일일', null_columns: columns}]});
+    summaries.tv.null_columns = [nullRow('Costco', ['original_sku_price', 'savings']),
+        nullRow('Walmart', ['inventory_status', 'available_quantity_for_purchase'])];
+    const alertCheck = {name:'SEA Retail', status:'OK', actual:60,
+        categories:[categoryFromSummary('tv'), categoryFromSummary('ref')]};
+    let alertHtml = context.renderRetailCheck(alertCheck, 0);
+    assert(alertHtml.includes('class="time-slots-container show" id="time-slots-0"'));
+    assert(alertHtml.includes('retail-single-column show" id="retail-cat-0-0"'));
+    assert(!alertHtml.includes('retail-single-column show" id="retail-cat-0-1"'));
+    assert(alertHtml.includes('inventory_status, available_quantity_for_purchase'));
+    assert(!alertHtml.includes('original_sku_price, savings'));
+    summaries.tv.null_columns = [nullRow(' Costco ', ['original_sku_price', 'savings'])];
+    alertHtml = context.renderRetailCheck(alertCheck, 0);
+    assert(!alertHtml.includes('null-summary-title'));
+    assert(!alertHtml.includes('class="time-slots-container show"'));
+    summaries.tv.null_columns[0].time_slots[0].null_columns.push('final_sku_price');
+    alertHtml = context.renderRetailCheck(alertCheck, 0);
+    assert(alertHtml.includes('class="time-slots-container show"'));
+    assert(alertHtml.includes('final_sku_price'));
+    summaries.tv.null_columns = [nullRow('Walmart', ['original_sku_price', 'savings'])];
+    assert(context.renderRetailCheck(alertCheck, 0).includes('original_sku_price, savings'));
+    summaries.tv.null_columns = [];
+
     const refHtml = context.renderRetailCategory(categoryFromSummary('ref'), 0, 1);
     assert.ok(refHtml.includes('검수일 2026-08-20'));
     assert.ok(refHtml.includes('데이터일 2026-08-19'));

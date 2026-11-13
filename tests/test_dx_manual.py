@@ -94,6 +94,26 @@ class ManualTests(TestCase):
             self.assertTrue(response['Content-Type'].startswith('image/'))
             response.close()
 
+    def test_representative_capture_survives_save_and_history(self):
+        photo = self.data['photos'][0]
+        column = photo['boxes'][0]['fields'][0]
+        photo['primaryFor'] = {'common:' + column: 2}
+        response = self.save()
+        self.assertEqual(response.status_code, 200, response.content)
+        stored = storage.revisions().first().data['photos'][0]
+        self.assertEqual(stored['primaryFor'], photo['primaryFor'])
+        history = self.client.get(PREFIX + 'history/?version=1').json()
+        self.assertEqual(history['data']['photos'][0]['primaryFor'], photo['primaryFor'])
+
+    def test_invalid_representative_capture_settings_are_rejected(self):
+        photo = self.data['photos'][0]
+        column = photo['boxes'][0]['fields'][0]
+        for value in ([], {'common:' + column: True}, {'common:' + column: -1},
+                      {'unknown:' + column: 1}, {'common:not_a_column': 1}):
+            with self.subTest(value=value):
+                photo['primaryFor'] = value
+                self.assertEqual(self.save().status_code, 400)
+
     def test_catalog_adds_exact_registered_columns_and_preserves_manual_content(self):
         rows = [{'product_line': 'seg_tv', 'retailer': 'Amazon', 'column_name': 'custom_registered_column'},
                 {'product_line': 'seib_ldy_dryer', 'retailer': 'MediaMarkt', 'column_name': 'capacity'}]

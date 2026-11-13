@@ -12,6 +12,7 @@ from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily, Collectio
 from apps.dx.dx_layer1.common.context import build_context
 from .calculations import COUNTRIES, OFFSETS, MINIMUM_DAYS, MAIN_POLICY_VERSION, comparison_rules, current_volume_decision, week_start
 from .reviews import attach_review, review_index
+from .initial_bsr import project_rows
 
 
 def page(request):
@@ -100,5 +101,6 @@ def alerts(request):
                    'verification_state',
                    'observation_state', 'observation_days', 'observation_prior_days')},
                   'rules': comparison_rules(row, snapshot.country)}
-                 for saved in snapshot.rows for row in [current_volume_decision(saved, snapshot.country)]],
+                 for saved in project_rows(snapshot.country, snapshot.rows, snapshot.source_date)
+                 for row in [current_volume_decision(saved, snapshot.country)]],
     } for snapshot in snapshots]})

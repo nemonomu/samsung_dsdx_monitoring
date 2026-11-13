@@ -35,6 +35,17 @@ def sample(target=TARGET,count=0,total=300,history=100):
     return data,{d['date']:True for d in daily}
 
 class IssueTests(TestCase):
+    def test_costco_optional_price_alerts_are_hidden_but_original_evidence_remains(self):
+        rows = [self.create_past_issue('SEA', TARGET, retailer='Costco', column=column, severity='abnormal')
+                for column in ('original_sku_price', 'savings', 'final_sku_price')]
+        other = self.create_past_issue('SEA', TARGET, column='savings', severity='abnormal')
+        response = self.past_listing(country='SEA', inspection_date='2026-11-13')
+        shown = {row['id'] for row in json.loads(response.content)['issues']}
+        self.assertEqual({rows[2].id, other.id}, shown)
+        self.assertEqual(4, Issue.objects.count())
+        response = self.past_listing(country='SEA', inspection_date='2026-11-13', status='all')
+        self.assertEqual(4, len(json.loads(response.content)['issues']))
+
     def test_past_review_page_uses_separate_section(self):
         req = RequestFactory().get('/dx/layer1/past-review/')
         req.user = SimpleNamespace(is_authenticated=True)

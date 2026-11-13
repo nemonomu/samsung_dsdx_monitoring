@@ -7,6 +7,14 @@ from apps.common.source_dates import source_date_sql
 FIRST_SOURCE_DATE = date(2026, 10, 4)
 DRYER_FIRST_SOURCE_DATE = date(2026, 10, 9)
 MINIMUM_DAYS = 5
+OPTIONAL_NULL_COLUMNS = frozenset({'original_sku_price', 'savings'})
+
+
+def optional_null_column(country, retailer, column):
+    return (country == 'SEA' and str(retailer or '').strip().casefold() == 'costco'
+            and column in OPTIONAL_NULL_COLUMNS)
+
+
 COMMON_COLUMNS = (
     'item', 'retailer_sku_name', 'final_sku_price', 'original_sku_price',
     'savings', 'product_url', 'star_rating', 'count_of_star_ratings',

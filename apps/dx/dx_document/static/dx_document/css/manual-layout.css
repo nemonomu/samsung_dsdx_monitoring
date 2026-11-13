@@ -131,3 +131,7 @@ dialog .close:hover{background:#e7edf5;color:#243c65}
 @media(min-width:1450px){.workspace{grid-template-columns:280px minmax(0,1fr)}}
 @media(max-width:1000px){.workspace{grid-template-columns:230px minmax(0,1fr)}.routebar{flex-wrap:wrap}.routecopy{flex:1 1 200px}}
 @media(max-width:650px){.workspace{grid-template-columns:1fr}.fieldpane-head{display:block}.fieldpane-head h2{margin-bottom:10px}.counter{display:inline}.fieldlist{max-height:290px}.routecopy{flex-basis:calc(100% - 190px);font-size:12px}.route-link{margin-left:0}#routeDetails,.route-link{font-size:12px}.segmented button{min-width:70px}}
+/* Capture choice belongs above the image, including on narrow screens. */
+#photoPager {display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 16px; border-bottom:1px solid #e9ecf3;}
+#manualPrimaryPhoto {border:1px solid #d8e0f2; border-radius:6px; padding:6px 10px; color:#243c65;}
+.manual-route-description, .manual-route-text {white-space:pre-wrap; overflow-wrap:anywhere;}

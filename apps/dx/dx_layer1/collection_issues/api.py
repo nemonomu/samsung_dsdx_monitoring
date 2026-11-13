@@ -71,7 +71,9 @@ def listing(request):
         from apps.dx.dx_layer1.collection_statistics.reviews import review_index
         reviews = review_index(min(r.source_date for r in rows), max(r.source_date for r in rows)) if rows else {}
         if status == 'open':
-            rows = [r for r in rows if not volume.confirmed(r, reviews)]
+            from apps.dx.dx_layer1.retail.costco import optional_null_column
+            rows = [r for r in rows if not volume.confirmed(r, reviews)
+                    and not optional_null_column(r.country, r.retailer, r.column)]
         elif status == 'confirmed':
             rows = [r for r in rows if r.status == 'open' and volume.confirmed(r, reviews)]
         # Whole-collection incidents are one row, not one copy per affected field.

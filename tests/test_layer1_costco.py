@@ -31,6 +31,40 @@ def connection(cursor=None):
 
 
 class CostcoTests(SimpleTestCase):
+    def test_costco_optional_prices_do_not_create_null_summary_alerts(self):
+        for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):
+            source = {**retail._get_layer1_source(product), 'retailers': ('Costco',)}
+            def counts(_cursor, _table, _date, fields, *_args):
+                self.assertFalse(costco.OPTIONAL_NULL_COLUMNS.intersection(fields))
+                return [0 if field == 'final_sku_price' else 100 for field in fields]
+            with patch.object(retail, '_get_layer1_source', return_value=source), \
+                    patch.object(retail, 'dx_connection', connection), \
+                    patch.object(repo, 'query_retail_counts_by_retailer', return_value=(100,100,0,100,'c1')), \
+                    patch.object(repo, 'query_appliance_counts_by_retailer', return_value=(100,100,0,100,'c1')), \
+                    patch.object(repo, 'get_retail_summary_null_counts', side_effect=counts):
+                result = retail.get_retail_summary(date(2026,11,13), product)
+            self.assertEqual(['final_sku_price'], result['null_columns'][0]['time_slots'][0]['null_columns'])
+            self.assertEqual(1, result['check_stats']['null_count'])
+            self.assertTrue(costco.OPTIONAL_NULL_COLUMNS.issubset(costco.COLUMNS[product]))
+
+    def test_costco_optional_prices_keep_counts_without_volume_alerts(self):
+        target = date(2026,11,12)
+        fields = ['original_sku_price', 'savings', 'final_sku_price']
+        daily = [{'date':str(target-timedelta(days=i)), 'total':100,
+                  'counts':{field:100 if i else 0 for field in fields}} for i in range(7,-1,-1)]
+        completed = {day['date']:True for day in daily}
+        for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
+            data = dict(country='SEA', product=product, retailer='Costco', columns=fields, daily=daily)
+            rows = comparison.compare_columns(data, target, completed)
+            self.assertEqual(['normal','normal','abnormal'], [r['status'] for r in rows])
+            self.assertEqual([0,0,0], [r['current'] for r in rows])
+            self.assertEqual(['abnormal']*3, [r['status'] for r in comparison.compare_columns(
+                {**data, 'retailer':'Walmart'}, target, completed)])
+            self.assertEqual(['pending']*3, [r['status'] for r in comparison.compare_columns(
+                data, target, {**completed, str(target):False})])
+        daily[-1]['total'] = 0
+        self.assertEqual(['uncollected']*3, [r['status'] for r in comparison.compare_columns(data,target,completed)])
+
     def test_dday_main_below_bsr_is_abnormal_on_receipt(self):
         day = date(2026, 10, 28)
         for hour in (13, 16, 18):
@@ -150,7 +184,7 @@ class CostcoTests(SimpleTestCase):
                 self.assertNotIn('sku', fields)
                 self.assertNotIn('tv_item_mst', sql)
 
-    def test_existing_sea_tv_keeps_batch_date_after_costco_query(self):
+    def test_existing_sea_tv_keeps_original_source_date_after_costco_query(self):
         source = columns.select_source('SEA', 'TV', 'Costco')
         retailer = next(r for r in source['retailers'] if r['name'] == 'Costco')
         columns.query_spec(source, retailer, ['item'], date(2026, 10, 4), date(2026, 10, 6))
@@ -159,7 +193,8 @@ class CostcoTests(SimpleTestCase):
             if retailer['name'] == 'Costco':
                 continue
             sql, _ = columns.query_spec(source, retailer, ['item'], date(2026, 10, 4), date(2026, 10, 6))
-            self.assertIn("substring(CAST(source.batch_id AS TEXT) from '([0-9]{8})')", sql)
+            self.assertIn(costco.source_date_sql('source.crawl_datetime'), sql)
+            self.assertNotIn('CAST(source.batch_id AS TEXT)', sql)
             self.assertNotIn('::timestamptz', sql)
 
     def test_costco_column_history_requires_five_valid_prior_days(self):

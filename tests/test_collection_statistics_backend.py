@@ -493,6 +493,29 @@ class CalculationTests(SimpleTestCase):
 
 
 class StoreTests(TestCase):
+    def test_eci_pending_dashboard_gets_initial_basis_before_offline_rebuild(self):
+        day = date(2026,11,13)
+        for i, count in enumerate([80,85,90,85,85], 1):
+            source = date(2026,11,i)
+            Daily.objects.create(country='SEIB', inspection_date=source, source_date=source,
+                rows=[sample(retailer='ECI', product='LDY_DRYER', main=count, bsr=count)],
+                digest='first-five', updated_at=timezone.now())
+        saved = sample(retailer='ECI', product='LDY_DRYER', main=99, bsr=99,
+            observation_state='ready', observation_days=5, observation_prior_days=5,
+            bsr_comparison_state='policy_pending', bsr_rule='policy_pending',
+            baselines={'main':{'value':87.5,'days':12}}, alerts=[])
+        today = Daily.objects.create(country='SEIB', inspection_date=day, source_date=day,
+            rows=[saved], digest='legacy', updated_at=timezone.now())
+        # A read repairs the projected verdict without rewriting saved counts or evidence.
+        result = json.loads(api.alerts(self.factory.get('/', {'date':str(day)})).content)
+        row = result['snapshots'][0]['rows'][0]
+        self.assertEqual('ready', row['bsr_comparison_state'])
+        self.assertEqual(85, row['rules']['bsr']['baseline'])
+        self.assertEqual('median_first_5d', row['rules']['bsr']['rule'])
+        self.assertEqual([], row['alerts'])
+        today.refresh_from_db()
+        self.assertEqual(saved, today.rows[0])
+
     def test_initial_bsr_rebuild_upgrade_and_live_reference_survive_28_day_window(self):
         from apps.dx.dx_layer1.collection_statistics import live
         start, end = date(2026, 11, 1), date(2026, 12, 10)

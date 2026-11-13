@@ -119,6 +119,15 @@ def validate_data(data):
         if identity in names:
             raise ValueError('같은 제품군의 이미지 이름이 중복되었습니다.')
         names.add(identity)
+        primary = photo.get('primaryFor', {})
+        if not isinstance(primary, dict) or len(primary) > 7000:
+            raise ValueError('대표 캡처 설정을 확인하세요.')
+        for key, rank in primary.items():
+            scope, separator, column = key.partition(':')
+            if (not separator or scope not in {'common', 'tv', 'ref', 'ldy', 'ldy_dryer', 'dryer'}
+                    or column not in fields_by_retailer[photo['retailer']]
+                    or type(rank) is not int or not 1 <= rank <= 1000000000):
+                raise ValueError('대표 캡처의 컬럼과 우선순위를 확인하세요.')
         for key in ('stage', 'region', 'note', 'date', 'url', 'commonExample'):
             text_value(photo.get(key, ''), 20000)
         url = photo.get('url', '')

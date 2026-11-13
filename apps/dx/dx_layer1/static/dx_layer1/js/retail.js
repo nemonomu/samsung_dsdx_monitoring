@@ -89,6 +89,7 @@ function hasRetailExtraRank(summaryData, categoryData, categoryName) {
 function renderRetailCategory(cat, checkIdx, catIdx) {
     const catStatusClass = getStatusClass(cat.status);
     const hasTimeSlots = cat.time_slots && cat.time_slots.length > 0;
+    const hasNullAlert = hasRetailNullAlert(cat);
     const hasUnassessed = hasTimeSlots
         ? cat.time_slots.some(slot => (slot.retailers || []).some(row => row.status === 'UNASSESSED'))
         : (cat.unassessed_retailers || []).length > 0;
@@ -97,7 +98,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
     let timeSlotsHtml = '';
     if (hasTimeSlots) {
         const slotClass = cat.time_slots.length > 1 ? 'sentiment-two-column' : 'sentiment-two-column retail-single-column';
-        timeSlotsHtml = '<div class="' + slotClass + '" id="retail-cat-' + checkIdx + '-' + catIdx + '">' +
+        timeSlotsHtml = '<div class="' + slotClass + (hasNullAlert ? ' show' : '') + '" id="retail-cat-' + checkIdx + '-' + catIdx + '">' +
             cat.time_slots.map((slot, slotIdx) => renderRetailSlotCard(slot, checkIdx, catIdx, slotIdx, cat.name, cat)).join('') +
         '</div>';
     }
@@ -105,7 +106,7 @@ function renderRetailCategory(cat, checkIdx, catIdx) {
     return '<div class="sentiment-category-item">' +
         '<div class="sentiment-category-header" onclick="toggleRetailCategory(this, ' + checkIdx + ', ' + catIdx + ')">' +
             '<div class="sentiment-category-info">' +
-                '<span class="toggle-icon-small">▶</span>' +
+                '<span class="toggle-icon-small' + (hasNullAlert ? ' expanded' : '') + '">▶</span>' +
                 '<span class="sentiment-category-name">' + esc(cat.name) + '</span>' +
                 renderRetailDateContract(cat) +
             '</div>' +
@@ -136,11 +137,18 @@ function getSlotNullColumns(categoryName, slotName) {
         for (var j = 0; j < timeSlots.length; j++) {
             var ts = timeSlots[j];
             if (ts.time_slot === slotName && ts.null_columns && ts.null_columns.length > 0) {
-                result.push({ retailer: data[i].retailer, columns: ts.null_columns.join(', ') });
+                // Older summary responses may still contain these accepted NULLs.
+                var columns = ts.null_columns.filter(column =>
+                    String(data[i].retailer || '').trim().toLowerCase() !== 'costco'
+                    || !['original_sku_price', 'savings'].includes(column));
+                if (columns.length) result.push({ retailer: data[i].retailer, columns: columns.join(', ') });
             }
         }
     }
     return result;
+}
+function hasRetailNullAlert(category) {
+    return (category.time_slots || []).some(slot => getSlotNullColumns(category.name, slot.name).length > 0);
 }
 function getRetailItemCount(retailer, names) {
     var items = retailer.items || [];
@@ -429,7 +437,8 @@ function renderRetailCheck(check, checkIdx) {
     '</div>';
 
     var displayCategories = hasCategories ? check.categories : buildSeaRetailFallbackCategories();
-    let categoriesHtml = '<div class="time-slots-container" id="time-slots-' + checkIdx + '">' +
+    const hasNullAlert = displayCategories.some(hasRetailNullAlert);
+    let categoriesHtml = '<div class="time-slots-container' + (hasNullAlert ? ' show' : '') + '" id="time-slots-' + checkIdx + '">' +
         timeHeader +
         '<div class="sentiment-categories">' +
             displayCategories.map(function(cat, catIdx) {
@@ -442,7 +451,7 @@ function renderRetailCheck(check, checkIdx) {
         '<div class="check-main retail-check-main" onclick="L1.retailStatus.toggle(this, ' + checkIdx + ')">' +
             '<div class="check-info">' +
                 '<div class="check-name">' +
-                    '<span class="toggle-icon">▶</span>' +
+                    '<span class="toggle-icon' + (hasNullAlert ? ' expanded' : '') + '">▶</span>' +
                     renderCountryFlagLabel(check.name) +
                 '</div>' +
                 '<div class="check-description">' + check.description + '</div>' +
