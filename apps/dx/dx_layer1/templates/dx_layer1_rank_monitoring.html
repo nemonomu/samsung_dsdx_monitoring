@@ -1,7 +1,7 @@
 {% extends 'base_layer1.html' %}
 {% load static %}
 {% block page_title %}상품 순위 비교{% endblock %}
-{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/rank-monitoring.css' %}?v=2">{% endblock %}
+{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/rank-monitoring.css' %}?v=3">{% endblock %}
 {% block collection_issues_panel %}{% endblock %}
 {% block layer1_content %}
 <section id="rank-monitor" class="rm-page" aria-label="상품 순위 모니터링">
@@ -53,15 +53,34 @@
         <div class="rm-card-head"><h3 id="rm-detail-title">상품 확인</h3><button id="rm-close" type="button" aria-label="상품 확인 닫기">✕</button></div>
         <div id="rm-detail"></div>
         <form id="rm-review-form">{% csrf_token %}
+            <div id="rm-review-summary" class="rm-review-summary" hidden></div>
             <label>확인 결과<select id="rm-review-result"></select></label>
             <label>확인 근거 / 메모<textarea id="rm-memo" rows="3" maxlength="2000" required placeholder="상품 페이지 확인 시각, 품절 상태, 수집 로그 등 근거를 입력하세요."></textarea></label>
+            <div class="rm-photo-heading"><span>확인 근거 사진 <b id="rm-photo-count"></b></span><span class="rm-muted">선택 첨부 · 클릭하면 확대</span></div>
+            <div id="rm-photo-drop" class="rm-photo-drop" tabindex="0" aria-label="사진 붙여넣기 영역">
+                <p>캡처한 사진을 <b>Ctrl+V</b>로 붙여넣으세요.</p>
+                <button id="rm-photo-choose" type="button">사진 선택</button>
+                <small>파일을 끌어 놓아도 됩니다 · PNG, JPG, WEBP · 최대 5장 / 장당 5MB / 합계 15MB</small>
+            </div>
+            <input id="rm-photo-files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+            <input id="rm-photo-replace" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            <div id="rm-photos" class="rm-photos"></div>
+            <p id="rm-photo-empty" class="rm-muted">첨부된 사진이 없습니다.</p>
             <p class="rm-muted">현재 상품 페이지의 상태가 과거 수집일의 상태를 증명하지는 않습니다. 해당 시점의 근거를 함께 기록하세요.</p>
             <div id="rm-review-message" role="status" aria-live="polite"></div>
-            <button class="rm-primary" type="submit" id="rm-save">확인 기록 저장</button>
+            <div class="rm-review-actions">
+                <button class="rm-primary" type="submit" id="rm-save">확인 기록 저장</button>
+                <button type="button" id="rm-cancel-edit" hidden>수정 취소</button>
+            </div>
         </form>
         <details><summary>확인 이력</summary><div id="rm-history"></div></details>
+    </dialog>
+    <dialog id="rm-photo-zoom" class="rm-photo-zoom" aria-labelledby="rm-photo-title">
+        <div class="rm-card-head"><h3 id="rm-photo-title">확인 근거 사진</h3><button type="button" id="rm-photo-close" aria-label="사진 확대 닫기">✕</button></div>
+        <img id="rm-photo-image" alt="확인 근거 사진">
+        <p id="rm-photo-error" class="rm-muted" role="status" hidden>사진을 불러오지 못했습니다. 로그인 또는 연결 상태를 확인해주세요.</p>
     </dialog>
 </section>
 {{ rank_config|json_script:'rm-config' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=3"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-review.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=4"></script>{% endblock %}

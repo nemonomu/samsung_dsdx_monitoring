@@ -16,6 +16,7 @@ urlpatterns = [
     path('rank/api/detail/', rank_api.detail, name='api_rank_detail'),
     path('rank/api/export/', rank_api.export, name='api_rank_export'),
     path('rank/api/review/', rank_api.save_review, name='api_rank_review'),
+    path('rank/api/review/images/<int:image_id>/', rank_api.review_image, name='api_rank_review_image'),
     path('rank/<str:mode>/<str:country>/', rank_api.page, name='rank_monitoring'),
     path('api/volume-review/', volume_review, name='api_volume_review'),
     path('api/retail-reviews/', retail_reviews, name='api_retail_reviews'),

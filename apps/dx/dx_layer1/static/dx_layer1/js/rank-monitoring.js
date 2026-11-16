@@ -26,6 +26,8 @@
     if (typeof document === 'undefined' || !document.getElementById('rm-config')) return;
     const config = JSON.parse(document.getElementById('rm-config').textContent);
     const el = id => document.getElementById('rm-' + id);
+    const reviewEditor = window.RankReviewEditor.create();
+    const reviewed = window.RankReviewEditor.reviewed;
     const state = {view:'all', signal:'all', tier:'all', sort:'rank', query:'', page:1};
     let result = null, selected = null, controller = null, requestNumber = 0, detailNumber = 0, searchTimer = null;
     let loading = false, moreController = null, moreNumber = 0, moreLoading = false, moreError = '', moreExpired = false;
@@ -55,7 +57,7 @@
             `${delta > 0 ? '↓' : '↑'} ${Math.abs(delta)}위 ${delta > 0 ? '하락' : '상승'}`) :
             cell.state === 'absent' ? '해당 배치에서 미발견' : '누락 확정 아님';
         if (cell.state === 'outside') sub += ' · 300위 밖';
-        return `<div class="rm-rank ${cell.state} ${delta != null && Math.abs(delta) >= result.criteria.swing ? 'jump' : ''}"><strong>${numeric(cell) ? `${cell.rank}<small>위</small>` : esc(cellLabel(cell,index))}</strong><span class="${delta > 0 ? 'down' : delta < 0 ? 'up' : ''}">${esc(sub)}</span></div>`;
+        return `<div class="rm-rank ${cell.state} ${cell.state === 'absent' && reviewed(product.review) ? 'rm-reviewed' : ''} ${delta != null && Math.abs(delta) >= result.criteria.swing ? 'jump' : ''}"><strong>${numeric(cell) ? `${cell.rank}<small>위</small>` : esc(cellLabel(cell,index))}</strong><span class="${delta > 0 ? 'down' : delta < 0 ? 'up' : ''}">${esc(sub)}</span></div>`;
     }
     function message(text, error=false) { el('message').hidden = !text; el('message').textContent = text; el('message').classList.toggle('error',error); }
     function options() {
@@ -66,6 +68,7 @@
         stopMore(); clearTimeout(searchTimer); loading = false;
         requestNumber++; controller?.abort(); el('load').disabled = false;
         result = null; selected = null; el('results').hidden = true;
+        reviewEditor.clear();
         if (el('dialog').open) el('dialog').close();
         message('조회 조건이 변경되었습니다. 조회 버튼을 눌러주세요.');
     }
@@ -82,6 +85,7 @@
         controller?.abort(); controller = new AbortController();
         const signal = controller.signal;
         selected = null; detailNumber++; if (el('dialog').open) el('dialog').close();
+        reviewEditor.clear();
         const params = paramsFor(pinned);
         if (!pinned) {state.page=1;params.set('page','1');result=null;}
         el('load').disabled = true; el('results').hidden = true;
@@ -184,13 +188,12 @@
         renderProgress();
     }
     function rowsHtml(products) {
-        return products.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status]}</div></td><td><div class="rm-record">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
-    }
-    function history() {
-        el('history').innerHTML = selected.review.history.slice().reverse().map(r=>`<div class="rm-history-entry"><b>${esc(r.result)}</b> · ${esc(r.username)} · ${esc(r.at)}<br>${esc(r.memo)}</div>`).join('') || '<p class="rm-muted">확인 이력이 없습니다.</p>';
+        return products.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status]}</div></td><td><div class="rm-record ${reviewed(p.review)?'rm-reviewed':''}">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
     }
     async function detail(key) {
         const seq = ++detailNumber, basis = result;
+        reviewEditor.clear(); el('review-form').hidden = true;
+        el('history').parentElement.open = false;
         selected=null;el('detail').textContent='상품 근거를 불러오는 중…';el('history').textContent='';
         el('review-message').textContent='';el('save').disabled=true;el('memo').value='';el('dialog').showModal();
         try {
@@ -206,24 +209,27 @@
         }
         const url = safeUrl(selected.url);
         el('detail').innerHTML = `<h4>${esc(selected.name || '상품명 없음')}</h4>${badge(selected.status,selected.label)}<dl><dt>ITEM</dt><dd>${esc(selected.item || '—')}</dd><dt>SKU</dt><dd>${esc(selected.sku || '—')}</dd></dl><p>${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">상품 페이지 열기 ↗</a>`:'유효한 상품 URL이 없습니다.'}</p><div class="rm-detail-days">${selected.cells.map((c,i)=>`<div><b>${esc(result.dates[i])}</b>${rankCell(selected,i)}<p>배치: ${esc(c.batch_id ?? '—')}</p><p>원본 수집 시각: ${esc(c.collected_at || '—')}</p><p>원본 ID: ${esc(c.record_ids.join(', ') || '—')}</p></div>`).join('')}</div><p class="rm-muted">${reasons[selected.status]} 확인 기록은 현재 비교 근거에 저장되며 배치·순위가 바뀌면 다시 확인합니다.</p>`;
-        el('review-result').value = selected.review.result;
-        el('memo').value = selected.review.memo;
+        el('review-form').hidden = false;
+        reviewEditor.open(selected.review, selected.review_storage_available);
         el('review-message').textContent = selected.review_storage_available ? '' : selected.review_storage_message;
         el('review-message').classList.remove('success');
-        el('save').disabled = !selected.review_storage_available; history();
     }
     async function save(event) {
-        event.preventDefault();if (!selected || !selected.review_storage_available) return;
+        event.preventDefault();if (!selected || !selected.review_storage_available || reviewEditor.busy || !reviewEditor.editing) return;
         const current = selected, snapshot = result;
-        el('save').disabled=true;el('review-message').textContent='저장 중…';el('review-message').classList.remove('success');
+        const request = reviewEditor.body(current.review_token, current.review.revision);
+        reviewEditor.lock(true);el('review-message').textContent='저장 중…';el('review-message').classList.remove('success');
         try {
-            const response = await fetch('/dx/layer1/rank/api/review/', {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('#rm-review-form [name=csrfmiddlewaretoken]').value},body:JSON.stringify({token:current.review_token,result:el('review-result').value,memo:el('memo').value,revision:current.review.revision})});
+            const response = await fetch('/dx/layer1/rank/api/review/', {method:'POST',headers:{...request.headers,'X-CSRFToken':document.querySelector('#rm-review-form [name=csrfmiddlewaretoken]').value},body:request.body});
             if (response.redirected) throw new Error('로그인이 만료되었습니다. 다시 로그인해주세요.');
             const data = await response.json();if (!response.ok) throw new Error(data.error || '저장하지 못했습니다.');
             if (snapshot!==result || current!==selected) return;
-            current.review=data.review;const listed=result.products.find(p=>p.key===current.key);if(listed)listed.review={result:data.review.result};el('review-message').textContent='확인 기록을 저장했습니다.';el('review-message').classList.add('success');history();renderTable();
+            current.review=data.review;const listed=result.products.find(p=>p.key===current.key);if(listed)listed.review={result:data.review.result};
+            reviewEditor.open(data.review, true);
+            el('detail').querySelectorAll('.rm-rank.absent').forEach(cell => cell.classList.toggle('rm-reviewed', reviewed(data.review)));
+            el('review-message').textContent='확인 기록을 저장했습니다.';el('review-message').classList.add('success');renderTable();
         } catch(error) {if (current===selected) el('review-message').textContent=error.message;}
-        finally {if (current===selected) el('save').disabled=false;}
+        finally {if (current===selected) reviewEditor.lock(false);}
     }
     async function exportCsv() {
         if (!result) return;
@@ -249,6 +255,12 @@
     el('search').addEventListener('input',e=>{stopMore();state.query=e.target.value;state.page=1;clearTimeout(searchTimer);searchTimer=setTimeout(loadPage,250);});
     el('table-body').addEventListener('click',e=>{const button=e.target.closest('[data-key]');if(button)detail(button.dataset.key);});
     el('more').addEventListener('click',()=>{moreError='';loadMore();});
-    el('close').addEventListener('click',()=>{detailNumber++;el('dialog').close();});el('review-form').addEventListener('submit',save);el('export').addEventListener('click',exportCsv);
+    function closeDetail() {
+        if (!reviewEditor.mayClose()) return;
+        detailNumber++;el('dialog').close();reviewEditor.clear();selected=null;
+    }
+    el('close').addEventListener('click',closeDetail);
+    el('dialog').addEventListener('cancel',event=>{event.preventDefault();closeDetail();});
+    el('review-form').addEventListener('submit',save);el('export').addEventListener('click',exportCsv);
     load();
 })();

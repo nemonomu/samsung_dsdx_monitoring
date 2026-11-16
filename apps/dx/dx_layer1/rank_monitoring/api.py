@@ -6,7 +6,7 @@ import logging
 from datetime import date, timedelta, timezone as tz
 
 from django.core import signing
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
@@ -14,9 +14,9 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.dx.dx_layer1.common.context import build_context
-from apps.dx.dx_layer1.models import RetailRankReview
+from apps.dx.dx_layer1.models import RetailRankReview, RetailRankReviewImage
 from .sources import COUNTRIES, catalog, select_source
-from . import reviews, snapshots, listing
+from . import reviews, snapshots, listing, photos
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ def detail(request):
         except DatabaseError:
             value = {k: v for k, v in product.items() if k != 'fingerprint'}
             value.update(review_storage_available=False, review_storage_message='확인 기록 저장소를 사용할 수 없습니다.',
-                         review={'result': '미확인', 'memo': '', 'revision': 0, 'history': []})
+                         review={'result': '미확인', 'memo': '', 'revision': 0, 'history': [], 'photos': []})
         return private(JsonResponse(value))
     except snapshots.SnapshotExpired:
         return private(JsonResponse({'error': '비교 결과가 만료되었습니다. 다시 조회해주세요.'}, status=409))
@@ -181,7 +181,10 @@ def save_review(request):
     if not request.user.is_authenticated:
         return JsonResponse({'error': '로그인이 필요합니다.'}, status=401)
     try:
-        body = json.loads(request.body)
+        multipart = request.content_type == 'multipart/form-data'
+        body = request.POST if multipart else json.loads(request.body)
+        if not isinstance(body, dict):
+            raise ValueError
         payload = signing.loads(body['token'], salt=reviews.SALT, max_age=snapshots.SNAPSHOT_SECONDS)
         context = payload['context']
         snapshot = snapshots.pinned(payload['snapshot'])
@@ -191,10 +194,25 @@ def save_review(request):
         if context['environment'] != reviews.environment():
             raise ValueError
         result, memo, revision = body['result'], body['memo'], body['revision']
+        if multipart:
+            revision = int(revision)
         if result not in reviews.RESULTS or not isinstance(memo, str) or not 1 <= len(memo.strip()) <= 2000:
             raise ValueError
         if type(revision) is not int or revision < 0:
             raise ValueError
+        uploads = request.FILES.getlist('images') if multipart else []
+        if set(request.FILES) - {'images'}:
+            raise photos.PhotoError('사진 첨부 요청을 확인하세요.')
+        refs = body.get('photo_refs')
+        if multipart and refs is not None:
+            refs = json.loads(refs)
+        if 'photo_refs' in body:
+            photos.validate_refs(refs, uploads)
+        elif uploads:
+            raise photos.PhotoError('사진 첨부 목록을 확인하세요.')
+        new_photos = photos.read_uploads(uploads)
+    except photos.PhotoError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
     except (ValueError, TypeError, KeyError, signing.BadSignature):
         return JsonResponse({'error': '확인 결과와 근거(1~2,000자)를 입력하세요. 조회 후 20분이 지났거나 원본이 변경됐다면 다시 조회하세요.'}, status=400)
     except OSError:
@@ -207,16 +225,45 @@ def save_review(request):
                     'context': context, 'updated_at': timezone.now(), 'updated_by': '',
                 })
             if revision != record.revision:
-                return JsonResponse({'error': '다른 확인 기록이 저장되었습니다. 다시 조회해주세요.'}, status=409)
+                raise IntegrityError('Concurrent rank review')
+            # Legacy JSON clients preserve photos when editing only result/memo.
+            if refs is None:
+                refs = [p['id'] for p in photos.current(record)]
+            retained = photos.retained_photos(record, refs, new_photos)
             now = timezone.now()
-            event = {'result': result, 'memo': memo.strip(), 'at': now.isoformat(),
-                     'username': request.user.get_username()}
             changed = RetailRankReview.objects.filter(pk=record.pk, revision=revision).update(
                 result=result, memo=memo.strip(), revision=revision + 1, updated_at=now,
-                updated_by=request.user.get_username(), history=record.history + [event])
+                updated_by=request.user.get_username())
             if not changed:
-                return JsonResponse({'error': '확인 기록이 변경되었습니다. 다시 조회해주세요.'}, status=409)
+                raise IntegrityError('Concurrent rank review')
+            evidence = photos.save(record, revision + 1, refs, new_photos, retained, now)
+            event = {'result': result, 'memo': memo.strip(), 'at': now.isoformat(),
+                     'username': request.user.get_username(), 'photos': evidence}
+            record.history = record.history + [event]
+            record.save(update_fields=['history'])
             record.refresh_from_db()
-        return JsonResponse({'review': reviews.serialize(record)})
+        return private(JsonResponse({'review': reviews.serialize(record)}))
+    except photos.PhotoError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
+    except IntegrityError:
+        return JsonResponse({'error': '다른 확인 기록이 저장되었습니다. 상품 확인 창을 다시 열어주세요.'}, status=409)
     except DatabaseError:
         return JsonResponse({'error': '확인 기록을 저장하지 못했습니다. 저장소 상태를 확인해주세요.'}, status=503)
+
+
+@require_GET
+def review_image(request, image_id):
+    if not request.user.is_authenticated:
+        return private(JsonResponse({'error': '로그인이 필요합니다.'}, status=401))
+    try:
+        image = RetailRankReviewImage.objects.filter(
+            pk=image_id, review__environment=reviews.environment()).first()
+        if image is None:
+            raise Http404
+        response = private(HttpResponse(bytes(image.content), content_type=image.content_type))
+        response['X-Content-Type-Options'] = 'nosniff'
+        response['Content-Disposition'] = 'inline'
+        response['Content-Security-Policy'] = "default-src 'none'; sandbox"
+        return response
+    except DatabaseError:
+        return private(JsonResponse({'error': '사진을 불러오지 못했습니다.'}, status=503))

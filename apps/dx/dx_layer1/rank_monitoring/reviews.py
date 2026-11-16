@@ -5,6 +5,7 @@ import json
 from django.conf import settings
 from django.core import signing
 from apps.dx.dx_layer1.models import RetailRankReview
+from . import photos
 
 SALT = 'retail-rank-review-v1'
 RESULTS = ('구매 가능 확인', '품절 확인', '판매 종료 확인', '순위 변동 확인', '수집 오류 확인', '추가 확인 필요', '미확인')
@@ -21,7 +22,7 @@ def fingerprint(context):
 def serialize(record):
     return {'result': record.result, 'memo': record.memo, 'revision': record.revision,
             'username': record.updated_by, 'updated_at': record.updated_at.isoformat(),
-            'history': record.history}
+            'history': record.history, 'photos': photos.current(record)}
 
 
 def context_for(product, scope):
@@ -56,4 +57,4 @@ def detail(product, scope, snapshot_token):
     return {**{k: v for k, v in product.items() if k != 'fingerprint'},
             'review_token': signing.dumps({'context': context, 'snapshot': snapshot_token}, salt=SALT, compress=True),
             'review': serialize(record) if record else
-                      {'result': '미확인', 'memo': '', 'revision': 0, 'history': []}}
+                      {'result': '미확인', 'memo': '', 'revision': 0, 'history': [], 'photos': []}}

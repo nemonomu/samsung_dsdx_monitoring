@@ -35,6 +35,18 @@ class RetailRankReview(models.Model):
     history = models.JSONField(default=list)
 
 
+class RetailRankReviewImage(models.Model):
+    """Immutable evidence retained by both current and historical rank reviews."""
+    review = models.ForeignKey(RetailRankReview, on_delete=models.PROTECT, related_name='images')
+    revision = models.PositiveIntegerField()
+    name = models.CharField(max_length=200)
+    content = models.BinaryField()
+    content_type = models.CharField(max_length=32)
+    size = models.PositiveIntegerField()
+    digest = models.CharField(max_length=64)
+    created_at = models.DateTimeField()
+
+
 class ColumnCheckLink(models.Model):
     environment = models.CharField(max_length=10)
     country = models.CharField(max_length=4)

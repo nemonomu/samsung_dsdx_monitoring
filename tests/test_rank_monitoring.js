@@ -1,5 +1,11 @@
 const assert = require('node:assert/strict');
 const {filterProducts,safeUrl,csvCell,tier}=require('../apps/dx/dx_layer1/static/dx_layer1/js/rank-monitoring.js');
+const {reviewed,imageUrl}=require('../apps/dx/dx_layer1/static/dx_layer1/js/rank-review.js');
+for (const result of ['품절 확인','판매 종료 확인','구매 가능 확인','순위 변동 확인','수집 오류 확인']) assert.equal(reviewed({result}),true);
+for (const result of ['미확인','추가 확인 필요','unknown','']) assert.equal(reviewed({result}),false);
+assert.equal(reviewed(null),false);
+assert.equal(imageUrl('/dx/layer1/rank/api/review/images/12/'),'/dx/layer1/rank/api/review/images/12/');
+for (const url of ['javascript:alert(1)','https://example.com/image.png','//example.com/image','data:image/svg+xml,test','/dx/layer1/rank/api/review/images/12/?redirect=1']) assert.equal(imageUrl(url),'');
 const products=[
     {item:'A',sku:'SKU-A',name:'Alpha',cells:[{rank:1,state:'ranked'}],status:'stable',review_needed:false,signals:{}},
     {item:'B',sku:'SKU-B',name:'Beta',cells:[{rank:80,state:'ranked'}],status:'swing',review_needed:true,signals:{swing:true}},
