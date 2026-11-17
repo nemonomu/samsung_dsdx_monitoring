@@ -101,7 +101,7 @@
         if ((!reviewStatuses.includes(row.status) || row.status === 'VOLUME_LOW') && requiresReview) row.status = 'VOLUME_REVIEW';
         // An exact-target retailer with an already normal 300/100 collection needs no manual observation review.
         const exactTarget = (country === 'SEUK' && row.retailer === 'Currys') || (country === 'SEG' && row.retailer === 'Expert')
-            || (country === 'SEA' && ((row.retailer === 'Costco' && product !== 'TV') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')));
+            || (country === 'SEA' && ((row.retailer === 'Costco' && product === 'REF') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')));
         if (observing && exactTarget && row.status === 'VERIFYING' && row._volumeBaseStatus === 'OK'
             && counts.main === 300 && counts.bsr === 100 && !row.volume_alerts.length) row.status = 'OK';
     }

@@ -1,6 +1,11 @@
 const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
+const baseTemplate = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html','utf8');
+for (const asset of ['collection-volume','retail-review']) {
+    assert(baseTemplate.includes(`dx_layer1/js/${asset}.js' %}?v=20261117-costco-laundry-bsr`),
+        `${asset} must invalidate the former exact-100 browser cache`);
+}
 let saved = [], previous = [], day = '2026-10-13';
 const context = {document:{}, console, AbortController, setTimeout, clearTimeout,
     esc: String, fetch:async()=>({ok:true,json:async()=>({date:day,reviews:saved,previous_reviews:previous})})};
@@ -61,6 +66,28 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
     assert(!context.getStatusBadge(otherNew.check.status,otherNew.check).includes('검증 대기'));
     assert(!otherNew.row._reviewContext,'observation alone must not create review work');
     assert(!otherNew.row.volume_alerts.length);
+    // Screenshot regression: old exact-100 approvals must not turn current
+    // median-normal Costco 74/97 counts into blue manual review cells.
+    for (const [product,main,bsr,total,mainBasis,bsrBasis] of [
+        ['LDY',74,74,77,72.5,72], ['LDY_DRYER',109,97,109,109,100]]) {
+        previous=[{active:true,context:{date:'2026-10-12',source_date:'2026-10-11',country:'SEA',
+            product,retailer:'Costco',slot:'일일',counts:[main,bsr,total,1],
+            basis:JSON.stringify({alerts:[{metric:'bsr',actual:bsr,baseline:100,exact:true,rule:'fixed_100'}]})}}];
+        await review.load(day);
+        const current=fixture(bsr,'ready','OK','Costco','SEA',product);
+        Object.assign(current.row,{main_count:main,count:total});
+        current.payload.snapshots[0].rows[0].rules={
+            main:{rule:'median_28d',baseline:mainBasis,days:28,low_percent:30,review_percent:15,high_percent:30},
+            bsr:{rule:'median_28d',baseline:bsrBasis,days:28,low_percent:30,high_percent:30,high_status:'VOLUME_LOW'}};
+        context.L1.collectionVolume.decorate(current.data,current.payload,day);
+        review.decorate(current.data,day);
+        assert.equal(current.row.status,'OK');
+        assert.equal(current.row.volume_alerts.length,0);
+        assert(!current.row._reviewContext);
+        assert(!context.L1.retailStatus.bsrCell(current.row,bsr).includes('확인 필요'));
+    }
+    previous=[];
+    await review.load(day);
     let f=fixture();
     assert.strictEqual(f.row.status,'VOLUME_REVIEW');
     assert.strictEqual(f.row._reviewContext.product,'REF');
