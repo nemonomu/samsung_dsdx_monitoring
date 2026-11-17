@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.dx.dx_layer1.models import RetailNormalReview, CollectionIssue
 from .calculations import COUNTRIES, OFFSETS
-from .reviews import alert_basis
+from .reviews import alert_basis, matching_reviews, review_index
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +101,16 @@ def review(request):
                                 username=event['username'], reason=event['memo'], evidence=context)
             return JsonResponse({'saved': True})
         decision = row.get('metric_reviews', {}).get(context['metric'])
+        history = record.history if record else []
+        if decision:
+            source_day = date.fromisoformat(context['source_date'])
+            matched = matching_reviews(row, context['country'], context['product'], context['retailer'],
+                                       context['slot'], review_index(source_day, source_day))
+            if context['metric'] in matched:
+                history = matched[context['metric']][0].history
         result = dict(target=target, counts=context['counts'], inspection_date=context['date'], batch_id=context['batch_id'],
                       reasons=[a.get('reason', '') for a in row['alerts'] if a.get('metric') == context['metric']],
-                      decision=decision, history=record.history if record else [], revision=revision,
+                      decision=decision, history=history, revision=revision,
                       token=signing.dumps(stamp, salt='collection-metric-review'))
         response = JsonResponse(result)
         response['Cache-Control'] = 'private, no-store'

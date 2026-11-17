@@ -2,7 +2,7 @@
 import json
 import sys
 from copy import deepcopy
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -110,6 +110,84 @@ class MetricReviewTests(TestCase):
         self.assertEqual({'bsr'},set(self.attached()['metric_reviews']))
         self.save('main')
         self.assertEqual({'main','bsr'},set(self.attached()['metric_reviews']))
+
+    def test_retired_costco_bsr_preserves_only_unchanged_main_from_live_examples(self):
+        for product, source, main, bsr, total in [('LDY','2026-11-11',67,72,77),
+                ('LDY','2026-11-12',72,74,78), ('LDY_DRYER','2026-11-15',94,99,119)]:
+            with self.subTest(product=product, source=source):
+                inspection = str(date.fromisoformat(source) + timedelta(days=1))
+                day = {**deepcopy(self.row), 'date':source, 'main':main, 'bsr':bsr, 'total':total,
+                       'alerts':[dict(metric='main',baseline=bsr,actual=main,rule='main_lt_bsr',status='VOLUME_LOW')]}
+                old_alerts = day['alerts'] + [dict(metric='bsr',baseline=100,actual=bsr,
+                                                  rule='fixed_100',exact=True,status='VOLUME_REVIEW')]
+                context = {**self.target,'version':1,'product':product,'source_date':source,
+                           'date':inspection,'batch_id':'batch1','counts':[main,bsr,total,1],
+                           'basis':json.dumps({'alerts':old_alerts})}
+                history = [{'action':'confirm','at':inspection+'T04:00:00Z','memo':'verified','username':'leehan'}]
+                record = SimpleNamespace(context=context,history=history,active=True,pk=1)
+                def resolve(row=day, product=product, country='SEA'):
+                    record.context.update(product=product,country=country)
+                    return attach_review(row,country,product,'Costco','daily',
+                        {(country,product,'Costco','daily',source,'batch1'):[record]})
+                self.assertEqual({'main'},set(resolve()['metric_reviews']))
+                self.assertEqual('leehan',resolve()['review']['username'])
+                changed = deepcopy(day)
+                changed['alerts'].append(dict(metric='bsr',baseline=50,actual=bsr,rule='median_28d',status='VOLUME_LOW'))
+                self.assertEqual({'main'},set(resolve(changed)['metric_reviews']))
+                self.assertNotIn('review',resolve(changed))
+                for field, value in [('baseline',bsr+1),('rule','median_28d')]:
+                    changed = deepcopy(day); changed['alerts'][0][field] = value
+                    self.assertEqual({},resolve(changed)['metric_reviews'])
+                changed = deepcopy(day); changed['alerts'].append(dict(metric='main',baseline=200,actual=main,status='VOLUME_LOW'))
+                self.assertEqual({},resolve(changed)['metric_reviews'])
+                for field,value in [('main',main+1),('batch_count',2),('batch_id','new')]:
+                    self.assertEqual({},resolve({**day,field:value})['metric_reviews'])
+                for other in ['TV','REF']:
+                    self.assertEqual({},resolve(product=other)['metric_reviews'])
+                self.assertEqual({},resolve(country='SEDA')['metric_reviews'])
+                self.assertEqual(history,record.history)
+
+    def test_inherited_history_and_v2_cancel_preserve_legacy_record(self):
+        context={**self.target,'version':1,'date':'2026-10-29','batch_id':'batch1','counts':[63,71,74,1],
+                 'basis':json.dumps({'alerts':self.row['alerts']})}
+        context.pop('metric')
+        history=[{'action':'confirm','at':'2020-01-01T00:00:00Z','memo':'legacy','username':'first'}]
+        legacy=RetailNormalReview.objects.create(fingerprint='retired',inspection_date='2026-10-29',context=context,
+            active=True,revision=3,history=history)
+        self.row['alerts']=self.row['alerts'][:1]
+        response=self.request(self.target)
+        self.assertEqual(200,response.status_code,response.content)
+        data=json.loads(response.content)
+        self.assertEqual(history,data['history'])
+        self.assertEqual(0,data['revision'])
+        self.assertEqual('confirm',data['decision']['action'])
+        self.save('main','cancel')
+        data=json.loads(self.request(self.target).content)
+        self.assertIsNone(data['decision'])
+        self.assertEqual('cancel',data['history'][-1]['action'])
+        self.assertEqual({},self.attached()['metric_reviews'])
+        legacy.refresh_from_db()
+        self.assertEqual((True,3,history),(legacy.active,legacy.revision,legacy.history))
+
+    def test_history_follows_newer_legacy_decision_even_with_existing_v2_record(self):
+        old_alerts=deepcopy(self.row['alerts'])
+        self.row['alerts']=self.row['alerts'][:1]
+        context,_=api.inspect(self.target)
+        RetailNormalReview.objects.create(fingerprint=api.fingerprint(context),inspection_date='2026-10-29',
+            context=context,active=False,revision=2,
+            history=[{'action':'cancel','at':'2020-01-01T00:00:00Z','memo':'old cancel'}])
+        legacy_context={**self.target,'version':1,'date':'2026-10-29','batch_id':'batch1','counts':[63,71,74,1],
+                        'basis':json.dumps({'alerts':old_alerts})}
+        legacy_context.pop('metric')
+        history=[{'action':'confirm','at':'2020-01-02T00:00:00Z','memo':'new legacy check','username':'first'}]
+        RetailNormalReview.objects.create(fingerprint='newer-legacy',inspection_date='2026-10-29',
+            context=legacy_context,active=True,revision=1,history=history)
+        response=self.request(self.target)
+        self.assertEqual(200,response.status_code,response.content)
+        data=json.loads(response.content)
+        self.assertEqual('confirm',data['decision']['action'])
+        self.assertEqual(history,data['history'])
+        self.assertEqual(2,data['revision'])
 
 
 if __name__ == '__main__':

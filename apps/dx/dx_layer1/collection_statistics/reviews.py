@@ -38,16 +38,29 @@ def alert_basis(alerts):
     return sorted(result, key=lambda item: item[0])
 
 
-def attach_review(day, country, product, retailer, slot, index):
-    result = dict(day)
-    result.pop('review', None)
-    result['metric_reviews'] = {}
+def legacy_review_basis(context, basis, current):
+    if basis == current:
+        return basis
+    # Retiring Costco laundry's fixed BSR rule must not revoke an unchanged
+    # MAIN decision from a legacy whole-row review. Never transfer BSR approval.
+    if (context.get('version') == 1 and context.get('country') == 'SEA'
+            and context.get('retailer') == 'Costco'
+            and context.get('product') in ('LDY', 'LDY_DRYER')
+            and any(a[0] == 'bsr' and a[1] == 100 and a[3] == 'fixed_100' and a[4] for a in basis)):
+        main = [a for a in basis if a[0] == 'main']
+        if main == [a for a in current if a[0] == 'main']:
+            return main
+    return []
+
+
+def matching_reviews(day, country, product, retailer, slot, index):
+    """Resolve winning records, including cancellations, for display and audit."""
     if day.get('state') != 'complete' or day.get('base_status') == 'ERROR' or day.get('refresh_error'):
-        return result
+        return {}
     key = (country, product, retailer, slot, day['date'], day.get('batch_id'))
     candidates = index.get(key, [])
     if not candidates or not day.get('batch_id'):
-        return result
+        return {}
     expected_date = str(date.fromisoformat(day['date']) + timedelta(days=OFFSETS[country]))
     # Resolve each metric independently; a later cancellation also wins over
     # legacy whole-row approvals. Never carry a decision to changed evidence.
@@ -70,7 +83,8 @@ def attach_review(day, country, product, retailer, slot, index):
                 basis = [tuple(entry) for entry in parsed]
                 expected = [entry for entry in current_basis if entry[0] == metric]
             else:
-                basis, expected = alert_basis(parsed), current_basis
+                basis = legacy_review_basis(c, alert_basis(parsed), current_basis)
+                expected = basis
             if not basis or basis != expected:
                 continue
         except (KeyError, TypeError, ValueError, AttributeError):
@@ -78,6 +92,17 @@ def attach_review(day, country, product, retailer, slot, index):
         event = record.history[-1] if record.history else {}
         for metric in {entry[0] for entry in basis}:
             latest[metric] = (record, event)
+    return latest
+
+
+def attach_review(day, country, product, retailer, slot, index):
+    result = dict(day)
+    result.pop('review', None)
+    result['metric_reviews'] = {}
+    latest = matching_reviews(day, country, product, retailer, slot, index)
+    if not latest:
+        return result
+    expected_date = str(date.fromisoformat(day['date']) + timedelta(days=OFFSETS[country]))
     for metric, (record, event) in latest.items():
         if ((record.active and event.get('action') == 'confirm')
                 or (not record.active and event.get('action') == 'reject')):
@@ -86,7 +111,7 @@ def attach_review(day, country, product, retailer, slot, index):
     # Compatibility for consumers of whole-row decisions. Partial reviews must
     # never mark a sibling metric normal.
     decisions = result['metric_reviews']
-    affected = {entry[0] for entry in current_basis}
+    affected = {entry[0] for entry in alert_basis(day.get('alerts', []))}
     if affected and affected == set(decisions) and len({v['action'] for v in decisions.values()}) == 1:
         result['review'] = {**next(iter(decisions.values())), 'metrics': sorted(affected)}
     return result

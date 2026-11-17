@@ -147,5 +147,48 @@ function record(item) {
     assert(sandbox.L1.retailStatus.bsrCell(row,53).includes('cs-bsr-confirmed'));
     saved[0].active=false;saved[0].history.push({action:'cancel',at:'2026-10-01T02:00:00Z'});
     await review.load(date);decorate();assert(!review.reviewed(row,'bsr'));
+    // Production legacy confirmations must survive retirement of fixed-100 BSR,
+    // while changed MAIN evidence and new median BSR alerts remain unresolved.
+    for (const [product,source,inspection,main,bsr,total] of [
+        ['LDY','2026-11-11','2026-11-12',67,72,77],
+        ['LDY','2026-11-12','2026-11-13',72,74,78],
+        ['LDY_DRYER','2026-11-15','2026-11-16',94,99,119]]) {
+        date=inspection;
+        const laundry={retailer:'Costco',main_count:main,bsr_count:bsr,actual:total,batch_id:'batch1',batch_count:1,
+            status:'VOLUME_LOW',_volumeBaseStatus:'OK',observation_state:'ready',
+            volume_alerts:[{metric:'main',baseline:bsr,actual:main,rule:'main_lt_bsr',status:'VOLUME_LOW',reason:'MAIN below BSR'}]};
+        const laundryCat={name:product,source_date:source,retailers:[laundry]};
+        const laundryData={checks:[{check_type:'retail',categories:[laundryCat]}]};
+        const refresh=async()=>{await review.load(date);review.decorate(laundryData,date);};
+        saved=[];await refresh();
+        const legacy=record(laundry);
+        const oldBasis=JSON.parse(legacy.context.basis);
+        oldBasis.alerts.push({metric:'bsr',baseline:100,actual:bsr,rule:'fixed_100',exact:true,status:'VOLUME_REVIEW'});
+        legacy.context.basis=JSON.stringify(oldBasis);
+        saved=[legacy];await refresh();
+        assert(review.reviewed(laundry,'main'),`${product} ${source} must retain MAIN confirmation`);
+        assert(badge(laundry).includes('✓ 정상 확인'));
+        laundry.volume_alerts.push({metric:'bsr',baseline:50,actual:bsr,rule:'median_28d',status:'VOLUME_LOW'});
+        await refresh();
+        assert(review.reviewed(laundry,'main'));assert(!review.reviewed(laundry,'bsr'));
+        assert(!review.reviewed(laundry));
+        laundry.volume_alerts= laundry.volume_alerts.slice(0,1);
+        laundry.volume_alerts[0]={...laundry.volume_alerts[0],baseline:bsr+1};
+        await refresh();assert(!review.reviewed(laundry,'main'));
+        laundry.volume_alerts[0]={...laundry.volume_alerts[0],baseline:bsr};
+        await refresh();assert(review.reviewed(laundry,'main'));
+        laundry.main_count=main+1;await refresh();assert(!review.reviewed(laundry,'main'));
+        laundry.main_count=main;
+        for (const other of ['TV','REF']) {
+            laundryCat.name=other;legacy.context.product=other;
+            await refresh();assert(!review.reviewed(laundry,'main'));
+        }
+        laundryCat.name=product;legacy.context.product=product;
+        await refresh();assert(review.reviewed(laundry,'main'));
+        saved.push({context:{...laundry._reviewContext,version:2,metric:'main',environment:'production',
+            basis:JSON.stringify({alerts:[['main',bsr,main,'main_lt_bsr',false,'VOLUME_LOW']]})},active:false,
+            history:[{action:'cancel',at:'2026-11-17T01:00:00Z',memo:'recheck'}]});
+        await refresh();assert(!review.reviewed(laundry,'main'),'later cancellation wins');
+    }
     console.log('Layer1 review scopes, tooltips, aggregates, cancellation and escaping passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

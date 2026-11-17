@@ -2,8 +2,8 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 const baseTemplate = fs.readFileSync('apps/dx/dx_layer1/templates/base_layer1.html','utf8');
-for (const asset of ['collection-volume','retail-review']) {
-    assert(baseTemplate.includes(`dx_layer1/js/${asset}.js' %}?v=20261117-costco-laundry-bsr`),
+for (const [asset,version] of [['collection-volume','20261117-costco-laundry-bsr'],['retail-review','20261117-costco-review-history']]) {
+    assert(baseTemplate.includes(`dx_layer1/js/${asset}.js' %}?v=${version}`),
         `${asset} must invalidate the former exact-100 browser cache`);
 }
 let saved = [], previous = [], day = '2026-10-13';

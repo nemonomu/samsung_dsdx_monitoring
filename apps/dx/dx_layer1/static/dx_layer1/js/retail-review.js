@@ -35,9 +35,19 @@
             });
     }
 
+    function retiredLaundryBsr(context, basis) {
+        return context.version===1 && context.country==='SEA' && context.retailer==='Costco'
+            && ['LDY','LDY_DRYER'].includes(context.product)
+            && basis.some(a=>a[0]==='bsr' && a[1]===100 && a[3]==='fixed_100' && a[4]);
+    }
+
     function attachMetricDecisions(row, context) {
         const candidates = records.filter(r=>['country','product','retailer','slot','source_date','batch_id'].every(k=>r.context[k]===context[k]));
-        if (!candidates.some(r=>r.context.version===2)) return;
+        if (!candidates.some(r=>{
+            if (r.context.version===2) return true;
+            try { return retiredLaundryBsr(r.context,alertBasis(JSON.parse(r.context.basis).alerts || [])); }
+            catch (_) { return false; }
+        })) return;
         const current = alertBasis(JSON.parse(context.basis).alerts || []);
         const decisions = {};
         candidates.sort((a,b)=>(a.history.at(-1)?.at || '').localeCompare(b.history.at(-1)?.at || '')).forEach(record=>{
@@ -45,8 +55,12 @@
             metrics.forEach(m=>decisions[m]=null);
             if (c.date!==context.date || stable(c.counts)!==stable(context.counts)) return;
             try {
-                const basis=c.version===2?JSON.parse(c.basis).alerts:alertBasis(JSON.parse(c.basis).alerts || []);
-                const expected=c.version===2?current.filter(a=>a[0]===c.metric):current;
+                let basis=c.version===2?JSON.parse(c.basis).alerts:alertBasis(JSON.parse(c.basis).alerts || []);
+                let expected=c.version===2?current.filter(a=>a[0]===c.metric):current;
+                if (stable(basis)!==stable(expected) && retiredLaundryBsr(c,basis)) {
+                    basis=basis.filter(a=>a[0]==='main');
+                    expected=current.filter(a=>a[0]==='main');
+                }
                 if (!basis.length || stable(basis)!==stable(expected)) return;
                 const event=record.history.at(-1);
                 if ((record.active && event?.action==='confirm') || (!record.active && event?.action==='reject')) {
