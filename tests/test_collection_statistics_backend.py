@@ -928,7 +928,7 @@ class StatisticsReviewTests(TestCase):
         Weekly.objects.create(country='SEA', week_start=date(2026,10,12), updated_at=timezone.now(),
             rows=[{'product':'REF','retailer':'Costco','slot':'daily','daily':[self.day]}])
 
-    def test_laundry_median_does_not_reuse_or_delete_old_fixed_approval(self):
+    def test_laundry_median_preserves_same_confirmed_count_and_audit_history(self):
         from apps.dx.dx_layer1.collection_statistics.reviews import attach_review, review_index
         original_history = list(self.record.history)
         for product in ('LDY', 'LDY_DRYER'):
@@ -940,7 +940,10 @@ class StatisticsReviewTests(TestCase):
             self.assertEqual('median_28d', updated['alerts'][0]['rule'])
             index = review_index(date(2026,10,12), date(2026,10,18))
             result = attach_review(updated, 'SEA', product, 'Costco', 'daily', index)
-            self.assertNotIn('review', result)
+            self.assertEqual('confirm', result['metric_reviews']['bsr']['action'])
+            self.assertEqual(['bsr'], result['review']['metrics'])
+            changed = calc.current_volume_decision({**row, 'bsr': 98}, 'SEA')
+            self.assertNotIn('review', attach_review(changed, 'SEA', product, 'Costco', 'daily', index))
             self.record.refresh_from_db()
             self.assertTrue(self.record.active)
             self.assertEqual(1, self.record.revision)

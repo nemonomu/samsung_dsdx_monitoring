@@ -148,11 +148,14 @@ function record(item) {
     saved[0].active=false;saved[0].history.push({action:'cancel',at:'2026-10-01T02:00:00Z'});
     await review.load(date);decorate();assert(!review.reviewed(row,'bsr'));
     // Production legacy confirmations must survive retirement of fixed-100 BSR,
-    // while changed MAIN evidence and new median BSR alerts remain unresolved.
+    // including the same BSR count already confirmed under the retired rule.
     for (const [product,source,inspection,main,bsr,total] of [
         ['LDY','2026-11-11','2026-11-12',67,72,77],
         ['LDY','2026-11-12','2026-11-13',72,74,78],
-        ['LDY_DRYER','2026-11-15','2026-11-16',94,99,119]]) {
+        ['LDY_DRYER','2026-11-15','2026-11-16',94,99,119],
+        ['LDY','2026-10-23','2026-10-24',73,66,73],
+        ['LDY','2026-10-24','2026-10-25',72,69,73],
+        ['LDY','2026-10-26','2026-10-27',73,69,73]]) {
         date=inspection;
         const laundry={retailer:'Costco',main_count:main,bsr_count:bsr,actual:total,batch_id:'batch1',batch_count:1,
             status:'VOLUME_LOW',_volumeBaseStatus:'OK',observation_state:'ready',
@@ -170,8 +173,15 @@ function record(item) {
         assert(badge(laundry).includes('✓ 정상 확인'));
         laundry.volume_alerts.push({metric:'bsr',baseline:50,actual:bsr,rule:'median_28d',status:'VOLUME_LOW'});
         await refresh();
-        assert(review.reviewed(laundry,'main'));assert(!review.reviewed(laundry,'bsr'));
-        assert(!review.reviewed(laundry));
+        assert(review.reviewed(laundry,'main'));assert(review.reviewed(laundry,'bsr'));
+        assert(review.reviewed(laundry));
+        assert(badge(laundry).includes('✓ 정상 확인'));
+        assert(!sandbox.L1.retailStatus.bsrCell(laundry,bsr).includes('cs-bsr-low'));
+        assert(sandbox.L1.retailStatus.bsrCell(laundry,bsr).includes('cs-bsr-confirmed'));
+        laundry.bsr_count=bsr+1;await refresh();assert(!review.reviewed(laundry,'bsr'));
+        laundry.bsr_count=bsr;await refresh();assert(review.reviewed(laundry,'bsr'));
+        laundry.volume_alerts[1]={...laundry.volume_alerts[1],rule:'another_policy'};
+        await refresh();assert(!review.reviewed(laundry,'bsr'));
         laundry.volume_alerts= laundry.volume_alerts.slice(0,1);
         laundry.volume_alerts[0]={...laundry.volume_alerts[0],baseline:bsr+1};
         await refresh();assert(!review.reviewed(laundry,'main'));

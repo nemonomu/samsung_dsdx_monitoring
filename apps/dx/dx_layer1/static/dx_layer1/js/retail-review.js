@@ -57,12 +57,18 @@
             try {
                 let basis=c.version===2?JSON.parse(c.basis).alerts:alertBasis(JSON.parse(c.basis).alerts || []);
                 let expected=c.version===2?current.filter(a=>a[0]===c.metric):current;
+                const event=record.history.at(-1);
                 if (stable(basis)!==stable(expected) && retiredLaundryBsr(c,basis)) {
-                    basis=basis.filter(a=>a[0]==='main');
-                    expected=current.filter(a=>a[0]==='main');
+                    const oldBsr=basis.filter(a=>a[0]==='bsr' && a[1]===100 && a[3]==='fixed_100' && a[4]);
+                    const main=basis.filter(a=>a[0]==='main');
+                    basis=stable(main)===stable(current.filter(a=>a[0]==='main'))?main:[];
+                    if (record.active && event?.action==='confirm') {
+                        basis.push(...current.filter(a=>a[0]==='bsr' && a[3]==='median_28d' && !a[4]
+                            && oldBsr.some(old=>old[2]===a[2])));
+                    }
+                    expected=basis;
                 }
                 if (!basis.length || stable(basis)!==stable(expected)) return;
-                const event=record.history.at(-1);
                 if ((record.active && event?.action==='confirm') || (!record.active && event?.action==='reject')) {
                     basis.forEach(a=>decisions[a[0]]=event);
                 }

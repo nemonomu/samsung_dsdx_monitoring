@@ -111,7 +111,7 @@ class MetricReviewTests(TestCase):
         self.save('main')
         self.assertEqual({'main','bsr'},set(self.attached()['metric_reviews']))
 
-    def test_retired_costco_bsr_preserves_only_unchanged_main_from_live_examples(self):
+    def test_retired_costco_bsr_preserves_reviewed_metrics_from_live_examples(self):
         for product, source, main, bsr, total in [('LDY','2026-11-11',67,72,77),
                 ('LDY','2026-11-12',72,74,78), ('LDY_DRYER','2026-11-15',94,99,119)]:
             with self.subTest(product=product, source=source):
@@ -133,6 +133,9 @@ class MetricReviewTests(TestCase):
                 self.assertEqual('leehan',resolve()['review']['username'])
                 changed = deepcopy(day)
                 changed['alerts'].append(dict(metric='bsr',baseline=50,actual=bsr,rule='median_28d',status='VOLUME_LOW'))
+                self.assertEqual({'main','bsr'},set(resolve(changed)['metric_reviews']))
+                self.assertEqual('confirm',resolve(changed)['review']['action'])
+                changed['alerts'][1]['rule']='another_policy'
                 self.assertEqual({'main'},set(resolve(changed)['metric_reviews']))
                 self.assertNotIn('review',resolve(changed))
                 for field, value in [('baseline',bsr+1),('rule','median_28d')]:
@@ -188,6 +191,40 @@ class MetricReviewTests(TestCase):
         self.assertEqual('confirm',data['decision']['action'])
         self.assertEqual(history,data['history'])
         self.assertEqual(2,data['revision'])
+
+    def test_confirmed_bsr_policy_change_clears_unresolved_and_cancel_restores_it(self):
+        # Screenshot: MAIN 73 approved, BSR 66 still red after fixed -> median.
+        self.row.update(main=73,bsr=66,total=73,alerts=[
+            dict(metric='main',baseline=300,actual=73,rule='median_28d',status='VOLUME_LOW'),
+            dict(metric='bsr',baseline=100,actual=66,rule='fixed_100',exact=True,status='VOLUME_LOW')])
+        context={**self.target,'version':1,'date':'2026-10-29','batch_id':'batch1','counts':[73,66,73,1],
+                 'basis':json.dumps({'alerts':self.row['alerts']})}
+        context.pop('metric')
+        history=[{'action':'confirm','at':'2020-01-01T00:00:00Z','memo':'log checked','username':'first'}]
+        legacy=RetailNormalReview.objects.create(fingerprint='bsr-policy',inspection_date='2026-10-29',
+            context=context,active=True,revision=1,history=history)
+        self.row['alerts'][1].update(rule='median_28d',exact=False)
+        self.issue.column=volume.metric_column('bsr','daily')
+        self.issue.evidence={'metric':'bsr','slot':'daily','kind':'volume','current_row':deepcopy(self.row)}
+        self.issue.save()
+        self.issue.refresh_from_db()
+        self.assertEqual({'main','bsr'},set(self.attached()['metric_reviews']))
+        self.assertEqual('confirmed',services.serialize(self.issue)['status'])
+        self.assertEqual([],volume.hide_confirmed([self.issue]))
+        data=json.loads(self.request({**self.target,'metric':'bsr'}).content)
+        self.assertEqual(history,data['history'])
+        self.assertEqual('confirm',data['decision']['action'])
+        for field,value in [('bsr',65),('total',74),('batch_id','new'),('batch_count',2)]:
+            old=self.row[field];self.row[field]=value
+            self.assertEqual({},self.attached()['metric_reviews'])
+            self.row[field]=old
+        self.save('bsr','cancel')
+        self.issue.refresh_from_db()
+        self.assertEqual({'main'},set(self.attached()['metric_reviews']))
+        self.assertEqual('open',services.serialize(self.issue)['status'])
+        self.assertEqual([self.issue],volume.hide_confirmed([self.issue]))
+        legacy.refresh_from_db()
+        self.assertEqual((True,1,history),(legacy.active,legacy.revision,legacy.history))
 
 
 if __name__ == '__main__':

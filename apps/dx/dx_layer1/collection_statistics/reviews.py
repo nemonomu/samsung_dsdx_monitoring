@@ -38,18 +38,23 @@ def alert_basis(alerts):
     return sorted(result, key=lambda item: item[0])
 
 
-def legacy_review_basis(context, basis, current):
+def legacy_review_basis(context, basis, current, *, confirmed=False):
     if basis == current:
         return basis
     # Retiring Costco laundry's fixed BSR rule must not revoke an unchanged
-    # MAIN decision from a legacy whole-row review. Never transfer BSR approval.
+    # MAIN decision from a legacy whole-row review. A confirmed BSR count also
+    # stays confirmed when only its policy changes from fixed-100 to median.
     if (context.get('version') == 1 and context.get('country') == 'SEA'
             and context.get('retailer') == 'Costco'
             and context.get('product') in ('LDY', 'LDY_DRYER')
             and any(a[0] == 'bsr' and a[1] == 100 and a[3] == 'fixed_100' and a[4] for a in basis)):
         main = [a for a in basis if a[0] == 'main']
-        if main == [a for a in current if a[0] == 'main']:
-            return main
+        matched = main if main == [a for a in current if a[0] == 'main'] else []
+        if confirmed:
+            old_bsr = [a for a in basis if a[0] == 'bsr' and a[1] == 100 and a[3] == 'fixed_100' and a[4]]
+            matched += [a for a in current if a[0] == 'bsr' and a[3] == 'median_28d'
+                        and not a[4] and any(a[2] == old[2] for old in old_bsr)]
+        return matched
     return []
 
 
@@ -76,6 +81,7 @@ def matching_reviews(day, country, product, retailer, slot, index):
             continue
         if 'batch_count' in day and c['counts'][3] != day['batch_count']:
             continue
+        event = record.history[-1] if record.history else {}
         try:
             parsed = json.loads(c['basis']).get('alerts', [])
             if c.get('version') == 2:
@@ -83,13 +89,13 @@ def matching_reviews(day, country, product, retailer, slot, index):
                 basis = [tuple(entry) for entry in parsed]
                 expected = [entry for entry in current_basis if entry[0] == metric]
             else:
-                basis = legacy_review_basis(c, alert_basis(parsed), current_basis)
+                basis = legacy_review_basis(c, alert_basis(parsed), current_basis,
+                                            confirmed=record.active and event.get('action') == 'confirm')
                 expected = basis
             if not basis or basis != expected:
                 continue
         except (KeyError, TypeError, ValueError, AttributeError):
             continue
-        event = record.history[-1] if record.history else {}
         for metric in {entry[0] for entry in basis}:
             latest[metric] = (record, event)
     return latest

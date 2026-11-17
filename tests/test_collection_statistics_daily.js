@@ -184,6 +184,19 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('&lt;unsafe&gt;'));
     assert(!elements['cs-table-body'].innerHTML.includes('class="cs-day-cell cs-total low"'),
         'BSR-only shortages must highlight BSR, not the unchanged total');
+    // Confirmed legacy BSR counts stay normal when the server reapplies median policy.
+    for (const bsr of [66,69]) {
+        fixtureDay.bsr=bsr;
+        fixtureDay.metric_reviews={bsr:{action:'confirm',metrics:['bsr'],memo:'log checked'}};
+        elements['cs-retailer'].fire('change');
+        assert(elements['cs-table-body'].innerHTML.includes('confirmed cs-bsr-confirmed'));
+        assert(elements['cs-table-body'].innerHTML.includes('✓ 정상 확인'));
+        assert(!elements['cs-table-body'].innerHTML.includes('cs-bsr-low'));
+        delete fixtureDay.metric_reviews;
+        elements['cs-retailer'].fire('change');
+        assert(elements['cs-table-body'].innerHTML.includes('low cs-bsr-low'), 'cancelled approval reopens BSR');
+    }
+    fixtureDay.bsr=56;
     fixtureDay.alerts = [{metric: 'bsr', status: 'VOLUME_REVIEW', reason: 'BSR 15% 이상 감소 / 확인 필요'}];
     elements['cs-retailer'].fire('change');
     assert.match(elements['cs-table-body'].innerHTML,
