@@ -114,8 +114,8 @@ class CostcoTests(SimpleTestCase):
             rows = [r for r in result['retailers'] if r['retailer'] == 'Costco']
             self.assertEqual(len(rows), 3)
             for row in rows:
-                # TV already uses a variable BSR target; appliances require 100.
-                row_expected = 'received' if row['product'] == 'TV' and count else expected
+                # Only REF retains the exact 100 BSR receipt criterion.
+                row_expected = 'received' if row['product'] in ('TV', 'LDY', 'LDY_DRYER') and count else expected
                 self.assertEqual(row['status'], row_expected)
         with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection', side_effect=RuntimeError):
             result = dday.get_collection_status(date(2026, 10, 6), datetime(2026, 10, 6, 16, tzinfo=KST))
@@ -242,6 +242,38 @@ class CostcoTests(SimpleTestCase):
 
 
 class CostcoSnapshotTests(TestCase):
+    def test_laundry_policy_rebuilds_saved_daily_and_weekly_bases(self):
+        from django.utils import timezone
+        end = date(2026, 11, 16)
+        for offset in range(29):
+            day = end - timedelta(days=offset)
+            rows = [dict(product=p, retailer='Costco', slot='daily', main=300, total=300,
+                         bsr=(74 if offset == 0 else 72) if p == 'LDY' else (97 if offset == 0 else 100),
+                         complete=True, base_status='CRITICAL', baseline_eligible=True,
+                         batch_id=str(day), source_date_basis='db_original', bsr_policy_version=8,
+                         main_policy_version=calc.MAIN_POLICY_VERSION,
+                         observation_policy_version=calc.OBSERVATION_POLICY_VERSION,
+                         baselines={'bsr': {'value': 100, 'days': 0, 'rule': 'fixed_100'}},
+                         alerts=[{'metric': 'bsr', 'status': 'VOLUME_LOW', 'rule': 'fixed_100', 'exact': True}])
+                    for p in ('LDY', 'LDY_DRYER', 'REF')]
+            Daily.objects.create(country='SEA', source_date=day, inspection_date=day + timedelta(days=1),
+                                 rows=rows, digest='original', updated_at=timezone.now())
+        collector.rebuild('SEA', end, end, end)
+        latest = Daily.objects.get(country='SEA', source_date=end)
+        weekly = Weekly.objects.get(country='SEA', week_start=calc.week_start(end))
+        for row in latest.rows:
+            expected = 72 if row['product'] == 'LDY' else 100
+            rule = 'fixed_100' if row['product'] == 'REF' else 'median_28d'
+            self.assertEqual((expected, rule), (row['baselines']['bsr']['value'], row['baselines']['bsr']['rule']))
+            self.assertEqual(calc.BSR_POLICY_VERSION, row['bsr_policy_version'])
+            week_row = next(r for r in weekly.rows if r['product'] == row['product'])
+            saved_day = next(r for r in week_row['daily'] if r['date'] == str(end))
+            self.assertEqual(row['baselines'], saved_day['baselines'])
+            if row['product'] != 'REF':
+                self.assertEqual(28, row['baselines']['bsr']['days'])
+                self.assertFalse(row['alerts'])
+        self.assertEqual('original', latest.digest)
+
     def test_old_timezone_snapshots_are_recollected_for_both_changed_retailers(self):
         from django.utils import timezone
         end = date(2026, 10, 10)

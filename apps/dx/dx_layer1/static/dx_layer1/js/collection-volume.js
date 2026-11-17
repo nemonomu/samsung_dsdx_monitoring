@@ -64,12 +64,14 @@
             status = 'VOLUME_REVIEW';
             reason = `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.review_percent}% 이상 감소 / 확인 필요`;
         } else if (rule.high_percent != null && change >= baseline * rule.high_percent) {
-            status = 'VOLUME_HIGH';
-            reason = `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.high_percent}% 이상 증가 / 확인 필요`;
+            status = metric === 'bsr' && rule.high_status === 'VOLUME_LOW' ? 'VOLUME_LOW' : 'VOLUME_HIGH';
+            reason = `${metric.toUpperCase()} 과거 중앙값 ${baseline}개 / 수집 ${current}개 / ${rule.high_percent}% 이상 증가`
+                + (status === 'VOLUME_HIGH' ? ' / 확인 필요' : '');
         }
         return {status: status || 'OK', alert: status ? {metric, baseline, actual: current,
             exact: !!rule.exact,
-            percent: Math.round(change / baseline * 10) / 10, status, rule: rule.rule, reason} : null};
+            percent: Math.round(change / baseline * 10) / 10, status, rule: rule.rule, reason,
+            ...(metric === 'bsr' && status === 'VOLUME_LOW' && change > 0 && !fixed ? {direction:'increase'} : {})} : null};
     }
     function decorate(data, payload, selectedDate, seaSummaries) {
         const snapshots = payload && payload.policy_version === 4 && payload.inspection_date === selectedDate ? payload.snapshots || [] : [];
@@ -137,7 +139,7 @@
                             row.verification_state = 'ready';
                             return;
                         }
-                        const exactBsr = (country === 'SEA' && ((row.retailer === 'Costco' && product !== 'TV') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')))
+                        const exactBsr = (country === 'SEA' && ((row.retailer === 'Costco' && product === 'REF') || (row.retailer === 'Bestbuy' && product === 'LDY_DRYER')))
                             || (country === 'SEUK' && row.retailer === 'Currys') || (country === 'SEG' && row.retailer === 'Expert');
                         const decisions = ['main', 'bsr'].map(metric => compare(metric, counts[metric],
                             metric === 'bsr' && exactBsr ? {rule: 'fixed_100', baseline: 100, exact: true}

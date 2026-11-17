@@ -369,5 +369,19 @@ async function flush() {
     assert(elements['cs-table-body'].innerHTML.includes('<strong>204</strong>'));
     liveReceive({...liveSnapshot, rows:[{...previewRow, main:0, bsr:0, total:0, collected_count:0}]});
     assert(elements['cs-table-body'].innerHTML.includes('수집 예정'));
+    // Costco laundry increases are red BSR abnormalities, not blue MAIN reviews.
+    for (const [product,baseline,bsr] of [['LDY',72,94],['LDY_DRYER',100,130]]) {
+        weeks[0].rows.push({country:'SEA',product,retailer:'Costco',slot:'daily',daily:[{
+            ...liveRow,product,retailer:'Costco',main:300,total:300,bsr,
+            baselines:{main:{value:300,days:28},bsr:{value:baseline,days:28,rule:'median_28d'}},
+            alerts:[{metric:'bsr',status:'VOLUME_LOW',rule:'median_28d',direction:'increase',
+                baseline,actual:bsr,reason:'BSR 과거 중앙값 대비 30% 이상 증가'}]}]});
+        elements['cs-country'].value='SEA';elements['cs-product'].value=product;
+        elements['cs-retailer'].value='';elements['cs-filters'].fire('submit');await flush();
+        const markup=elements['cs-table-body'].innerHTML;
+        assert.match(markup,/cs-bsr-low[^>]*title="BSR 과거 중앙값 대비 30% 이상 증가"[^>]*>\d+.*?이상/s);
+        assert(!markup.includes('(고정 기준)'));
+        assert(!markup.includes('cs-main-high'));
+    }
     console.log('Daily statistics: baselines, reviews, live recollection/deletion, previews, stale dates and failure recovery passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

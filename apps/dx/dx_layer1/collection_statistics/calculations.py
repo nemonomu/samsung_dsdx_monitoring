@@ -100,7 +100,7 @@ def normalize_check(check, country, inspection_date):
     return sorted(rows, key=row_key)
 
 
-BSR_POLICY_VERSION = 8
+BSR_POLICY_VERSION = 9
 MAIN_POLICY_VERSION = 4
 MAIN_CHANGE_PERCENT = 30
 MAIN_REVIEW_PERCENT = 15
@@ -161,18 +161,25 @@ def tiered_bsr(row, country):
             }.get(country, ())))
 
 
+def bidirectional_bsr(row, country):
+    """Costco laundry alone treats both 30% decreases and increases as abnormal."""
+    return (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
+            and str(row['product']).upper() in ('LDY', 'LDY_DRYER'))
+
+
 def variable_bsr(row, country):
     if country == 'SEA' and str(row['retailer']).strip().casefold() == 'homedepot':
         return True
     return (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
-            and str(row['product']).upper() == 'TV') or tiered_bsr(row, country) or (
+            and str(row['product']).upper() in ('TV', 'LDY', 'LDY_DRYER')) or tiered_bsr(row, country) or (
         country == 'SEM' and str(row['retailer']).strip().casefold() in ('homedepot', 'coppel'))
 
 
 def exact_bsr(row, country):
     if country == 'SEA' and bestbuy_dryer.matches(row['product'], row['retailer']):
         return True
-    if country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco' and str(row['product']).upper() == 'TV':
+    if (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
+            and str(row['product']).upper() in ('TV', 'LDY', 'LDY_DRYER')):
         return False
     return (country, str(row['retailer']).strip().casefold()) in {
         ('SEA', 'costco'), ('SEG', 'expert'), ('SEUK', 'currys')}
@@ -245,6 +252,14 @@ def _compare_bsr(row, history, country, *, saved_basis=None):
                             if not variable else
                             f'BSR {"최초 5일" if initial else "과거"} 중앙값 {baseline:g}개 / 수집 {current}개 / {threshold}% 이상 감소'
                             + (' / 확인 필요' if review else ''))}
+    elif bidirectional_bsr(row, country) and (current - baseline) * 100 >= baseline * 30:
+        # VOLUME_LOW is the existing red abnormal severity; direction carries
+        # the increase so MAIN's blue VOLUME_HIGH review policy stays unchanged.
+        alert = {'metric': 'bsr', 'baseline': baseline, 'actual': current,
+                 'exact': False, 'direction': 'increase',
+                 'percent': round((current - baseline) * 100 / baseline, 1),
+                 'status': 'VOLUME_LOW', 'rule': rule,
+                 'reason': f'BSR 과거 중앙값 {baseline:g}개 / 수집 {current}개 / 30% 이상 증가'}
     return rule, 'ready', basis, alert
 
 
@@ -322,6 +337,8 @@ def comparison_rules(row, country):
             'review_percent': MAIN_REVIEW_PERCENT if metric == 'main' else 15 if tiered_bsr(row, country) else None,
             'high_percent': MAIN_CHANGE_PERCENT if metric == 'main' else None,
         }
+        if metric == 'bsr' and bidirectional_bsr(row, country):
+            rules[metric].update(high_percent=30, high_status='VOLUME_LOW')
     return rules
 
 

@@ -366,6 +366,33 @@ class IssueTests(TestCase):
             self.assertEqual(s.coverage_start('SEM','TV','Liverpool')[0],date(2026,10,6))
 
 class VolumeIssueTests(TestCase):
+    def test_costco_laundry_rechecks_obsolete_fixed_basis_without_erasing_evidence(self):
+        for product, baseline, normal, low, high in [('LDY',72,74,50,94), ('LDY_DRYER',100,97,70,130)]:
+            original = {'value':100, 'days':0, 'rule':'fixed_100'}
+            issue = Issue.objects.create(**s.identity('SEA',product,'Costco'),source_date=TARGET,
+                column=volume.metric_column('bsr','daily'),severity='review',baseline=100,
+                observed_count=normal,current_count=normal,first_detected_at=NOW,last_checked_at=NOW,
+                evidence={'kind':'volume','metric':'bsr','slot':'daily','basis':original,
+                          'alert':{'metric':'bsr','status':'VOLUME_LOW','exact':True,'rule':'fixed_100'}})
+            original_alert = dict(issue.evidence['alert'])
+            row = self.row(product=product,retailer='Costco',main=300,total=300,bsr=normal,
+                           baselines={'bsr': {'value':baseline,'days':4,'rule':'median_28d'}})
+            volume.reconcile('SEA',product,'Costco',TARGET,[row],['a1'],now=NOW)
+            issue.refresh_from_db()
+            self.assertEqual('open',issue.status, 'Insufficient history cannot resolve an old incident')
+            row['baselines']['bsr']['days'] = 28
+            for count, expected in [(normal,'resolved'),(low,'open'),(normal,'resolved'),(high,'open')]:
+                volume.reconcile('SEA',product,'Costco',TARGET,[dict(row,bsr=count)],['a1'],now=NOW)
+                issue.refresh_from_db()
+                self.assertEqual(expected,issue.status)
+                self.assertEqual(original,issue.evidence['basis'])
+                self.assertEqual(original_alert,issue.evidence['alert'])
+                self.assertEqual((100,normal),(issue.baseline,issue.observed_count))
+            self.assertEqual('BSR 수집량 증가',volume.label(issue))
+            self.assertEqual('increase',issue.evidence['current_alert']['direction'])
+            self.assertEqual(['recovered','reopened','recovered','reopened'],
+                             list(issue.events.values_list('action',flat=True)))
+
     def row(self, **changes):
         row = dict(product='TV', retailer='Amazon', slot='daily', main=131, bsr=55,
             total=131, collected_count=131, batch_id='a1', date=str(TARGET),

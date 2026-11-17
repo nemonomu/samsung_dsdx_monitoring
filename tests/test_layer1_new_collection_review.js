@@ -11,7 +11,7 @@ for (const name of ['layer1-common','collection-volume','retail-review','retail-
 }
 const review = context.L1.retailReview;
 context.getSelectedDate = () => day;
-function fixture(bsr=99, observation='observing', status='OK', retailer='Costco', country='SEA', product='LDY_DRYER') {
+function fixture(bsr=99, observation='observing', status='OK', retailer='Costco', country='SEA', product='REF') {
     const source = day==='2026-10-13'?'2026-10-12':'2026-10-13';
     const row = {retailer,status,batch_id:'batch-'+day,batch_count:1,main_count:300,bsr_count:bsr,count:300};
     const cat = {name:product,source_date:source,time_slots:[{name:'일일',retailers:[row]}]};
@@ -39,13 +39,19 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
         review.decorate(mismatch.data, day);
         assert.equal(mismatch.row.status, 'VOLUME_LOW', 'observation/repeated review decoration cannot soften MAIN < BSR');
     }
-    for (const [country,retailer,product] of [['SEG','Expert','TV'],['SEG','Expert','REF'],['SEG','Expert','LDY'],['SEA','Costco','LDY_DRYER'],['SEA','Bestbuy','LDY_DRYER']]) {
+    for (const [country,retailer,product] of [['SEG','Expert','TV'],['SEG','Expert','REF'],['SEG','Expert','LDY'],['SEA','Costco','REF'],['SEA','Bestbuy','LDY_DRYER']]) {
         const normal=fixture(100,'observing','OK',retailer,country,product);
         assert.strictEqual(normal.row.status,'OK',`${country} ${retailer} ${product} 300/100 needs no manual review`);
         assert(!normal.row._reviewContext);
         assert.strictEqual(normal.check.status,'OK');
         assert(!context.L1.retailStatus.bsrCell(normal.row,100).includes('l1-review-count'));
         assert.strictEqual(fixture(99,'observing','OK',retailer,country,product).row.status,'VOLUME_REVIEW');
+    }
+    for (const product of ['LDY','LDY_DRYER']) {
+        const laundry=fixture(99,'observing','OK','Costco','SEA',product);
+        assert.equal(laundry.row.status,'OK');
+        assert(!laundry.row.volume_alerts.some(a=>a.metric==='bsr'));
+        assert(!laundry.row._reviewContext);
     }
     const otherNew=fixture(100,'observing','OK','Other');
     assert.strictEqual(otherNew.row.status,'OK');
@@ -57,7 +63,7 @@ function fixture(bsr=99, observation='observing', status='OK', retailer='Costco'
     assert(!otherNew.row.volume_alerts.length);
     let f=fixture();
     assert.strictEqual(f.row.status,'VOLUME_REVIEW');
-    assert.strictEqual(f.row._reviewContext.product,'LDY_DRYER');
+    assert.strictEqual(f.row._reviewContext.product,'REF');
     assert(context.L1.retailStatus.bsrCell(f.row,99).includes('l1-review-count'));
     assert(context.L1.retailStatus.bsrCell(f.row,99).includes('확인 필요'));
     assert.strictEqual(f.check.status,'VOLUME_REVIEW');

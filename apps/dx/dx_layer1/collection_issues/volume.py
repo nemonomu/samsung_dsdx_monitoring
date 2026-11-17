@@ -2,7 +2,7 @@
 import hashlib
 from datetime import timedelta
 
-from apps.dx.dx_layer1.collection_statistics.calculations import current_volume_decision, OFFSETS
+from apps.dx.dx_layer1.collection_statistics.calculations import current_volume_decision, bidirectional_bsr, OFFSETS
 from apps.dx.dx_layer1.collection_statistics.live import current_snapshot
 from apps.dx.dx_layer1.collection_statistics.reviews import attach_review, review_index
 
@@ -89,7 +89,9 @@ def reconcile(country, product, retailer, day, rows, batch_ids, *, now):
                 previous = existing.get(column)
                 # A weakened later median cannot clear an older incident.
                 evaluated = row
-                if previous and previous.evidence.get('basis'):
+                obsolete_fixed = (metric == 'bsr' and bidirectional_bsr(row, country)
+                                  and previous and previous.evidence.get('basis', {}).get('rule') == 'fixed_100')
+                if previous and previous.evidence.get('basis') and not obsolete_fixed:
                     evaluated = current_volume_decision(dict(row,
                         baselines={**row.get('baselines', {}), metric: previous.evidence['basis']}), country)
                 alert = next((a for a in evaluated.get('alerts', []) if a['metric'] == metric), None)
@@ -137,7 +139,7 @@ def label(issue):
     if metric in METRICS:
         alert = issue.evidence.get('current_alert') or issue.evidence.get('alert') or {}
         text = metric.upper() + (' 기준 불일치' if alert.get('exact') else
-            ' 수집량 증가' if alert.get('status') == 'VOLUME_HIGH' else ' 수집량 부족')
+            ' 수집량 증가' if alert.get('status') == 'VOLUME_HIGH' or alert.get('direction') == 'increase' else ' 수집량 부족')
         slot = issue.evidence.get('slot')
         return text + (' · ' + slot if slot and slot != 'daily' else '')
     return issue.column or '전체 미수집'

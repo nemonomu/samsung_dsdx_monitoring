@@ -145,6 +145,32 @@ assert.equal(apply(incompleteBasis),'VOLUME_LOW','known BSR shortage remains vis
 const oldBsr=fixture();oldBsr.row.main_count=300;oldBsr.saved.rules.bsr=median(80,{days:4,high_percent:null});
 assert.equal(apply(oldBsr),'VERIFYING');
 
+// Costco laundry uses historical BSR counts; REF keeps its exact 100 rule.
+for (const [product, baseline, counts] of [['LDY',72,[50,51,74,93,94]], ['LDY_DRYER',100,[70,71,97,129,130]]]) {
+    for (const bsr of counts) {
+        const f=fixture('SEA',product);
+        f.row.retailer=f.saved.retailer='Costco';
+        f.row.main_count=300;f.row.bsr_count=bsr;
+        f.saved.rules.bsr=median(baseline,{review_percent:null,high_percent:30,high_status:'VOLUME_LOW'});
+        const abnormal=Math.abs(bsr-baseline)*100>=baseline*30;
+        assert.equal(apply(f),abnormal?'VOLUME_LOW':'OK');
+        assert.equal(context.L1.retailStatus.bsrCell(f.row,bsr).includes('cs-bsr-low'),abnormal);
+        assert.equal(f.data.summary.failed,abnormal?1:0);
+        if (bsr>=baseline*1.3) {
+            assert.equal(f.row.volume_alerts[0].direction,'increase');
+            assert(f.row.volume_alerts[0].reason.includes('30% 이상 증가'));
+            assert(!f.row.volume_alerts[0].reason.includes('확인 필요'));
+        }
+        delete f.saved.rules.bsr;
+        assert.equal(apply(f),'VERIFYING','Costco laundry cannot fall back to exact 100');
+    }
+}
+for (const bsr of [99,100,101]) {
+    const f=fixture('SEA','REF');
+    f.row.retailer=f.saved.retailer='Costco';f.row.main_count=300;f.row.bsr_count=bsr;
+    assert.equal(apply(f),bsr===100?'OK':'VOLUME_LOW','Costco REF remains exact 100');
+}
+
 // Source failures, collection windows, missing MAIN and observation remain explicit.
 const error=fixture('SIEL','TV','ERROR');assert.equal(apply(error),'ERROR');
 for(const phase of ['pending','collecting']) {

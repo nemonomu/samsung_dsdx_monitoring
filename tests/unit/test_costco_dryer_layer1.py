@@ -33,8 +33,9 @@ class DryerTests(unittest.TestCase):
                 rows = dday.get_collection_status(date(2026, 10, 11), datetime(2026, 10, 11, 16, tzinfo=KST))['retailers']
             tv = next(r for r in rows if r['product'] == 'TV' and r['retailer'] == 'Costco')
             self.assertEqual('received', tv['status'])
-        for product in ('REF', 'LDY', 'LDY_DRYER'):
-            self.assertEqual(100, svc._retailer_criteria(product, 'Costco')['bsr_exact'])
+        self.assertEqual(100, svc._retailer_criteria('REF', 'Costco')['bsr_exact'])
+        for product in ('LDY', 'LDY_DRYER'):
+            self.assertNotIn('bsr_exact', svc._retailer_criteria(product, 'Costco'))
         self.assertTrue(calc.exact_bsr({'product': 'TV', 'retailer': 'Expert'}, 'SEG'))
 
     def test_source_scope_counts_start_and_date(self):
@@ -59,7 +60,7 @@ class DryerTests(unittest.TestCase):
         self.assertEqual('2026-10-09', rows[0]['active_from'])
 
     def test_dday_dryer_order_schedule_and_bsr(self):
-        for count, expected in [(99, 'abnormal'), (100, 'received'), (101, 'abnormal')]:
+        for count, expected in [(99, 'received'), (100, 'received'), (101, 'received')]:
             with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection', return_value=(300, None, 'c11', 300, count)):
                 rows = dday.get_collection_status(date(2026, 10, 11), datetime(2026, 10, 11, 16, tzinfo=KST))['retailers']
             self.assertEqual('LDY_DRYER', rows[-1]['product'])
@@ -76,9 +77,9 @@ class DryerTests(unittest.TestCase):
         self.assertIn('crawl_datetime', sql)
 
     def test_exact_bsr_without_five_day_wait(self):
-        for country, retailer in [('SEA', 'Costco'), ('SEG', 'Expert')]:
+        for country, retailer, product in [('SEA', 'Costco', 'REF'), ('SEG', 'Expert', 'LDY_DRYER')]:
             for count in (99, 100, 101):
-                row = dict(product='LDY_DRYER', retailer=retailer, slot='daily', main=300,
+                row = dict(product=product, retailer=retailer, slot='daily', main=300,
                            bsr=count, total=300, complete=True, base_status='OK')
                 result = calc.compare_rows([row], [], country)[0]
                 self.assertEqual(count != 100, bool(result['alerts']))
@@ -92,3 +93,62 @@ class DryerTests(unittest.TestCase):
                         check = seg.get_layer1_stats(None, date(2026, 10, 11), datetime(2026, 10, 11, 12, tzinfo=KST))['check']
                     expert = check['categories'][-1]['retailers'][0]
                     self.assertEqual('OK' if count == 100 else 'CRITICAL', expert['status'])
+
+    def test_costco_laundry_medians_and_bidirectional_boundaries(self):
+        for product, baseline, samples in [('LDY', 72, (50, 51, 74, 93, 94)),
+                                           ('LDY_DRYER', 100, (70, 71, 97, 129, 130))]:
+            for count in samples:
+                with self.subTest(product=product, count=count):
+                    row = dict(product=product, retailer='Costco', slot='daily', main=300,
+                               bsr=count, total=300, complete=True, base_status='OK', baseline_eligible=True)
+                    history = [dict(row, source_date=f'2026-11-{d:02}', bsr=baseline,
+                                    alerts=[{'metric': 'bsr', 'status': 'VOLUME_LOW', 'rule': 'fixed_100'}])
+                               for d in range(1, 6)]
+                    observing = calc.compare_rows([row], history[:4], 'SEA')[0]
+                    self.assertNotIn('bsr', observing['baselines'])
+                    self.assertFalse(observing['alerts'])
+                    ready = calc.compare_rows([row], history, 'SEA')[0]
+                    self.assertEqual({'value': baseline, 'days': 5, 'rule': 'median_28d'}, ready['baselines']['bsr'])
+                    self.assertFalse(calc.exact_bsr(row, 'SEA'))
+                    self.assertEqual(abs(count - baseline) * 100 >= baseline * 30,
+                                     any(a['metric'] == 'bsr' for a in ready['alerts']))
+                    rules = calc.comparison_rules(ready, 'SEA')['bsr']
+                    self.assertEqual((30, 'VOLUME_LOW'), (rules['high_percent'], rules['high_status']))
+                    if count >= baseline * 1.3:
+                        self.assertEqual('increase', ready['alerts'][0]['direction'])
+                        self.assertEqual('VOLUME_LOW', ready['alerts'][0]['status'])
+                        self.assertIn('30% 이상 증가', ready['alerts'][0]['reason'])
+                    self.assertEqual(ready['alerts'], calc.current_volume_decision(ready, 'SEA')['alerts'])
+                    legacy = dict(ready, baselines={'bsr': {'value': 100, 'days': 0, 'rule': 'fixed_100'}})
+                    self.assertEqual('insufficient', calc.current_bsr_decision(legacy, 'SEA')['bsr_comparison_state'])
+
+    def test_costco_policy_scope(self):
+        for product, variable, exact in [('TV', True, False), ('REF', False, True),
+                                         ('LDY', True, False), ('LDY_DRYER', True, False)]:
+            row = {'product': product, 'retailer': 'Costco'}
+            self.assertEqual(variable, calc.variable_bsr(row, 'SEA'))
+            self.assertEqual(exact, calc.exact_bsr(row, 'SEA'))
+            self.assertFalse(calc.variable_bsr(row, 'SEDA'))
+            self.assertEqual(product in ('LDY', 'LDY_DRYER'), calc.bidirectional_bsr(row, 'SEA'))
+            self.assertFalse(calc.bidirectional_bsr(row, 'SEDA'))
+
+    def test_increase_history_excluded_and_tv_increase_unchanged(self):
+        row = dict(product='LDY', retailer='Costco', slot='daily', main=300, bsr=74, total=300,
+                   complete=True, base_status='OK', baseline_eligible=True)
+        history = [dict(row, source_date=f'2026-11-{d:02}', bsr=72) for d in range(1, 6)]
+        high = calc.compare_rows([dict(row, bsr=94)], history, 'SEA')[0]
+        history.append(dict(high, source_date='2026-11-06'))
+        result = calc.compare_rows([row], history, 'SEA')[0]
+        self.assertEqual({'value': 72, 'days': 5, 'rule': 'median_28d'}, result['baselines']['bsr'])
+        tv = dict(high, product='TV', bsr=140)
+        self.assertFalse(calc.current_bsr_decision(tv, 'SEA')['alerts'])
+        self.assertIsNone(calc.comparison_rules(tv, 'SEA')['bsr']['high_percent'])
+
+    def test_bidirectional_thresholds_compare_before_rounding(self):
+        for baseline, count, abnormal in [(72.5, 94, False), (72.5, 95, True),
+                                           (2000, 2599, False), (2000, 2600, True),
+                                           (2000, 1401, False), (2000, 1400, True)]:
+            row = dict(product='LDY_DRYER', retailer='Costco', slot='daily', main=3000, total=3000,
+                       bsr=count, complete=True, base_status='OK', observation_state='ready',
+                       baselines={'bsr': {'value': baseline, 'days': 28, 'rule': 'median_28d'}})
+            self.assertEqual(abnormal, bool(calc.current_bsr_decision(row, 'SEA')['alerts']))

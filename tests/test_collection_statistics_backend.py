@@ -530,7 +530,7 @@ class StoreTests(TestCase):
         saved = Daily.objects.get(country='SEM', source_date=end).rows[0]
         self.assertEqual(25, saved['baselines']['bsr']['value'])
         self.assertEqual('2026-11-01', saved['bsr_initial_samples'][0]['date'])
-        self.assertEqual(8, saved['bsr_policy_version'])
+        self.assertEqual(calc.BSR_POLICY_VERSION, saved['bsr_policy_version'])
         fifth = Daily.objects.get(country='SEM', source_date=start + timedelta(days=4)).rows[0]
         self.assertEqual('observing', fifth['bsr_comparison_state'])
         self.assertEqual(5, len(fifth['bsr_initial_samples']))
@@ -913,12 +913,12 @@ class StatisticsReviewTests(TestCase):
     def setUp(self):
         from apps.dx.dx_layer1.models import RetailNormalReview
         from apps.dx.dx_layer1.common.retail_review_api import validate_context
-        self.day = calc.current_volume_decision({**sample(retailer='Costco', product='LDY_DRYER', bsr=99),
+        self.day = calc.current_volume_decision({**sample(retailer='Costco', product='REF', bsr=99),
             'date': '2026-10-14', 'state': 'complete', 'observation_state': 'observing'}, 'SEA')
         alerts = [{**alert, 'status': 'VOLUME_REVIEW'} for alert in self.day['alerts']]
         alerts.append({'metric': 'observation', 'status': 'VOLUME_REVIEW'})
         context = dict(version=1, date='2026-10-15', source_date='2026-10-14', country='SEA',
-            product='LDY_DRYER', retailer='Costco', slot='daily', batch_id='b1',
+            product='REF', retailer='Costco', slot='daily', batch_id='b1',
             status='VOLUME_REVIEW', counts=[300,99,300,1], reasons=['BSR 99'],
             basis=json.dumps({'alerts': alerts}))
         self.record = RetailNormalReview.objects.create(fingerprint=validate_context(context),
@@ -926,7 +926,25 @@ class StatisticsReviewTests(TestCase):
             history=[{'action':'confirm', 'memo':'source page has 99', 'username':'reviewer',
                       'at':'2026-10-15T01:00:00Z'}])
         Weekly.objects.create(country='SEA', week_start=date(2026,10,12), updated_at=timezone.now(),
-            rows=[{'product':'LDY_DRYER','retailer':'Costco','slot':'daily','daily':[self.day]}])
+            rows=[{'product':'REF','retailer':'Costco','slot':'daily','daily':[self.day]}])
+
+    def test_laundry_median_does_not_reuse_or_delete_old_fixed_approval(self):
+        from apps.dx.dx_layer1.collection_statistics.reviews import attach_review, review_index
+        original_history = list(self.record.history)
+        for product in ('LDY', 'LDY_DRYER'):
+            self.record.context = {**self.record.context, 'product': product}
+            self.record.save(update_fields=['context'])
+            row = {**self.day, 'product': product, 'observation_state': 'ready',
+                   'baselines': {'bsr': {'value': 150, 'days': 28, 'rule': 'median_28d'}}}
+            updated = calc.current_volume_decision(row, 'SEA')
+            self.assertEqual('median_28d', updated['alerts'][0]['rule'])
+            index = review_index(date(2026,10,12), date(2026,10,18))
+            result = attach_review(updated, 'SEA', product, 'Costco', 'daily', index)
+            self.assertNotIn('review', result)
+            self.record.refresh_from_db()
+            self.assertTrue(self.record.active)
+            self.assertEqual(1, self.record.revision)
+            self.assertEqual(original_history, self.record.history)
 
     def test_api_reads_current_confirmation_and_cancellation_without_refreshing_snapshots(self):
         def get_day():
@@ -952,7 +970,7 @@ class StatisticsReviewTests(TestCase):
         from apps.dx.dx_layer1.collection_statistics.reviews import attach_review, review_index
         index = review_index(date(2026,10,12), date(2026,10,18))
         def attach(day=None, **scope):
-            return attach_review(day or self.day, scope.get('country','SEA'), scope.get('product','LDY_DRYER'),
+            return attach_review(day or self.day, scope.get('country','SEA'), scope.get('product','REF'),
                                  scope.get('retailer','Costco'), scope.get('slot','daily'), index)
         for field, value in [('country','SEG'), ('product','LDY'), ('retailer','Other'), ('slot','evening')]:
             self.assertNotIn('review', attach(**{field:value}), field)
@@ -966,7 +984,7 @@ class StatisticsReviewTests(TestCase):
     def test_live_counts_preserve_matching_review_but_not_changed_batches(self):
         from apps.dx.dx_layer1.collection_statistics import live
         check = check_for(300, bsr_count=99, retailer='Costco', batch_count=1)
-        check['categories'][0]['name'] = 'LDY_DRYER'
+        check['categories'][0]['name'] = 'REF'
         with patch.object(live, 'load_current_check', return_value=check):
             row = live.current_snapshot('SEA', date(2026,10,15))['rows'][0]
             self.assertEqual('confirm', row['review']['action'])
