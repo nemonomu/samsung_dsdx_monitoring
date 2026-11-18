@@ -52,7 +52,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
+    'apps.accounts.sessions.SessionExpiryMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -140,8 +140,8 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
-# Session settings (1시간 타임아웃)
-SESSION_COOKIE_AGE = 3600  # 1시간 (초 단위)
+# Session settings (마지막 서버 요청 이후 24시간 유지)
+SESSION_COOKIE_AGE = 24 * 60 * 60
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_SAVE_EVERY_REQUEST = True  # 매 요청마다 세션 갱신 (활동 시 연장)
 

@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .sessions import session_status
 
 app_name = 'accounts'
 
@@ -7,6 +8,7 @@ urlpatterns = [
     # 인증
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('session-status/', session_status, name='session_status'),
 
     # 관리자 페이지 - 회원관리
     path('admin/', views.admin_dashboard, name='admin_dashboard'),

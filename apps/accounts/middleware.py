@@ -19,6 +19,7 @@ class LoginRequiredMiddleware:
     # 로그인 없이 접근 가능한 URL 패턴
     EXEMPT_URLS = [
         r'^/accounts/login/?$',
+        r'^/accounts/session-status/?$',  # 만료 시 리다이렉트 대신 JSON 응답
         r'^/admin/',
         r'^/static/',
         r'^/api/health/?$',  # 헬스체크 API
