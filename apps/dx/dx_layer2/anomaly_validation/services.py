@@ -1062,7 +1062,7 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
     result = _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size)
     result.update(_duplicate_lookup_query(result, table))
     select_cols = result.get('select_cols', {})
-    if (isinstance(select_cols, dict) and 'sku' in select_cols.get('record', [])
+    if (not result.get('preview_mode') and isinstance(select_cols, dict) and 'sku' in select_cols.get('record', [])
             and result.get('actual_table')):
         result.update({
             'allow_cleanup': result.get('allow_cleanup', not result.get('readonly', False)),

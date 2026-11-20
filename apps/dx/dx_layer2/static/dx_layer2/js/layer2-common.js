@@ -626,7 +626,7 @@ function renderDetailWithTable(options) {
     var tableParam = options.tableParam || '';
     var type = options.type || 'null';
     var selectCols = options.selectCols || null;
-    var editableCols = options.editableCols || [];
+    var editableCols = options.readonly ? [] : options.editableCols || [];
     var actualTable = options.actualTable || '';
     var crawlDate = options.crawlDate || '';
     var editableDate = options.editableDate || crawlDate;
@@ -654,11 +654,11 @@ function renderDetailWithTable(options) {
     detailViewState.crawlDate = crawlDate;
     detailViewState.editableDate = editableDate;
     detailViewState.dateColumn = dateColumn;
-    detailViewState.supportsNullAutoReview = type === 'null'
+    detailViewState.supportsNullAutoReview = !options.readonly && type === 'null'
         && options.supportsNullAutoReview === true;
     detailViewState.nullReviewField = options.nullReviewField || '';
     var reviewColumnsHelper = window.RetailReviewColumns;
-    if (type === 'null' && reviewColumnsHelper
+    if (type === 'null' && !options.readonly && reviewColumnsHelper
         && reviewColumnsHelper.isPrice(detailViewState.nullReviewField)) {
         editableCols = Array.from(new Set(
             editableCols.concat(reviewColumnsHelper.getPriceColumns())

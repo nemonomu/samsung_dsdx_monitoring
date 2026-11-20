@@ -1,7 +1,7 @@
 """Spain onboarding: D-day deadlines, original dates, batches and NULL scope."""
 import unittest
 from datetime import date, datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.test import override_settings
 from apps.common import seib_retail as policy
@@ -17,10 +17,53 @@ from apps.dx.dx_layer1.rank_monitoring import repository as ranks
 from apps.dx.dx_layer1.rank_monitoring.comparison import compare as compare_ranks
 from apps.dx.dx_layer1.management.commands.setup_seib import register
 from apps.dx.dx_layer2 import seib_null_validation as nulls
+from apps.dx.dx_layer2 import seib_duplicate_validation as duplicates
+from apps.dx.dx_layer2.anomaly_validation.services import get_anomaly_detail
 
 
 class SeibMonitoringTests(unittest.TestCase):
     day = date(2026, 10, 19)
+
+    def test_layer2_eci_test_checks_are_visible_readonly_and_do_not_affect_totals(self):
+        day = date(2026, 11, 20)
+        category = 'seib_ref_retail'
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+        fields = policy.get_seib_null_columns('seib_ref')
+        media = dict.fromkeys(fields, 'ok') | {'id': 1, 'item': 'M1'}
+        eci = [media | {'id': i, 'item': 'A12', 'account_name': 'ECI', 'ref_capacity': None,
+                        'batch_id': 'e_test'} for i in (2, 3)]
+
+        def latest(_cursor, target, source, retailer, *, include_preview=False):
+            return ((eci if include_preview else []) if retailer == 'ECI' else [media],
+                    resolve_monitoring_date(target, 'SEIB', source['source_key']))
+
+        with patch.object(nulls, 'latest_rows', side_effect=latest), \
+             patch.object(duplicates, 'latest_rows', side_effect=latest), \
+             patch.object(nulls, 'review_state', return_value=({}, {}, [])) as review:
+            for preview_present in (True, False):
+                validations = [{'tables': []}, {'tables': []}]
+                self.assertEqual(0, nulls.append_null_stats(cursor, day, validations[0], category))
+                self.assertEqual(0, duplicates.append_duplicate_stats(cursor, day, validations[1], category))
+                for validation, metric, count in zip(validations, ('total_null_count', 'duplicate_groups'), (2, 1)):
+                    table = validation['tables'][0]
+                    self.assertEqual(1, table['total_records'])
+                    self.assertEqual(0, table['total_issues'])
+                    if preview_present:
+                        self.assertTrue(table['retailers'][1]['preview_mode'])
+                        self.assertEqual(count, table['retailers'][1][metric])
+                    else:
+                        self.assertEqual(['MediaMarkt'], [r['retailer'] for r in table['retailers']])
+                if preview_present:
+                    detail = nulls.null_detail(cursor, day, category, 'ECI', 'ref_capacity')
+                    duplicate = get_anomaly_detail(cursor, day, category, 'ECI', 1, 1, 50)
+                    self.assertEqual(2, len(detail['results']))
+                    self.assertEqual(1, duplicate['results']['total_groups'])
+                    for payload in (detail, duplicate):
+                        self.assertTrue(payload['readonly'])
+                        self.assertEqual([], payload['editable_cols'])
+                    eci.clear()
+            self.assertTrue(all(call.kwargs['retailer'] == 'MediaMarkt' for call in review.call_args_list))
 
     def test_eci_appliances_omit_test_dates_and_keep_same_latest_batch_contract(self):
         for product in ('REF', 'LDY'):

@@ -10,6 +10,7 @@ from apps.common.seib_retail import (
     SEIB_COUNTRY, SEIB_SOURCE_CONFIG, enabled, latest_scope,
     get_seib_null_columns,
     get_seib_null_select_columns, product_line_for, seib_retailer_key, active_retailers, is_eci_appliance,
+    is_eci_appliance_preview,
 )
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 
@@ -45,9 +46,10 @@ def _rows(cursor):
             for row in cursor.fetchall()]
 
 
-def latest_rows(cursor, target_date, source, retailer):
+def latest_rows(cursor, target_date, source, retailer, *, include_preview=False):
     mapping = _mapping(target_date, source)
-    cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'], retailer)
+    cte, scope, params = latest_scope(source, mapping['source_date'], mapping['source_date'],
+                                      retailer or 'MediaMarkt', include_preview=include_preview)
     columns = ', '.join('source.' + col for col in get_seib_null_select_columns(source['source_key']))
     cursor.execute(f'{cte} SELECT {columns} {scope} ORDER BY source.id', params)
     return _rows(cursor), mapping
@@ -118,14 +120,17 @@ def append_null_stats(cursor, target_date, validation, category=None, review_fil
             continue
         normal_reviews = _load_normal_reviews(cursor, target_date, source)
         retailers = []
-        for retailer in active_retailers(source, target_date):
+        for retailer in active_retailers(source, target_date, include_preview=review_filter is None):
             if review_filter is not None and not review_filter(source['table_name'], retailer):
                 continue
-            rows, mapping = latest_rows(cursor, target_date, source, retailer)
+            preview = is_eci_appliance_preview(product_line, retailer, target_date)
+            rows, mapping = latest_rows(cursor, target_date, source, retailer, include_preview=preview)
+            if preview and not rows:
+                continue
             fields = list(get_seib_null_columns(product_line, retailer))
-            reviews = normal_reviews
+            reviews = {} if preview else normal_reviews
             review_stats = {}
-            if uses_new_policy(target_date, SEIB_COUNTRY):
+            if not preview and uses_new_policy(target_date, SEIB_COUNTRY):
                 reviews, review_stats, auto_logs = review_state(
                     cursor, target_date, rows, fields, normal_reviews,
                     table_name=source['table_name'], country=SEIB_COUNTRY,
@@ -139,21 +144,25 @@ def append_null_stats(cursor, target_date, validation, category=None, review_fil
                 for column in fields
             }
             count = sum(counts.values())
-            retailers.append({
+            result = {
                 'retailer': retailer, 'total': len(rows), 'total_null_count': count,
                 'fields_detail': counts, 'status': ('PENDING' if not rows and is_eci_appliance(product_line, retailer)
                                                      else 'CRITICAL' if count else 'OK'),
                 **mapping, **review_stats,
-            })
-        count = sum(retailer['total_null_count'] for retailer in retailers)
+            }
+            if preview:
+                result.update(preview_mode=True, status='PENDING', validation_label=f'테스트 조회 · NULL {count}건')
+            retailers.append(result)
+        operating = [retailer for retailer in retailers if not retailer.get('preview_mode')]
+        count = sum(retailer['total_null_count'] for retailer in operating)
         table_stats = {
             'table': source['section_code'], 'table_name': source['display_name'],
-            'total_records': sum(retailer['total'] for retailer in retailers),
+            'total_records': sum(retailer['total'] for retailer in operating),
             'total_issues': count, 'status': 'CRITICAL' if count else 'OK',
             'fields': list(get_seib_null_columns(product_line)), 'retailers': retailers,
             **_mapping(target_date, source),
         }
-        add_review_totals(table_stats, retailers)
+        add_review_totals(table_stats, operating)
         validation['tables'].append(table_stats)
         total += count
     return total
@@ -169,10 +178,11 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     source = SEIB_SOURCE_CONFIG[product_line]
     canonical_retailer = next(name for name in source['retailers']
                               if seib_retailer_key(name) == seib_retailer_key(retailer))
-    rows, mapping = latest_rows(cursor, target_date, source, canonical_retailer)
-    normal_reviews = _load_normal_reviews(cursor, target_date, source)
+    preview = is_eci_appliance_preview(product_line, canonical_retailer, target_date)
+    rows, mapping = latest_rows(cursor, target_date, source, canonical_retailer, include_preview=preview)
+    normal_reviews = {} if preview else _load_normal_reviews(cursor, target_date, source)
     review_stats = {}
-    if uses_new_policy(target_date, SEIB_COUNTRY):
+    if not preview and uses_new_policy(target_date, SEIB_COUNTRY):
         normal_reviews, review_stats, _auto_logs = review_state(
             cursor, target_date, rows, [column], normal_reviews,
             table_name=source['table_name'], country=SEIB_COUNTRY,
@@ -180,7 +190,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
             is_null=lambda value, _field: missing(value),
         )
     targets = [row for row in rows if missing(row.get(column))]
-    days = min(30, max(1, int(days or 3)))
+    days = 1 if preview else min(30, max(1, int(days or 3)))
     source_day = date.fromisoformat(mapping['source_date'])
     history = []
     if days > 1 and targets:
@@ -200,11 +210,12 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     return {
         'date': mapping['inspection_date'], 'results': results,
         'select_cols': list(get_seib_null_select_columns(product_line)),
-        'editable_cols': list(allowed), 'actual_table': source['table_name'],
+        'editable_cols': [] if preview else list(allowed), 'actual_table': source['table_name'],
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display}, 'query_retailer': canonical_retailer,
         'normal_reviews': normal_reviews, **review_stats,
-        'supports_day_history': True, 'history_days': days,
-        'date_column': source['date_column'], 'readonly': False,
+        'supports_day_history': not preview, 'history_days': days,
+        'date_column': source['date_column'], 'readonly': preview,
+        **({'preview_mode': True, 'batch_id': rows[0].get('batch_id') if rows else None} if preview else {}),
         **mapping,
     }

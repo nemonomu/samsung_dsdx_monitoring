@@ -511,7 +511,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const dateColumn = data.date_column || 'crawl_datetime';
     const tableParam = modalState.tableParam;
     const date = data.date || getSelectedDate();
-    const supportsReview = data.supports_null_auto_review === true;
+    const supportsReview = !data.readonly && data.supports_null_auto_review === true;
     const isSeaTv = tableParam === 'tv_retail';
     const isSeaAppliance = /^sea_(ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSeaRetail = isSeaTv || isSeaAppliance;
@@ -721,7 +721,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
             : currentDays > 1
             ? `${fieldName} NULL 오류 항목 (${records.length}건 / ${currentDays}일치)`
             : `${fieldName} NULL 오류 (${records.length}건)`;
-        const fieldSubtitle = `${renderCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}${sourceScope}`;
+        const fieldSubtitle = `${renderCountryFlagLabel(modalState.tableName)} | ${modalState.retailer}${sourceScope}${data.preview_mode ? ' · 테스트 조회' : ''}`;
         const wrapper = `<div class="inline-detail-view">
             <div class="inline-detail-header"><div>
                 <div class="inline-detail-title">${fieldTitle}</div>
@@ -747,6 +747,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         type: 'null',
         selectCols: data.select_cols || null,
         editableCols: data.editable_cols || [],
+        readonly: data.readonly === true,
         actualTable: data.actual_table || '',
         crawlDate: date,
         editableDate: (isSeaRetail || isSielRetail || isSegRetail) || isSedaRetail

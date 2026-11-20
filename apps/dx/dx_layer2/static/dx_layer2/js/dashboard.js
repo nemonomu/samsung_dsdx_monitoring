@@ -770,8 +770,8 @@ function renderDXTableDetail(vType, table) {
             const hasIssue = (retailer.total_null_count || 0) > 0;
             const totalCount = retailer.total || 0;
             const nullCount = retailer.total_null_count || 0;
-            const supportsReview = retailer.supports_null_auto_review === true
-                || table.supports_null_auto_review === true;
+            const supportsReview = !retailer.preview_mode && (retailer.supports_null_auto_review === true
+                || table.supports_null_auto_review === true);
             const reviewedCount = Number(retailer.reviewed_null_count || 0);
             const automaticCount = Number(retailer.auto_reviewed_count || 0);
             const manualCount = Number(retailer.manual_reviewed_count || 0);
@@ -809,7 +809,7 @@ function renderDXTableDetail(vType, table) {
                             <span class="retailer-issue-count ${cardClass}">${retailer.validation_label || (supportsReview ? countLabel : nullCount + '건')}</span>
                         </div>
                         <div class="retailer-detail">
-                            ${supportsReview ? `총 ${totalCount.toLocaleString()}건 검사 · 필수값 NULL 항목` : `총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드`}
+                            ${supportsReview || retailer.preview_mode ? `총 ${totalCount.toLocaleString()}건 검사 · 필수값 NULL 항목` : `총 ${totalCount.toLocaleString()}건 중 필수값 NULL 레코드`}
                         </div>
                         ${supportsReview ? `<div class="null-review-counts">${hasIssue ? `<span class="null-review-status unreviewed">확인 필요 ${nullCount}건</span>` : ''} ${automaticCount > 0 ? `<span class="null-review-status automatic">자동확인 ${automaticCount}건</span>` : ''} ${manualCount > 0 ? `<span class="null-review-status manual">수동확인 ${manualCount}건</span>` : ''}</div>` : ''}
                         <div class="retailer-fields">
