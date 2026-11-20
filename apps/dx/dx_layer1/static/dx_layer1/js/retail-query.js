@@ -37,6 +37,7 @@
     }
 
     function buildQuery(country, product, retailer, batch, day) {
+        if (country === 'SIEL' && retailer === 'Jiomart') return '';
         if (country === 'SEA' && product === 'LDY_DRYER' && !['Bestbuy', 'Costco'].includes(retailer)) return '';
         var config = source(country, product);
         if (!config || !retailer || !batch || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return '';
@@ -69,11 +70,11 @@
         var summary = entry.country === 'SEA' && typeof getRetailSummaryData === 'function'
             ? getRetailSummaryData(entry.product) : null;
         var result = [];
-        function add(retailer, batch) {
+        function add(retailer, batch, query) {
             if (!retailer) return;
             batch = batch || '';
             if (!result.some(function(row) { return row.retailer === retailer && row.batch === batch; })) {
-                result.push({ retailer: retailer, batch: batch });
+                result.push({ retailer: retailer, batch: batch, query: query });
             }
         }
         if (summary && summary.summary && summary.summary.length) {
@@ -83,7 +84,7 @@
                 rows.forEach(function(row) { add(retailer.retailer, row.batch_id || retailer.batch_id); });
             });
         } else {
-            (cat.retailers || []).forEach(function(row) { add(row.retailer, row.batch_id); });
+            (cat.retailers || []).forEach(function(row) { add(row.retailer, row.batch_id, row.copy_query); });
             (cat.time_slots || []).forEach(function(slot) {
                 (slot.retailers || []).forEach(function(row) { add(row.retailer, row.batch_id); });
             });
@@ -116,7 +117,7 @@
         var entry = entries[key];
         if (!entry) return;
         var data = options(entry);
-        active = { entry: entry, rows: data.rows, query: '' };
+        active = { entry: entry, rows: data.rows, sourceDay: data.day, query: '' };
         AppModal.create(modal, { style: 'wide', closeOnOverlay: true });
         AppModal.setTitle(modal, entry.country + ' · ' + entry.product + ' 전체 조회 SQL');
         var optionHtml = data.rows.map(function(row, index) {
@@ -138,8 +139,8 @@
         var select = document.getElementById('l1-query-retailer');
         var day = document.getElementById('l1-query-date');
         var row = active.rows[Number(select.value)];
-        active.query = row ? buildQuery(active.entry.country, active.entry.product,
-            row.retailer, row.batch, day.value) : '';
+        active.query = row && row.query && day.value === active.sourceDay ? row.query
+            : row ? buildQuery(active.entry.country, active.entry.product, row.retailer, row.batch, day.value) : '';
         document.getElementById('l1-query-sql').textContent = active.query ||
             (row && !row.batch ? '수집 배치가 없어 조회 SQL을 만들 수 없습니다.' : '리테일러와 데이터일을 확인해주세요.');
         document.getElementById('l1-query-copy').disabled = !active.query;

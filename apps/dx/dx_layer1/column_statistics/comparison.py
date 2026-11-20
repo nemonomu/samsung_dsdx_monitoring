@@ -6,6 +6,7 @@ from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FRO
 from apps.common.seib_retail import (ECI_APPLIANCE_START, ECI_OBSERVATION_DAYS,
                                     is_eci_appliance, is_eci_appliance_preview)
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 KST = timezone(timedelta(hours=9))
 BASELINE_DAYS = 28
@@ -15,6 +16,8 @@ MINIMUM_DAYS = 7
 def collection_complete(country, product, retailer, source_day, now=None):
     """Use Layer 1's existing collection windows, always with source dates."""
     now = (now or datetime.now(KST)).astimezone(KST)
+    if jiomart.matches(country, product, retailer):
+        return jiomart.phase(source_day, now) == 'complete'
     if dryer_config(country, product, retailer) and source_day < OPERATIONAL_FROM:
         return False
     if country == 'SEM' and product == 'LDY_DRYER':
@@ -79,6 +82,7 @@ def compare_columns(data, target, completed):
                and day['total'] > 0 and completed.get(day['date'], False)]
     current = next(day for day in data['daily'] if day['date'] == str(target))
     eci_appliance = data.get('country') == 'SEIB' and is_eci_appliance(data.get('product'), data.get('retailer'))
+    is_jiomart = jiomart.matches(data.get('country'), data.get('product'), data.get('retailer'))
     if eci_appliance:
         history = [day for day in history if day['date'] >= str(ECI_APPLIANCE_START)]
     rows = []
@@ -88,10 +92,13 @@ def compare_columns(data, target, completed):
         count = current['counts'][column]
         ratio = count / baseline * 100 if baseline is not None and baseline > 0 else None
         delta = count - baseline if baseline is not None else None
-        if eci_appliance and current['total'] and is_eci_appliance_preview(data['product'], data['retailer'], target):
+        if current['total'] and ((eci_appliance and is_eci_appliance_preview(data['product'], data['retailer'], target))
+                                 or (is_jiomart and jiomart.preview(target))):
             status = 'preview'
         elif data.get('active_from') and str(target) < data['active_from']:
             status = 'not_scheduled'
+        elif is_jiomart and not source_date_ready(data, current):
+            status = 'unverified_start'
         elif not completed.get(str(target), False):
             status = 'pending'
         elif current.get('raw_total', current['total']) == 0:
@@ -117,6 +124,8 @@ def compare_columns(data, target, completed):
 
 
 def minimum_days(data):
+    if jiomart.matches(data.get('country'), data.get('product'), data.get('retailer')):
+        return 5
     if data.get('country') == 'SEIB' and is_eci_appliance(data.get('product'), data.get('retailer')):
         return ECI_OBSERVATION_DAYS
     return costco.MINIMUM_DAYS if data.get('country') == 'SEA' and data.get('retailer') == 'Costco' else MINIMUM_DAYS
@@ -130,3 +139,10 @@ def attach_comparisons(data, target, now=None):
             'minimum_history_days': minimum_days(data),
             'comparisons': compare_columns(data, target, completed),
             'completion': completed}
+
+
+def source_date_ready(data, daily_row):
+    if not jiomart.matches(data.get('country'), data.get('product'), data.get('retailer')):
+        return True
+    first = data.get('source_date_ready_from')
+    return bool(first and daily_row['date'] >= first)

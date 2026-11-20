@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from datetime import date, timedelta
 
 from apps.common.source_dates import source_date_sql
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 
 RETAIL_CHECK_TYPES = frozenset({
@@ -87,6 +88,16 @@ def fetch_batch_counts(cursor, check_type, product_line, source_date):
         key, count = ((row['retailer_key'], row['batch_count'])
                       if isinstance(row, Mapping) else row)
         result[key] = int(count or 0)
+    if check_type == 'siel_retail':
+        result.pop('jiomart', None)
+        day = date.fromisoformat(str(source_date))
+        registered = day >= jiomart.START and jiomart.registry_exists(cursor)
+        if registered or jiomart.preview(day):
+            ctes, p = jiomart.scope_sql(source['table_name'], day, day, registered=registered,
+                                        include_preview=jiomart.preview(day))
+            cursor.execute(f"WITH {ctes} SELECT COUNT(DISTINCT NULLIF(BTRIM(batch_id), '')) AS batch_count FROM scoped", p)
+            row = cursor.fetchone()
+            result['jiomart'] = int(row['batch_count'] if isinstance(row, Mapping) else row[0])
     return result
 
 
@@ -133,6 +144,27 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
     key = _retailer_key(retailer, check_type)
     if not key or len(key) > 200:
         raise ValueError('Invalid retailer')
+    if check_type == 'siel_retail' and key == 'jiomart':
+        day = date.fromisoformat(str(source_date))
+        ctes, args = jiomart.scope_sql(source['table_name'], day, day, include_preview=jiomart.preview(day),
+                                      registered=day >= jiomart.START and jiomart.registry_exists(cursor))
+        cursor.execute(f'''WITH {ctes}
+            SELECT source.batch_id,
+                   TO_CHAR(MIN(source.crawl_datetime) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS') AS started_at,
+                   TO_CHAR(MAX(source.crawl_datetime) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS') AS ended_at,
+                   COUNT(source.main_rank) AS main_count, COUNT(source.bsr_rank) AS bsr_count,
+                   BOOL_OR(latest.source_day IS NOT NULL) AS applied, COUNT(*) AS raw_count
+            FROM scoped source LEFT JOIN latest ON source.source_day = latest.source_day
+               AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
+            GROUP BY source.batch_id ORDER BY MIN(source.crawl_datetime)''', args)
+        fields = ('batch_id', 'started_at', 'ended_at', 'main_count', 'bsr_count', 'applied', 'raw_count')
+        base_sql = jiomart.copy_scope(source['table_name'], day)
+        batches = [dict(row) if isinstance(row, Mapping) else dict(zip(fields, row)) for row in cursor.fetchall()]
+        for batch in batches:
+            batch['sql'] = cursor.mogrify(f'{base_sql}\nSELECT * FROM scoped WHERE batch_id IS NOT DISTINCT FROM %s ORDER BY id;',
+                                          (batch['batch_id'],)).decode('utf-8')
+        return {'retailer': retailer, 'source_date': str(day), 'time_basis': 'KST', 'batches': batches,
+                'aggregation_basis': 'crawl_datetime이 가장 늦은 배치'}
     if check_type == 'seib_retail':
         from apps.common.seib_retail import ECI_APPLIANCE_PREVIEW_FROM, is_eci_appliance
         if is_eci_appliance(product_line, retailer) and str(source_date) < str(ECI_APPLIANCE_PREVIEW_FROM):

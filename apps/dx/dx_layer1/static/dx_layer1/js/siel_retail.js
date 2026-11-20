@@ -17,9 +17,11 @@ function renderSielRetailerRow(retailer) {
     var batchHtml = batchId
         ? ' <span class="retail-batch-id" style="font-size:11px;color:#64748b;">/ ' + esc(batchId) + '</span>'
         : '';
+    var windowHtml = retailer.collection_window ? '<small style="display:block;color:#64748b;">'
+        + esc(retailer.collection_window) + '</small>' : '';
 
     return '<tr>' +
-        '<td class="rt-name">' + esc(retailer.retailer || '-') + batchHtml + '</td>' +
+        '<td class="rt-name">' + esc(retailer.retailer || '-') + batchHtml + windowHtml + '</td>' +
         '<td>' + mainCount.toLocaleString() + '</td>' +
         (L1.retailStatus.bsrCell ? L1.retailStatus.bsrCell(retailer, bsrCount.toLocaleString()) : '<td>' + bsrCount.toLocaleString() + '</td>') +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
@@ -29,6 +31,7 @@ function renderSielRetailerRow(retailer) {
 
 function renderSielTotalRow(retailers) {
     var totals = retailers.reduce(function(result, retailer) {
+        if (retailer.exclude_from_total) return result;
         result.main += sielNumber(retailer.main_count);
         result.bsr += sielNumber(retailer.bsr_count);
         result.actual += sielNumber(

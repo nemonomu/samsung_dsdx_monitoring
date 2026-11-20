@@ -23,7 +23,7 @@
     function operatingRows(rows) {
         // Preview rows stay visible without holding back operating retailers.
         // Keep explicit errors visible, including errors on preview sources.
-        const operating = rows.filter(row => !row.preview_mode || row.status === 'ERROR');
+        const operating = rows.filter(row => (!row.preview_mode && !row.exclude_from_total) || row.status === 'ERROR');
         return operating.length ? operating : rows;
     }
     function worst(rows, fallback = 'VERIFYING') {

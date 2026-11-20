@@ -11,6 +11,7 @@ from apps.common.seib_retail import (FIRST_SOURCE_DATE as SEIB_START_DATE, ECI_A
 from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START_DATE
 from apps.common.sem_retail import sem_start_date
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, MEDIAMARKT_DRYER_START_DATE
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK')
 OFFSETS = {'SEA': 1, 'SEDA': 1, 'SIEL': 0, 'SEG': 0, 'SEM': 0, 'TSE': 0, 'SEIB': 0, 'SEUK': 0}
@@ -87,6 +88,11 @@ def normalize_check(check, country, inspection_date):
                     rows[-1]['source_date_basis'] = 'db_original'
                 if eci_appliance:
                     rows[-1]['active_from'] = str(ECI_APPLIANCE_START)
+                    if retailer.get('preview_mode'):
+                        rows[-1].update(preview_mode=True, complete=False, baseline_eligible=False,
+                                        verification_state='pending')
+                if jiomart.matches(country, product, name):
+                    rows[-1].update(active_from=str(jiomart.START), source_date_basis='db_original')
                     if retailer.get('preview_mode'):
                         rows[-1].update(preview_mode=True, complete=False, baseline_eligible=False,
                                         verification_state='pending')
@@ -177,6 +183,8 @@ def bidirectional_bsr(row, country):
 
 
 def variable_bsr(row, country):
+    if jiomart.matches(country, row['product'], row['retailer']):
+        return True
     if country == 'SEIB' and is_eci_appliance(row['product'], row['retailer']):
         return True
     if country == 'SEA' and str(row['retailer']).strip().casefold() == 'homedepot':

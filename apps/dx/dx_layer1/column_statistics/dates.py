@@ -7,6 +7,7 @@ from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START
 from apps.common.sem_retail import sem_start_date
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import retailer_start_date, get_seg_source
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 
 def date_column(source):
@@ -23,6 +24,8 @@ def day_sql(source, alias='source'):
 
 def active_from(source, retailer):
     country, product = source['country'], source['product']
+    if jiomart.matches(country, product, retailer):
+        return jiomart.START
     if dryer_config(country, product, retailer):
         return OPERATIONAL_FROM
     if country == 'SEUK':

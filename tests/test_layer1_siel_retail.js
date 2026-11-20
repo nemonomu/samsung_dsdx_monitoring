@@ -66,12 +66,24 @@ const categoryHtml = context.renderSielCategory({
         bsr_count: 100,
         actual: 309,
         status: 'OK',
+    }, {
+        retailer: 'Jiomart',
+        batch_id: 'j20261120_0534',
+        main_count: 194,
+        bsr_count: 100,
+        actual: 204,
+        status: 'OK',
+        collection_window: '테스트 조회',
+        preview_mode: true,
+        exclude_from_total: true,
     }],
 }, 0, 2);
 
 assert(categoryHtml.includes('<th>MAIN</th>'));
 assert(categoryHtml.includes('<th>BSR</th>'));
 assert(categoryHtml.includes('/ a_20260810_203042</span>'));
+assert(categoryHtml.includes('Jiomart'));
+assert(categoryHtml.includes('테스트 조회'));
 assert(categoryHtml.includes('<tr class="rt-sum"><td>합계</td><td>474</td><td>200</td><td>549</td>'));
 
 const checkHtml = context.renderSielRetailCheck({
@@ -89,7 +101,7 @@ assert(checkHtml.includes('/static/img/flags/in.svg'));
 assert(checkHtml.includes('<span>SIEL Retail</span>'));
 assert(commonSource.includes("'SIEL Retail': '/dx/layer1/'"));
 assert(/layer1-common\.js' %}\?v=\d+/.test(baseSource));
-assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=20260930-review1"));
+assert(dashboardSource.includes("{% static 'dx_layer1/js/siel_retail.js' %}?v=20261120-jiomart"));
 assert.strictEqual(context.L1.renderers.siel_retail, context.renderSielRetailCheck);
 
 const commonContext = {

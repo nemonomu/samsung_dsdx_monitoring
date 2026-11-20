@@ -22,6 +22,7 @@ from django.utils import timezone
 
 from apps.common.monitoring_cache import monitoring_cache_generation
 from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance, is_eci_appliance_preview
+from apps.dx.dx_layer1.siel_retail import jiomart
 from .sources import select_source
 from .repository import load_snapshots
 from .comparison import compare
@@ -82,11 +83,19 @@ def build(scope, generation):
     active_from = (ECI_APPLIANCE_START if scope['country'] == 'SEIB'
                    and is_eci_appliance(scope['product'], scope['retailer']) else None)
     preview = bool(active_from and is_eci_appliance_preview(scope['product'], scope['retailer'], day))
+    is_jiomart = jiomart.matches(scope['country'], scope['product'], scope['retailer'])
+    if is_jiomart:
+        active_from, preview = jiomart.START, jiomart.preview(day)
     today = timezone.localdate(timezone=tz(timedelta(hours=9)))
     results = {}
     for mode in ('all', 'samsung'):
         result = compare(raw['rows'], day, samsung=mode == 'samsung', today=today,
                          limit=100 if bsr else 300, active_from=active_from, preview=preview)
+        if is_jiomart and day >= jiomart.START:
+            ready_from = raw.get('source_date_ready_from')
+            for coverage in result['coverage']:
+                if coverage['state'] == 'empty' and (not ready_from or coverage['date'] < str(ready_from)):
+                    coverage['state'] = 'date_pending'
         result.update(scope, mode=mode, basis=raw['basis'], sku_from_master=raw['sku_from_master'],
                       updated_at=timezone.now().isoformat(), preview_mode=preview)
         reviews.prepare(result, scope)

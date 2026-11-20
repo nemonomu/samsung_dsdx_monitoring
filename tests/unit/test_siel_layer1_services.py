@@ -2,6 +2,7 @@ import unittest
 from datetime import date, datetime, time
 
 from tests.unit.support import load_module, module_stub, package_stub
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 
 SOURCE_CONFIG = {
@@ -76,6 +77,7 @@ class SielLayer1ServiceTests(unittest.TestCase):
             'apps.dx.dx_layer1.siel_retail.siel_retail_repositories': (
                 cls.repo_module
             ),
+            'apps.dx.dx_layer1.siel_retail.jiomart': jiomart,
         }
         cls.service = load_module(
             'apps/dx/dx_layer1/siel_retail/siel_retail_services.py',

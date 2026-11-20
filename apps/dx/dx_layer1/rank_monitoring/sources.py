@@ -3,6 +3,7 @@ from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.seib_retail import is_eci_appliance
 from apps.dx.dx_layer1.column_statistics.services import _sources
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK')
 PRODUCTS = ('TV', 'REF', 'LDY', 'LDY_DRYER')
@@ -34,6 +35,8 @@ def catalog(country):
         entry = {'product': product, 'retailers': retailers}
         if country == 'SEIB' and is_eci_appliance(product, 'ECI'):
             entry['bsr_retailers'] = ['ECI']
+        if jiomart.matches(country, product, jiomart.RETAILER) and jiomart.RETAILER in retailers:
+            entry['bsr_retailers'] = [jiomart.RETAILER]
         result.append(entry)
     return result
 

@@ -6,6 +6,18 @@ from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     get_siel_source,
 )
+def get_jiomart_counts(cursor, source, source_date, *, registered=False):
+    from . import jiomart
+
+    preview = jiomart.preview(source_date)
+    ctes, params = jiomart.scope_sql(source['table_name'], source_date, source_date,
+                                    include_preview=preview, registered=registered)
+    cursor.execute(f'''WITH {ctes}
+        SELECT COUNT(*) AS total, COUNT(source.main_rank) AS main_count,
+               COUNT(source.bsr_rank) AS bsr_count, MAX(source.batch_id) AS batch_id
+        {jiomart.LATEST_ROWS}''', params)
+    row = cursor.fetchone()
+    return tuple(row[key] for key in ('total', 'main_count', 'bsr_count', 'batch_id')) if isinstance(row, Mapping) else row
 
 
 def get_latest_main_batch_counts(cursor, product_line, source_date):

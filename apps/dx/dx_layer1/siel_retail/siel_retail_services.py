@@ -15,6 +15,7 @@ from apps.common.siel_retail import (
 )
 
 from . import siel_retail_repositories as repo
+from . import jiomart
 
 
 _STATUS_BY_COUNT = {
@@ -73,7 +74,7 @@ def _date_contract(target_date, source):
     )
 
 
-def _build_category(cursor, product_line, source, target_date, phase):
+def _build_category(cursor, product_line, source, target_date, phase, now, jiomart_registered):
     contract = _date_contract(target_date, source)
     rows = repo.get_latest_main_batch_counts(
         cursor, product_line, contract['source_date'],
@@ -107,17 +108,38 @@ def _build_category(cursor, product_line, source, target_date, phase):
         })
 
     expected_total = SIEL_EXPECTED_COUNT * len(retailers)
-    actual_total = sum(item['actual'] for item in retailers)
+    expected_scope_actual = sum(row['actual'] for row in retailers)
+    source_day = _as_date(contract['source_date'])
+    if jiomart.preview(source_day) or source_day >= jiomart.START:
+        test = jiomart.preview(source_day)
+        total, main, bsr, batch = repo.get_jiomart_counts(cursor, source, source_day, registered=jiomart_registered)
+        if not test or total:
+            receipt = jiomart.phase(source_day, now)
+            ready_from = None if test else jiomart.ready_from(cursor, source['table_name'], jiomart_registered)
+            date_ready = test or (ready_from is not None and source_day >= ready_from)
+            status = ('OK' if test else 'PENDING' if not date_ready or receipt == 'pending' else
+                      'COLLECTING' if receipt == 'collecting' else 'OK' if total else 'CRITICAL')
+            retailers.append(dict(retailer=jiomart.RETAILER, batch_id=batch or '', expected=None,
+                                  actual=total, count=total, raw_count=total, total=total,
+                                  main_count=main, bsr_count=bsr, status=status, preview_mode=test,
+                                  exclude_from_total=test or not date_ready, collection_phase=receipt if date_ready else 'pending',
+                                  collection_window=('테스트 조회' if test else jiomart.WINDOW if date_ready
+                                                     else '원본 수집일 확인 대기'),
+                                  copy_query=jiomart.copy_queries(source['table_name'], source_day)['rows'] if total else '',
+                                  active_from=str(jiomart.START), source_date_basis='db_original'))
+    operating = [r for r in retailers if not r.get('exclude_from_total')]
+    actual_total = sum(item['actual'] for item in operating)
     return {
         'name': source['category'],
         'category': source['category'],
         'product_line': product_line,
         'table_name': source['table_name'],
         'expected': expected_total,
+        'expected_scope_actual': expected_scope_actual,
         'actual': actual_total,
         'total': actual_total,
-        'rate': round(actual_total / expected_total * 100, 1),
-        'status': _worst_status([item['status'] for item in retailers]),
+        'rate': round(expected_scope_actual / expected_total * 100, 1),
+        'status': _worst_status([item['status'] for item in operating]),
         'retailers': retailers,
         'inspection_date': contract['inspection_date'],
         'source_date': contract['source_date'],
@@ -130,8 +152,9 @@ def get_layer1_stats(cursor, target_date, now=None):
     """Return the independent SIEL collection card for Layer 1."""
     current = now or _get_kst_now()
     phase = _collection_phase(target_date, current)
+    jiomart_registered = _as_date(target_date) >= jiomart.START and jiomart.registry_exists(cursor)
     categories = [
-        _build_category(cursor, product_line, source, target_date, phase)
+        _build_category(cursor, product_line, source, target_date, phase, current, jiomart_registered)
         for product_line, source in SIEL_SOURCE_CONFIG.items()
     ]
 
@@ -150,7 +173,7 @@ def get_layer1_stats(cursor, target_date, now=None):
                         '수집 건수 없음'
                         if retailer['actual'] == 0 else '수집 건수 부족'
                     ),
-                    'expected': f'>= {SIEL_OK_THRESHOLD}',
+                        'expected': None if retailer['retailer'] == jiomart.RETAILER else f'>= {SIEL_OK_THRESHOLD}',
                     'actual': retailer['actual'],
                     'timestamp': category['source_date'],
                 })
@@ -168,7 +191,7 @@ def get_layer1_stats(cursor, target_date, now=None):
         'expected': expected_total,
         'actual': actual_total,
         'total': actual_total,
-        'rate': round(actual_total / expected_total * 100, 1),
+        'rate': round(sum(c['expected_scope_actual'] for c in categories) / expected_total * 100, 1),
         'categories': categories,
         'inspection_date': categories[0]['inspection_date'],
         'source_date': categories[0]['source_date'],
