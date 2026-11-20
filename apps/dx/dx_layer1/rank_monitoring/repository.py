@@ -2,7 +2,8 @@
 from datetime import timedelta
 
 from apps.common.db import dx_connection
-from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
+from apps.common.seib_retail import (ECI_APPLIANCE_PREVIEW_FROM, ECI_APPLIANCE_START,
+                                    is_eci_appliance, is_eci_appliance_preview)
 from apps.common.sem_retail import sem_batch_order
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer4.collection_status.email_services import _retailer_condition, _retailer_params
@@ -59,8 +60,12 @@ def query_spec(source, retailer, columns, day, rank_type='main'):
     """
     start, end = day - timedelta(days=1), day + timedelta(days=1)
     if eci:
-        start = max(start, ECI_APPLIANCE_START)
-        if day < ECI_APPLIANCE_START:
+        if is_eci_appliance_preview(source['product'], retailer['name'], day):
+            start = max(start, ECI_APPLIANCE_PREVIEW_FROM)
+            end = min(end, ECI_APPLIANCE_START - timedelta(days=1))
+        else:
+            start = max(start, ECI_APPLIANCE_START)
+        if day < ECI_APPLIANCE_PREVIEW_FROM:
             end = day
     params = _retailer_params(retailer) + [str(start), str(end)]
     return sql, params, '날짜별 최신 MAIN 배치' if main_page else '날짜별 최신 배치'

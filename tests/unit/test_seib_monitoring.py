@@ -14,6 +14,7 @@ from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, 
 from apps.dx.dx_layer1.common import retail_batches
 from apps.dx.dx_layer1.collection_issues import queries
 from apps.dx.dx_layer1.rank_monitoring import repository as ranks
+from apps.dx.dx_layer1.rank_monitoring.comparison import compare as compare_ranks
 from apps.dx.dx_layer1.management.commands.setup_seib import register
 from apps.dx.dx_layer2 import seib_null_validation as nulls
 
@@ -27,8 +28,11 @@ class SeibMonitoringTests(unittest.TestCase):
             start = policy.ECI_APPLIANCE_START
             self.assertNotIn('ECI', policy.active_retailers(source, '2026-11-21'))
             self.assertIn('ECI', policy.active_retailers(source, start))
+            self.assertIn('ECI', policy.active_retailers(source, '2026-11-20', include_preview=True))
             _, _, params = policy.latest_scope(source, '2026-11-20', start, 'ECI')
             self.assertEqual(['2026-11-22', '2026-11-22', 'eci', 'eci'], params)
+            _, _, params = policy.latest_scope(source, '2026-11-20', '2026-11-20', 'ECI', include_preview=True)
+            self.assertEqual(['2026-11-20', '2026-11-20', 'eci', 'eci'], params)
             self.assertEqual({}, queries.raw_counts('SEIB', product, 'ECI', date(2026, 11, 20), date(2026, 11, 21)))
             self.assertFalse(collection_complete('SEIB', product, 'ECI', start, datetime(2026, 11, 22, 23, 59, tzinfo=policy.KST)))
             self.assertTrue(collection_complete('SEIB', product, 'ECI', start, datetime(2026, 11, 23, tzinfo=policy.KST)))
@@ -39,6 +43,43 @@ class SeibMonitoringTests(unittest.TestCase):
             self.assertIn('source.bsr_rank AS product_rank', sql)
             self.assertIn('NULLIF(BTRIM(CAST(source.product_rank AS TEXT))', sql)
             self.assertEqual(['2026-11-22', '2026-11-23'], params[-2:])
+            sql, params, _ = ranks.query_spec(rank_source, retailer, rank_columns, date(2026, 11, 21), 'bsr')
+            self.assertEqual(['2026-11-20', '2026-11-21'], params[-2:])
+
+    def test_eci_preview_receipt_is_visible_but_deletion_does_not_change_status_or_totals(self):
+        day = date(2026, 11, 20)
+        now = datetime(2026, 11, 21, tzinfo=policy.KST)
+        media = (300, 300, 100, 'm1')
+        dryer = (60, 60, 50, 'e_dryer')
+        checks = []
+        for test_batch in ((303, 300, 100, 'e1'), (0, 0, 0, None)):
+            cursor = Mock()
+            cursor.fetchone.side_effect = [media, media, test_batch, media, test_batch, media, dryer]
+            result = get_layer1_stats(cursor, day, now)
+            self.assertEqual([], result['failed_items'])
+            checks.append(result['check'])
+        before, after = checks
+        self.assertEqual((before['actual'], before['status']), (after['actual'], after['status']))
+        self.assertEqual(303, before['categories'][1]['retailers'][1]['actual'])
+        self.assertEqual(['MediaMarkt'], [r['retailer'] for r in after['categories'][1]['retailers']])
+        rows = calc.normalize_check(before, 'SEIB', day)
+        row = next(r for r in rows if r['product'] == 'REF' and r['retailer'] == 'ECI')
+        self.assertTrue(row['preview_mode'])
+        self.assertFalse(calc.observation_eligible(row))
+
+    def test_eci_rank_preview_preserves_original_samsung_rank_without_signals(self):
+        day = date(2026, 11, 20)
+        rows = [{'date': str(day), 'id': 1, 'item': 'A123', 'sku': 'RF123',
+                 'name': 'Samsung REF', 'url': '', 'rank': 25, 'batch_id': 'eci20'}]
+        for samsung in (False, True):
+            view = compare_ranks(rows, day, samsung=samsung, limit=100,
+                                 active_from=policy.ECI_APPLIANCE_START, preview=True)
+            self.assertEqual('preview', view['coverage'][1]['state'])
+            self.assertEqual(25, view['products'][0]['cells'][1]['rank'])
+            self.assertEqual(0, view['counts']['review'])
+        deleted = compare_ranks([], day, active_from=policy.ECI_APPLIANCE_START, preview=True)
+        self.assertEqual([], deleted['products'])
+        self.assertEqual(0, deleted['counts']['missing'])
 
     def test_eci_column_comparison_starts_after_five_completed_operating_days(self):
         daily = [{'date': f'2026-11-{d}', 'total': 100 if d != 24 else 0,
@@ -46,6 +87,8 @@ class SeibMonitoringTests(unittest.TestCase):
         data = {'country': 'SEIB', 'product': 'REF', 'retailer': 'ECI', 'active_from': '2026-11-22',
                 'columns': ['sku'], 'daily': daily}
         completed = {day['date']: True for day in daily}
+        preview = compare_columns(data, date(2026, 11, 20), completed)[0]
+        self.assertEqual(('preview', 100, None), (preview['status'], preview['current'], preview['baseline']))
         self.assertEqual('insufficient', compare_columns(data, date(2026, 11, 27), completed)[0]['status'])
         comparison = compare_columns(data, date(2026, 11, 28), completed)[0]
         self.assertEqual((5, 100, 'abnormal'), (comparison['history_days'], comparison['baseline'], comparison['status']))

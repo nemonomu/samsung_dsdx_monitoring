@@ -122,8 +122,11 @@
             if (data.cache_state.state === 'refreshing') warnings.push('이전 완료 결과를 표시 중이며 새 결과를 준비하고 있습니다. 갱신 결과는 조회 버튼으로 확인하세요.');
             if (data.cache_state.state === 'refresh_failed') warnings.push('갱신에 실패하여 이전 완료 결과를 표시합니다. 조회 시각을 확인해주세요.');
             if (data.cache_state.state === 'pinned' && data.cache_state.age_seconds >= 60) warnings.push('목록·상세는 같은 조회 시점의 결과입니다. 최신 결과는 조회 버튼으로 확인하세요.');
-            if (!data.coverage[0].available || !data.coverage[1].available) warnings.push('D-1 또는 D의 비교 가능한 데이터가 없어 유지율 판단을 보류합니다.');
-            if (!data.counts.all) warnings.push(config.mode === 'samsung' ? '조회 범위에 상품명으로 식별된 삼성 상품이 없습니다.' : '조회 범위에 비교할 상품이 없습니다.');
+            if (data.preview_mode) warnings.push(data.coverage.some(d => d.state === 'preview')
+                ? '테스트 적재 데이터입니다. 운영 순위 이상과 유지율을 집계하지 않습니다.'
+                : '이 기간에 남아 있는 테스트 적재 데이터가 없습니다.');
+            if (!data.preview_mode && (!data.coverage[0].available || !data.coverage[1].available)) warnings.push('D-1 또는 D의 비교 가능한 데이터가 없어 유지율 판단을 보류합니다.');
+            if (!data.preview_mode && !data.counts.all) warnings.push(config.mode === 'samsung' ? '조회 범위에 상품명으로 식별된 삼성 상품이 없습니다.' : '조회 범위에 비교할 상품이 없습니다.');
             message(warnings.join(' ')); renderSummary(); renderTable();
         } catch (error) {
             if (seq !== requestNumber || error.name === 'AbortError') return;
@@ -180,10 +183,12 @@
         }
     }
     function renderSummary() {
+        el('retention').hidden = Boolean(result.preview_mode);
+        el('sort').options[0].textContent = result.preview_mode ? '기준일 순위순' : '전일 순위순';
         el('basis').textContent = `${result.country} / ${result.product} / ${result.retailer} · ${result.basis} · 조회 ${new Date(result.updated_at).toLocaleString('ko-KR')}` +
             (config.mode === 'samsung' ? ' · 삼성 판별: 상품명에 Samsung 또는 삼성이 명시된 상품. 전체 리테일러 순위 유지.' : '') +
             (result.sku_from_master ? ' · SKU: 현재 아이템 마스터 값(수집 당시 값과 다를 수 있음).' : '');
-        el('coverage').innerHTML = result.coverage.map((day,i) => `<div class="rm-day ${i === 1 ? 'current' : ''}"><strong>${['어제 D-1','기준일 D','다음 날 D+1'][i]} · ${esc(day.date)}</strong><p class="${day.available ? '' : 'rm-warning'}">${day.available ? `비교 가능한 상품 ${day.ranked_count}개 / 원본 ${day.raw_count}행` : day.state === 'not_scheduled' ? '운영 시작 전' : day.state === 'pending' ? '수집 대기 · 미발견 집계 안 함' : day.state === 'invalid' ? '유효 순위 없음 · 비교 보류' : '당일 데이터 없음 · 개별 상품 누락 판단 보류'}</p><p>배치: ${esc(day.batch_id ?? '없음')}</p></div>`).join('');
+        el('coverage').innerHTML = result.coverage.map((day,i) => `<div class="rm-day ${i === 1 ? 'current' : ''}"><strong>${['어제 D-1','기준일 D','다음 날 D+1'][i]} · ${esc(day.date)}</strong><p class="${day.available ? '' : 'rm-warning'}">${day.state === 'preview' ? '테스트 적재 · 순위 ' + day.ranked_count + '개' : day.available ? `비교 가능한 상품 ${day.ranked_count}개 / 원본 ${day.raw_count}행` : day.state === 'not_scheduled' ? '운영 시작 전' : day.state === 'pending' ? '수집 대기 · 미발견 집계 안 함' : day.state === 'invalid' ? '유효 순위 없음 · 비교 보류' : '당일 데이터 없음 · 개별 상품 누락 판단 보류'}</p><p>배치: ${esc(day.batch_id ?? '없음')}</p></div>`).join('');
         el('bands').innerHTML = result.bands.map(b => `<tr><td><span class="rm-tier tier${b.tier}">${['상위','중위','하위'][b.tier]}</span> ${b.tier*100+1}–${(b.tier+1)*100}위</td><td>${b.count}개</td><td>${b.kept}개</td><td>${b.moved}개</td><td>${b.missing}개</td><td>${b.unknown}개</td><td><b>${b.rate == null ? '—' : b.rate+'%'}</b> / ${b.target}% 이상</td><td>${badge(b.rate == null ? 'unassessed' : b.below_target ? 'swing' : 'kept',b.rate == null ? '판단 보류' : b.below_target ? '기준 미달 · 확인 필요' : '예시 기준 충족')}</td></tr>`).join('');
         const top = result.bands[0];
         const bsr = result.rank_type === 'bsr';
@@ -193,7 +198,7 @@
             ? 'BSR 100위 내 미발견 ' + top.missing + '개 · 판단 보류 ' + top.unknown + '개.'
             : `상위 100위 상품: 101–300위로 이동 ${top.moved}개 · 300위 내 미발견 ${top.missing}개 · 판단 보류 ${top.unknown}개. 미발견은 상품 링크에서 품절·판매 종료 여부를 확인하세요.`;
         el('all-count').textContent = result.counts.all; el('review-count').textContent = result.counts.review;
-        el('table-head').innerHTML = `<tr class="rm-group"><th colspan="4">상품 정보</th><th colspan="3">수집일별 ${bsr ? 'BSR' : 'MAIN'} 순위</th><th colspan="2">점검 / 확인</th></tr><tr><th>전일 구간</th><th>상품명<span>retailer_sku_name</span></th><th>ITEM<span>item</span></th><th>SKU<span>sku</span></th>${result.dates.map((d,i)=>`<th class="rm-center ${i===1?'rm-today':''}">${['어제','기준일','다음 날'][i]}<span>${esc(d)}</span></th>`).join('')}<th>점검 신호 / 확인할 내용</th><th>확인 기록 / 상세</th></tr>`;
+        el('table-head').innerHTML = `<tr class="rm-group"><th colspan="4">상품 정보</th><th colspan="3">수집일별 ${bsr ? 'BSR' : 'MAIN'} 순위</th><th colspan="2">점검 / 확인</th></tr><tr><th>${result.preview_mode ? '기준일 구간' : '전일 구간'}</th><th>상품명<span>retailer_sku_name</span></th><th>ITEM<span>item</span></th><th>SKU<span>sku</span></th>${result.dates.map((d,i)=>`<th class="rm-center ${i===1?'rm-today':''}">${['어제','기준일','다음 날'][i]}<span>${esc(d)}</span></th>`).join('')}<th>점검 신호 / 확인할 내용</th><th>확인 기록 / 상세</th></tr>`;
     }
     function renderTable() {
         if (!result) return;
@@ -204,7 +209,7 @@
         renderProgress();
     }
     function rowsHtml(products) {
-        return products.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status].replaceAll('300위', result.criteria.limit + '위')}</div></td><td><div class="rm-record ${reviewed(p.review)?'rm-reviewed':''}">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
+        return products.map(p => {const cell = p.cells[result.preview_mode ? 1 : 0];const band = cell.state === 'ranked' ? tier(cell.rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status].replaceAll('300위', result.criteria.limit + '위')}</div></td><td><div class="rm-record ${reviewed(p.review)?'rm-reviewed':''}">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
     }
     async function detail(key) {
         const seq = ++detailNumber, basis = result;
@@ -225,7 +230,7 @@
         }
         const url = safeUrl(selected.url);
         el('detail').innerHTML = `<h4>${esc(selected.name || '상품명 없음')}</h4>${badge(selected.status,selected.label)}<dl><dt>ITEM</dt><dd>${esc(selected.item || '—')}</dd><dt>SKU</dt><dd>${esc(selected.sku || '—')}</dd></dl><p>${url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">상품 페이지 열기 ↗</a>`:'유효한 상품 URL이 없습니다.'}</p><div class="rm-detail-days">${selected.cells.map((c,i)=>`<div><b>${esc(result.dates[i])}</b>${rankCell(selected,i)}<p>배치: ${esc(c.batch_id ?? '—')}</p><p>원본 수집 시각: ${esc(c.collected_at || '—')}</p><p>원본 ID: ${esc(c.record_ids.join(', ') || '—')}</p></div>`).join('')}</div><p class="rm-muted">${reasons[selected.status]} 확인 기록은 현재 비교 근거에 저장되며 배치·순위가 바뀌면 다시 확인합니다.</p>`;
-        el('review-form').hidden = false;
+        el('review-form').hidden = Boolean(result.preview_mode);
         reviewEditor.open(selected.review, selected.review_storage_available);
         el('review-message').textContent = selected.review_storage_available ? '' : selected.review_storage_message;
         el('review-message').classList.remove('success');

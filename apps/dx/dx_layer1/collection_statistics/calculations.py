@@ -38,7 +38,7 @@ def normalize_check(check, country, inspection_date):
                 eci_appliance = country == 'SEIB' and is_eci_appliance(product, name)
                 if country in SOURCE_START_DATES and source_day < SOURCE_START_DATES[country]:
                     continue
-                if eci_appliance and source_day < ECI_APPLIANCE_START:
+                if eci_appliance and source_day < ECI_APPLIANCE_START and not retailer.get('preview_mode'):
                     continue
                 if country == 'SEM' and product == 'LDY_DRYER' and source_day < sem_start_date('sem_ldy_dryer', name):
                     continue
@@ -87,6 +87,9 @@ def normalize_check(check, country, inspection_date):
                     rows[-1]['source_date_basis'] = 'db_original'
                 if eci_appliance:
                     rows[-1]['active_from'] = str(ECI_APPLIANCE_START)
+                    if retailer.get('preview_mode'):
+                        rows[-1].update(preview_mode=True, complete=False, baseline_eligible=False,
+                                        verification_state='pending')
                 if seg_mediamarkt_dryer:
                     rows[-1]['source_date_basis'] = 'db_original'
                 if dryer_config(country, product, name):

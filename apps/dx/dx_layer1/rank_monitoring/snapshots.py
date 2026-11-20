@@ -21,6 +21,7 @@ from django.core.files import locks
 from django.utils import timezone
 
 from apps.common.monitoring_cache import monitoring_cache_generation
+from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance, is_eci_appliance_preview
 from .sources import select_source
 from .repository import load_snapshots
 from .comparison import compare
@@ -32,7 +33,7 @@ STALE_SECONDS = 300
 SNAPSHOT_SECONDS = 1200
 RETRY_SECONDS = 20
 SALT = 'retail-rank-snapshot-v2'
-VERSION = 'v2'
+VERSION = 'v3'
 
 
 class SnapshotExpired(ValueError):
@@ -73,8 +74,6 @@ def pinned(value):
 
 
 def build(scope, generation):
-    from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
-
     source, account = select_source(scope['country'], scope['product'], scope['retailer'])
     day = date.fromisoformat(scope['date'])
     started = time.time()
@@ -82,13 +81,14 @@ def build(scope, generation):
     raw = load_snapshots(source, account, day, 'bsr') if bsr else load_snapshots(source, account, day)
     active_from = (ECI_APPLIANCE_START if scope['country'] == 'SEIB'
                    and is_eci_appliance(scope['product'], scope['retailer']) else None)
+    preview = bool(active_from and is_eci_appliance_preview(scope['product'], scope['retailer'], day))
     today = timezone.localdate(timezone=tz(timedelta(hours=9)))
     results = {}
     for mode in ('all', 'samsung'):
         result = compare(raw['rows'], day, samsung=mode == 'samsung', today=today,
-                         limit=100 if bsr else 300, active_from=active_from)
+                         limit=100 if bsr else 300, active_from=active_from, preview=preview)
         result.update(scope, mode=mode, basis=raw['basis'], sku_from_master=raw['sku_from_master'],
-                      updated_at=timezone.now().isoformat())
+                      updated_at=timezone.now().isoformat(), preview_mode=preview)
         reviews.prepare(result, scope)
         results[mode] = result
     return {'id': uuid.uuid4().hex, 'scope': scope, 'generation': generation,

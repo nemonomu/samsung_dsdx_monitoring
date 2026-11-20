@@ -3,7 +3,8 @@ from datetime import date, datetime, timedelta, timezone
 from importlib import import_module
 from statistics import median
 from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
-from apps.common.seib_retail import ECI_APPLIANCE_START, ECI_OBSERVATION_DAYS, is_eci_appliance
+from apps.common.seib_retail import (ECI_APPLIANCE_START, ECI_OBSERVATION_DAYS,
+                                    is_eci_appliance, is_eci_appliance_preview)
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 
 KST = timezone(timedelta(hours=9))
@@ -87,7 +88,9 @@ def compare_columns(data, target, completed):
         count = current['counts'][column]
         ratio = count / baseline * 100 if baseline is not None and baseline > 0 else None
         delta = count - baseline if baseline is not None else None
-        if data.get('active_from') and str(target) < data['active_from']:
+        if eci_appliance and current['total'] and is_eci_appliance_preview(data['product'], data['retailer'], target):
+            status = 'preview'
+        elif data.get('active_from') and str(target) < data['active_from']:
             status = 'not_scheduled'
         elif not completed.get(str(target), False):
             status = 'pending'

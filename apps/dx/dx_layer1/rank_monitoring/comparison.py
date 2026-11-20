@@ -46,15 +46,16 @@ def snapshot(rows, limit=LIMIT):
     return result
 
 
-def compare(raw, day, *, samsung=False, today=None, limit=LIMIT, active_from=None):
+def compare(raw, day, *, samsung=False, today=None, limit=LIMIT, active_from=None, preview=False):
     dates = [str(day + timedelta(days=i)) for i in (-1, 0, 1)]
     by_day = {d: snapshot([r for r in raw if r['date'] == d], limit) for d in dates}
     coverage = []
     for d in dates:
         rows = by_day[d]
         available = any(r['state'] in ('ranked', 'outside') for r in rows.values())
-        coverage.append({'date': d, 'available': available,
-                         'state': 'available' if available else 'invalid' if rows else
+        coverage.append({'date': d, 'available': available and not preview,
+                         'state': 'preview' if preview and rows else
+                                  'available' if available else 'invalid' if rows else
                                   'not_scheduled' if active_from and d < str(active_from) else
                                   'pending' if today and d > str(today) else 'empty',
                          'raw_count': sum(r['duplicates'] for r in rows.values()),
@@ -85,6 +86,8 @@ def compare(raw, day, *, samsung=False, today=None, limit=LIMIT, active_from=Non
         # A return from rank 301+ is observed movement, not a collection gap.
         returned = returned and b['state'] == 'absent'
         swing = bool(swings and max(swings) >= SWING)
+        if preview:
+            returned = missing = next_missing = swing = data_issue = False
         status = ('data' if data_issue else 'return' if returned else 'missing' if missing else
                   'next_missing' if next_missing else
                   'swing' if swing else 'unassessed' if not coverage[0]['available'] or not coverage[1]['available'] else
@@ -93,7 +96,7 @@ def compare(raw, day, *, samsung=False, today=None, limit=LIMIT, active_from=Non
         products.append({'key': key, 'item': text(latest['item']), 'sku': text(latest['sku']),
                          'name': text(latest['name']), 'url': text(latest['url']),
                          'samsung': bool(is_samsung), 'cells': cells, 'status': status,
-                         'label': LABELS[status].replace('300위', f'{limit}위'),
+                         'label': '테스트 조회' if preview else LABELS[status].replace('300위', f'{limit}위'),
                          'review_needed': status in ('data', 'return', 'missing', 'next_missing', 'swing'),
                          'signals': {'return': returned, 'missing': missing, 'next_missing': next_missing, 'swing': swing, 'data': data_issue}})
     products.sort(key=lambda p: (p['cells'][0]['rank'] or 10**9, p['item'], p['key']))

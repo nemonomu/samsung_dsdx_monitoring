@@ -18,7 +18,7 @@
     <div id="rm-results" hidden>
         <div id="rm-basis" class="rm-basis"></div>
         <div id="rm-coverage" class="rm-coverage"></div>
-        <section class="rm-card">
+        <section id="rm-retention" class="rm-card">
             <div class="rm-card-head"><h3>구간별 상품 유지율</h3><span class="rm-muted">D-1 상품이 D에도 같은 구간에 남은 비율</span></div>
             <div class="rm-scroll" tabindex="0" role="region" aria-label="구간별 순위 요약">
                 <table class="rm-table rm-summary"><thead><tr><th>전일 구간</th><th>전일 상품</th><th>동일 구간 유지</th><th>다른 구간 이동</th><th id="rm-missing-label">300위 내 미발견</th><th>판단 보류</th><th>유지율 / 예시 기준</th><th>판단</th></tr></thead><tbody id="rm-bands"></tbody></table>
@@ -84,4 +84,4 @@
 </section>
 {{ rank_config|json_script:'rm-config' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-review.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=5"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-review.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=6"></script>{% endblock %}

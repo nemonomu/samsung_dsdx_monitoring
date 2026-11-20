@@ -9,6 +9,7 @@ SEIB_COUNTRY = 'SEIB'
 FIRST_SOURCE_DATE = date(2026, 10, 18)
 RETAILER = 'MediaMarkt'
 ECI_APPLIANCE_START = date(2026, 11, 22)
+ECI_APPLIANCE_PREVIEW_FROM = date(2026, 11, 20)
 ECI_APPLIANCE_PRODUCTS = ('seib_ref', 'seib_ldy')
 ECI_OBSERVATION_DAYS = 5
 COMMON_REQUIRED = (
@@ -58,9 +59,10 @@ def retailer_start_date(source, retailer):
     return onboarding['preview_from'] if onboarding else FIRST_SOURCE_DATE
 
 
-def active_retailers(source, day):
+def active_retailers(source, day, *, include_preview=False):
     return tuple(name for name in source['retailers']
-                 if source_date_value(day) >= str(retailer_start_date(source, name)))
+                 if source_date_value(day) >= str(retailer_start_date(source, name))
+                 or (include_preview and is_eci_appliance_preview(source['source_key'], name, day)))
 
 
 def product_line_for(value):
@@ -97,6 +99,11 @@ def is_eci_appliance(product, retailer):
     return 'seib_' + key in ECI_APPLIANCE_PRODUCTS and seib_retailer_key(retailer) == 'eci'
 
 
+def is_eci_appliance_preview(product, retailer, day):
+    return (is_eci_appliance(product, retailer)
+            and str(ECI_APPLIANCE_PREVIEW_FROM) <= source_date_value(day) < str(ECI_APPLIANCE_START))
+
+
 def collection_window(source, retailer):
     if is_eci_appliance(source['source_key'], retailer):
         # There is no agreed same-day cutoff for REF/LDY. Close at the next KST day.
@@ -128,7 +135,7 @@ def collection_phase(day, now=None, *, source=None, retailer=RETAILER):
     return 'pending' if current.time().replace(tzinfo=None) < start else 'collecting'
 
 
-def latest_scope(source, start, end, retailer=RETAILER):
+def latest_scope(source, start, end, retailer=RETAILER, *, include_preview=False):
     """One latest batch per original source day; never infer a day from batch_id."""
     if retailer is None:
         day = source_date_sql('anchor.crawl_datetime')
@@ -152,6 +159,9 @@ def latest_scope(source, start, end, retailer=RETAILER):
             WHERE TRUE"""
         return cte, scope, params
     retailer = normalize_retailer(source, retailer)
+    first = retailer_start_date(source, retailer)
+    if include_preview and is_eci_appliance(source['source_key'], retailer):
+        first = ECI_APPLIANCE_PREVIEW_FROM
     day = source_date_sql('anchor.crawl_datetime')
     source_day = source_date_sql('source.crawl_datetime')
     cte = f"""WITH latest AS (
@@ -165,4 +175,4 @@ def latest_scope(source, start, end, retailer=RETAILER):
         JOIN latest ON {source_day} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
         WHERE LOWER(BTRIM(source.account_name)) = %s"""
-    return cte, scope, [max(str(start), str(retailer_start_date(source, retailer))), str(end), retailer.lower(), retailer.lower()]
+    return cte, scope, [max(str(start), str(first)), str(end), retailer.lower(), retailer.lower()]

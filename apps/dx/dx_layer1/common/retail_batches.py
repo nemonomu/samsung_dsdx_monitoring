@@ -134,8 +134,8 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
     if not key or len(key) > 200:
         raise ValueError('Invalid retailer')
     if check_type == 'seib_retail':
-        from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
-        if is_eci_appliance(product_line, retailer) and str(source_date) < str(ECI_APPLIANCE_START):
+        from apps.common.seib_retail import ECI_APPLIANCE_PREVIEW_FROM, is_eci_appliance
+        if is_eci_appliance(product_line, retailer) and str(source_date) < str(ECI_APPLIANCE_PREVIEW_FROM):
             return {'retailer': retailer, 'source_date': str(source_date), 'batches': [],
                     'time_basis': '원본 기록 시각', 'aggregation_basis': '운영 시작 전'}
     column = source.get('date_column', 'crawl_datetime')

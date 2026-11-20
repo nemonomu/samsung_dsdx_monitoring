@@ -95,6 +95,7 @@
                 retailers = retailers.concat(slot.retailers || []);
             });
             retailers.forEach(function(retailer) {
+                if (retailer.exclude_from_total) return;
                 var name = String(retailer.retailer || '').trim();
                 var missing = isMissing(retailer);
                 var multiple = batchCount(retailer) >= 2;

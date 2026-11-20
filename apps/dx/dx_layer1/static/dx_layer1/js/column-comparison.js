@@ -1,6 +1,6 @@
 (function () {
     'use strict';
-    const labels = {abnormal: '이상', review: '확인 필요', normal: '정상', pending: '수집 중', uncollected: '전체 미수집', insufficient: '비교 이력 부족', no_baseline: '기준값 0 · 비교 불가', not_scheduled: '수집 시작 전', unverified_start: '수집 시작 미확인 · 판정 유보', no_scoped_rows: '판정 범위 데이터 없음'};
+    const labels = {abnormal: '이상', review: '확인 필요', normal: '정상', pending: '수집 중', uncollected: '전체 미수집', insufficient: '비교 이력 부족', no_baseline: '기준값 0 · 비교 불가', not_scheduled: '수집 시작 전', preview: '테스트 조회', unverified_start: '수집 시작 미확인 · 판정 유보', no_scoped_rows: '판정 범위 데이터 없음'};
     const esc = value => String(value).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     const number = value => value == null ? '—' : Number(value).toLocaleString('ko-KR', {maximumFractionDigits: 1});
     const comparable = row => ['abnormal', 'review', 'normal'].includes(row.status);

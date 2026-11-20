@@ -30,6 +30,7 @@ function renderTseRetailerRow(retailer) {
 
 function renderTseTotalRow(retailers) {
     var totals = retailers.reduce(function(result, retailer) {
+        if (retailer.exclude_from_total) return result;
         result.main += tseNumber(retailer.main_count);
         result.bsr += tseNumber(retailer.bsr_count);
         result.actual += tseNumber(

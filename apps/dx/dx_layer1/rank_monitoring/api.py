@@ -98,11 +98,11 @@ def data(request):
             response['Retry-After'] = '20' if failed else '1'
             return response
         result = snapshot['results'][mode]
-        products = listing.filtered(result['products'], request.GET)
+        products = listing.filtered(result['products'], request.GET, preview=result.get('preview_mode', False))
         pages = max(1, math.ceil(len(products) / 20))
         page_number = min(page_number, pages)
         visible = products[(page_number - 1) * 20:page_number * 20]
-        index, storage = review_index(visible)
+        index, storage = review_index([] if result.get('preview_mode') else visible)
         payload = {k: v for k, v in result.items() if k != 'products'}
         payload.update(storage, products=[listing.lightweight(p, index) for p in visible],
                        snapshot=snapshots.token(snapshot), cache_state=state,
@@ -126,6 +126,11 @@ def detail(request):
         product = next((p for p in snapshot['results'][mode]['products'] if p['key'] == request.GET.get('key')), None)
         if product is None:
             return JsonResponse({'error': '상품을 찾을 수 없습니다.'}, status=404)
+        if snapshot['results'][mode].get('preview_mode'):
+            value = {k: v for k, v in product.items() if k != 'fingerprint'}
+            value.update(review_storage_available=False, review_storage_message='테스트 조회는 확인 기록을 저장하지 않습니다.',
+                         review={'result': '미확인', 'memo': '', 'revision': 0, 'history': [], 'photos': []})
+            return private(JsonResponse(value))
         try:
             value = reviews.detail(product, snapshot['scope'], request.GET['snapshot'])
             value['review_storage_available'] = True
@@ -157,8 +162,8 @@ def export(request):
     try:
         snapshot, mode = requested_snapshot(request)
         result = snapshot['results'][mode]
-        products = listing.filtered(result['products'], request.GET)
-        index, storage = review_index(products)
+        products = listing.filtered(result['products'], request.GET, preview=result.get('preview_mode', False))
+        index, storage = review_index([] if result.get('preview_mode') else products)
         # A failed review read must not be exported as a real unreviewed result.
         if not storage['review_storage_available']:
             return JsonResponse({'error': storage['review_storage_message']}, status=503)
@@ -196,6 +201,8 @@ def save_review(request):
         payload = signing.loads(body['token'], salt=reviews.SALT, max_age=snapshots.SNAPSHOT_SECONDS)
         context = payload['context']
         snapshot = snapshots.pinned(payload['snapshot'])
+        if snapshot['results']['all'].get('preview_mode'):
+            return JsonResponse({'error': '테스트 조회는 확인 기록을 저장하지 않습니다.'}, status=403)
         product = next((p for p in snapshot['results']['all']['products'] if p['key'] == context['item_key']), None)
         if (not product or reviews.context_for(product, snapshot['scope']) != context):
             raise ValueError

@@ -3,6 +3,7 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.dryer_onboarding import decorate_row
 from apps.common.seib_retail import (
     SEIB_SOURCE_CONFIG, collection_phase, collection_window, latest_scope, active_retailers,
+    is_eci_appliance_preview,
 )
 
 _PRIORITY = {'OK': 0, 'PENDING': 1, 'COLLECTING': 2, 'CRITICAL': 3}
@@ -19,11 +20,15 @@ def get_layer1_stats(cursor, target_date, now=None):
     for key, source in SEIB_SOURCE_CONFIG.items():
         mapping = resolve_monitoring_date(target_date, 'SEIB', key)
         retailers = []
-        for name in active_retailers(source, mapping['source_date']):
+        for name in active_retailers(source, mapping['source_date'], include_preview=True):
+            preview = is_eci_appliance_preview(key, name, mapping['source_date'])
             row_phase = collection_phase(target_date, now, source=source, retailer=name)
-            cte, scope, params = latest_scope(source, mapping['source_date'], mapping['source_date'], name)
+            cte, scope, params = latest_scope(source, mapping['source_date'], mapping['source_date'],
+                                              name, include_preview=preview)
             cursor.execute(f'{cte} SELECT COUNT(*), COUNT(source.main_rank), COUNT(source.bsr_rank), MAX(source.batch_id) {scope}', params)
             total, main, bsr, batch = cursor.fetchone()
+            if preview and not total:
+                continue
             status = ('PENDING' if row_phase == 'pending' else 'COLLECTING' if row_phase == 'collecting'
                       else 'OK' if total else 'CRITICAL')
             row = decorate_row(dict(retailer=name, actual=total, count=total, raw_count=total,
@@ -34,17 +39,21 @@ def get_layer1_stats(cursor, target_date, now=None):
                 window = collection_window(source, name)
                 row['collection_window'] = (f'KST {window[0]:%H:%M}~{window[1]:%H:%M}' if window
                                             else 'KST 다음 날 00:00 마감')
+            if preview:
+                row.update(preview_mode=True, exclude_from_total=True, status='OK',
+                           collection_window='테스트 적재 · 운영 집계 제외')
             retailers.append(row)
             if row['status'] == 'CRITICAL':
                 failed.append(dict(source=source['display_name'] + f' ({name})',
                                    error_type='수집 데이터 없음', expected=None, actual=0,
                                    timestamp=mapping['source_date']))
-        total = sum(r['raw_count'] for r in retailers)
+        operating = [r for r in retailers if not r.get('exclude_from_total')]
+        total = sum(r['raw_count'] for r in operating)
         categories.append(dict(name=source['category'], category=source['category'], product_line=key,
                                table_name=source['table_name'], actual=total, total=total,
-                               main_count=sum(r['main_count'] for r in retailers),
-                               bsr_count=sum(r['bsr_count'] for r in retailers), expected=None,
-                               status=_status(retailers, fallback), retailers=retailers, **mapping))
+                               main_count=sum(r['main_count'] for r in operating),
+                               bsr_count=sum(r['bsr_count'] for r in operating), expected=None,
+                               status=_status(operating, fallback), retailers=retailers, **mapping))
     return {'check': dict(name='SEIB Retail', description='스페인 Retail TV/REF/LDY/LDY_DRYER 당일 수집',
                           check_type='seib_retail', country='SEIB', status=_status(categories, fallback), phase=phase,
                           collection_window='KST 01:00~04:00 (MediaMarkt)', expected=None,

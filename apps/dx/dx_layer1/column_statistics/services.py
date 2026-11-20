@@ -4,7 +4,7 @@ from datetime import timedelta
 from apps.common.db import dx_connection
 from apps.common.dryer_onboarding import config as dryer_config
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
-from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.seib_retail import ECI_APPLIANCE_PREVIEW_FROM, SEIB_SOURCE_CONFIG, is_eci_appliance_preview
 from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from apps.common.sem_retail import get_sem_table_columns, sem_batch_order
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
@@ -84,6 +84,8 @@ def query_spec(source, retailer, columns, start, end):
     is_expert = source['country'] == 'SEG' and retailer['name'] == 'Expert'
     onboarding = dryer_config(source['country'], source['product'], retailer['name'])
     launch = onboarding['preview_from'] if onboarding else active_from(source, retailer['name'])
+    if source['country'] == 'SEIB' and is_eci_appliance_preview(source['product'], retailer['name'], end):
+        launch = ECI_APPLIANCE_PREVIEW_FROM
     if launch:
         start = max(start, launch)
     day = day_sql(source)
