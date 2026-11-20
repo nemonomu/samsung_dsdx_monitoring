@@ -33,7 +33,9 @@ class DeploymentTests(unittest.TestCase):
             review_migration = calls.index([str(root / 'venv/bin/python'), str(root / 'manage.py'),
                                            'migrate', 'dx_layer2', '--noinput'])
             static_collection = next(i for i, args in enumerate(calls) if 'collectstatic' in args)
+            eci_registration = next(i for i, args in enumerate(calls) if 'setup_seib_eci_crossfield' in args)
             self.assertLess(review_migration, static_collection)
+            self.assertLess(eci_registration, restart)
             self.assertLess(review_migration, restart)
             self.assertEqual(2, len(installed))
             self.assertIn('--automatic', installed['/etc/systemd/system/samsung-dsdx-collection-statistics.service'])

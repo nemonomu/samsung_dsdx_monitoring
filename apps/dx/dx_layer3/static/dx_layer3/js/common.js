@@ -1075,6 +1075,7 @@ function renderDetailModal(title, category, data) {
 
 function getCrossfieldCountLabel(data) {
     const anomalyCount = Number(data?.total_anomalies || 0);
+    if (data?.preview_mode) return `테스트 조회 · ${anomalyCount.toLocaleString()}건`;
     const reviewCount = Number(data?.total_review_needed || 0);
     if (reviewCount > 0) {
         return `이상 ${anomalyCount.toLocaleString()}건 · 확인 필요 ${reviewCount.toLocaleString()}건`;
@@ -1161,7 +1162,9 @@ function renderCrossfieldSummaryContent(title, _category, data) {
             const detailTitle = `${ruleTitle}${retailerScope ? ' [' + retailerScope + ']' : ''} (${rule.error_message})`;
             const errorCount = Number(rule.error_count || 0);
             const reviewCount = Number(rule.review_count || 0);
-            const countBadges = errorCount === 0 && reviewCount === 0
+            const countBadges = rule.preview_mode
+                ? `<span class="rule-count zero">테스트 조회 · ${errorCount.toLocaleString()}건</span>`
+                : errorCount === 0 && reviewCount === 0
                 ? '<span class="rule-count zero">0건</span>'
                 : `${errorCount > 0 ? `<span class="rule-count">이상 ${errorCount.toLocaleString()}건</span>` : ''}
                    ${reviewCount > 0 ? `<span class="rule-count review-needed">확인 필요 ${reviewCount.toLocaleString()}건</span>` : ''}`;
@@ -1477,6 +1480,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldValidationType = data.validation_type || '';
             window.crossfieldTableName = data.table_name || '';
             window.crossfieldDateCol = data.date_col || 'crawl_datetime';
+            window.crossfieldReadonly = data.readonly === true;
             window.crossfieldEditableCols = new Set(data.editable_columns || []);
             window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
             window.crossfieldNormalReviews = data.normal_reviews || {};
@@ -1498,7 +1502,9 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
                 const anomalyCount = Number(info.count || 0);
                 const reviewCount = Number(info.review_count || 0);
                 if (anomalyCount === 0 && reviewCount === 0) return;
-                const retailerCounts = `${anomalyCount > 0 ? `<span class="rule-count">이상 ${anomalyCount.toLocaleString()}건</span>` : ''}
+                const retailerCounts = data.preview_mode
+                    ? `<span class="rule-count zero">테스트 조회 · ${anomalyCount.toLocaleString()}건</span>`
+                    : `${anomalyCount > 0 ? `<span class="rule-count">이상 ${anomalyCount.toLocaleString()}건</span>` : ''}
                     ${reviewCount > 0 ? `<span class="rule-count review-needed">확인 필요 ${reviewCount.toLocaleString()}건</span>` : ''}`;
                 html += `
                     <div class="rule-summary-card" data-retailer="${esc(retailer)}" onclick="showRetailerDetail('${escJs(retailer)}')">

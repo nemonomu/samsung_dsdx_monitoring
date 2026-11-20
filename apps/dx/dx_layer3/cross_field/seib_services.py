@@ -1,4 +1,4 @@
-"""Spain MediaMarkt cross-field checks on the original collection date."""
+"""Spain retail cross-field checks on the original collection date."""
 
 from collections import OrderedDict
 from datetime import date, timedelta
@@ -9,6 +9,7 @@ from apps.common.crossfield_history import build_detail_history
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.seib_retail import (
+    ECI_APPLIANCE_PREVIEW_FROM, ECI_APPLIANCE_START, is_eci_appliance, is_eci_appliance_preview,
     FIRST_SOURCE_DATE, RETAILER, SEIB_SOURCE_CONFIG, get_seib_source,
     latest_scope, normalize_retailer, retailer_start_date,
 )
@@ -196,10 +197,10 @@ def load_active_rules(cursor, source):
     return result
 
 
-def _load_rows(cursor, source, start, end, retailer=RETAILER):
-    if date.fromisoformat(str(end)) < retailer_start_date(source, retailer):
+def _load_rows(cursor, source, start, end, retailer=RETAILER, *, preview=False):
+    if not preview and date.fromisoformat(str(end)) < retailer_start_date(source, retailer):
         return []
-    cte, scope, params = latest_scope(source, start, end, retailer)
+    cte, scope, params = latest_scope(source, start, end, retailer, include_preview=preview)
     cursor.execute(f"{cte} SELECT source.* {scope} ORDER BY source.item, source.id", params)
     return _rows(cursor)
 
@@ -212,6 +213,8 @@ def display_query(source, source_date, days=3, items=None, retailer=RETAILER):
     retailer = normalize_retailer(source, retailer)
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
+    first = (ECI_APPLIANCE_PREVIEW_FROM if is_eci_appliance_preview(source['source_key'], retailer, end)
+             else retailer_start_date(source, retailer))
     day = source_date_sql('anchor.crawl_datetime')
     source_day = source_date_sql('source.crawl_datetime')
     item_sql = ''
@@ -221,7 +224,7 @@ def display_query(source, source_date, days=3, items=None, retailer=RETAILER):
     return f"""WITH latest AS (
     SELECT DISTINCT ON ({day}) {day} AS source_date, anchor.batch_id
     FROM {source['table_name']} anchor
-    WHERE {day} BETWEEN {_literal(max(start, retailer_start_date(source, retailer)))} AND {_literal(end)}
+    WHERE {day} BETWEEN {_literal(max(start, first))} AND {_literal(end)}
       AND LOWER(BTRIM(anchor.account_name)) = {_literal(retailer.lower())}
     ORDER BY {day}, anchor.id DESC
 )
@@ -237,6 +240,13 @@ def _result(cursor, inspection_date, product_line, from_date=None):
     source = get_seib_source(product_line)
     mapping = resolve_monitoring_date(inspection_date, 'SEIB', source['source_key'])
     rules = load_active_rules(cursor, source)
+    for rule in rules:
+        retailer = rule['retailers'][0]
+        if is_eci_appliance_preview(source['source_key'], retailer, mapping['source_date']):
+            rule['preview_mode'] = True
+    rules = [rule for rule in rules if rule.get('preview_mode')
+             or not is_eci_appliance(source['source_key'], rule['retailers'][0])
+             or mapping['source_date'] >= str(ECI_APPLIANCE_START)]
     result = {
         **mapping, 'date': mapping['inspection_date'], 'source': source,
         'product_line': source['source_key'].upper(), 'label': source['display_name'],
@@ -248,22 +258,30 @@ def _result(cursor, inspection_date, product_line, from_date=None):
         return result
     start = resolve_monitoring_date(from_date or inspection_date, 'SEIB', source['source_key'])['source_date']
     retailers = list(dict.fromkeys(r['retailers'][0] for r in rules))
-    rows = [row for retailer in retailers
+    preview_retailers = {rule['retailers'][0] for rule in rules if rule.get('preview_mode')}
+    rows = [row for retailer in retailers if retailer not in preview_retailers
             for row in _load_rows(cursor, source, start, mapping['source_date'], retailer)]
     rows, exclusions = exclude_page_absent_records(
         cursor, inspection_date, rows, table_name=source['table_name'],
         country='SEIB', product_line=source['category'],
     )
-    cursor.execute("""
+    preview_rows = [row for retailer in sorted(preview_retailers)
+                    for row in _load_rows(cursor, source, start, mapping['source_date'], retailer, preview=True)]
+    operating_rule_ids = [rule['rule_id'] for rule in rules if not rule.get('preview_mode')]
+    correction_values = []
+    if operating_rule_ids:
+        cursor.execute("""
         SELECT record_id, rule_id, column_name, memo, reason, created_id, created_at
         FROM public.monitoring_corrections
         WHERE layer = 3 AND correction_type = 'cross_field' AND status = 'normal'
           AND table_name = %s AND crawl_date = %s AND rule_id = ANY(%s)
-    """, (source['table_name'], str(inspection_date), [rule['rule_id'] for rule in rules]))
+        """, (source['table_name'], str(inspection_date), operating_rule_ids))
+        correction_values = cursor.fetchall()
     names = ('record_id', 'rule_id', 'column_name', 'memo', 'reason', 'created_id', 'created_at')
     corrections = [dict(value) if isinstance(value, dict) else dict(zip(names, value))
-                   for value in cursor.fetchall()]
+                   for value in correction_values]
     normal = {(str(value['record_id']), str(value['rule_id'])) for value in corrections}
+    rows = [*rows, *preview_rows]
     for row in rows:
         row['account_name'] = normalize_retailer(source, row['account_name'])
     evaluated = {str(row['id']): (evaluate_eci_row(row) if row['account_name'] == 'ECI' else evaluate_seib_row(row)) for row in rows}
@@ -290,7 +308,11 @@ def get_seib_cross_field_summary(cursor, inspection_date, product_line):
     result = _result(cursor, inspection_date, product_line)
     rows, rules = result['rows'], result['rules']
     targets = [row for row in rows if source_date_value(row.get('crawl_datetime')) == result['source_date']]
-    failed = {str(row['id']) for rule in rules for row in rule['findings']}
+    preview_retailers = {r['retailers'][0] for r in rules if r.get('preview_mode')}
+    target_retailers = {row['account_name'] for row in targets}
+    rules = [r for r in rules if not r.get('preview_mode') or r['retailers'][0] in target_retailers]
+    operating = [row for row in targets if row['account_name'] not in preview_retailers]
+    failed = {str(row['id']) for rule in rules if not rule.get('preview_mode') for row in rule['findings']}
     summaries = [{
         **{key: value for key, value in rule.items() if key != 'findings'},
         'error_count': len(rule['findings']), 'review_count': 0,
@@ -300,9 +322,9 @@ def get_seib_cross_field_summary(cursor, inspection_date, product_line):
     return {
         **{key: value for key, value in result.items()
            if key not in ('source', 'rows', 'rules', 'corrections')},
-        'total_checked': len(targets), 'failed_records': len(failed),
-        'total_anomalies': sum(rule['error_count'] for rule in summaries),
-        'passed_records': len(targets) - len(failed),
+        'total_checked': len(operating), 'failed_records': len(failed),
+        'total_anomalies': sum(rule['error_count'] for rule in summaries if not rule.get('preview_mode')),
+        'passed_records': len(operating) - len(failed),
         'rule_summary': summaries, 'no_review_texts': '',
         'retailers': [dict(
             retailer=retailer,
@@ -322,6 +344,8 @@ def get_seib_cross_field_rule_detail(cursor, inspection_date, product_line, rule
     if rule is None:
         return {'found': False}
     retailer = rule['retailers'][0]
+    preview = rule.get('preview_mode', False)
+    editable = [] if preview else list(editable_columns(retailer))
     targets = rule['findings']
     anomalies = build_detail_history(
         [row for row in result['rows'] if row['account_name'] == retailer],
@@ -343,8 +367,8 @@ def get_seib_cross_field_rule_detail(cursor, inspection_date, product_line, rule
         'found': True, 'days': days, 'anomalies': anomalies,
         'total_anomalies': len(targets), 'total_findings': len(targets),
         'retailer_summary': {retailer: {'count': len(targets), 'review_count': 0, 'items': items}},
-        'editable_columns': list(editable_columns(retailer)),
+        'editable_columns': editable, 'readonly': preview,
         'retailer_columns': {retailer: list(table_columns(result['source'], retailer))},
-        'retailer_editable_columns': {retailer: list(editable_columns(retailer))},
+        'retailer_editable_columns': {retailer: editable},
         'normal_reviews': normal_reviews, 'query': query, 'queries': {retailer: query},
     }

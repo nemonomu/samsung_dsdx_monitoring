@@ -82,6 +82,7 @@ def deploy(root, username, groupname, run=subprocess.run):
     command(python, manage, 'migrate', 'dx_layer1', '--noinput')
     command(python, manage, 'migrate', 'dx_layer2', '--noinput')
     command(python, manage, 'migrate', 'dx_document', '--noinput')
+    command(python, manage, 'setup_seib_eci_crossfield')
     command(python, manage, 'collectstatic', '--noinput')
     # Check conflicts before stopping the web service. Drain old workers so no
     # SQLite edits can arrive between copying the legacy history and restart.

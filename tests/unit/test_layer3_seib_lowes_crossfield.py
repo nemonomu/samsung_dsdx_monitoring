@@ -1,8 +1,9 @@
 import unittest
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from apps.common.seib_retail import get_seib_source, latest_scope
+from apps.dx.dx_layer1.management.commands.setup_seib_eci_crossfield import register
 from apps.dx.dx_layer3.cross_field import sea_services, seib_services
 
 
@@ -17,6 +18,58 @@ def seib_row(**overrides):
 
 
 class SeibCrossfieldTests(unittest.TestCase):
+    def test_eci_rule_registration_uses_distinct_codes_and_no_savings_rules(self):
+        cursor = Mock()
+        keys = tuple(seib_services.rule_definitions('ECI'))
+        with patch(register.__module__ + '.load_active_rules', return_value=[
+                {'rule_key': key, 'retailers': ['ECI']} for key in keys]):
+            register(cursor)
+        inserts = [call.args for call in cursor.execute.call_args_list if 'INSERT INTO' in call.args[0]]
+        self.assertEqual(8, len(inserts))
+        self.assertEqual({f'seib_{product}_eci_{key}' for product in ('ref', 'ldy') for key in keys},
+                         {params[2] for _sql, params in inserts})
+        for sql, params in inserts:
+            self.assertIn('WHERE NOT EXISTS', sql)
+            self.assertNotIn('savings', '|'.join(str(field) for field in params))
+
+    def test_eci_preview_is_read_only_and_excluded_from_operating_result(self):
+        class Cursor:
+            has_preview = True
+
+            def execute(self, query, params=None):
+                self.query, self.params = query, params
+
+            def fetchall(self):
+                if 'FROM public.monitoring_validation_rules' in self.query:
+                    return [(1, 'seib_ref_review_count_match', 'review_count_match', 'MediaMarkt'),
+                            (2, 'seib_ref_eci_review_count_match', 'review_count_match', 'ECI')]
+                if 'SELECT source.*' in self.query:
+                    account = self.params[-1]
+                    if account == 'eci' and not self.has_preview and self.params[1] == '2026-11-20':
+                        return []
+                    return [dict(seib_row(count_of_reviews='11' if account == 'eci' else '12'),
+                                 id=1 if account == 'mediamarkt' else 2, item='X',
+                                 account_name=account, crawl_datetime=self.params[1] + 'T23:37:34-04:00')]
+                return []
+
+        cursor = Cursor()
+        preview_day, operating_day = date(2026, 11, 20), date(2026, 11, 22)
+        with patch.object(seib_services, 'exclude_page_absent_records',
+                          side_effect=lambda _, __, rows, **kwargs: (rows, [])):
+            preview = seib_services.get_seib_cross_field_summary(cursor, preview_day, 'seib_ref')
+            detail = seib_services.get_seib_cross_field_rule_detail(cursor, preview_day, 'seib_ref', 2)
+            cursor.has_preview = False
+            deleted = seib_services.get_seib_cross_field_summary(cursor, preview_day, 'seib_ref')
+            operating = seib_services.get_seib_cross_field_summary(cursor, operating_day, 'seib_ref')
+        self.assertEqual((1, 0), (preview['total_checked'], preview['total_anomalies']))
+        self.assertEqual((1, 0), (deleted['total_checked'], deleted['total_anomalies']))
+        self.assertEqual((2, 1), (operating['total_checked'], operating['total_anomalies']))
+        self.assertEqual([1], [rule['rule_id'] for rule in deleted['rule_summary']])
+        self.assertTrue(preview['rule_summary'][1]['preview_mode'])
+        self.assertTrue(detail['readonly'])
+        self.assertEqual([], detail['editable_columns'])
+        self.assertEqual(['ECI'], [row['account_name'] for row in detail['anomalies']])
+
     def test_discount_rate_uses_floored_european_prices(self):
         self.assertEqual(seib_services.evaluate_seib_row(seib_row()), set())
         self.assertEqual(seib_services._money('2.070,00 \u20ac'), 2070)

@@ -111,6 +111,7 @@ function _cfUsesEqualReviewCounts(productLine, retailer) {
 }
 
 function _cfEditableColumns(retailer) {
+    if (window.crossfieldReadonly) return new Set();
     const columns = (window.crossfieldRetailerEditableColumns || {})[retailer];
     const editable = columns
         ? new Set(columns) : new Set(window.crossfieldEditableCols || []);
@@ -211,7 +212,7 @@ function showRetailerDetail(retailer) {
         ? `이상 ${anomalyCount.toLocaleString()}건 · 확인 필요 ${reviewCount.toLocaleString()}건`
         : `${anomalyCount.toLocaleString()}건`;
     const titleText = `${ruleNameDisplay} (${findingCountText})`;
-    const subtitleText = `${productLineDisplay} Retail | ${retailer}`;
+    const subtitleText = `${productLineDisplay} Retail | ${retailer}${window.crossfieldReadonly ? ' · 테스트 조회' : ''}`;
 
     const editableCols = inline ? _cfEditableColumns(retailer) : new Set();
     const normalReviews = inline ? (window.crossfieldNormalReviews || {}) : {};
@@ -814,6 +815,7 @@ async function reloadCfDays() {
         window.crossfieldRetailerData = retailerData;
         window.crossfieldRetailerSummary = data.retailer_summary || {};
         window.crossfieldAnomalies = anomalies;
+        window.crossfieldReadonly = data.readonly === true;
         window.crossfieldEditableCols = new Set(data.editable_columns || []);
         window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
         window.crossfieldNormalReviews = data.normal_reviews || {};
