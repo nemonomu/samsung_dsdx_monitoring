@@ -56,13 +56,23 @@
         let sub = numeric(cell) ? (index === 0 ? '비교 기준' : delta == null ? '이전 순위 없음' : delta === 0 ? '변동 없음' :
             `${delta > 0 ? '↓' : '↑'} ${Math.abs(delta)}위 ${delta > 0 ? '하락' : '상승'}`) :
             cell.state === 'absent' ? '해당 배치에서 미발견' : '누락 확정 아님';
-        if (cell.state === 'outside') sub += ' · 300위 밖';
+        if (cell.state === 'outside') sub += ` · ${result.criteria.limit}위 밖`;
         return `<div class="rm-rank ${cell.state} ${cell.state === 'absent' && reviewed(product.review) ? 'rm-reviewed' : ''} ${delta != null && Math.abs(delta) >= result.criteria.swing ? 'jump' : ''}"><strong>${numeric(cell) ? `${cell.rank}<small>위</small>` : esc(cellLabel(cell,index))}</strong><span class="${delta > 0 ? 'down' : delta < 0 ? 'up' : ''}">${esc(sub)}</span></div>`;
     }
     function message(text, error=false) { el('message').hidden = !text; el('message').textContent = text; el('message').classList.toggle('error',error); }
     function options() {
         const product = config.catalog.find(c => c.product === el('product').value);
         el('retailer').innerHTML = product.retailers.map(r => `<option>${esc(r)}</option>`).join('');
+    }
+    function rankOptions(reset=false) {
+        const product = config.catalog.find(c => c.product === el('product').value);
+        const bsrAllowed = product?.bsr_retailers?.includes(el('retailer').value);
+        el('rank-picker').hidden = !bsrAllowed;
+        if (!bsrAllowed || reset) el('rank-type').value = 'main';
+        const bsr = el('rank-type').value === 'bsr';
+        el('rank-basis').textContent = (bsr ? 'BSR 순위 · 1–100위' : 'MAIN 순위 · 1–300위') + ' · 원본 DB 수집일 기준';
+        for (const option of el('tier').options) option.hidden = bsr && ['1', '2'].includes(option.value);
+        if (bsr && ['1', '2'].includes(state.tier)) el('tier').value = state.tier = 'all';
     }
     function dirty() {
         stopMore(); clearTimeout(searchTimer); loading = false;
@@ -75,6 +85,7 @@
     function paramsFor(pin=true) {
         const params = new URLSearchParams({country:config.country, mode:config.mode, product:el('product').value,
             retailer:el('retailer').value, date:el('date').value, ...state});
+        if (el('rank-type').value === 'bsr') params.set('rank_type', 'bsr');
         if (pin && result) params.set('snapshot',result.snapshot);
         return params;
     }
@@ -172,12 +183,17 @@
         el('basis').textContent = `${result.country} / ${result.product} / ${result.retailer} · ${result.basis} · 조회 ${new Date(result.updated_at).toLocaleString('ko-KR')}` +
             (config.mode === 'samsung' ? ' · 삼성 판별: 상품명에 Samsung 또는 삼성이 명시된 상품. 전체 리테일러 순위 유지.' : '') +
             (result.sku_from_master ? ' · SKU: 현재 아이템 마스터 값(수집 당시 값과 다를 수 있음).' : '');
-        el('coverage').innerHTML = result.coverage.map((day,i) => `<div class="rm-day ${i === 1 ? 'current' : ''}"><strong>${['어제 D-1','기준일 D','다음 날 D+1'][i]} · ${esc(day.date)}</strong><p class="${day.available ? '' : 'rm-warning'}">${day.available ? `비교 가능한 상품 ${day.ranked_count}개 / 원본 ${day.raw_count}행` : day.state === 'pending' ? '수집 대기 · 미발견 집계 안 함' : day.state === 'invalid' ? '유효 순위 없음 · 비교 보류' : '당일 데이터 없음 · 개별 상품 누락 판단 보류'}</p><p>배치: ${esc(day.batch_id ?? '없음')}</p></div>`).join('');
+        el('coverage').innerHTML = result.coverage.map((day,i) => `<div class="rm-day ${i === 1 ? 'current' : ''}"><strong>${['어제 D-1','기준일 D','다음 날 D+1'][i]} · ${esc(day.date)}</strong><p class="${day.available ? '' : 'rm-warning'}">${day.available ? `비교 가능한 상품 ${day.ranked_count}개 / 원본 ${day.raw_count}행` : day.state === 'not_scheduled' ? '운영 시작 전' : day.state === 'pending' ? '수집 대기 · 미발견 집계 안 함' : day.state === 'invalid' ? '유효 순위 없음 · 비교 보류' : '당일 데이터 없음 · 개별 상품 누락 판단 보류'}</p><p>배치: ${esc(day.batch_id ?? '없음')}</p></div>`).join('');
         el('bands').innerHTML = result.bands.map(b => `<tr><td><span class="rm-tier tier${b.tier}">${['상위','중위','하위'][b.tier]}</span> ${b.tier*100+1}–${(b.tier+1)*100}위</td><td>${b.count}개</td><td>${b.kept}개</td><td>${b.moved}개</td><td>${b.missing}개</td><td>${b.unknown}개</td><td><b>${b.rate == null ? '—' : b.rate+'%'}</b> / ${b.target}% 이상</td><td>${badge(b.rate == null ? 'unassessed' : b.below_target ? 'swing' : 'kept',b.rate == null ? '판단 보류' : b.below_target ? '기준 미달 · 확인 필요' : '예시 기준 충족')}</td></tr>`).join('');
         const top = result.bands[0];
-        el('top-exits').textContent = `상위 100위 상품: 101–300위로 이동 ${top.moved}개 · 300위 내 미발견 ${top.missing}개 · 판단 보류 ${top.unknown}개. 미발견은 상품 링크에서 품절·판매 종료 여부를 확인하세요.`;
+        const bsr = result.rank_type === 'bsr';
+        el('missing-label').textContent = result.criteria.limit + '위 내 미발견';
+        el('footnote-rank').textContent = bsr ? 'BSR 100위 기준 유지율 90%' : 'MAIN 300위 기준 유지율 90%·70%·50%';
+        el('top-exits').textContent = bsr
+            ? 'BSR 100위 내 미발견 ' + top.missing + '개 · 판단 보류 ' + top.unknown + '개.'
+            : `상위 100위 상품: 101–300위로 이동 ${top.moved}개 · 300위 내 미발견 ${top.missing}개 · 판단 보류 ${top.unknown}개. 미발견은 상품 링크에서 품절·판매 종료 여부를 확인하세요.`;
         el('all-count').textContent = result.counts.all; el('review-count').textContent = result.counts.review;
-        el('table-head').innerHTML = `<tr class="rm-group"><th colspan="4">상품 정보</th><th colspan="3">수집일별 MAIN 순위</th><th colspan="2">점검 / 확인</th></tr><tr><th>전일 구간</th><th>상품명<span>retailer_sku_name</span></th><th>ITEM<span>item</span></th><th>SKU<span>sku</span></th>${result.dates.map((d,i)=>`<th class="rm-center ${i===1?'rm-today':''}">${['어제','기준일','다음 날'][i]}<span>${esc(d)}</span></th>`).join('')}<th>점검 신호 / 확인할 내용</th><th>확인 기록 / 상세</th></tr>`;
+        el('table-head').innerHTML = `<tr class="rm-group"><th colspan="4">상품 정보</th><th colspan="3">수집일별 ${bsr ? 'BSR' : 'MAIN'} 순위</th><th colspan="2">점검 / 확인</th></tr><tr><th>전일 구간</th><th>상품명<span>retailer_sku_name</span></th><th>ITEM<span>item</span></th><th>SKU<span>sku</span></th>${result.dates.map((d,i)=>`<th class="rm-center ${i===1?'rm-today':''}">${['어제','기준일','다음 날'][i]}<span>${esc(d)}</span></th>`).join('')}<th>점검 신호 / 확인할 내용</th><th>확인 기록 / 상세</th></tr>`;
     }
     function renderTable() {
         if (!result) return;
@@ -188,7 +204,7 @@
         renderProgress();
     }
     function rowsHtml(products) {
-        return products.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status]}</div></td><td><div class="rm-record ${reviewed(p.review)?'rm-reviewed':''}">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
+        return products.map(p => {const band = p.cells[0].state === 'ranked' ? tier(p.cells[0].rank) : -1;return `<tr class="rm-row ${p.status}"><td><span class="rm-tier tier${band}">${band<0?'—':['상위','중위','하위'][band]}</span></td><td><div class="rm-product-name">${esc(p.name || '상품명 없음')}</div>${p.samsung?'<div class="rm-product-sub">SAMSUNG · 상품명 기준</div>':''}</td><td class="rm-identity"><code>${esc(p.item || '—')}</code></td><td class="rm-identity"><code>${esc(p.sku || '—')}</code></td>${[0,1,2].map(i=>`<td class="rm-center ${i===1?'rm-today':''}">${rankCell(p,i)}</td>`).join('')}<td>${badge(p.status,p.label)}<div class="rm-reason">${reasons[p.status].replaceAll('300위', result.criteria.limit + '위')}</div></td><td><div class="rm-record ${reviewed(p.review)?'rm-reviewed':''}">${esc(p.review.result)}</div><button data-key="${esc(p.key)}" type="button">상품 확인 ↗</button></td></tr>`;}).join('');
     }
     async function detail(key) {
         const seq = ++detailNumber, basis = result;
@@ -239,15 +255,16 @@
             if(response.redirected) throw new Error('로그인이 만료되었습니다.');
             if(!response.ok) {const data=await response.json();throw new Error(data.error || '내보내기에 실패했습니다.');}
             const url=URL.createObjectURL(await response.blob());
-            const a=document.createElement('a');a.href=url;a.download='rank-export.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+            const a=document.createElement('a');a.href=url;a.download=result.rank_type === 'bsr' ? 'rank-bsr-export.csv' : 'rank-export.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
         } catch(error) {message(error.message,true);} finally {el('export').disabled=false;}
     }
-    el('product').innerHTML=config.catalog.map(c=>`<option>${esc(c.product)}</option>`).join('');options();
+    el('product').innerHTML=config.catalog.map(c=>`<option>${esc(c.product)}</option>`).join('');options();rankOptions();
     const initialDate=new URLSearchParams(location.search).get('date');
     el('date').value=/^\d{4}-\d{2}-\d{2}$/.test(initialDate || '')?initialDate:config.date;el('date').max=config.date;
     el('review-result').innerHTML=config.results.map(r=>`<option>${esc(r)}</option>`).join('');
-    el('form').addEventListener('submit',load);el('product').addEventListener('change',()=>{options();dirty();});
-    el('retailer').addEventListener('change',dirty);el('date').addEventListener('change',dirty);
+    el('form').addEventListener('submit',load);el('product').addEventListener('change',()=>{options();rankOptions(true);dirty();});
+    el('retailer').addEventListener('change',()=>{rankOptions(true);dirty();});
+    el('rank-type').addEventListener('change',()=>{rankOptions();dirty();});el('date').addEventListener('change',dirty);
     document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{state.view=b.dataset.view;state.signal='all';state.sort=state.view==='all'?'rank':'priority';state.page=1;el('sort').value=state.sort;loadPage();}));
     el('signals').addEventListener('click',e=>{const button=e.target.closest('[data-signal]');if(button){state.signal=button.dataset.signal;state.page=1;loadPage();}});
     el('tier').addEventListener('change',e=>{state.tier=e.target.value;state.page=1;loadPage();});

@@ -10,14 +10,45 @@ from apps.common.source_dates import source_date_value, source_date_sql
 from apps.dx.dx_layer1.seib_retail.seib_retail_services import get_layer1_stats
 from apps.dx.dx_layer1.collection_statistics import calculations as calc
 from apps.dx.dx_layer1.column_statistics import services as columns
-from apps.dx.dx_layer1.column_statistics.comparison import collection_complete
+from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, compare_columns
 from apps.dx.dx_layer1.common import retail_batches
+from apps.dx.dx_layer1.collection_issues import queries
+from apps.dx.dx_layer1.rank_monitoring import repository as ranks
 from apps.dx.dx_layer1.management.commands.setup_seib import register
 from apps.dx.dx_layer2 import seib_null_validation as nulls
 
 
 class SeibMonitoringTests(unittest.TestCase):
     day = date(2026, 10, 19)
+
+    def test_eci_appliances_omit_test_dates_and_keep_same_latest_batch_contract(self):
+        for product in ('REF', 'LDY'):
+            source = policy.get_seib_source('seib_' + product.lower())
+            start = policy.ECI_APPLIANCE_START
+            self.assertNotIn('ECI', policy.active_retailers(source, '2026-11-21'))
+            self.assertIn('ECI', policy.active_retailers(source, start))
+            _, _, params = policy.latest_scope(source, '2026-11-20', start, 'ECI')
+            self.assertEqual(['2026-11-22', '2026-11-22', 'eci', 'eci'], params)
+            self.assertEqual({}, queries.raw_counts('SEIB', product, 'ECI', date(2026, 11, 20), date(2026, 11, 21)))
+            self.assertFalse(collection_complete('SEIB', product, 'ECI', start, datetime(2026, 11, 22, 23, 59, tzinfo=policy.KST)))
+            self.assertTrue(collection_complete('SEIB', product, 'ECI', start, datetime(2026, 11, 23, tzinfo=policy.KST)))
+            rank_source = columns.select_source('SEIB', product, 'ECI')
+            retailer = rank_source['retailers'][-1]
+            rank_columns = dict.fromkeys(source['columns'], 'text')
+            sql, params, _ = ranks.query_spec(rank_source, retailer, rank_columns, start, 'bsr')
+            self.assertIn('source.bsr_rank AS product_rank', sql)
+            self.assertIn('NULLIF(BTRIM(CAST(source.product_rank AS TEXT))', sql)
+            self.assertEqual(['2026-11-22', '2026-11-23'], params[-2:])
+
+    def test_eci_column_comparison_starts_after_five_completed_operating_days(self):
+        daily = [{'date': f'2026-11-{d}', 'total': 100 if d != 24 else 0,
+                  'counts': {'sku': 100 if d < 27 else 20}} for d in range(20, 29)]
+        data = {'country': 'SEIB', 'product': 'REF', 'retailer': 'ECI', 'active_from': '2026-11-22',
+                'columns': ['sku'], 'daily': daily}
+        completed = {day['date']: True for day in daily}
+        self.assertEqual('insufficient', compare_columns(data, date(2026, 11, 27), completed)[0]['status'])
+        comparison = compare_columns(data, date(2026, 11, 28), completed)[0]
+        self.assertEqual((5, 100, 'abnormal'), (comparison['history_days'], comparison['baseline'], comparison['status']))
 
     def test_original_dates_and_same_day_mapping(self):
         for raw, expected in [('2026-10-18T23:59:59-04:00', '2026-10-18'),

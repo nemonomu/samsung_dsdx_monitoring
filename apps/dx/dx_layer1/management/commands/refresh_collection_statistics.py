@@ -1,6 +1,8 @@
 from datetime import date, timedelta, timezone as tz
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from apps.common.backup import backup_recent_eci_appliances
 from apps.dx.dx_layer1.collection_statistics.calculations import COUNTRIES, OFFSETS
 from apps.dx.dx_layer1.collection_statistics.collector import refresh_country
 
@@ -24,8 +26,17 @@ class Command(BaseCommand):
                 self.stdout.write(f"{country} {phase}: updated={result['updated']}, errors={result['errors']}, busy={result['busy']}")
             # Incidents reuse the statistics policy and prior-day baselines.
             from .refresh_collection_issues import refresh_all
-            errors = refresh_automatic(timezone.localdate(timezone=tz(timedelta(hours=9))),
+            today = timezone.localdate(timezone=tz(timedelta(hours=9)))
+            errors = refresh_automatic(today,
                 countries=[options['country']] if options['country'] else COUNTRIES, report=report)
+            if not settings.DEBUG and options['country'] in (None, 'SEIB'):
+                try:
+                    copied = backup_recent_eci_appliances(today)
+                    if copied:
+                        self.stdout.write(f'SEIB ECI automatic backup: copied={copied}')
+                except Exception as exc:
+                    errors += 1
+                    self.stderr.write(f'SEIB ECI automatic backup failed: {exc}')
             errors += refresh_all(country=options['country'], report=self.stdout.write)
             if errors:
                 raise CommandError(f'{errors} source-day refreshes failed; the next scheduled run will retry.')

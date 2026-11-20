@@ -27,7 +27,7 @@ def bucket(value):
     return (value - 1) // 100 if value is not None and 1 <= value <= LIMIT else None
 
 
-def snapshot(rows):
+def snapshot(rows, limit=LIMIT):
     grouped = defaultdict(list)
     for row in rows:
         # Missing ITEMs never match unrelated rows across dates or by model SKU.
@@ -40,21 +40,22 @@ def snapshot(rows):
         r = next(iter(ranks)) if len(ranks) == 1 else None
         state = ('batch' if not text(latest['batch_id']) else 'identity' if not text(latest['item']) else
                  'ambiguous' if len(ranks) > 1 else 'invalid' if r is None else
-                 'ranked' if r <= LIMIT else 'outside')
+                 'ranked' if r <= limit else 'outside')
         result[key] = {**latest, 'rank': r, 'state': state,
                        'duplicates': len(values), 'record_ids': sorted(v['id'] for v in values)}
     return result
 
 
-def compare(raw, day, *, samsung=False, today=None):
+def compare(raw, day, *, samsung=False, today=None, limit=LIMIT, active_from=None):
     dates = [str(day + timedelta(days=i)) for i in (-1, 0, 1)]
-    by_day = {d: snapshot([r for r in raw if r['date'] == d]) for d in dates}
+    by_day = {d: snapshot([r for r in raw if r['date'] == d], limit) for d in dates}
     coverage = []
     for d in dates:
         rows = by_day[d]
         available = any(r['state'] in ('ranked', 'outside') for r in rows.values())
         coverage.append({'date': d, 'available': available,
                          'state': 'available' if available else 'invalid' if rows else
+                                  'not_scheduled' if active_from and d < str(active_from) else
                                   'pending' if today and d > str(today) else 'empty',
                          'raw_count': sum(r['duplicates'] for r in rows.values()),
                          'ranked_count': sum(r['state'] == 'ranked' for r in rows.values()),
@@ -92,11 +93,12 @@ def compare(raw, day, *, samsung=False, today=None):
         products.append({'key': key, 'item': text(latest['item']), 'sku': text(latest['sku']),
                          'name': text(latest['name']), 'url': text(latest['url']),
                          'samsung': bool(is_samsung), 'cells': cells, 'status': status,
-                         'label': LABELS[status], 'review_needed': status in ('data', 'return', 'missing', 'next_missing', 'swing'),
+                         'label': LABELS[status].replace('300위', f'{limit}위'),
+                         'review_needed': status in ('data', 'return', 'missing', 'next_missing', 'swing'),
                          'signals': {'return': returned, 'missing': missing, 'next_missing': next_missing, 'swing': swing, 'data': data_issue}})
     products.sort(key=lambda p: (p['cells'][0]['rank'] or 10**9, p['item'], p['key']))
     bands = []
-    for b in range(3):
+    for b in range(limit // 100):
         cohort = [p for p in products if p['cells'][0]['state'] == 'ranked' and bucket(p['cells'][0]['rank']) == b]
         kept = sum(p['cells'][1]['state'] == 'ranked' and bucket(p['cells'][1]['rank']) == b for p in cohort)
         moved = sum(p['cells'][1]['state'] == 'ranked' and bucket(p['cells'][1]['rank']) != b for p in cohort)
@@ -110,4 +112,4 @@ def compare(raw, day, *, samsung=False, today=None):
     return {'dates': dates, 'coverage': coverage, 'products': products, 'bands': bands,
             'counts': {'all': len(products), 'review': sum(p['review_needed'] for p in products),
                        **{s: sum(p['signals'][s] for p in products) for s in ('return', 'missing', 'next_missing', 'swing', 'data')}},
-            'criteria': {'swing': SWING, 'targets': TARGETS, 'limit': LIMIT}}
+            'criteria': {'swing': SWING, 'targets': TARGETS[:limit // 100], 'limit': limit}}

@@ -1,5 +1,6 @@
 """Rank monitoring uses the registered Layer 1 countries and original source dates."""
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
+from apps.common.seib_retail import is_eci_appliance
 from apps.dx.dx_layer1.column_statistics.services import _sources
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer
 
@@ -24,9 +25,17 @@ def catalog(country):
     if country not in COUNTRIES:
         raise ValueError('Invalid country')
     sources = [s for s in _rank_sources() if s['country'] == country]
-    return [{'product': p, 'retailers': next(
-        [r['name'] for r in s['retailers']] for s in sources if s['product'] == p
-    )} for p in PRODUCTS if any(s['product'] == p for s in sources)]
+    by_product = {s['product']: s for s in sources}
+    result = []
+    for product in PRODUCTS:
+        if product not in by_product:
+            continue
+        retailers = [r['name'] for r in by_product[product]['retailers']]
+        entry = {'product': product, 'retailers': retailers}
+        if country == 'SEIB' and is_eci_appliance(product, 'ECI'):
+            entry['bsr_retailers'] = ['ECI']
+        result.append(entry)
+    return result
 
 
 def select_source(country, product, retailer):

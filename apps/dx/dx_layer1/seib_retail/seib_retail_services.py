@@ -2,7 +2,7 @@
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.dryer_onboarding import decorate_row
 from apps.common.seib_retail import (
-    SEIB_SOURCE_CONFIG, collection_phase, enabled, latest_scope, active_retailers,
+    SEIB_SOURCE_CONFIG, collection_phase, collection_window, latest_scope, active_retailers,
 )
 
 _PRIORITY = {'OK': 0, 'PENDING': 1, 'COLLECTING': 2, 'CRITICAL': 3}
@@ -31,7 +31,9 @@ def get_layer1_stats(cursor, target_date, now=None):
                        collection_phase=row_phase, status=status, status_basis='historical_volume'),
                        'SEIB', key, mapping['source_date'])
             if name == 'ECI':
-                row['collection_window'] = 'KST 08:00~09:00'
+                window = collection_window(source, name)
+                row['collection_window'] = (f'KST {window[0]:%H:%M}~{window[1]:%H:%M}' if window
+                                            else 'KST 다음 날 00:00 마감')
             retailers.append(row)
             if row['status'] == 'CRITICAL':
                 failed.append(dict(source=source['display_name'] + f' ({name})',

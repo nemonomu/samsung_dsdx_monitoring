@@ -2,6 +2,7 @@
 from datetime import timedelta
 
 from apps.common.db import dx_connection
+from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
 from apps.common.sem_retail import sem_batch_order
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer4.collection_status.email_services import _retailer_condition, _retailer_params
@@ -9,11 +10,15 @@ from apps.dx.dx_layer4.collection_status.email_services import _retailer_conditi
 MAX_ROWS = 15000
 
 
-def query_spec(source, retailer, columns, day):
+def query_spec(source, retailer, columns, day, rank_type='main'):
     """Identifiers come only from fixed registries; dates/accounts are parameters."""
     stamp = date_column(source)
+    eci = source['country'] == 'SEIB' and is_eci_appliance(source['product'], retailer['name'])
+    if rank_type not in ('main', 'bsr') or (rank_type == 'bsr' and not eci):
+        raise ValueError('Unsupported rank type')
+    rank_column = 'bsr_rank' if rank_type == 'bsr' else 'main_rank'
     required = {'id', 'item', 'account_name', 'retailer_sku_name', 'product_url',
-                'batch_id', 'main_rank', stamp}
+                'batch_id', rank_column, stamp}
     if not required.issubset(columns):
         raise ValueError('Source is missing rank comparison columns')
     if columns[stamp] == 'timestamp with time zone' and source['country'] != 'SIEL':
@@ -34,7 +39,7 @@ def query_spec(source, retailer, columns, day):
         WITH scoped AS MATERIALIZED (
             SELECT source.id, source.item, source.account_name,
                    source.retailer_sku_name, source.product_url, {sku} AS sku,
-                   source.main_rank, source.batch_id,
+                   source.{rank_column} AS product_rank, source.batch_id,
                    CAST(source.{stamp} AS TEXT) AS collected_at,
                    ({day_sql(source)}) AS source_day
                    {', source.crawl_datetime' if source['key'] == 'sem_ldy_dryer' else ''}
@@ -45,17 +50,23 @@ def query_spec(source, retailer, columns, day):
             FROM scoped source ORDER BY source_day, {ordering}
         )
         SELECT source.source_day, source.id, source.item, source.sku,
-               source.retailer_sku_name, source.product_url, source.main_rank,
+               source.retailer_sku_name, source.product_url, source.product_rank,
                source.batch_id, source.collected_at
         FROM scoped source JOIN latest chosen ON chosen.source_day = source.source_day
              AND chosen.batch_id IS NOT DISTINCT FROM source.batch_id
+        {"WHERE NULLIF(BTRIM(CAST(source.product_rank AS TEXT)), '') IS NOT NULL" if eci else ''}
         ORDER BY source.source_day, source.id DESC LIMIT {MAX_ROWS + 1}
     """
-    params = _retailer_params(retailer) + [str(day - timedelta(days=1)), str(day + timedelta(days=1))]
+    start, end = day - timedelta(days=1), day + timedelta(days=1)
+    if eci:
+        start = max(start, ECI_APPLIANCE_START)
+        if day < ECI_APPLIANCE_START:
+            end = day
+    params = _retailer_params(retailer) + [str(start), str(end)]
     return sql, params, '날짜별 최신 MAIN 배치' if main_page else '날짜별 최신 배치'
 
 
-def load_snapshots(source, retailer, day):
+def load_snapshots(source, retailer, day, rank_type='main'):
     with dx_connection(connect_timeout=3) as (connection, cursor):
         connection.set_session(readonly=True)
         cursor.execute("SET LOCAL statement_timeout = '5s'")
@@ -63,7 +74,7 @@ def load_snapshots(source, retailer, day):
         cursor.execute('SELECT column_name, data_type FROM information_schema.columns '
                        'WHERE table_schema = %s AND table_name = %s', (schema, table))
         columns = dict(cursor.fetchall())
-        sql, params, basis = query_spec(source, retailer, columns, day)
+        sql, params, basis = query_spec(source, retailer, columns, day, rank_type)
         cursor.execute(sql, params)
         names = ('date', 'id', 'item', 'sku', 'name', 'url', 'rank', 'batch_id', 'collected_at')
         rows = [dict(zip(names, row)) for row in cursor.fetchall()]

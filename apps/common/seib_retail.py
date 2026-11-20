@@ -8,6 +8,9 @@ from apps.common.dryer_onboarding import config as dryer_config
 SEIB_COUNTRY = 'SEIB'
 FIRST_SOURCE_DATE = date(2026, 10, 18)
 RETAILER = 'MediaMarkt'
+ECI_APPLIANCE_START = date(2026, 11, 22)
+ECI_APPLIANCE_PRODUCTS = ('seib_ref', 'seib_ldy')
+ECI_OBSERVATION_DAYS = 5
 COMMON_REQUIRED = (
     'country', 'account_name', 'item', 'sku', 'retailer_sku_name', 'product_url',
     'final_sku_price', 'count_of_reviews', 'star_rating', 'count_of_star_ratings',
@@ -35,6 +38,8 @@ SEIB_SOURCE_CONFIG = {
     )
 }
 SEIB_SOURCE_CONFIG['seib_ldy_dryer']['retailers'] = (RETAILER, 'ECI')
+for key in ECI_APPLIANCE_PRODUCTS:
+    SEIB_SOURCE_CONFIG[key]['retailers'] = (RETAILER, 'ECI')
 
 
 def normalize_retailer(source, retailer):
@@ -47,6 +52,8 @@ def normalize_retailer(source, retailer):
 
 def retailer_start_date(source, retailer):
     name = normalize_retailer(source, retailer)
+    if is_eci_appliance(source['source_key'], name):
+        return ECI_APPLIANCE_START
     onboarding = dryer_config('SEIB', source['source_key'], name)
     return onboarding['preview_from'] if onboarding else FIRST_SOURCE_DATE
 
@@ -85,6 +92,20 @@ def seib_retailer_key(value):
     return str(value or '').strip().casefold()
 
 
+def is_eci_appliance(product, retailer):
+    key = str(product).strip().lower().removeprefix('seib_')
+    return 'seib_' + key in ECI_APPLIANCE_PRODUCTS and seib_retailer_key(retailer) == 'eci'
+
+
+def collection_window(source, retailer):
+    if is_eci_appliance(source['source_key'], retailer):
+        # There is no agreed same-day cutoff for REF/LDY. Close at the next KST day.
+        return None
+    if dryer_config(SEIB_COUNTRY, source['source_key'], retailer):
+        return time(8), time(9)
+    return time(1), time(4)
+
+
 def enabled(day):
     return source_date_value(day) >= str(FIRST_SOURCE_DATE)
 
@@ -93,10 +114,16 @@ def collection_phase(day, now=None, *, source=None, retailer=RETAILER):
     current = now or datetime.now(KST)
     current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
     selected = date.fromisoformat(source_date_value(day))
-    start, end = (time(8), time(9)) if source and dryer_config('SEIB', source['source_key'], retailer) else (time(1), time(4))
-    if not enabled(day) or selected > current.date():
+    window = collection_window(source, retailer) if source else (time(1), time(4))
+    if (not enabled(day) or selected > current.date()
+            or (source and selected < retailer_start_date(source, retailer))):
         return 'pending'
-    if selected < current.date() or current.time().replace(tzinfo=None) >= end:
+    if selected < current.date():
+        return 'complete'
+    if window is None:
+        return 'collecting'
+    start, end = window
+    if current.time().replace(tzinfo=None) >= end:
         return 'complete'
     return 'pending' if current.time().replace(tzinfo=None) < start else 'collecting'
 

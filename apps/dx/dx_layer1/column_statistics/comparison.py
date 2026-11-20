@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from importlib import import_module
 from statistics import median
 from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
+from apps.common.seib_retail import ECI_APPLIANCE_START, ECI_OBSERVATION_DAYS, is_eci_appliance
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 
 KST = timezone(timedelta(hours=9))
@@ -76,6 +77,9 @@ def compare_columns(data, target, completed):
                if str(start) <= day['date'] < str(target)
                and day['total'] > 0 and completed.get(day['date'], False)]
     current = next(day for day in data['daily'] if day['date'] == str(target))
+    eci_appliance = data.get('country') == 'SEIB' and is_eci_appliance(data.get('product'), data.get('retailer'))
+    if eci_appliance:
+        history = [day for day in history if day['date'] >= str(ECI_APPLIANCE_START)]
     rows = []
     for column in data['columns']:
         values = [day['counts'][column] for day in history if column in day['counts']]
@@ -91,7 +95,8 @@ def compare_columns(data, target, completed):
             status = 'uncollected'
         elif current['total'] == 0:
             status = 'no_scoped_rows'
-        elif costco.optional_null_column(data.get('country'), data.get('retailer'), column):
+        elif ((eci_appliance and column == 'savings')
+              or costco.optional_null_column(data.get('country'), data.get('retailer'), column)):
             status = 'normal'
         elif baseline is None:
             status = 'insufficient'
@@ -109,6 +114,8 @@ def compare_columns(data, target, completed):
 
 
 def minimum_days(data):
+    if data.get('country') == 'SEIB' and is_eci_appliance(data.get('product'), data.get('retailer')):
+        return ECI_OBSERVATION_DAYS
     return costco.MINIMUM_DAYS if data.get('country') == 'SEA' and data.get('retailer') == 'Costco' else MINIMUM_DAYS
 
 

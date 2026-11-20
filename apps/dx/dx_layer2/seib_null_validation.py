@@ -9,7 +9,7 @@ from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.seib_retail import (
     SEIB_COUNTRY, SEIB_SOURCE_CONFIG, enabled, latest_scope,
     get_seib_null_columns,
-    get_seib_null_select_columns, product_line_for, seib_retailer_key, active_retailers,
+    get_seib_null_select_columns, product_line_for, seib_retailer_key, active_retailers, is_eci_appliance,
 )
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 
@@ -74,7 +74,7 @@ def select_record(cursor, target_date, product_line, record_id, column, *, for_e
         raise ValueError('Unsupported SEIB validation column')
     source = SEIB_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
-    if format_columns is None and len(source['retailers']) > 1:
+    if format_columns is None and len(active_retailers(source, mapping['source_date'])) > 1:
         cte, scope, params = latest_scope(source, mapping['source_date'], mapping['source_date'], None)
     else:
         cte, scope, params = _scope(source, mapping['source_date'], mapping['source_date'])
@@ -141,7 +141,8 @@ def append_null_stats(cursor, target_date, validation, category=None, review_fil
             count = sum(counts.values())
             retailers.append({
                 'retailer': retailer, 'total': len(rows), 'total_null_count': count,
-                'fields_detail': counts, 'status': 'CRITICAL' if count else 'OK',
+                'fields_detail': counts, 'status': ('PENDING' if not rows and is_eci_appliance(product_line, retailer)
+                                                     else 'CRITICAL' if count else 'OK'),
                 **mapping, **review_stats,
             })
         count = sum(retailer['total_null_count'] for retailer in retailers)

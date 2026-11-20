@@ -73,14 +73,20 @@ def pinned(value):
 
 
 def build(scope, generation):
+    from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
+
     source, account = select_source(scope['country'], scope['product'], scope['retailer'])
     day = date.fromisoformat(scope['date'])
     started = time.time()
-    raw = load_snapshots(source, account, day)
+    bsr = scope.get('rank_type') == 'bsr'
+    raw = load_snapshots(source, account, day, 'bsr') if bsr else load_snapshots(source, account, day)
+    active_from = (ECI_APPLIANCE_START if scope['country'] == 'SEIB'
+                   and is_eci_appliance(scope['product'], scope['retailer']) else None)
     today = timezone.localdate(timezone=tz(timedelta(hours=9)))
     results = {}
     for mode in ('all', 'samsung'):
-        result = compare(raw['rows'], day, samsung=mode == 'samsung', today=today)
+        result = compare(raw['rows'], day, samsung=mode == 'samsung', today=today,
+                         limit=100 if bsr else 300, active_from=active_from)
         result.update(scope, mode=mode, basis=raw['basis'], sku_from_master=raw['sku_from_master'],
                       updated_at=timezone.now().isoformat())
         reviews.prepare(result, scope)

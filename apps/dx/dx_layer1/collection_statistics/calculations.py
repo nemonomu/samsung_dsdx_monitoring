@@ -6,7 +6,8 @@ from apps.common.dryer_onboarding import (config as dryer_config, OPERATIONAL_FR
     is_preview, initial_bsr_policy, operating_history)
 from apps.dx.dx_layer1.common.retail_verification import verification_state
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
-from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.seib_retail import (FIRST_SOURCE_DATE as SEIB_START_DATE, ECI_APPLIANCE_START,
+                                    is_eci_appliance)
 from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START_DATE
 from apps.common.sem_retail import sem_start_date
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, MEDIAMARKT_DRYER_START_DATE
@@ -34,7 +35,10 @@ def normalize_check(check, country, inspection_date):
         for slot in slots:
             for retailer in slot.get('retailers', []):
                 name = retailer['retailer']
+                eci_appliance = country == 'SEIB' and is_eci_appliance(product, name)
                 if country in SOURCE_START_DATES and source_day < SOURCE_START_DATES[country]:
+                    continue
+                if eci_appliance and source_day < ECI_APPLIANCE_START:
                     continue
                 if country == 'SEM' and product == 'LDY_DRYER' and source_day < sem_start_date('sem_ldy_dryer', name):
                     continue
@@ -81,6 +85,8 @@ def normalize_check(check, country, inspection_date):
                 })
                 if country in SOURCE_START_DATES:
                     rows[-1]['source_date_basis'] = 'db_original'
+                if eci_appliance:
+                    rows[-1]['active_from'] = str(ECI_APPLIANCE_START)
                 if seg_mediamarkt_dryer:
                     rows[-1]['source_date_basis'] = 'db_original'
                 if dryer_config(country, product, name):
@@ -168,6 +174,8 @@ def bidirectional_bsr(row, country):
 
 
 def variable_bsr(row, country):
+    if country == 'SEIB' and is_eci_appliance(row['product'], row['retailer']):
+        return True
     if country == 'SEA' and str(row['retailer']).strip().casefold() == 'homedepot':
         return True
     return (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
@@ -399,6 +407,9 @@ def compare_rows(rows, history, country=None, *, observed_dates=None, prior_obse
     """history contains only the previous 28 source dates, never the target day."""
     if country == 'SEUK':
         history = [r for r in history if r.get('source_date', '') >= str(SEUK_START_DATE)]
+    if country == 'SEIB':
+        history = [r for r in history if not is_eci_appliance(r['product'], r['retailer'])
+                   or str(r.get('source_date', '')) >= str(ECI_APPLIANCE_START)]
     history = [r for r in history if operating_history(r, country, r.get('source_date', ''))]
     if initial_bsr_samples is None:
         initial_bsr_samples = {}

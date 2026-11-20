@@ -2,7 +2,7 @@
 from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
 from apps.common.source_dates import source_date_sql
 from apps.common.sea_collection import HOMEDEPOT_FIRST_SOURCE_DATE
-from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START
+from apps.common.seib_retail import get_seib_source, retailer_start_date as seib_retailer_start_date
 from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START
 from apps.common.sem_retail import sem_start_date
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
@@ -28,7 +28,7 @@ def active_from(source, retailer):
     if country == 'SEUK':
         return SEUK_START
     if country == 'SEIB':
-        return SEIB_START
+        return seib_retailer_start_date(get_seib_source(source['key']), retailer)
     if country == 'SEM' and product == 'LDY_DRYER':
         return sem_start_date('sem_ldy_dryer', retailer)
     if country == 'SEG':

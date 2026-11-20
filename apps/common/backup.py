@@ -1,6 +1,6 @@
 """Retail source-to-backup utilities for the monitored countries."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections.abc import Mapping
 from apps.common.db import get_dx_connection
 from apps.common.inspection_dates import (
@@ -17,7 +17,7 @@ from apps.common.siel_retail import (
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
-from apps.common.seib_retail import SEIB_SOURCE_CONFIG
+from apps.common.seib_retail import ECI_APPLIANCE_PRODUCTS, ECI_APPLIANCE_START, SEIB_SOURCE_CONFIG
 from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from apps.common.source_dates import source_date_sql
 
@@ -297,10 +297,18 @@ def _row_id(row):
     return row[0]
 
 
+def _backup_date_condition(source, day, retailer=None):
+    condition, params = _date_condition(source['date_column'], day, source['date_mode'])
+    if source['key'] in ECI_APPLIANCE_PRODUCTS and params[0] < str(ECI_APPLIANCE_START):
+        condition += " AND LOWER(BTRIM(a.account_name)) IS DISTINCT FROM 'eci'"
+    if retailer:
+        condition += ' AND LOWER(BTRIM(a.account_name)) = %s'
+        params = (*params, retailer.casefold())
+    return condition, params
+
+
 def _count_pending_source(cursor, source, target_date):
-    date_sql, date_params = _date_condition(
-        source['date_column'], target_date, source['date_mode'],
-    )
+    date_sql, date_params = _backup_date_condition(source, target_date)
     cursor.execute(f"""
         SELECT COUNT(*)
         FROM {source['source_table']} a
@@ -311,12 +319,10 @@ def _count_pending_source(cursor, source, target_date):
     return int(cursor.fetchone()[0] or 0)
 
 
-def _backup_source(cursor, source, username, date_mapping):
+def _backup_source(cursor, source, username, date_mapping, *, retailer=None):
     """Copy one fixed source into its fixed backup and return actual ids."""
     source_date = date_mapping['source_date']
-    date_sql, date_params = _date_condition(
-        source['date_column'], source_date, source['date_mode'],
-    )
+    date_sql, date_params = _backup_date_condition(source, source_date, retailer)
     cursor.execute(f"""
         INSERT INTO {source['backup_table']}
         SELECT a.*
@@ -351,6 +357,27 @@ def _backup_source(cursor, source, username, date_mapping):
         'offset_days': date_mapping['offset_days'],
         'source_key': source['source_key'],
     }
+
+
+def backup_recent_eci_appliances(today):
+    """Copy completed ECI source days, retrying recent days for late writes."""
+    from apps.common.db import dx_connection
+
+    start = max(ECI_APPLIANCE_START, today - timedelta(days=3))
+    if start >= today:
+        return 0
+    copied = 0
+    with dx_connection(connect_timeout=5) as (connection, cursor):
+        cursor.execute("SET LOCAL statement_timeout = '20s'")
+        for key in ECI_APPLIANCE_PRODUCTS:
+            source = _seib_backup_source(key)
+            for offset in range((today - start).days):
+                day = start + timedelta(days=offset)
+                result = _backup_source(cursor, source, 'auto_eci_backup',
+                                        resolve_monitoring_date(day, 'SEIB', key), retailer='ECI')
+                copied += result['count']
+        connection.commit()
+    return copied
 
 
 def backup_tv_retail(username='', target_date=None):

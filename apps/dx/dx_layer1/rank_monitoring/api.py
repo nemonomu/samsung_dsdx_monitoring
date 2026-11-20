@@ -13,6 +13,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.common.seib_retail import is_eci_appliance
 from apps.dx.dx_layer1.common.context import build_context
 from apps.dx.dx_layer1.models import RetailRankReview, RetailRankReviewImage
 from .sources import COUNTRIES, catalog, select_source
@@ -48,7 +49,13 @@ def requested_scope(request):
     if mode not in ('all', 'samsung') or day > today or day < date(2000, 1, 2):
         raise ValueError
     select_source(country, product, retailer)
-    return {'country': country, 'product': product, 'retailer': retailer, 'date': str(day)}, mode
+    scope = {'country': country, 'product': product, 'retailer': retailer, 'date': str(day)}
+    rank_type = request.GET.get('rank_type', 'main')
+    if rank_type != 'main':
+        if rank_type != 'bsr' or country != 'SEIB' or not is_eci_appliance(product, retailer):
+            raise ValueError
+        scope['rank_type'] = rank_type
+    return scope, mode
 
 
 def requested_snapshot(request):
@@ -165,7 +172,8 @@ def export(request):
                       p['label'],index.get(p['fingerprint'],'미확인')]
             writer.writerow([csv_cell(v) for v in values])
         response = HttpResponse('\ufeff' + output.getvalue(), content_type='text/csv; charset=utf-8')
-        response['Content-Disposition'] = 'attachment; filename="rank-export.csv"'
+        filename = 'rank-bsr-export.csv' if snapshot['scope'].get('rank_type') == 'bsr' else 'rank-export.csv'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return private(response)
     except snapshots.SnapshotExpired:
         return private(JsonResponse({'error': '비교 결과가 만료되었습니다. 다시 조회해주세요.'}, status=409))

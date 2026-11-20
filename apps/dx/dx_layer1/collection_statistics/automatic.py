@@ -5,7 +5,7 @@ from apps.common.dryer_onboarding import SOURCES as DRYER_SOURCES, is_preview
 from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS, SOURCE_START_DATES
 from .collector import refresh_country
-from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE
+from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE, ECI_APPLIANCE_START
 from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE, SEM_COPPEL_DRYER_FIRST_SOURCE_DATE
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUMNS, MEDIAMARKT_DRYER_START_DATE
@@ -44,6 +44,9 @@ def history_range(country, last_due):
         and (country != 'SEIB' or day < SEIB_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'MediaMarkt'
                  and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})
+        and (country != 'SEIB' or day < ECI_APPLIANCE_START
+             or {'REF', 'LDY'} <= {r['product'] for r in rows if r['retailer'] == 'ECI'
+                                   and r.get('active_from') == str(ECI_APPLIANCE_START)})
         and (country != 'SEM' or day < SEM_DRYER_FIRST_SOURCE_DATE
              or any(r['product'] == 'LDY_DRYER' and r['retailer'] == 'HomeDepot'
                     and r.get('source_date_basis') == 'db_original' for r in rows))

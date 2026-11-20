@@ -9,9 +9,10 @@
     <form id="rm-form" class="rm-filters">
         <label>제품군<select id="rm-product" required></select></label>
         <label>리테일러<select id="rm-retailer" required></select></label>
+        <label id="rm-rank-picker" hidden>순위<select id="rm-rank-type"><option value="main">MAIN</option><option value="bsr">BSR</option></select></label>
         <label>기준 수집일 D<input id="rm-date" type="date" required></label>
         <button class="rm-primary" type="submit" id="rm-load">조회</button>
-        <span class="rm-muted">MAIN 순위 · 1–300위 · 원본 DB 수집일 기준</span>
+        <span id="rm-rank-basis" class="rm-muted">MAIN 순위 · 1–300위 · 원본 DB 수집일 기준</span>
     </form>
     <div id="rm-message" role="status" aria-live="polite" class="rm-notice">순위 데이터를 불러오는 중입니다.</div>
     <div id="rm-results" hidden>
@@ -20,7 +21,7 @@
         <section class="rm-card">
             <div class="rm-card-head"><h3>구간별 상품 유지율</h3><span class="rm-muted">D-1 상품이 D에도 같은 구간에 남은 비율</span></div>
             <div class="rm-scroll" tabindex="0" role="region" aria-label="구간별 순위 요약">
-                <table class="rm-table rm-summary"><thead><tr><th>전일 구간</th><th>전일 상품</th><th>동일 구간 유지</th><th>다른 구간 이동</th><th>300위 내 미발견</th><th>판단 보류</th><th>유지율 / 예시 기준</th><th>판단</th></tr></thead><tbody id="rm-bands"></tbody></table>
+                <table class="rm-table rm-summary"><thead><tr><th>전일 구간</th><th>전일 상품</th><th>동일 구간 유지</th><th>다른 구간 이동</th><th id="rm-missing-label">300위 내 미발견</th><th>판단 보류</th><th>유지율 / 예시 기준</th><th>판단</th></tr></thead><tbody id="rm-bands"></tbody></table>
             </div>
             <div id="rm-top-exits" class="rm-card-foot"></div>
         </section>
@@ -46,7 +47,7 @@
                 <button id="rm-more" type="button" hidden>상품 더 보기</button>
             </div>
         </section>
-        <p class="rm-footnote">유지율 90%·70%·50%, 인접 수집일 간 40위 이상 이동은 검토용 기준입니다. 미발견은 오류 확정이 아닙니다. 전체 목록은 3일 중 한 번이라도 300위 안에 있는 상품 및 식별값·순위 확인 대상이며, 구간별 지표는 전일 상품 기준입니다. 다음 날 데이터가 없으면 복귀 여부를 평가하지 않습니다.</p>
+        <p class="rm-footnote"><span id="rm-footnote-rank">MAIN 300위 기준 유지율 90%·70%·50%</span>, 인접 수집일 간 40위 이상 이동은 검토용 기준입니다. 미발견은 오류 확정이 아닙니다. 전체 목록은 3일 중 한 번이라도 기준 순위에 포함된 상품과 식별값·순위 확인 대상이며, 구간별 지표는 전일 상품 기준입니다. 다음 날 데이터가 없으면 복귀 여부를 평가하지 않습니다.</p>
         <p class="rm-footnote">날짜별 최신 배치를 비교하며 수집 진행 중인 결과는 잠정값입니다. 새 조회는 1분간 완료 결과를 재사용하며 갱신 중에는 최대 5분 전 결과를 시각과 함께 표시합니다. 목록·상세는 같은 조회 시점으로 고정됩니다. 최신 결과는 조회 버튼으로 확인하세요. 확인 기록은 자동 점검 신호를 해제하거나 원본 수집값을 수정하지 않습니다.</p>
     </div>
     <dialog id="rm-dialog" class="rm-dialog" aria-labelledby="rm-detail-title">
@@ -83,4 +84,4 @@
 </section>
 {{ rank_config|json_script:'rm-config' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-review.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=4"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/rank-review.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/rank-monitoring.js' %}?v=5"></script>{% endblock %}

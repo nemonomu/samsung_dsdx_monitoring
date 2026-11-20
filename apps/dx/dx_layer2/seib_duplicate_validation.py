@@ -1,5 +1,6 @@
 """SEIB duplicate inspection on the original collection day and latest batch."""
-from apps.common.seib_retail import SEIB_SOURCE_CONFIG, enabled, product_line_for, active_retailers, normalize_retailer
+from apps.common.seib_retail import (SEIB_SOURCE_CONFIG, enabled, product_line_for, active_retailers,
+                                    normalize_retailer, is_eci_appliance)
 from .seib_null_validation import latest_rows
 from .sem_validation import _duplicate_groups
 
@@ -18,7 +19,8 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
             retailers.append({
                 'retailer': retailer, 'total': len(rows),
                 'duplicate_groups': len(groups), 'duplicate_keys': ['item'],
-                'status': 'CRITICAL' if groups else 'OK', **mapping,
+                'status': ('PENDING' if not rows and is_eci_appliance(source['source_key'], retailer)
+                           else 'CRITICAL' if groups else 'OK'), **mapping,
             })
         issues = sum(row['duplicate_groups'] for row in retailers)
         validation['tables'].append({

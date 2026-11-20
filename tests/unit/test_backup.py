@@ -3,6 +3,7 @@ from apps.common import sea_dates
 from apps.common.source_dates import source_date_value
 from apps.common.seg_retail import SEG_SOURCE_CONFIG
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
+from apps.common.seib_retail import ECI_APPLIANCE_PRODUCTS, ECI_APPLIANCE_START
 from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
 from datetime import date, timedelta
 
@@ -229,6 +230,7 @@ def load_backup(connection, errors=None):
             ),
             'apps.common.seib_retail': module_stub(
                 'apps.common.seib_retail', SEIB_SOURCE_CONFIG=SEIB_SOURCE_CONFIG,
+                ECI_APPLIANCE_PRODUCTS=ECI_APPLIANCE_PRODUCTS, ECI_APPLIANCE_START=ECI_APPLIANCE_START,
             ),
             'apps.common.seuk_retail': module_stub(
                 'apps.common.seuk_retail', SEUK_SOURCE_CONFIG=SEUK_SOURCE_CONFIG,
@@ -242,6 +244,18 @@ def load_backup(connection, errors=None):
 
 
 class BackupTests(unittest.TestCase):
+    def test_eci_backup_excludes_test_dates_and_scopes_automatic_copy(self):
+        backup = load_backup(BackupConnection(BackupCursor()))
+        source = backup._seib_backup_source('seib_ref')
+        before, params = backup._backup_date_condition(source, '2026-11-21')
+        self.assertIn("IS DISTINCT FROM 'eci'", before)
+        self.assertEqual(('2026-11-21',), params)
+        manual, _ = backup._backup_date_condition(source, '2026-11-22')
+        self.assertNotIn('account_name', manual)
+        automatic, params = backup._backup_date_condition(source, '2026-11-22', 'ECI')
+        self.assertIn('LOWER(BTRIM(a.account_name)) = %s', automatic)
+        self.assertEqual(('2026-11-22', 'eci'), params)
+
     def test_sea_and_sem_dryer_backup_use_original_source_dates(self):
         cursor = BackupCursor(
             pending={'public.ldy_dryer_retail_backup': 2,
