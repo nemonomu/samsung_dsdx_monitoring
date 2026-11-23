@@ -22,6 +22,7 @@ from apps.dx.dx_layer3.data_edit import services as edits
 
 
 DAY=date(2026,10,26)
+TV_DAY = date(2026, 11, 23)
 
 
 def row(**changes):
@@ -173,7 +174,9 @@ class SeukCrossfieldTests(unittest.TestCase):
             items=context._get_sidebar_items()['cross_field']
         group=next(i for i in items if isinstance(i,dict) and i['name']=='SEUK Retail')
         self.assertEqual(list(SEUK_SOURCE_CONFIG),[i['detail_code'] for i in group['children']])
-        template=Engine().from_string(Path('templates/includes/_sidebar.html').read_text(encoding='utf-8'))
+        template = Engine(dirs=[str(Path('templates').resolve())]).from_string(
+            Path('templates/includes/_sidebar.html').read_text(encoding='utf-8')
+        )
         for item in (group,{'name':'SEUK Retail'}):
             html=template.render(Context({'sidebar_groups':[{'key':'cross_field','items':[item]}]}))
             self.assertIn('/static/img/flags/gb.svg',html)
@@ -188,6 +191,156 @@ class SeukCrossfieldTests(unittest.TestCase):
             self.assertIn(spec[3],sql)
         self.assertNotIn('UPDATE dx_seuk.',sql)
         self.assertNotIn('DELETE FROM',sql)
+
+
+class SeukTvCrossfieldTests(unittest.TestCase):
+    def test_amazon_rules_and_discount_boundaries(self):
+        cases = [
+            ({'count_of_reviews': '0', 'page_type': 'bsr', 'bsr_rank': None}, set()),
+            ({'count_of_star_ratings': None}, {'rating_count_presence'}),
+            ({'count_of_star_ratings': '0'}, {'rating_count_presence'}),
+            ({'count_of_star_ratings': 'No customer reviews'}, {'rating_count_presence'}),
+            ({'star_rating': 'No customer reviews'}, {'rating_count_presence'}),
+            ({'star_rating': '0'}, set()),
+            ({'count_of_star_ratings': 'unknown'}, set()),
+            ({'final_sku_price': '£100.00'}, {'final_original_price'}),
+            ({'final_sku_price': '£10.00'}, {'final_original_price'}),
+            ({'final_sku_price': '£10.01'}, set()),
+            ({'final_sku_price': '£0.00', 'savings': None}, {'final_original_price', 'savings_missing'}),
+            ({'final_sku_price': '£99.50', 'savings': 'n/a'}, {'savings_missing'}),
+            ({'final_sku_price': '£99.51', 'savings': None}, set()),
+            ({'original_sku_price': None}, {'original_missing'}),
+            ({'final_sku_price': 'not a price', 'original_sku_price': None}, set()),
+            ({'final_sku_price': ' ', 'original_sku_price': None}, {'final_missing'}),
+            ({'final_sku_price': None, 'savings': None}, {'final_missing'}),
+        ]
+        for changes, expected in cases:
+            with self.subTest(changes=changes):
+                sample = row(account_name=' amazon ', final_sku_price='£80.00',
+                             original_sku_price='£100.00', savings='-1%')
+                sample.update(changes)
+                self.assertEqual(expected, svc.evaluate_seuk_row(sample))
+
+    def test_argos_currys_rules_with_discount_units(self):
+        cases = [
+            ({'savings': '£20.99'}, set()),
+            ({'savings': '£20.98'}, {'savings_amount_match'}),
+            ({'savings': '6%'}, set()),
+            ({'savings': '5%'}, {'savings_amount_match'}),
+            ({'savings': '20'}, set()),
+            ({'savings': None}, {'savings_missing'}),
+            ({'count_of_reviews': '7'}, {'review_count_match'}),
+            ({'star_rating': '0'}, {'rating_count_presence'}),
+            ({'final_sku_price': '£369.99'}, {'final_original_price'}),
+            ({'original_sku_price': None}, {'original_missing'}),
+            ({'final_sku_price': None}, {'final_missing'}),
+        ]
+        self.assertEqual(list(svc.RULES), list(svc.rule_definitions('Argos')))
+        for changes, expected in cases:
+            with self.subTest(changes=changes):
+                sample = row(account_name='Argos', final_sku_price='£349.00',
+                             original_sku_price='£369.99', savings='£20.99')
+                sample.update(changes)
+                self.assertEqual(expected, svc.evaluate_seuk_row(sample))
+        self.assertEqual(set(), svc.evaluate_seuk_row(row(
+            account_name='Argos', final_sku_price='£89.50', original_sku_price='£100.00', savings='11%',
+        )))
+
+    def test_retailer_scope_and_date_cutoff(self):
+        source = svc.SEUK_SOURCE_CONFIG['seuk_tv']
+        for retailer in ('Amazon', 'Argos'):
+            cursor = Mock()
+            cursor.fetchall.return_value = []
+            self.assertEqual([], svc._load_rows(cursor, source, '2026-11-01', '2026-11-21', retailer))
+            cursor.execute.assert_not_called()
+            svc._load_rows(cursor, source, '2026-11-01', '2026-11-23', retailer)
+            query, params = cursor.execute.call_args.args
+            self.assertEqual(['2026-11-22', '2026-11-23', retailer.lower(), retailer.lower()], params)
+            self.assertIn(source_date_sql('anchor.crawl_datetime'), query)
+            is_amazon = retailer == 'Amazon'
+            self.assertEqual(is_amazon, 'source.is_redirect IS NOT TRUE' in query)
+            self.assertNotIn('is_redirect', query.split('SELECT source.*')[0])
+            display_sql = svc.display_query(source, TV_DAY, 30, ['A'], retailer)
+            self.assertIn("'2026-11-22'", display_sql)
+            self.assertEqual(is_amazon, 'source.is_redirect IS NOT TRUE' in display_sql)
+            self.assertNotIn('AT TIME ZONE', display_sql)
+        _, scope, params = svc.record_scope(source, '2026-11-21')
+        self.assertEqual(['2026-11-21', '2026-11-21', 'currys', 'currys'], params)
+        self.assertNotIn('is_redirect', scope)
+
+    def test_summary_and_detail_keep_retailer_rules_and_history_separate(self):
+        class TvCursor(Cursor):
+            def fetchall(self):
+                if 'monitoring_validation_rules' in self.query:
+                    return [
+                        (i, 'seuk_tv_' + code + key, key, seller)
+                        for seller, code, start in (('Currys', '', 1), ('Amazon', 'amazon_', 11),
+                                                    ('Argos', 'argos_', 21))
+                        for i, key in enumerate(svc.rule_definitions(seller), start)
+                    ]
+                if 'SELECT source.*' in self.query:
+                    retailer = self.calls[-1][1][-1]
+                    if retailer == 'amazon':
+                        return [row(id=11, account_name='Amazon', original_sku_price=None,
+                                    crawl_datetime='2026-11-23T23:59:59-04:00')]
+                    if retailer == 'argos':
+                        return [row(id=21, account_name='Argos', savings='1%',
+                                    crawl_datetime='2026-11-23T23:59:59-04:00')]
+                    return []
+                return []
+
+        with patch.object(svc, 'exclude_page_absent_records',
+                          side_effect=lambda _, __, rows, **kwargs: (rows, [])):
+            summary = svc.get_seuk_cross_field_summary(TvCursor(), TV_DAY, 'seuk_tv')
+            detail = svc.get_seuk_cross_field_rule_detail(TvCursor(), TV_DAY, 'seuk_tv', 27)
+            before = svc.get_seuk_cross_field_summary(TvCursor(), date(2026, 11, 21), 'seuk_tv')
+        self.assertEqual(19, len(summary['rule_summary']))
+        self.assertEqual(2, summary['total_anomalies'])
+        self.assertEqual(
+            [(['Amazon'], 'original_missing'), (['Argos'], 'savings_amount_match')],
+            [(rule['retailers'], rule['rule_key']) for rule in summary['rule_summary'] if rule['error_count']],
+        )
+        self.assertEqual(['Argos'], detail['retailers'])
+        self.assertEqual([21], [sample['id'] for sample in detail['anomalies']])
+        self.assertEqual(7, len(before['rule_summary']))
+
+    def test_new_retailer_edit_and_review_scope(self):
+        table = svc.SEUK_SOURCE_CONFIG['seuk_tv']['table_name']
+        rules = [{'rule_id': 14, 'retailers': ['Amazon']}, {'rule_id': 24, 'retailers': ['Argos']}]
+        amazon = ('£20.00', 'latest', ' aMaZoN ', 'A')
+        with patch.object(svc, 'load_active_rules', return_value=rules):
+            cursor = ScriptedCursor([{'fetchone': amazon}])
+            result = edits.update_cell_value(cursor, Mock(), table, 11, 'savings', '£1.00',
+                                             str(TV_DAY), 'cross_field', 'tester', '', 24)
+            self.assertEqual(400, result['status'])
+            self.assertIn("LOWER(BTRIM(source.account_name)) <> 'amazon' OR source.is_redirect IS NOT TRUE",
+                          cursor.calls[0][0])
+            self.assertEqual(1, len(cursor.calls))
+            cursor = ScriptedCursor([{'fetchone': amazon}])
+            result = edits.update_cell_value(cursor, Mock(), table, 11, 'count_of_reviews', '1',
+                                             str(TV_DAY), 'cross_field', 'tester', '', 14)
+            self.assertEqual(403, result['status'])
+            cursor = ScriptedCursor([{'fetchone': ('£20.00', 'Amazon', 'A')}, {'fetchone': None}, {}])
+            result = edits.save_review(cursor, Mock(), table, 11, 'savings', 'normal', '',
+                                       'checked', str(TV_DAY), 'cross_field', 'tester', 14)
+            self.assertTrue(result['success'])
+            self.assertIn('column_name = %s', cursor.calls[1][0])
+            self.assertIn('rule_id = %s', cursor.calls[1][0])
+            self.assertEqual(14, cursor.calls[1][1][-1])
+
+    def test_registration_sql_matches_the_two_retailer_specs(self):
+        from pglast import parse_plpgsql, parse_sql
+
+        sql = Path('sql/setup_seuk_tv_crossfield.sql').read_text(encoding='utf-8')
+        self.assertTrue(parse_sql(sql))
+        self.assertTrue(parse_plpgsql(sql))
+        for retailer, expected_count in (('Amazon', 5), ('Argos', 7)):
+            self.assertEqual(expected_count, sql.count(f"('{retailer}', '"))
+            for key, spec in svc.rule_definitions(retailer).items():
+                self.assertIn(f"('{retailer}', '{key}', '{spec[0]}'", sql)
+                self.assertIn(spec[3], sql)
+        self.assertNotIn('UPDATE dx_seuk.', sql)
+        self.assertNotIn('DELETE FROM', sql)
 
 
 if __name__=='__main__': unittest.main()

@@ -1,18 +1,18 @@
-"""UK Currys cross-field checks on the original collection date."""
+"""UK retail cross-field checks on the original collection date."""
 
 from collections import OrderedDict
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 
 from apps.common.crossfield_history import build_detail_history
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.seuk_retail import (
-    FIRST_SOURCE_DATE, RETAILER, SEUK_SOURCE_CONFIG, get_seuk_source,
-    latest_scope, normalize_retailer, retailer_start_date,
+    RETAILER, latest_scope, normalize_retailer, product_line_for, seuk_retailer_key,
 )
 from apps.common.source_dates import source_date_sql, source_date_value
+from apps.dx.dx_layer1.seuk_retail.sources import SEUK_SOURCE_CONFIG, retailer_start_date
 
 
 EDITABLE_COLUMNS = (
@@ -49,6 +49,37 @@ RULES = OrderedDict((
                             '원가에서 판매가를 뺀 금액과 할인 금액(savings)이 다릅니다.',
                             'final_sku_price|original_sku_price|savings')),
 ))
+PRICE_FIELDS = 'final_sku_price|original_sku_price|savings'
+AMAZON_RULES = {
+    'rating_count_presence': (
+        '별점과 별점 수 일치', 'star_rating', 'count_of_star_ratings',
+        '숫자 별점이 있는데 별점 수가 없거나 0이거나, 별점 없음 문구와 양수 별점 수가 함께 있습니다.',
+        'star_rating|count_of_star_ratings',
+    ),
+    'final_original_price': (
+        '판매가와 원가 순서', 'final_sku_price', 'original_sku_price',
+        '판매가가 원가보다 크거나 같거나 할인율이 90% 이상입니다.', PRICE_FIELDS,
+    ),
+    'savings_missing': (
+        '할인값 누락', 'savings', 'original_sku_price|final_sku_price',
+        '할인율이 0.5% 이상인데 할인값(savings)이 없습니다.', PRICE_FIELDS,
+    ),
+    'original_missing': RULES['original_missing'],
+    'final_missing': RULES['final_missing'],
+}
+ARGOS_RULES = {
+    **RULES,
+    'savings_missing': (
+        '할인값 누락', 'savings', 'original_sku_price|final_sku_price',
+        '원가가 판매가보다 큰데 할인값(savings)이 없습니다.', PRICE_FIELDS,
+    ),
+    'savings_amount_match': (
+        '할인값 일치', 'savings', 'original_sku_price|final_sku_price',
+        '£ 금액은 원가와 판매가의 차액, %는 정수로 반올림한 할인율과 일치해야 합니다.',
+        PRICE_FIELDS,
+    ),
+}
+AMAZON_NO_RATING_TEXTS = frozenset(('no customer reviews', 'no reviews', 'no ratings'))
 
 
 def _present(value):
@@ -78,8 +109,58 @@ def _money(value):
     return Decimal(text.replace(',', ''))
 
 
+def _amazon_present(value):
+    return _present(value) and str(value).strip().casefold() != 'n/a'
+
+
+def _evaluate_amazon(row):
+    errors = set()
+    rating_text = str(row.get('star_rating') or '').strip().casefold()
+    count = row.get('count_of_star_ratings')
+    rating = _number(row.get('star_rating'))
+    stars = _number(count)
+    no_stars = (count is None or not str(count).strip() or stars == 0
+                or str(count).strip().casefold() in AMAZON_NO_RATING_TEXTS)
+    if ((rating is not None and rating > 0 and no_stars)
+            or (rating_text in AMAZON_NO_RATING_TEXTS and stars is not None and stars > 0)):
+        errors.add('rating_count_presence')
+
+    final_value = row.get('final_sku_price')
+    original_value = row.get('original_sku_price')
+    final = _money(final_value)
+    original = _money(original_value)
+    has_savings = _amazon_present(row.get('savings'))
+    if not _amazon_present(final_value) and (_amazon_present(original_value) or has_savings):
+        errors.add('final_missing')
+    elif final is not None and has_savings and not _amazon_present(original_value):
+        errors.add('original_missing')
+    elif final is not None and original is not None:
+        discount = original - final
+        if final >= original or discount * 10 >= original * 9:
+            errors.add('final_original_price')
+        if original > 0 and not has_savings and discount * 200 >= original:
+            errors.add('savings_missing')
+    return errors
+
+
+def _argos_savings_matches(value, original, difference):
+    text = str(value).strip()
+    if text.startswith('£'):
+        amount = _money(text)
+        return amount is None or amount == difference
+    if re.fullmatch(r'\d+\s*%', text):
+        expected_pct = (difference * 100 / original).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        return Decimal(text[:-1].strip()) == expected_pct
+    # Unrecognized units are handled by format validation.
+    return True
+
+
 def evaluate_seuk_row(row):
     """Invalid formats are left to Layer 2; dependent checks never cascade."""
+    retailer = seuk_retailer_key(row.get('account_name'))
+    if retailer == 'amazon':
+        return _evaluate_amazon(row)
+
     errors = set()
     reviews = _number(row.get('count_of_reviews'))
     stars = _number(row.get('count_of_star_ratings'))
@@ -113,6 +194,9 @@ def evaluate_seuk_row(row):
     if not savings_present:
         if expected > 0:
             errors.add('savings_missing')
+    elif retailer == 'argos':
+        if not _argos_savings_matches(row.get('savings'), original, expected):
+            errors.add('savings_amount_match')
     else:
         displayed = _money(row.get('savings'))
         if displayed is not None and displayed != expected:
@@ -131,10 +215,16 @@ def _rows(cursor):
 
 
 def rule_definitions(retailer):
+    if retailer == 'Amazon':
+        return AMAZON_RULES
+    if retailer == 'Argos':
+        return ARGOS_RULES
     return RULES
 
 
 def editable_columns(retailer):
+    if seuk_retailer_key(retailer) == 'amazon':
+        return tuple(column for column in EDITABLE_COLUMNS if column != 'count_of_reviews')
     return EDITABLE_COLUMNS
 
 
@@ -174,10 +264,38 @@ def load_active_rules(cursor, source):
     return result
 
 
+def day_is_active(source, day, retailer):
+    return str(day) >= str(retailer_start_date(source, retailer))
+
+
+def _amazon_redirect_filter(retailers):
+    if 'Amazon' not in retailers:
+        return ''
+    if len(retailers) == 1:
+        return ' AND source.is_redirect IS NOT TRUE'
+    return " AND (LOWER(BTRIM(source.account_name)) <> 'amazon' OR source.is_redirect IS NOT TRUE)"
+
+
+def record_scope(source, day):
+    """Select the latest batch per retailer for a review or edit on one source day."""
+    retailers = source['retailers']
+    if 'Amazon' in retailers:
+        retailers = tuple(name for name in retailers if day_is_active(source, day, name))
+        if not retailers:
+            return '', f"FROM {source['table_name']} source WHERE FALSE", []
+        source = {**source, 'retailers': retailers}
+    retailer = retailers[0] if len(retailers) == 1 else None
+    cte, scope, params = latest_scope(source, day, day, retailer)
+    return cte, scope + _amazon_redirect_filter(retailers), params
+
+
 def _load_rows(cursor, source, start, end, retailer=RETAILER):
-    if date.fromisoformat(str(end)) < retailer_start_date(source, retailer):
+    retailer = normalize_retailer(source, retailer)
+    if not day_is_active(source, end, retailer):
         return []
+    start = max(str(start), str(retailer_start_date(source, retailer)))
     cte, scope, params = latest_scope(source, start, end, retailer)
+    scope += _amazon_redirect_filter((retailer,))
     cursor.execute(f"{cte} SELECT source.* {scope} ORDER BY source.item, source.id", params)
     return _rows(cursor)
 
@@ -192,6 +310,7 @@ def display_query(source, source_date, days=3, items=None, retailer=RETAILER):
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
     day = source_date_sql('anchor.crawl_datetime')
     source_day = source_date_sql('source.crawl_datetime')
+    redirect_sql = _amazon_redirect_filter((retailer,))
     item_sql = ''
     if items is not None:
         item_sql = (' AND source.item IN (' + ', '.join(_literal(item) for item in sorted(set(items)))
@@ -207,14 +326,20 @@ SELECT source.*
 FROM {source['table_name']} source
 JOIN latest ON {source_day} = latest.source_date
   AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-WHERE LOWER(BTRIM(source.account_name)) = {_literal(retailer.lower())}{item_sql}
+WHERE LOWER(BTRIM(source.account_name)) = {_literal(retailer.lower())}{redirect_sql}{item_sql}
 ORDER BY source.item, source.crawl_datetime, source.id;"""
 
 
 def _result(cursor, inspection_date, product_line, from_date=None):
-    source = get_seuk_source(product_line)
+    key = product_line_for(product_line)
+    if key is None:
+        raise ValueError('Unsupported SEUK source')
+    source = SEUK_SOURCE_CONFIG[key]
     mapping = resolve_monitoring_date(inspection_date, 'SEUK', source['source_key'])
     rules = load_active_rules(cursor, source)
+    rules = [rule for rule in rules
+             if rule['retailers'][0] not in ('Amazon', 'Argos')
+             or day_is_active(source, mapping['source_date'], rule['retailers'][0])]
     result = {
         **mapping, 'date': mapping['inspection_date'], 'source': source,
         'product_line': source['source_key'].upper(), 'label': source['display_name'],

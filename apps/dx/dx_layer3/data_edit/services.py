@@ -13,14 +13,15 @@ from apps.common.seib_retail import (
     FIRST_SOURCE_DATE as SEIB_FIRST_SOURCE_DATE,
     SEIB_SOURCE_CONFIG, RETAILER as SEIB_RETAILER, latest_scope as seib_scope,
 )
-from apps.common.seuk_retail import SEUK_SOURCE_CONFIG, latest_scope as seuk_scope
-from apps.dx.dx_layer3.cross_field.seuk_services import EDITABLE_COLUMNS as SEUK_CROSSFIELD_COLUMNS
+from apps.common.seuk_retail import seuk_retailer_key
 from apps.common.source_dates import source_date_sql
 from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_field_missing_editable_columns
 from apps.common.seda_retail import (
     SEDA_SOURCE_CONFIG, get_seda_product_line, get_seda_crossfield_editable_columns,
 )
+from apps.dx.dx_layer1.seuk_retail.sources import new_tv_retailer
 from apps.dx.dx_layer2.seda_null_validation import _scope as seda_scope
+from apps.dx.dx_layer3.cross_field import seuk_services
 from apps.dx.dx_layer3.cross_field.sea_services import appliance_source_date_sql, appliance_page_scope_sql
 from apps.common import costco_layer2
 from apps.common.siel_retail import (
@@ -78,7 +79,7 @@ VALID_TABLES_UPDATE.update(SEG_TABLE_TO_PRODUCT_LINE)
 VALID_TABLES_UPDATE.update(SEM_TABLE_TO_PRODUCT_LINE)
 SEIB_TABLES = {source['table_name']: source for source in SEIB_SOURCE_CONFIG.values()}
 VALID_TABLES_UPDATE.update(SEIB_TABLES)
-SEUK_TABLES = {source['table_name']: source for source in SEUK_SOURCE_CONFIG.values()}
+SEUK_TABLES = {source['table_name']: source for source in seuk_services.SEUK_SOURCE_CONFIG.values()}
 VALID_TABLES_UPDATE.update(SEUK_TABLES)
 SEDA_TABLES = {source['table_name'] for source in SEDA_SOURCE_CONFIG.values()}
 VALID_TABLES_UPDATE.update(SEDA_TABLES)
@@ -270,8 +271,7 @@ def _select_seib_record(cursor, source, select_columns, row_id, inspection_date)
 
 def _select_seuk_record(cursor, source, select_columns, row_id, inspection_date):
     mapping = resolve_monitoring_date(inspection_date, 'SEUK', source['source_key'])
-    cte, scope, params = seuk_scope(source, mapping['source_date'], mapping['source_date'],
-                                  None if len(source['retailers']) > 1 else source['retailers'][0])
+    cte, scope, params = seuk_services.record_scope(source, mapping['source_date'])
     columns = ', '.join('source.' + column.strip() for column in select_columns.split(','))
     cursor.execute(f'{cte} SELECT {columns} {scope} AND source.id = %s FOR UPDATE OF source',
                    [*params, row_id])
@@ -402,7 +402,7 @@ def _validate_edit_target(table_name, column_name, *, allow_related_price=False)
         return {'error': '잘못된 컬럼명', 'status': 400}
     if table_name in SEIB_TABLES and column_name not in SEIB_CROSSFIELD_COLUMNS:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
-    if table_name in SEUK_TABLES and column_name not in SEUK_CROSSFIELD_COLUMNS:
+    if table_name in SEUK_TABLES and column_name not in seuk_services.EDITABLE_COLUMNS:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
     if (table_name in SEDA_TABLES
             and column_name not in get_seda_crossfield_editable_columns(table_name)
@@ -562,7 +562,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if table_name == 'public.ldy_dryer_retail' and correction_type == 'cross_field':
         editable_cols = (*costco_layer2.METRICS, *costco_layer2.PRICES)
     elif seuk_context:
-        editable_cols = SEUK_CROSSFIELD_COLUMNS if correction_type == 'cross_field' else ()
+        editable_cols = seuk_services.editable_columns(retailer)
     elif seib_context:
         from apps.dx.dx_layer3.cross_field.seib_services import editable_columns
         editable_cols = editable_columns(retailer) if correction_type == 'cross_field' else ()
@@ -590,6 +590,13 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
             editable_cols &= set(get_sem_editable_columns(product_line, retailer))
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
+
+    if seuk_context and new_tv_retailer('SEUK', seuk_context['category'], retailer):
+        rules = seuk_services.load_active_rules(cursor, seuk_context)
+        if not any(str(rule['rule_id']) == str(rule_id)
+                   and seuk_retailer_key(retailer) == seuk_retailer_key(rule['retailers'][0])
+                   for rule in rules):
+            return {'error': '해당 리테일러의 검증 규칙이 아닙니다', 'status': 400}
 
     old_str = str(old_value) if old_value is not None else ''
     new_str = str(new_value) if new_value is not None else ''
@@ -639,8 +646,7 @@ def save_review(cursor, conn, table_name, record_id, column_name,
     if table_name in SEUK_TABLES:
         if correction_type != 'cross_field':
             return {'error': 'SEUK는 크로스필드 검수만 지원합니다', 'status': 403}
-        from apps.dx.dx_layer3.cross_field.seuk_services import load_active_rules
-        rules = load_active_rules(cursor, SEUK_TABLES[table_name])
+        rules = seuk_services.load_active_rules(cursor, SEUK_TABLES[table_name])
         if not any(str(rule['rule_id']) == str(rule_id) for rule in rules):
             return {'error': '해당 제품군의 활성 검증 규칙이 아닙니다', 'status': 400}
     if table_name in SEIB_TABLES and len(SEIB_TABLES[table_name]['retailers']) > 1:
@@ -726,6 +732,8 @@ def save_review(cursor, conn, table_name, record_id, column_name,
         matching = next((r for r in rules if str(r['rule_id']) == str(rule_id)), None)
         if not matching or str(retailer).strip().casefold() not in {r.casefold() for r in matching['retailers']}:
             return {'error': '해당 리테일러의 검증 규칙이 아닙니다', 'status': 400}
+        if seuk_context and column_name not in seuk_services.editable_columns(retailer):
+            return {'error': '해당 리테일러의 크로스필드 대상 컬럼이 아닙니다', 'status': 403}
         if seib_context:
             from apps.dx.dx_layer3.cross_field.seib_services import editable_columns
             if column_name not in editable_columns(retailer):
@@ -785,12 +793,18 @@ def save_review(cursor, conn, table_name, record_id, column_name,
                     'status': 403,
                 }
 
-    # 중복 정상처리 체크
-    cursor.execute("""
+    # 신규 SEUK TV에서는 같은 셀도 다른 규칙에서 검수할 수 있습니다.
+    review_scope = ''
+    review_params = [table_name, record_id, column_name, correction_type, str(crawl_date)]
+    if seuk_context and new_tv_retailer('SEUK', seuk_context['category'], retailer):
+        review_scope = 'AND layer = 3 AND rule_id = %s'
+        review_params.append(rule_id)
+    cursor.execute(f"""
         SELECT id FROM monitoring_corrections
         WHERE table_name = %s AND record_id = %s AND column_name = %s
           AND correction_type = %s AND status = 'normal' AND crawl_date = %s
-    """, (table_name, record_id, column_name, correction_type, str(crawl_date)))
+          {review_scope}
+    """, tuple(review_params))
     if cursor.fetchone():
         return {'error': '이미 정상처리된 항목입니다', 'status': 400}
 
