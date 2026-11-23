@@ -136,6 +136,7 @@ SIEL_CROSSFIELD_COMMON_EDITABLE_COLUMNS = (
 SIEL_CROSSFIELD_RETAILER_EDITABLE_COLUMNS = {
     'amazon': ('page_type', 'main_rank', 'bsr_rank', 'detailed_review_content'),
     'flipkart': ('count_of_reviews', 'detailed_review_content'),
+    'jiomart': ('count_of_reviews',),
 }
 
 SIEL_SOURCE_CONFIG = {
@@ -214,7 +215,7 @@ def get_siel_product_line_for_table(table_name):
 def display_siel_retailer(value):
     """Return the canonical display name for a SIEL retailer."""
     normalized = str(value or '').strip().lower()
-    for retailer in SIEL_RETAILERS:
+    for retailer in (*SIEL_RETAILERS, 'Jiomart'):
         if retailer.lower() == normalized:
             return retailer
     return str(value or '').strip()

@@ -20,6 +20,7 @@ from apps.common.seda_retail import (
     SEDA_SOURCE_CONFIG, get_seda_product_line, get_seda_crossfield_editable_columns,
 )
 from apps.dx.dx_layer1.seuk_retail.sources import new_tv_retailer
+from apps.dx.dx_layer1.siel_retail import jiomart
 from apps.dx.dx_layer2.seda_null_validation import _scope as seda_scope
 from apps.dx.dx_layer3.cross_field import seuk_services
 from apps.dx.dx_layer3.cross_field.sea_services import appliance_source_date_sql, appliance_page_scope_sql
@@ -27,6 +28,7 @@ from apps.common import costco_layer2
 from apps.common.siel_retail import (
     SIEL_BUSINESS_TIMEZONE,
     SIEL_TABLE_TO_PRODUCT_LINE,
+    display_siel_retailer,
     get_siel_crossfield_editable_columns,
     get_siel_product_line_for_table,
     get_siel_source,
@@ -285,6 +287,15 @@ def _select_siel_record(
     table_name = source['table_name']
     date_column = source['date_column']
     source_date = date_contract['source_date']
+    params = [row_id, source_date, source_date, source_date, source_date]
+    jiomart_filter = ''
+    if source_date >= str(jiomart.START):
+        ctes, jiomart_params = jiomart.scope_sql(table_name, source_date, source_date)
+        jiomart_filter = f"""OR source.id IN (
+                WITH {ctes}
+                SELECT source.id {jiomart.LATEST_ROWS}
+            )"""
+        params.extend(jiomart_params)
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
@@ -296,6 +307,7 @@ def _select_siel_record(
                 (%s::date + 1)::timestamp AT TIME ZONE
                 '{SIEL_BUSINESS_TIMEZONE}'
               )
+          AND ((LOWER(BTRIM(source.account_name)) <> 'jiomart'
           AND LOWER(BTRIM(CAST(source.page_type AS TEXT)))
               IN ('main', 'bsr')
           AND {get_tv_validation_condition('source')}
@@ -316,10 +328,17 @@ def _select_siel_record(
                 AND {get_tv_validation_condition('anchor')}
               ORDER BY anchor.id DESC
               LIMIT 1
-          )
-    """, (
-        row_id, source_date, source_date, source_date, source_date,
-    ))
+          )) {jiomart_filter})
+    """, tuple(params))
+
+
+def _valid_jiomart_crossfield_rule(cursor, product_line, rule_id, correction_type):
+    from apps.dx.dx_layer3.cross_field.siel_services import load_active_siel_rules
+
+    return correction_type == 'cross_field' and any(
+        str(rule['rule_id']) == str(rule_id) and rule['rule_key'].startswith('jiomart_')
+        for rule in load_active_siel_rules(cursor, product_line)
+    )
 
 
 def _select_sem_record(
@@ -591,6 +610,10 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     if column_name not in editable_cols:
         return {'error': f'{column_name} 컬럼은 수정할 수 없습니다', 'status': 403}
 
+    if (siel_context and display_siel_retailer(retailer) == jiomart.RETAILER
+            and not _valid_jiomart_crossfield_rule(cursor, product_line, rule_id, correction_type)):
+        return {'error': 'Jiomart의 활성 크로스필드 검증 규칙이 아닙니다', 'status': 400}
+
     if seuk_context and new_tv_retailer('SEUK', seuk_context['category'], retailer):
         rules = seuk_services.load_active_rules(cursor, seuk_context)
         if not any(str(rule['rule_id']) == str(rule_id)
@@ -759,7 +782,12 @@ def save_review(cursor, conn, table_name, record_id, column_name,
         is_crossfield_confirmation = (
             status == 'normal' and correction_type == 'cross_field'
         )
-        if is_crossfield_confirmation:
+        if display_siel_retailer(retailer) == jiomart.RETAILER:
+            if column_name not in get_siel_crossfield_editable_columns(product_line, retailer):
+                return {'error': f'{column_name} 컬럼은 정상 확인할 수 없습니다', 'status': 403}
+            if not _valid_jiomart_crossfield_rule(cursor, product_line, rule_id, correction_type):
+                return {'error': 'Jiomart의 활성 크로스필드 검증 규칙이 아닙니다', 'status': 400}
+        elif is_crossfield_confirmation:
             if column_name not in SIEL_CROSSFIELD_REVIEW_COLUMNS:
                 return {
                     'error': f'{column_name} 컬럼은 정상 확인할 수 없습니다',
@@ -793,10 +821,11 @@ def save_review(cursor, conn, table_name, record_id, column_name,
                     'status': 403,
                 }
 
-    # 신규 SEUK TV에서는 같은 셀도 다른 규칙에서 검수할 수 있습니다.
+    # The same cell can be reviewed separately for different rules.
     review_scope = ''
     review_params = [table_name, record_id, column_name, correction_type, str(crawl_date)]
-    if seuk_context and new_tv_retailer('SEUK', seuk_context['category'], retailer):
+    if ((seuk_context and new_tv_retailer('SEUK', seuk_context['category'], retailer))
+            or (siel_context and display_siel_retailer(retailer) == jiomart.RETAILER)):
         review_scope = 'AND layer = 3 AND rule_id = %s'
         review_params.append(rule_id)
     cursor.execute(f"""

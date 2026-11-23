@@ -1,8 +1,7 @@
 """SIEL TV/REF/LDY cross-field validation.
 
-Rule metadata is enabled through ``monitoring_validation_rules``.  Stored SQL
-is never executed: the application applies an allow-listed Python rule set to
-the exact SIEL inspection-day/latest-MAIN-batch scope.
+Rule metadata is enabled through ``monitoring_validation_rules``. The
+application evaluates each retailer's latest SIEL business-day batch.
 """
 
 from collections import OrderedDict
@@ -24,6 +23,7 @@ from apps.common.siel_retail import (
     get_siel_source,
     normalize_siel_product_line,
 )
+from apps.dx.dx_layer1.siel_retail import jiomart
 
 
 SIEL_NO_REVIEW_TEXT = 'No customer reviews'
@@ -206,6 +206,39 @@ SIEL_RULE_SPECS = OrderedDict((
     }),
 ))
 
+_RATING_FIELDS = ('star_rating', 'count_of_star_ratings', 'count_of_reviews')
+_PRICE_FIELDS = ('original_sku_price', 'final_sku_price', 'savings')
+_JIOMART_RULES = (
+    ('rating_count_presence', '별점과 별점 수 존재 일치',
+     'star_rating', 'count_of_star_ratings', _RATING_FIELDS,
+     '별점과 별점 수 중 하나가 양수인데 다른 하나가 0 또는 빈값입니다.'),
+    ('review_gt_star_count', '리뷰 수가 별점 수 이하',
+     'count_of_reviews', 'count_of_star_ratings', _RATING_FIELDS,
+     '리뷰 수가 별점 수보다 크거나 리뷰 수가 1 이상인데 별점 수가 비어 있습니다.'),
+    ('final_original_price', '판매가와 원가 순서',
+     'final_sku_price', 'original_sku_price', _PRICE_FIELDS,
+     '판매가와 원가가 숫자이고 판매가가 원가보다 크거나 같습니다.'),
+    ('savings_missing', '할인율 누락',
+     'savings', 'original_sku_price|final_sku_price', _PRICE_FIELDS,
+     '계산 할인율이 1% 이상인데 savings가 비어 있습니다.'),
+    ('original_missing', '원가 누락',
+     'original_sku_price', 'final_sku_price|savings', _PRICE_FIELDS,
+     '숫자 판매가와 savings가 있는데 원가가 비어 있습니다.'),
+    ('final_missing', '판매가 누락',
+     'final_sku_price', 'original_sku_price|savings', _PRICE_FIELDS,
+     '원가 또는 savings가 있는데 판매가가 비어 있습니다.'),
+    ('savings_rate_match', '표시 할인율과 가격 차이 일치',
+     'savings', 'original_sku_price|final_sku_price', _PRICE_FIELDS,
+     '표시 할인율과 계산 할인율의 차이가 1%p를 초과합니다.'),
+)
+SIEL_RULE_SPECS.update({
+    f'jiomart_{key}': {
+        'detail_name': label, 'field1': first, 'field2': second,
+        'display_fields': fields, 'retailers': (jiomart.RETAILER,), 'error_message': message,
+    }
+    for key, label, first, second, fields, message in _JIOMART_RULES
+})
+
 _RULE_ALIASES = {
     'rating_count_required': 'rating_count_presence',
     'review_zero_pair': 'rating_count_presence',
@@ -278,10 +311,46 @@ def parse_siel_savings_rate(value):
         return None
 
 
+def _evaluate_jiomart_row(row):
+    errors = set()
+    rating_value, count_value, review_value = (row.get(field) for field in _RATING_FIELDS)
+    rating, star_count, reviews = map(parse_siel_number, (rating_value, count_value, review_value))
+    if ((rating is not None and rating > 0 and (star_count == 0 or not _has_value(count_value)))
+            or (star_count is not None and star_count > 0
+                and (rating == 0 or not _has_value(rating_value)))):
+        errors.add('jiomart_rating_count_presence')
+    if reviews is not None and (
+        (star_count is not None and reviews > star_count)
+        or (reviews >= 1 and not _has_value(count_value))
+    ):
+        errors.add('jiomart_review_gt_star_count')
+
+    original_value, final_value, savings_value = (row.get(field) for field in _PRICE_FIELDS)
+    original, final = map(parse_siel_money, (original_value, final_value))
+    savings_present = _has_value(savings_value)
+    if final is not None and savings_present and not _has_value(original_value):
+        errors.add('jiomart_original_missing')
+    if not _has_value(final_value) and (_has_value(original_value) or savings_present):
+        errors.add('jiomart_final_missing')
+    if original is not None and final is not None:
+        if final >= original:
+            errors.add('jiomart_final_original_price')
+        if original > 0 and 0 <= final <= original:
+            discount = (original - final) * 100
+            savings = parse_siel_savings_rate(savings_value)
+            if not savings_present and discount >= original:
+                errors.add('jiomart_savings_missing')
+            if savings is not None and abs(savings * original - discount) > original:
+                errors.add('jiomart_savings_rate_match')
+    return errors
+
+
 def evaluate_siel_row(row):
     """Return canonical SIEL rule keys failed by one source row."""
     errors = set()
     retailer = display_siel_retailer(row.get('account_name'))
+    if retailer == jiomart.RETAILER:
+        return _evaluate_jiomart_row(row)
     if retailer not in SIEL_RETAILERS:
         return errors
 
@@ -462,6 +531,8 @@ def load_active_siel_rules(cursor, product_line):
 
         spec = SIEL_RULE_SPECS[rule_key]
         configured_retailer = str(row.get('retailer') or 'ALL').strip()
+        if rule_key.startswith('jiomart_') and display_siel_retailer(configured_retailer) != jiomart.RETAILER:
+            continue
         if (
             configured_retailer.upper() != 'ALL'
             and not _retailer_supported(rule_key, configured_retailer)
@@ -629,9 +700,20 @@ def build_siel_crossfield_result(
     source = get_siel_source(key)
     contract = _date_contract(inspection_date, source)
     rules = load_active_siel_rules(cursor, key)
+    if contract['source_date_value'] < jiomart.START:
+        rules = [rule for rule in rules if not _rule_applies_to_retailer(rule, jiomart.RETAILER)]
     rows = load_latest_siel_rows(
         cursor, inspection_date, key, from_date=from_date
     )
+    if (contract['source_date_value'] >= jiomart.START
+            and any(_rule_applies_to_retailer(rule, jiomart.RETAILER) for rule in rules)):
+        start = _date_contract(from_date or inspection_date, source)['source_date']
+        ctes, params = jiomart.scope_sql(source['table_name'], start, contract['source_date'])
+        cursor.execute(f"WITH {ctes} SELECT source.* {jiomart.LATEST_ROWS} ORDER BY source.id", params)
+        jiomart_rows = _rows_as_dicts(cursor)
+        for row in jiomart_rows:
+            row.pop('source_day', None)
+        rows.extend(jiomart_rows)
     rule_ids = [
         rule_id
         for rule in rules
@@ -657,8 +739,11 @@ def build_siel_crossfield_result(
         cursor, 'SIEL', key, rows, date_of=_detail_row_source_date, parse_number=parse_siel_number,
     ) if any(rule['rule_key'] == amazon_review_history.RULE_KEY for rule in rules) else ({}, [])
     retailer_rows = {}
+    jiomart_accounts = {}
     for row in rows:
         retailer = display_siel_retailer(row.get('account_name')) or 'Unknown'
+        if retailer == jiomart.RETAILER:
+            jiomart_accounts[str(row['id'])] = row['account_name']
         row['account_name'] = retailer
         retailer_rows.setdefault(retailer, []).append(row)
 
@@ -755,6 +840,7 @@ def build_siel_crossfield_result(
         'rule_results': rule_results,
         'retailers': retailer_summaries,
         'source_rows': rows,
+        'jiomart_accounts': jiomart_accounts,
         'normal_corrections': corrections,
         'page_exclusions': page_exclusions,
     }
@@ -772,19 +858,26 @@ def build_siel_display_query(
     source = get_siel_source(key)
     day_count = min(30, max(1, int(days)))
     date_column = source['date_column']
+    is_jiomart = rule['rule_key'].startswith('jiomart_')
     if rule['rule_key'] == amazon_review_history.RULE_KEY:
         day_count += amazon_review_history.LOOKBACK_DAYS
 
-    select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
     spec = SIEL_RULE_SPECS[rule['rule_key']]
-    for field_group in (
-        *spec['display_fields'], date_column, 'product_url'
-    ):
-        for column in str(field_group or '').split('|'):
-            column = column.strip()
-            if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
-                select_columns.append(column)
-    select_sql = ',\n'.join(f'    {column}' for column in select_columns)
+    if is_jiomart:
+        fields = spec['display_fields']
+        select_columns = ['id', 'item', date_column,
+                          *(field for field in _RATING_FIELDS if field in fields or field == 'count_of_reviews'),
+                          'retailer_sku_name', *(field for field in _PRICE_FIELDS if field in fields),
+                          'page_type', 'product_url']
+        select_sql = 'SELECT ' + ', '.join(select_columns)
+    else:
+        select_columns = ['id', 'item', 'sku', 'retailer_sku_name']
+        for field_group in (*spec['display_fields'], date_column, 'product_url'):
+            for column in str(field_group or '').split('|'):
+                column = column.strip()
+                if column in _DISPLAY_QUERY_COLUMNS and column not in select_columns:
+                    select_columns.append(column)
+        select_sql = 'SELECT\n' + ',\n'.join(f'    {column}' for column in select_columns)
 
     pair_values = sorted({
         (
@@ -819,7 +912,8 @@ def build_siel_display_query(
                 literals = ', '.join(
                     _display_sql_literal(item) for item in item_values
                 )
-                item_clauses.append(f'item IN ({literals})')
+                item_clauses.append(f'item = {literals}' if is_jiomart and len(item_values) == 1
+                                    else f'item IN ({literals})')
             if any(item is None for item in pair_items):
                 item_clauses.append(
                     "(item IS NULL OR TRIM(item) = '')"
@@ -835,6 +929,11 @@ def build_siel_display_query(
                 pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
         if pair_clauses:
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
+    elif is_jiomart:
+        accounts = retailer_values or [jiomart.RETAILER]
+        literals = ', '.join(_display_sql_literal(account) for account in accounts)
+        filters.append(f'account_name = {literals}' if len(accounts) == 1
+                       else f'account_name IN ({literals})')
     elif retailer_values:
         retailer_clauses = [
             f'account_name = {_display_sql_literal(value)}'
@@ -842,15 +941,20 @@ def build_siel_display_query(
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
 
-    end_date = date.fromisoformat(str(inspection_date))
+    end_date = (_date_contract(inspection_date, source)['source_date_value'] if is_jiomart
+                else date.fromisoformat(str(inspection_date)))
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
-    filters.extend(
-        f"{date_column} {operator} (DATE '{day}'::timestamp AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}')"
-        for operator, day in (('>=', start_date), ('<', next_date))
-    )
+    if is_jiomart:
+        filters.extend((f"{date_column} >= '{max(start_date, jiomart.START)} 00:00+09'",
+                        f"{date_column} < '{next_date} 00:00+09'"))
+    else:
+        filters.extend(
+            f"{date_column} {operator} (DATE '{day}'::timestamp AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}')"
+            for operator, day in (('>=', start_date), ('<', next_date))
+        )
     where = '\n  AND '.join(filters)
-    return f"SELECT\n{select_sql}\nFROM {source['table_name']}\nWHERE {where}\nORDER BY item, {date_column};"
+    return f"{select_sql}\nFROM {source['table_name']}\nWHERE {where}\nORDER BY item, {date_column};"
 
 
 def get_siel_cross_field_summary(cursor, inspection_date, product_line):
@@ -862,11 +966,12 @@ def get_siel_cross_field_summary(cursor, inspection_date, product_line):
         summary['retailer'] for summary in result['retailers']
         if summary.get('retailer')
     ]
+    raw_accounts = result['jiomart_accounts']
     for rule in result['rule_results']:
         error_rows = rule.get('error_details') or []
         pairs = [
             (
-                str(row.get('account_name')).strip(),
+                raw_accounts.get(str(row['id']), str(row.get('account_name')).strip()),
                 None if row.get('item') is None or str(row.get('item')) == ''
                 else str(row.get('item')),
             )
@@ -886,6 +991,8 @@ def get_siel_cross_field_summary(cursor, inspection_date, product_line):
             ]
         if not pairs and not scoped_retailers:
             continue
+        if not pairs and rule['rule_key'].startswith('jiomart_'):
+            scoped_retailers = sorted(set(raw_accounts.values())) or scoped_retailers
         rule_summary.append({
             'rule_id': rule['rule_id'],
             'detail_code': rule['detail_code'],
@@ -1036,7 +1143,7 @@ def get_siel_cross_field_rule_detail(
             row.get('account_name')
         ) or 'Unknown'
         retailer_pairs.setdefault(retailer, []).append((
-            retailer,
+            result['jiomart_accounts'].get(str(row['id']), retailer),
             None if row.get('item') is None or str(row.get('item')) == ''
             else str(row.get('item')),
         ))

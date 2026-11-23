@@ -172,6 +172,27 @@ class SielLayer3DataEditTests(unittest.TestCase):
         self.assertEqual('정상 데이터', cursor.calls[2][1][12])
         self.assertEqual(1, conn.commits)
 
+    def test_jiomart_review_uses_its_latest_batch_and_is_scoped_to_its_rule(self):
+        from unittest.mock import patch
+        from apps.dx.dx_layer3.cross_field import siel_services
+
+        rule = {'rule_id': 72, 'rule_key': 'jiomart_review_gt_star_count'}
+        cursor = ScriptedCursor([
+            {'fetchone': ('30', 'Jiomart', 'J-1')}, {'fetchone': None}, {},
+        ])
+        conn = FakeConnection()
+        with patch.object(siel_services, 'load_active_siel_rules', return_value=[rule]):
+            result = services.save_review(
+                cursor, conn, self.table_name, 20, 'count_of_reviews', 'normal', '', '',
+                '2026-11-23', 'cross_field', 'tester', 72,
+            )
+        self.assertTrue(result['success'])
+        self.assertEqual(1, conn.commits)
+        self.assertIn('SELECT source.id FROM scoped', cursor.calls[0][0])
+        self.assertEqual(('jiomart', '2026-11-23', '2026-11-23'), cursor.calls[0][1][-3:])
+        self.assertIn('AND layer = 3 AND rule_id = %s', cursor.calls[1][0])
+        self.assertEqual(72, cursor.calls[2][1][-1])
+
     def test_siel_crossfield_confirmation_does_not_require_edit_config(self):
         cursor = ScriptedCursor([
             {'fetchone': (None, 'Flipkart', 'F-1')},

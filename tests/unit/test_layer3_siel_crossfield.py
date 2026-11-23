@@ -79,6 +79,14 @@ def _flipkart_row(**overrides):
     return row
 
 
+def _jiomart_row(**overrides):
+    return _flipkart_row(**{
+        'account_name': 'Jiomart', 'item': 'JIO-1', 'page_type': None,
+        'batch_id': 'j20261123_0004', 'crawl_datetime': '2026-11-23T09:04:00+09:00',
+        'detailed_review_content': None, **overrides,
+    })
+
+
 def _rule(rule_id, rule_key, retailer, product_line='siel_tv'):
     spec = siel_services.SIEL_RULE_SPECS[rule_key]
     source = siel_retail.get_siel_source(product_line)
@@ -103,6 +111,33 @@ def _rule(rule_id, rule_key, retailer, product_line='siel_tv'):
 
 
 class SielCrossfieldEvaluationTests(unittest.TestCase):
+    def test_jiomart_metrics_allow_a_lower_review_count_and_check_presence_both_ways(self):
+        cases = (
+            ({'count_of_reviews': '0'}, set()),
+            ({'count_of_reviews': '20'}, set()),
+            ({'count_of_reviews': '21'}, {'jiomart_review_gt_star_count'}),
+            ({'count_of_star_ratings': None, 'star_rating': '0'}, {'jiomart_review_gt_star_count'}),
+            ({'count_of_star_ratings': '0', 'count_of_reviews': '0'}, {'jiomart_rating_count_presence'}),
+            ({'star_rating': None}, {'jiomart_rating_count_presence'}),
+        )
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                self.assertEqual(expected, siel_services.evaluate_siel_row(_jiomart_row(**fields)))
+
+    def test_jiomart_price_thresholds_and_missing_fields(self):
+        cases = (
+            ({'final_sku_price': '₹999.99', 'savings': None}, set()),
+            ({'final_sku_price': '₹990', 'savings': None}, {'jiomart_savings_missing'}),
+            ({'savings': '9%'}, set()),
+            ({'savings': '8%'}, {'jiomart_savings_rate_match'}),
+            ({'final_sku_price': '₹1,000', 'savings': '0%'}, {'jiomart_final_original_price'}),
+            ({'original_sku_price': None}, {'jiomart_original_missing'}),
+            ({'final_sku_price': None}, {'jiomart_final_missing'}),
+        )
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                self.assertEqual(expected, siel_services.evaluate_siel_row(_jiomart_row(**fields)))
+
     def test_equal_price_is_anomaly_but_flipkart_zero_reviews_are_valid(self):
         for factory in (_amazon_row, _flipkart_row):
             with self.subTest(retailer=factory()['account_name']):
@@ -235,6 +270,41 @@ class SielCrossfieldEvaluationTests(unittest.TestCase):
 
 
 class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
+    def test_jiomart_latest_batch_history_and_copy_query_keep_kst_day(self):
+        rule = _rule(57, 'jiomart_review_gt_star_count', 'Jiomart')
+        cursor = ScriptedCursor([
+            {'fetchall': [rule]}, {'fetchall': [_amazon_row()]},
+            {'fetchall': [
+                _jiomart_row(id=19, crawl_datetime=datetime(2026, 11, 21, 15, tzinfo=timezone.utc)),
+                _jiomart_row(id=20, crawl_datetime=datetime(2026, 11, 22, 15, tzinfo=timezone.utc),
+                             count_of_reviews='21'),
+            ]},
+            {'fetchall': []}, {'fetchall': []},
+        ])
+        result = siel_services.get_siel_cross_field_rule_detail(cursor, date(2026, 11, 23), 'siel_tv', 57, 3)
+        query, params = cursor.calls[2]
+        self.assertIn('latest.batch_id', query)
+        self.assertNotIn('page_type', query)
+        self.assertEqual(['jiomart', '2026-11-22', '2026-11-23'], params)
+        self.assertEqual(['comparison_history', 'target'], [row['row_role'] for row in result['anomalies']])
+        self.assertEqual(1, result['total_anomalies'])
+        self.assertIn('count_of_reviews', result['editable_columns'])
+        self.assertNotIn('page_type', result['editable_columns'])
+        self.assertIn("WHERE account_name = 'Jiomart'\n  AND item = 'JIO-1'\n"
+                      "  AND crawl_datetime >= '2026-11-22 00:00+09'\n"
+                      "  AND crawl_datetime < '2026-11-24 00:00+09'", result['queries']['Jiomart'])
+        self.assertTrue(result['queries']['Jiomart'].startswith(
+            'SELECT id, item, crawl_datetime, star_rating, count_of_star_ratings, count_of_reviews,'))
+
+    def test_jiomart_rules_are_hidden_before_launch(self):
+        cursor = ScriptedCursor([
+            {'fetchall': [_rule(57, 'jiomart_review_gt_star_count', 'Jiomart')]},
+            {'fetchall': []},
+        ])
+        result = siel_services.get_siel_cross_field_summary(cursor, date(2026, 11, 21), 'siel_tv')
+        self.assertEqual([], result['rule_summary'])
+        self.assertEqual(2, len(cursor.calls))
+
     def test_guide_scope_includes_normal_retailer_and_limits_amazon_rule(self):
         cursor = ScriptedCursor([
             {'fetchall': [_rule(1, 'final_original_price', 'ALL'), _rule(2, 'rank_page_type', 'ALL')]},
@@ -429,9 +499,23 @@ class SielCrossfieldSeedTests(unittest.TestCase):
         ):
             self.assertIn(section, sql)
         for rule_key in siel_services.SIEL_RULE_SPECS:
+            if rule_key.startswith('jiomart_'):
+                continue
             seed_sql = (Path('sql/seed_amazon_review_body_history.sql').read_text(encoding='utf-8')
                         if rule_key == 'amazon_review_body_history' else sql)
             self.assertIn(f"'{rule_key}'", seed_sql)
+
+    def test_jiomart_registration_matches_seven_rule_definitions(self):
+        from pathlib import Path
+        import re
+
+        script = Path('sql/setup_siel_jiomart_crossfield.sql').read_text(encoding='utf-8')
+        definitions = {key: spec for key, spec in siel_services.SIEL_RULE_SPECS.items()
+                       if key.startswith('jiomart_')}
+        self.assertEqual(7, len(definitions))
+        self.assertEqual(set(definitions), set(re.findall(r"\('(jiomart_[a-z_]+)',", script)))
+        for product in ('tv', 'ref', 'ldy'):
+            self.assertIn(f"'siel_{product}_retail'", script)
 
 
 if __name__ == '__main__':
