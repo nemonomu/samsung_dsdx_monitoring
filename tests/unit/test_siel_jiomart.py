@@ -10,18 +10,40 @@ from apps.dx.dx_layer1.siel_retail import jiomart, siel_retail_services
 
 
 class JiomartLayer1Tests(TestCase):
-    def test_recorded_day_and_timestamp_order_are_separate(self):
+    def test_siel_business_day_bounds_keep_latest_batch_and_launch_date(self):
         source = get_siel_source('siel_ref')
-        sql, params = jiomart.scope_sql(source['table_name'], jiomart.START, jiomart.START, registered=True)
+        sql, params = jiomart.scope_sql(source['table_name'], jiomart.TEST_DAY, jiomart.START)
         self.assertEqual(['jiomart', '2026-11-22', '2026-11-22'], params)
-        self.assertIn('recorded.source_collection_date', sql)
-        self.assertIn('recorded.crawl_datetime = source.crawl_datetime', sql)
+        self.assertIn("source.crawl_datetime >= (%s::date::timestamp AT TIME ZONE 'Asia/Seoul')", sql)
+        self.assertIn("source.crawl_datetime < ((%s::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul')", sql)
+        self.assertIn("TO_CHAR(source.crawl_datetime AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS source_day", sql)
         self.assertIn('crawl_datetime DESC NULLS LAST, id DESC', sql)
-        for banned in ('AT TIME ZONE', 'page_type', 'crawl_datetime::date', jiomart.TEST_BATCH):
+        for banned in ('jiomart_collection_dates', 'page_type', 'crawl_datetime::date', jiomart.TEST_BATCH):
             self.assertNotIn(banned, sql)
+        for query in jiomart.copy_queries(source['table_name'], jiomart.START).values():
+            self.assertTrue(query.startswith('WITH scoped AS'))
+            self.assertIn("'2026-11-22'::date::timestamp AT TIME ZONE 'Asia/Seoul'", query)
         self.assertNotIn('Jiomart', source['retailers'])
         self.assertEqual(['TV', 'REF', 'LDY'], [row['product'] for row in catalog('SIEL')
                                                if row.get('bsr_retailers') == ['Jiomart']])
+
+    def test_dashboard_counts_operating_batches_without_a_registry(self):
+        now = datetime(2026, 11, 22, 11, tzinfo=jiomart.KST)
+        legacy = [dict(retailer='Amazon', actual_count=300), dict(retailer='Flipkart', actual_count=300)]
+        with patch.object(siel_retail_services.repo, 'get_latest_main_batch_counts', return_value=legacy), \
+             patch.object(siel_retail_services.repo, 'get_jiomart_counts', return_value=(366, 300, 100, 'batch')):
+            result = siel_retail_services.get_layer1_stats(Mock(), jiomart.START, now)
+        check = result['check']
+        self.assertEqual(2898, check['actual'])
+        for category in check['categories']:
+            retailer = category['retailers'][-1]
+            self.assertEqual(('Jiomart', 'OK', 366, jiomart.WINDOW),
+                             (retailer['retailer'], retailer['status'], retailer['actual'], retailer['collection_window']))
+        rows = normalize_check(check, 'SIEL', jiomart.START)
+        for row in rows:
+            if row['retailer'] == 'Jiomart':
+                self.assertTrue(observation_eligible(row))
+                self.assertEqual(jiomart.DATE_BASIS, row['source_date_basis'])
 
     def test_preview_deletion_keeps_dashboard_totals_and_observation(self):
         now = datetime(2026, 11, 20, 17, tzinfo=jiomart.KST)
@@ -45,11 +67,10 @@ class JiomartLayer1Tests(TestCase):
         days = [{'date': f'2026-11-{d}', 'total': 100 if d != 24 else 0,
                  'counts': {'sku': 100 if d < 27 else 20}} for d in range(20, 29)]
         data = dict(country='SIEL', product='REF', retailer='Jiomart', active_from=str(jiomart.START),
-                    source_date_ready_from=str(jiomart.START), daily=days, columns=['sku'])
+                    daily=days, columns=['sku'])
         completed = {row['date']: row['date'] >= str(jiomart.START) for row in days}
         self.assertEqual('preview', compare_columns(data, jiomart.TEST_DAY, completed)[0]['status'])
         self.assertEqual('insufficient', compare_columns(data, date(2026, 11, 27), completed)[0]['status'])
         ready = compare_columns(data, date(2026, 11, 28), completed)[0]
         self.assertEqual((5, 100, 'abnormal'), (ready['history_days'], ready['baseline'], ready['status']))
-        data['source_date_ready_from'] = None
-        self.assertEqual('unverified_start', compare_columns(data, date(2026, 11, 24), completed)[0]['status'])
+        self.assertEqual('uncollected', compare_columns(data, date(2026, 11, 24), completed)[0]['status'])

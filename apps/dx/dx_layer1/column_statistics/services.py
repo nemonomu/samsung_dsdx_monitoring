@@ -80,11 +80,11 @@ def select_source(country, product, retailer):
     raise ValueError('Invalid collection selection')
 
 
-def query_spec(source, retailer, columns, start, end, *, registered=False):
+def query_spec(source, retailer, columns, start, end):
     """Only registry/configuration identifiers enter SQL; filter values are bound."""
     if jiomart.matches(source['country'], source['product'], retailer['name']):
         ctes, params = jiomart.scope_sql(source['table_name'], start, end,
-                                        include_preview=jiomart.preview(end), registered=registered)
+                                        include_preview=jiomart.preview(end))
         counts = ', '.join(f'COUNT(*) FILTER (WHERE {_present(column)}) AS "{column}"' for column in columns)
         return (f'WITH {ctes} SELECT source.source_day, COUNT(*) AS total, {counts} '
                 f'{jiomart.LATEST_ROWS} GROUP BY source.source_day ORDER BY source.source_day'), params
@@ -146,7 +146,6 @@ def daily_counts(country, product, retailer_name, end, days):
     source = select_source(country, product, retailer_name)
     start = end - timedelta(days=days - 1)
     is_jiomart = jiomart.matches(country, product, retailer_name)
-    ready_from = None
     with dx_connection() as (_connection, cursor):
         cursor.execute("SET LOCAL statement_timeout = '20s'")
         # A selection must not fail because an unrelated retailer lacks settings.
@@ -176,11 +175,7 @@ def daily_counts(country, product, retailer_name, end, days):
         if country == 'SEG' and retailer_name == 'Expert':
             # Expert intentionally loads savings as NULL; do not compare its collection count.
             columns = [column for column in columns if column != 'savings']
-        registered = is_jiomart and end >= jiomart.START and jiomart.registry_exists(cursor)
-        if registered:
-            ready_from = jiomart.ready_from(cursor, source['table_name'], registered)
-        sql, params = query_spec(source, retailer, columns, start, end,
-                                 **({'registered': registered} if is_jiomart else {}))
+        sql, params = query_spec(source, retailer, columns, start, end)
         cursor.execute(sql, params)
         records = cursor.fetchall()
     by_day = {}
@@ -190,7 +185,6 @@ def daily_counts(country, product, retailer_name, end, days):
                                 'counts': {c: int(v) for c, v in zip(columns, values[2:])}}
     dates = [str(start + timedelta(days=i)) for i in range(days)]
     return {'country': country, 'product': product, 'retailer': retailer_name,
-            **({'source_date_ready_from': str(ready_from) if ready_from else None} if is_jiomart else {}),
             'active_from': str(active_from(source, retailer_name)) if active_from(source, retailer_name) else None,
             'columns': columns, 'dates': dates,
             'daily': [{'date': day, **by_day.get(day, {'total': 0, 'counts': {c: 0 for c in columns}})} for day in dates],

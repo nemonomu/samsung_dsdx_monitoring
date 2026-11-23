@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.dx.dx_layer1.models import CollectionIssue as Issue, CollectionIssueEvent as Event
 from apps.dx.dx_layer1.models import CollectionIssueScan as Scan, CollectionStatisticsLease as Lease
-from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, compare_columns, source_date_ready, KST
+from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, compare_columns, KST
 from apps.dx.dx_layer1.siel_retail import jiomart
 from apps.dx.dx_layer1.column_statistics.dates import active_from
 from apps.dx.dx_layer1.column_statistics.services import daily_counts
@@ -20,6 +20,7 @@ from .retry import retry_locked_write
 
 START_DATE = date(2026, 10, 1)
 POLICY_VERSION = 1  # Original-day missing/column + MAIN/BSR + distinct batches.
+JIOMART_POLICY_VERSION = 2  # Recheck coverage using the SIEL business day.
 CHUNK_DAYS = 28
 
 
@@ -62,8 +63,6 @@ def _reconcile_day(data, target, completed, raw_total, *, now=None):
         return
     scope = identity(data['country'], data['product'], data['retailer'])
     current = next(d for d in data['daily'] if d['date'] == str(target))
-    if not source_date_ready(data, current):
-        return
     comparisons = compare_columns(data, target, completed)
     new = ({'': {'status': 'uncollected', 'current': 0, 'baseline': None,
                  'history_days': 0}} if raw_total == 0 else
@@ -74,7 +73,7 @@ def _reconcile_day(data, target, completed, raw_total, *, now=None):
             if column in existing:
                 continue
             evidence = dict(row, raw_total=raw_total, scoped_total=current['total'],
-                            source_date=str(target), date_basis=('SIEL Asia/Seoul' if data['country']=='SIEL' and not jiomart.matches(data['country'], data['product'], data['retailer']) else 'db_original'),
+                            source_date=str(target), date_basis='SIEL Asia/Seoul' if data['country'] == 'SIEL' else 'db_original',
                             baseline_days=28)
             issue = Issue.objects.create(**scope, source_date=target, column=column,
                 severity=row['status'], baseline=row['baseline'], observed_count=row['current'],
@@ -125,9 +124,8 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
         return {'busy': True, 'days': 0}
     scan, _ = Scan.objects.get_or_create(**scope)
     try:
-        if scan.policy_version != POLICY_VERSION:
-            # A completed legacy column scan proves nothing about volume/batches.
-            # Reset here too: deployment may have skipped the one-off reset migration.
+        version = JIOMART_POLICY_VERSION if jiomart.matches(country, product, retailer) else POLICY_VERSION
+        if scan.policy_version != version:
             scan.scanned_through, scan.last_checked_at = None, None
             scan.save(update_fields=['scanned_through','last_checked_at'])
         start, basis = coverage_start(country, product, retailer)
@@ -137,7 +135,7 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
             raise ValueError('No authoritative start or observed collection day')
         if target < start:
             scan.last_checked_at, scan.error = now, False
-            scan.policy_version = POLICY_VERSION
+            scan.policy_version = version
             scan.save()
             return {'busy': False, 'days': 0}
         # Do not advance coverage through a source day still inside its collection window.
@@ -154,7 +152,6 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
         # Bounded windows even when an unresolved incident is years old.
         pending = sorted(wanted)
         volume_pending = False
-        jiomart_date_pending = False
         while pending:
             first = pending[0]
             end = min(target, first+timedelta(days=CHUNK_DAYS-1))
@@ -162,12 +159,9 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
             pending = [d for d in pending if d > end]
             query_start = first-timedelta(days=28)
             data = daily_counts(country, product, retailer, end, (end-query_start).days+1)
-            if jiomart.matches(country, product, retailer) and not data.get('source_date_ready_from'):
-                jiomart_date_pending = True
-                break
             totals = raw_counts(country, product, retailer, first, end)
             batches = daily_batch_ids(country, product, retailer, first, end)
-            complete = {d['date']: source_date_ready(data, d) and collection_complete(country, product, retailer,
+            complete = {d['date']: collection_complete(country, product, retailer,
                         date.fromisoformat(d['date']), now) for d in data['daily']}
             volumes = volume.load_days(country, product, retailer,
                 [d for d in days if complete.get(str(d)) and totals.get(str(d), 0) > 0],
@@ -183,10 +177,10 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
                 raise RuntimeError('Collection issue scan lease expired')
         if volume_pending:
             raise ValueError('Collection volume verification pending; retry required')
-        if backfill_start <= backfill_end and not jiomart_date_pending:
+        if backfill_start <= backfill_end:
             scan.scanned_through = backfill_end
         scan.last_checked_at, scan.error = now, False
-        scan.policy_version = POLICY_VERSION
+        scan.policy_version = version
         scan.save()
         return {'busy': False, 'days': len(wanted)}
     except Exception:

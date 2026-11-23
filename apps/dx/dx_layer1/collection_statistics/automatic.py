@@ -54,7 +54,8 @@ def history_range(country, last_due):
                                    and r.get('active_from') == str(ECI_APPLIANCE_START)})
         and (country != 'SIEL' or day < jiomart.START
              or {r['product'] for r in rows if r['retailer'] == jiomart.RETAILER
-                 and r.get('active_from') == str(jiomart.START)} == set(jiomart.PRODUCT_COLUMNS))
+                 and r.get('active_from') == str(jiomart.START)
+                 and r.get('source_date_basis') == jiomart.DATE_BASIS} == set(jiomart.PRODUCT_COLUMNS))
         and (country != 'SEM' or day < SEM_DRYER_FIRST_SOURCE_DATE
              or any(r['product'] == 'LDY_DRYER' and r['retailer'] == 'HomeDepot'
                     and r.get('source_date_basis') == 'db_original' for r in rows))

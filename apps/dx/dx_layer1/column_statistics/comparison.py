@@ -105,8 +105,6 @@ def compare_columns(data, target, completed):
             status = 'preview'
         elif data.get('active_from') and str(target) < data['active_from']:
             status = 'not_scheduled'
-        elif is_jiomart and not source_date_ready(data, current):
-            status = 'unverified_start'
         elif not completed.get(str(target), False):
             status = 'pending'
         elif current.get('raw_total', current['total']) == 0:
@@ -147,10 +145,3 @@ def attach_comparisons(data, target, now=None):
             'minimum_history_days': minimum_days(data),
             'comparisons': compare_columns(data, target, completed),
             'completion': completed}
-
-
-def source_date_ready(data, daily_row):
-    if not jiomart.matches(data.get('country'), data.get('product'), data.get('retailer')):
-        return True
-    first = data.get('source_date_ready_from')
-    return bool(first and daily_row['date'] >= first)

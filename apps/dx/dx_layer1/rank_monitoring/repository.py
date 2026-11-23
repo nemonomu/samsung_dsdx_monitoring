@@ -14,7 +14,7 @@ from .sources import supports_bsr
 MAX_ROWS = 15000
 
 
-def query_spec(source, retailer, columns, day, rank_type='main', *, registered=False):
+def query_spec(source, retailer, columns, day, rank_type='main'):
     """Identifiers come only from fixed registries; dates/accounts are parameters."""
     stamp = date_column(source)
     eci = source['country'] == 'SEIB' and is_eci_appliance(source['product'], retailer['name'])
@@ -32,14 +32,14 @@ def query_spec(source, retailer, columns, day, rank_type='main', *, registered=F
         start = max(day - timedelta(days=1), jiomart.scope_start(day))
         end = day if day < jiomart.START else day + timedelta(days=1)
         ctes, params = jiomart.scope_sql(source['table_name'], start, end,
-                                       include_preview=jiomart.preview(day), registered=registered)
+                                       include_preview=jiomart.preview(day))
         sql = f'''WITH {ctes}
             SELECT source.source_day, source.id, source.item, source.sku, source.retailer_sku_name,
                    source.product_url, source.{rank_column}, source.batch_id,
                    CAST(source.crawl_datetime AS TEXT) AS collected_at
             {jiomart.LATEST_ROWS} WHERE source.{rank_column} IS NOT NULL
             ORDER BY source.source_day, source.id DESC LIMIT {MAX_ROWS + 1}'''
-        return sql, params, 'crawl_datetime이 가장 늦은 배치'
+        return sql, params, 'KST 날짜별 crawl_datetime이 가장 늦은 배치'
     if columns[stamp] == 'timestamp with time zone' and source['country'] != 'SIEL':
         # PostgreSQL discarded the original offset. A new source needs an
         # authoritative recorded-date column before it can join monitoring.
@@ -99,17 +99,12 @@ def load_snapshots(source, retailer, day, rank_type='main'):
         cursor.execute('SELECT column_name, data_type FROM information_schema.columns '
                        'WHERE table_schema = %s AND table_name = %s', (schema, table))
         columns = dict(cursor.fetchall())
-        is_jiomart = jiomart.matches(source['country'], source.get('product'), retailer['name'])
-        registered = is_jiomart and day >= jiomart.START and jiomart.registry_exists(cursor)
-        sql, params, basis = query_spec(source, retailer, columns, day, rank_type,
-                                       **({'registered': registered} if is_jiomart else {}))
+        sql, params, basis = query_spec(source, retailer, columns, day, rank_type)
         cursor.execute(sql, params)
         names = ('date', 'id', 'item', 'sku', 'name', 'url', 'rank', 'batch_id', 'collected_at')
         rows = [dict(zip(names, row)) for row in cursor.fetchall()]
         if len(rows) > MAX_ROWS:
             raise ValueError('Snapshot exceeds the safe comparison size')
-        ready_from = (jiomart.ready_from(cursor, source['table_name'], registered)
-                      if is_jiomart and day >= jiomart.START else None)
         sku_from_master = source['key'] == 'sea_tv'
         if sku_from_master:
             # SEA TV has no physical sku column. Use the existing item master,
@@ -125,5 +120,4 @@ def load_snapshots(source, retailer, day, rank_type='main'):
                 skus = dict(cursor.fetchall())
                 for row in rows:
                     row['sku'] = skus.get(row['item'])
-    return {'rows': rows, 'basis': basis, 'sku_from_master': sku_from_master,
-            **({'source_date_ready_from': ready_from} if is_jiomart else {})}
+    return {'rows': rows, 'basis': basis, 'sku_from_master': sku_from_master}

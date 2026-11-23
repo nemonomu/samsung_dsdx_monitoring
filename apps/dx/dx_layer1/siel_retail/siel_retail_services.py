@@ -74,7 +74,7 @@ def _date_contract(target_date, source):
     )
 
 
-def _build_category(cursor, product_line, source, target_date, phase, now, jiomart_registered):
+def _build_category(cursor, product_line, source, target_date, phase, now):
     contract = _date_contract(target_date, source)
     rows = repo.get_latest_main_batch_counts(
         cursor, product_line, contract['source_date'],
@@ -112,21 +112,18 @@ def _build_category(cursor, product_line, source, target_date, phase, now, jioma
     source_day = _as_date(contract['source_date'])
     if jiomart.preview(source_day) or source_day >= jiomart.START:
         test = jiomart.preview(source_day)
-        total, main, bsr, batch = repo.get_jiomart_counts(cursor, source, source_day, registered=jiomart_registered)
+        total, main, bsr, batch = repo.get_jiomart_counts(cursor, source, source_day)
         if not test or total:
             receipt = jiomart.phase(source_day, now)
-            ready_from = None if test else jiomart.ready_from(cursor, source['table_name'], jiomart_registered)
-            date_ready = test or (ready_from is not None and source_day >= ready_from)
-            status = ('OK' if test else 'PENDING' if not date_ready or receipt == 'pending' else
+            status = ('OK' if test else 'PENDING' if receipt == 'pending' else
                       'COLLECTING' if receipt == 'collecting' else 'OK' if total else 'CRITICAL')
             retailers.append(dict(retailer=jiomart.RETAILER, batch_id=batch or '', expected=None,
                                   actual=total, count=total, raw_count=total, total=total,
                                   main_count=main, bsr_count=bsr, status=status, preview_mode=test,
-                                  exclude_from_total=test or not date_ready, collection_phase=receipt if date_ready else 'pending',
-                                  collection_window=('테스트 조회' if test else jiomart.WINDOW if date_ready
-                                                     else '원본 수집일 확인 대기'),
+                                  exclude_from_total=test, collection_phase=receipt,
+                                  collection_window='테스트 조회' if test else jiomart.WINDOW,
                                   copy_query=jiomart.copy_queries(source['table_name'], source_day)['rows'] if total else '',
-                                  active_from=str(jiomart.START), source_date_basis='db_original'))
+                                  active_from=str(jiomart.START), source_date_basis=jiomart.DATE_BASIS))
     operating = [r for r in retailers if not r.get('exclude_from_total')]
     actual_total = sum(item['actual'] for item in operating)
     return {
@@ -152,9 +149,8 @@ def get_layer1_stats(cursor, target_date, now=None):
     """Return the independent SIEL collection card for Layer 1."""
     current = now or _get_kst_now()
     phase = _collection_phase(target_date, current)
-    jiomart_registered = _as_date(target_date) >= jiomart.START and jiomart.registry_exists(cursor)
     categories = [
-        _build_category(cursor, product_line, source, target_date, phase, current, jiomart_registered)
+        _build_category(cursor, product_line, source, target_date, phase, current)
         for product_line, source in SIEL_SOURCE_CONFIG.items()
     ]
 

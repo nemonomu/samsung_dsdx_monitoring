@@ -53,7 +53,10 @@ def backend():
 
 
 def scope_key(scope, generation):
-    return hashlib.sha256(json.dumps([VERSION, generation, scope], sort_keys=True).encode()).hexdigest()
+    version = VERSION
+    if jiomart.matches(scope['country'], scope['product'], scope['retailer']):
+        version = f'{VERSION}:{jiomart.DATE_BASIS}'
+    return hashlib.sha256(json.dumps([version, generation, scope], sort_keys=True).encode()).hexdigest()
 
 
 def token(snapshot):
@@ -94,11 +97,6 @@ def build(scope, generation):
     for mode in ('all', 'samsung'):
         result = compare(raw['rows'], day, samsung=mode == 'samsung', today=today,
                          limit=100 if bsr else 300, active_from=active_from, preview=preview)
-        if is_jiomart and day >= jiomart.START:
-            ready_from = raw.get('source_date_ready_from')
-            for coverage in result['coverage']:
-                if coverage['state'] == 'empty' and (not ready_from or coverage['date'] < str(ready_from)):
-                    coverage['state'] = 'date_pending'
         result.update(scope, mode=mode, basis=raw['basis'], sku_from_master=raw['sku_from_master'],
                       updated_at=timezone.now().isoformat(), preview_mode=preview)
         reviews.prepare(result, scope)

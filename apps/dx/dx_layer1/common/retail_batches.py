@@ -91,9 +91,8 @@ def fetch_batch_counts(cursor, check_type, product_line, source_date):
     if check_type == 'siel_retail':
         result.pop('jiomart', None)
         day = date.fromisoformat(str(source_date))
-        registered = day >= jiomart.START and jiomart.registry_exists(cursor)
-        if registered or jiomart.preview(day):
-            ctes, p = jiomart.scope_sql(source['table_name'], day, day, registered=registered,
+        if day >= jiomart.START or jiomart.preview(day):
+            ctes, p = jiomart.scope_sql(source['table_name'], day, day,
                                         include_preview=jiomart.preview(day))
             cursor.execute(f"WITH {ctes} SELECT COUNT(DISTINCT NULLIF(BTRIM(batch_id), '')) AS batch_count FROM scoped", p)
             row = cursor.fetchone()
@@ -146,8 +145,7 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         raise ValueError('Invalid retailer')
     if check_type == 'siel_retail' and key == 'jiomart':
         day = date.fromisoformat(str(source_date))
-        ctes, args = jiomart.scope_sql(source['table_name'], day, day, include_preview=jiomart.preview(day),
-                                      registered=day >= jiomart.START and jiomart.registry_exists(cursor))
+        ctes, args = jiomart.scope_sql(source['table_name'], day, day, include_preview=jiomart.preview(day))
         cursor.execute(f'''WITH {ctes}
             SELECT source.batch_id,
                    TO_CHAR(MIN(source.crawl_datetime) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS') AS started_at,
@@ -161,7 +159,7 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         base_sql = jiomart.copy_scope(source['table_name'], day)
         batches = [dict(row) if isinstance(row, Mapping) else dict(zip(fields, row)) for row in cursor.fetchall()]
         for batch in batches:
-            batch['sql'] = cursor.mogrify(f'{base_sql}\nSELECT * FROM scoped WHERE batch_id IS NOT DISTINCT FROM %s ORDER BY id;',
+            batch['sql'] = cursor.mogrify(f'WITH {base_sql}\nSELECT * FROM scoped WHERE batch_id IS NOT DISTINCT FROM %s ORDER BY id;',
                                           (batch['batch_id'],)).decode('utf-8')
         return {'retailer': retailer, 'source_date': str(day), 'time_basis': 'KST', 'batches': batches,
                 'aggregation_basis': 'crawl_datetime이 가장 늦은 배치'}

@@ -1,4 +1,4 @@
-"""Allow-listed SELECTs for original collection dates, across every batch."""
+"""Allow-listed SELECTs for monitoring dates, across every batch."""
 from datetime import date
 import hashlib
 from django.core.cache import cache
@@ -22,8 +22,7 @@ def raw_counts(country, product, retailer, start, end):
     if jiomart.matches(country, product, retailer):
         with dx_connection() as (_, cursor):
             cursor.execute("SET LOCAL statement_timeout = '20s'")
-            ctes, params = jiomart.scope_sql(source['table_name'], start, end,
-                include_preview=jiomart.preview(end), registered=end >= jiomart.START and jiomart.registry_exists(cursor))
+            ctes, params = jiomart.scope_sql(source['table_name'], start, end, include_preview=jiomart.preview(end))
             cursor.execute(f'WITH {ctes} SELECT source_day, COUNT(*) FROM scoped GROUP BY 1', params)
             return {str(day): int(count) for day, count in cursor.fetchall()}
     if country == 'SEUK':
@@ -48,8 +47,7 @@ def daily_batch_ids(country, product, retailer, start, end):
     if jiomart.matches(country, product, retailer):
         with dx_connection() as (_, cursor):
             cursor.execute("SET LOCAL statement_timeout = '20s'")
-            ctes, params = jiomart.scope_sql(source['table_name'], start, end,
-                registered=end >= jiomart.START and jiomart.registry_exists(cursor))
+            ctes, params = jiomart.scope_sql(source['table_name'], start, end)
             cursor.execute(f'''WITH {ctes} SELECT source_day, ARRAY_AGG(DISTINCT batch_id ORDER BY batch_id)
                 FROM scoped WHERE NULLIF(BTRIM(batch_id), '') IS NOT NULL GROUP BY 1''', params)
             return {str(day): list(ids or []) for day, ids in cursor.fetchall()}

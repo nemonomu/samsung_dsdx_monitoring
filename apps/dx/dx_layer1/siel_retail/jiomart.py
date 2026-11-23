@@ -1,12 +1,14 @@
-"""Layer 1 Jiomart source policy. Existing SIEL retailer policies stay separate."""
+"""Layer 1 Jiomart batches and schedule within the SIEL business day."""
 from datetime import date, time, timedelta, timezone
+
+from apps.common.siel_retail import SIEL_BUSINESS_TIMEZONE
 
 RETAILER = 'Jiomart'
 START = date(2026, 11, 22)
 TEST_DAY = date(2026, 11, 20)
 TEST_BATCH = 'j20261120_0534'
 TEST_TIMESTAMP = '2026-11-20 05:34:11.610053+00'
-REGISTRY = 'dx_siel.jiomart_collection_dates'
+DATE_BASIS = 'siel_business_day'
 WINDOW = 'KST 09:00~11:00'
 KST = timezone(timedelta(hours=9))
 METADATA_COLUMNS = (
@@ -49,32 +51,30 @@ def _product(table):
     return key
 
 
-def scope_sql(table, start, end, *, include_preview=False, registered=False):
-    product = _product(table)
-    join = ''
+def scope_sql(table, start, end, *, include_preview=False):
+    _product(table)
+    start = str(start)
     if include_preview:
         # Exact test identity. TEST_DAY comes from the test fixture, not its batch name.
         day = f"'{TEST_DAY}'::date"
         condition = (f"source.batch_id = '{TEST_BATCH}' "
-                     f"AND source.crawl_datetime = TIMESTAMPTZ '{TEST_TIMESTAMP}'")
-    elif registered:
-        day = 'recorded.source_collection_date'
-        join = (f"JOIN {REGISTRY} recorded ON recorded.product = '{product}' "
-                "AND recorded.batch_id = source.batch_id "
-                "AND recorded.crawl_datetime = source.crawl_datetime")
-        condition = f"{day} >= DATE '{START}'"
+                     f"AND source.crawl_datetime = TIMESTAMPTZ '{TEST_TIMESTAMP}' "
+                     f"AND {day} BETWEEN %s::date AND %s::date")
     else:
-        day, condition = 'NULL::date', 'FALSE'
+        start = max(start, str(START))
+        zone = SIEL_BUSINESS_TIMEZONE
+        day = f"source.crawl_datetime AT TIME ZONE '{zone}'"
+        condition = (f"source.crawl_datetime >= (%s::date::timestamp AT TIME ZONE '{zone}') "
+                     f"AND source.crawl_datetime < ((%s::date + 1)::timestamp AT TIME ZONE '{zone}')")
     return f"""scoped AS MATERIALIZED (
         SELECT source.*, TO_CHAR({day}, 'YYYY-MM-DD') AS source_day
-        FROM {table} source {join}
+        FROM {table} source
         WHERE LOWER(BTRIM(source.account_name)) = %s AND {condition}
-          AND ({day}) BETWEEN %s::date AND %s::date
     ), latest AS (
         SELECT DISTINCT ON (source_day) source_day, batch_id
         FROM scoped
         ORDER BY source_day, crawl_datetime DESC NULLS LAST, id DESC
-    )""", [RETAILER.casefold(), str(start), str(end)]
+    )""", [RETAILER.casefold(), start, str(end)]
 
 
 LATEST_ROWS = ("FROM scoped source JOIN latest ON source.source_day = latest.source_day "
@@ -82,7 +82,7 @@ LATEST_ROWS = ("FROM scoped source JOIN latest ON source.source_day = latest.sou
 
 
 def copy_scope(table, day):
-    ctes, params = scope_sql(table, day, day, include_preview=preview(day), registered=day >= START)
+    ctes, params = scope_sql(table, day, day, include_preview=preview(day))
     for value in params:
         ctes = ctes.replace('%s', "'" + value.replace("'", "''") + "'", 1)
     return ctes
@@ -95,34 +95,3 @@ def copy_queries(table, day):
         'rows': f'WITH {ctes}\nSELECT source.* {LATEST_ROWS} ORDER BY source.id;',
         'batches': f'WITH {ctes}\nSELECT batch_id, COUNT(*) FROM scoped GROUP BY batch_id;',
     }
-
-
-def _scalar(cursor):
-    row = cursor.fetchone()
-    return next(iter(row.values())) if isinstance(row, dict) else row[0]
-
-
-def registry_exists(cursor):
-    cursor.execute('SELECT to_regclass(%s) IS NOT NULL', (REGISTRY,))
-    return _scalar(cursor)
-
-
-def ready_from(cursor, table, registered):
-    if not registered:
-        return None
-    # A newer unmapped batch is not evidence of a missed collection.
-    product = _product(table)
-    cursor.execute(f"""
-        WITH registered_bounds AS (
-            SELECT MIN(crawl_datetime) AS stamp, MIN(source_collection_date) AS first_day FROM {REGISTRY}
-            WHERE product = %s AND source_collection_date >= %s
-        )
-        SELECT CASE WHEN NOT EXISTS (
-            SELECT 1 FROM {table} source
-            WHERE LOWER(BTRIM(source.account_name)) = %s AND source.crawl_datetime >= stamp
-              AND NOT EXISTS (SELECT 1 FROM {REGISTRY} recorded WHERE recorded.product = %s
-                              AND recorded.batch_id = source.batch_id
-                              AND recorded.crawl_datetime = source.crawl_datetime)
-        ) THEN first_day END FROM registered_bounds
-    """, (product, START, RETAILER.casefold(), product))
-    return _scalar(cursor)

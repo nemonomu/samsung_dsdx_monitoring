@@ -95,7 +95,7 @@ def normalize_check(check, country, inspection_date):
                         rows[-1].update(preview_mode=True, complete=False, baseline_eligible=False,
                                         verification_state='pending')
                 if jiomart.matches(country, product, name):
-                    rows[-1].update(active_from=str(jiomart.START), source_date_basis='db_original')
+                    rows[-1].update(active_from=str(jiomart.START), source_date_basis=jiomart.DATE_BASIS)
                     if retailer.get('preview_mode'):
                         rows[-1].update(preview_mode=True, complete=False, baseline_eligible=False,
                                         verification_state='pending')
