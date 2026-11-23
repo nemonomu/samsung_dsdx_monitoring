@@ -242,7 +242,10 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if row['batch_id'] is not None:
             query_params.append(row['batch_id'])
         copy_date_scope = f'{column} >= %s'
-        if check_type in ('seib_retail', 'seuk_retail') or (check_type == 'seg_retail' and product_line == 'seg_ldy_dryer'):
+        if check_type == 'seuk_retail' and source['product_key'] == 'tv':
+            copy_date_scope += f'\n  AND {column} < %s'
+            query_params.insert(1, str(date.fromisoformat(str(source_date)) + timedelta(days=1)))
+        elif check_type in ('seib_retail', 'seuk_retail') or (check_type == 'seg_retail' and product_line == 'seg_ldy_dryer'):
             copy_date_scope = f'{source_date_sql(column)} = %s'
         if check_type == 'retail' and (key in ('costco', 'homedepot') or source['product_key'] == 'ldy_dryer'):
             # Reproduce the displayed batch's monitoring date in its copy SQL.

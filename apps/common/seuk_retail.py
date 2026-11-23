@@ -80,6 +80,19 @@ def get_seuk_null_select_columns(value):
     return get_seuk_source(value)['columns']
 
 
+def tv_review_query(columns, row_ids):
+    """Copy-only lookup of the SEUK TV records already selected for review."""
+    source = SEUK_SOURCE_CONFIG['seuk_tv']
+    allowed = {*source['columns'], 'is_redirect'}
+    fields = [column for column in dict.fromkeys(columns) if column in allowed]
+    ids = ', '.join(str(row_id) for row_id in dict.fromkeys(int(value) for value in row_ids))
+    if not fields:
+        return ''
+    where = f'id IN ({ids})' if ids else 'FALSE'
+    return (f"SELECT {', '.join(fields)}\nFROM {source['table_name']}\n"
+            f"WHERE {where}\nORDER BY item, crawl_datetime, id;")
+
+
 def enabled(day):
     return source_date_value(day) >= str(FIRST_SOURCE_DATE)
 

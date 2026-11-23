@@ -9,7 +9,7 @@ from apps.common.crossfield_history import build_detail_history
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.null_review_evidence import exclude_page_absent_records
 from apps.common.seuk_retail import (
-    RETAILER, latest_scope, normalize_retailer, product_line_for, seuk_retailer_key,
+    RETAILER, latest_scope, normalize_retailer, product_line_for, seuk_retailer_key, tv_review_query,
 )
 from apps.common.source_dates import source_date_sql, source_date_value
 from apps.dx.dx_layer1.seuk_retail.sources import SEUK_SOURCE_CONFIG, retailer_start_date
@@ -229,6 +229,8 @@ def editable_columns(retailer):
 
 
 def table_columns(source, retailer):
+    if source['source_key'] == 'seuk_tv':
+        return (*source['columns'], 'is_redirect')
     return source['columns']
 
 
@@ -330,6 +332,38 @@ WHERE LOWER(BTRIM(source.account_name)) = {_literal(retailer.lower())}{redirect_
 ORDER BY source.item, source.crawl_datetime, source.id;"""
 
 
+def _tv_review_columns(rule):
+    selected = set(rule['select_fields'].split('|'))
+    metrics = ('star_rating', 'count_of_star_ratings', 'count_of_reviews')
+    prices = ('original_sku_price', 'final_sku_price', 'savings')
+    if selected.intersection(metrics):
+        selected.update(metrics)
+    if rule['retailers'][0] == RETAILER:
+        selected.add('count_of_star_ratings')
+    selected.add('count_of_reviews')
+    return (
+        'id', 'item', 'crawl_datetime', *(field for field in metrics if field in selected),
+        'retailer_sku_name', *(prices if selected.intersection(prices) else ()), 'product_url',
+    )
+
+
+def _tv_summary_query(source, source_date, rule, targets):
+    columns = _tv_review_columns(rule)
+    if rule['findings']:
+        return tv_review_query(columns, (row['id'] for row in rule['findings']))
+    retailer = rule['retailers'][0]
+    record = next((row for row in targets if row['account_name'] == retailer), None)
+    if record is None:
+        return tv_review_query(columns, ())
+    batch_id = record['batch_id']
+    batch = 'batch_id IS NULL' if batch_id is None else f'batch_id = {_literal(batch_id)}'
+    redirect = ' AND is_redirect IS NOT TRUE' if retailer == 'Amazon' else ''
+    return (f"SELECT {', '.join(columns)}\nFROM {source['table_name']}\n"
+            f"WHERE {source_date_sql('crawl_datetime')} = {_literal(source_date)}\n"
+            f"  AND LOWER(BTRIM(account_name)) = {_literal(retailer.lower())}\n"
+            f"  AND {batch}{redirect}\nORDER BY item, crawl_datetime, id;")
+
+
 def _result(cursor, inspection_date, product_line, from_date=None):
     key = product_line_for(product_line)
     if key is None:
@@ -394,11 +428,13 @@ def get_seuk_cross_field_summary(cursor, inspection_date, product_line):
     rows, rules = result['rows'], result['rules']
     targets = [row for row in rows if source_date_value(row.get('crawl_datetime')) == result['source_date']]
     failed = {str(row['id']) for rule in rules for row in rule['findings']}
+    is_tv = result['source']['source_key'] == 'seuk_tv'
     summaries = [{
         **{key: value for key, value in rule.items() if key != 'findings'},
         'error_count': len(rule['findings']), 'review_count': 0,
-        'query': display_query(result['source'], result['source_date'],
-                               items=[row['item'] for row in rule['findings']] or None, retailer=rule['retailers'][0]),
+        'query': (_tv_summary_query(result['source'], result['source_date'], rule, targets) if is_tv else
+                  display_query(result['source'], result['source_date'],
+                                items=[row['item'] for row in rule['findings']] or None, retailer=rule['retailers'][0])),
     } for rule in rules]
     return {
         **{key: value for key, value in result.items()
@@ -438,7 +474,10 @@ def get_seuk_cross_field_rule_detail(cursor, inspection_date, product_line, rule
         for column in editable_columns(retailer):
             normal_reviews[f"{correction['record_id']}_{column}"] = payload
     items = sorted({str(row['item']) for row in anomalies if _present(row.get('item'))})
-    query = display_query(result['source'], result['source_date'], days, items, retailer)
+    if result['source']['source_key'] == 'seuk_tv':
+        query = tv_review_query(_tv_review_columns(rule), (row['id'] for row in anomalies))
+    else:
+        query = display_query(result['source'], result['source_date'], days, items, retailer)
     return {
         **{key: result[key] for key in ('date', 'inspection_date', 'source_date',
                                        'offset_days', 'product_line', 'table_name', 'date_col')},

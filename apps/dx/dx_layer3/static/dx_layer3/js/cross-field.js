@@ -16,17 +16,29 @@ function backToCrossfieldSummary() {
     }
 }
 
-function _cfBuildDisplayQueryBox(query, retailerSafe, days) {
+function _cfBuildDisplayQueryBox(query, retailerSafe, days, byId = false) {
     if (!query) return '';
     const queryId = `cf-display-query-${retailerSafe}`;
     return `
         <div class="query-box">
             <div class="query-box-header">
-                <span class="query-box-title">${days}일치 Item 조회 SQL</span>
+                <span class="query-box-title">${days}일치 ${byId ? 'ID' : 'Item'} 조회 SQL</span>
                 <button class="btn-copy" onclick="copyQueryToClipboard(document.getElementById('${queryId}'), true)">복사</button>
             </div>
             <pre id="${queryId}" class="query-content">${esc(query)}</pre>
         </div>`;
+}
+
+function _cfUpdateSeukTvQuery(retailer, visibleColumns) {
+    const queryEl = document.getElementById('cf-display-query-' + retailer.replace(/[^a-zA-Z0-9]/g, ''));
+    const data = (window.crossfieldRetailerData || {})[retailer];
+    if (!queryEl || !data) return;
+    const allowedColumns = (window.crossfieldRetailerColumns || {})[retailer] || [];
+    const sql = window.RetailReviewColumns.buildSeukTvQuery(
+        visibleColumns.map(column => column.key), allowedColumns, data.rows.map(row => row.id)
+    );
+    queryEl.textContent = sql;
+    queryEl.closest('.query-box').hidden = !sql;
 }
 
 function _cfSqlLiteral(value) {
@@ -204,6 +216,7 @@ function showRetailerDetail(retailer) {
     const dateCol = window.crossfieldDateCol
         || (productLine.toUpperCase() === 'HHP' ? 'crawl_strdatetime' : 'crawl_datetime');
     const productLineDisplay = productLine.toUpperCase();
+    const isSeukTv = productLineDisplay === 'SEUK_TV';
     const isCanonicalProductLine = /^(SEA_|SEDA_|SEIB_|SEUK_|SIEL_|SEG_|SEM_|TSE_)/.test(productLineDisplay);
     const ruleNameDisplay = window.crossfieldRuleName || '';
     const anomalyCount = Number(rSummary.count || 0);
@@ -251,7 +264,7 @@ function showRetailerDetail(retailer) {
         ? canonicalDisplayQuery
         : seaTvDisplayQuery;
     const displayQueryBox = displayQuery
-        ? _cfBuildDisplayQueryBox(displayQuery, retailerSafe, displayDays)
+        ? _cfBuildDisplayQueryBox(displayQuery, retailerSafe, displayDays, isSeukTv)
         : '';
     var itemQueryHtml = '';
     if (inline) {
@@ -532,6 +545,9 @@ function _cfRebuildTable() {
     st.allColumns.forEach(c => { colMap[c.key] = c; });
     var visibleCols = st.visibleKeys.map(k => colMap[k]).filter(Boolean);
     st._visibleCols = visibleCols;
+    const retailer = window._cfCurrentRetailer;
+    const isSeukTv = String(window.crossfieldProductLine || '').toUpperCase() === 'SEUK_TV';
+    if (isSeukTv && retailer) _cfUpdateSeukTvQuery(retailer, visibleCols);
 
     var ctColumns = visibleCols.map(c => ({
         key: c.key,
@@ -563,7 +579,13 @@ function _cfRebuildTable() {
         onSort: function(sortArr) {
             st.sortState = sortArr;
             _cfSortAndRender();
-        }
+        },
+        onReorder: isSeukTv ? function(columns) {
+            st.visibleKeys = columns.map(column => column.key);
+            st._visibleCols = st.visibleKeys.map(key => colMap[key]);
+            st.filterBar.reorderColumns(st.visibleKeys);
+            _cfUpdateSeukTvQuery(retailer, st._visibleCols);
+        } : null
     }).render();
 
     var pageSize = 100;
@@ -957,7 +979,9 @@ async function reloadCfDays() {
                     var queryTitle = queryEl.parentElement
                         ? queryEl.parentElement.querySelector('.query-box-title')
                         : null;
-                    if (queryTitle) queryTitle.textContent = days + '일치 Item 조회 SQL';
+                    if (queryTitle) {
+                        queryTitle.textContent = days + (productLine === 'seuk_tv' ? '일치 ID 조회 SQL' : '일치 Item 조회 SQL');
+                    }
                 }
 
                 _cfRebuildTable();

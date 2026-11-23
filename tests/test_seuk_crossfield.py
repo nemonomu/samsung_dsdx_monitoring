@@ -302,6 +302,15 @@ class SeukTvCrossfieldTests(unittest.TestCase):
         )
         self.assertEqual(['Argos'], detail['retailers'])
         self.assertEqual([21], [sample['id'] for sample in detail['anomalies']])
+        self.assertEqual(
+            'SELECT id, item, crawl_datetime, count_of_reviews, retailer_sku_name, original_sku_price, '
+            'final_sku_price, savings, product_url\nFROM dx_seuk.dx_seuk_tv_retail_com\n'
+            'WHERE id IN (21)\nORDER BY item, crawl_datetime, id;',
+            detail['query'],
+        )
+        rules = {rule['rule_id']: rule for rule in summary['rule_summary']}
+        self.assertEqual(detail['query'], rules[27]['query'])
+        self.assertIn("batch_id = 'current' AND is_redirect IS NOT TRUE", rules[12]['query'])
         self.assertEqual(7, len(before['rule_summary']))
 
     def test_new_retailer_edit_and_review_scope(self):

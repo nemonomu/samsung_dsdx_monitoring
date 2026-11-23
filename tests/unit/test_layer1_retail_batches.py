@@ -42,6 +42,16 @@ class RetailBatchTests(unittest.TestCase):
         self.assertEqual(('2026-09-21', 'Lowes'), params)
         self.assertIn('AND batch_id IS NULL', sql)
 
+    def test_seuk_tv_copies_one_raw_day_without_deriving_it_from_batch(self):
+        cursor = Mock()
+        cursor.fetchall.return_value = [{'batch_id': 'c20261123_012506'}]
+        cursor.mogrify.return_value = b'SELECT *;'
+        batches.fetch_batch_details(cursor, 'seuk_retail', 'seuk_tv', '2026-11-30', 'Currys')
+        sql, params = cursor.mogrify.call_args.args
+        self.assertIn('WHERE crawl_datetime >= %s\n  AND crawl_datetime < %s\n', sql)
+        self.assertEqual(('2026-11-30', '2026-12-01', 'Currys', 'c20261123_012506'), params)
+        self.assertIn('LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10)', cursor.execute.call_args.args[0])
+
     def test_counts_are_daily_distinct_nonblank_ids_not_latest_batch_rows(self):
         cursor = Mock()
         cursor.fetchall.return_value = [('amazon', 2), ('bestbuy', 1), ('walmart', 0)]

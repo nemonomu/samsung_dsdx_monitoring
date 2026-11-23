@@ -3,6 +3,8 @@ const fs = require('fs');
 const vm = require('vm');
 const base = 'apps/dx/dx_layer2/static/dx_layer2/js/';
 let html, options;
+const queryBox = {};
+const queryNode = {textContent: '', closest: () => queryBox};
 const context = {
     console, renderCountryFlagLabel: String,
     renderNullFieldsDetail: fields => Object.keys(fields).join(','),
@@ -10,8 +12,11 @@ const context = {
     isInlineMode: () => true, buildDetailContainerHtml: data => data.itemQueryHtml,
     renderDetailWithTable: data => {options=data;},
     ViewStack: {push: value => {html=value;}},
+    document: {getElementById: () => queryNode},
 };
+context.window = context;
 vm.createContext(context);
+vm.runInContext(fs.readFileSync('static/js/retail-review-columns.js','utf8'),context);
 vm.runInContext(fs.readFileSync(base+'dashboard.js','utf8'),context);
 vm.runInContext(fs.readFileSync(base+'null_validation.js','utf8'),context);
 const products=['tv','ref','ldy','ldy_dryer'];
@@ -32,18 +37,33 @@ for(const product of products){
         results:[{id:42,item:"sku'1",[field]:null,crawl_datetime:'2026-10-25T23:59:00-04:00'}],
         display_config:{[field]:{select_columns:['id','item',field,'crawl_datetime']}},
     };
+    if (product === 'tv') {
+        data.query_sql = 'SELECT id, item, screen_size, crawl_datetime\n'
+            + 'FROM dx_seuk.dx_seuk_tv_retail_com\nWHERE id IN (42)\nORDER BY item, crawl_datetime, id;';
+    }
     context.renderNullFieldDetailView(field,data,true);
     assert.equal(context.getDefaultNullHistoryDays(code),3);
     assert.equal(options.crawlDate,'2026-10-25');
     assert.equal(options.editableDate,'2026-10-25');
     assert(!options.editableCols.includes('loading_type'));
-    assert(html.includes('3일치 Item 조회 SQL'));
+    assert(html.includes(product === 'tv' ? '3일치 ID 조회 SQL' : '3일치 Item 조회 SQL'));
+    if (product === 'tv') {
+        options.onColumnsChanged([{key:'_no'}, {key:field}, {key:'item'}, {key:'id'}]);
+        assert.equal(queryNode.textContent,
+            'SELECT screen_size, item, id\nFROM dx_seuk.dx_seuk_tv_retail_com\n'
+            + 'WHERE id IN (42)\nORDER BY item, crawl_datetime, id;');
+        assert.equal(queryBox.hidden, false);
+    }
     const sql=context._buildNullRetailDisplayQuery(field,data,data.results,data.date,3,'Currys',false);
-    assert(sql.includes("LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) >= '2026-10-25'"));
-    assert(sql.includes("< '2026-10-26'"));
-    assert(sql.includes("'sku''1'"));
+    if (product === 'tv') {
+        assert.strictEqual(sql, data.query_sql);
+    } else {
+        assert(sql.includes("LEFT(BTRIM(CAST(crawl_datetime AS TEXT)), 10) >= '2026-10-25'"));
+        assert(sql.includes("< '2026-10-26'"));
+        assert(sql.includes("'sku''1'"));
+    }
     assert(!sql.includes('AT TIME ZONE'));
 }
-const amazonSql = 'WITH latest AS (...) SELECT * FROM dx_seuk.dx_seuk_tv_retail_com WHERE is_redirect IS NOT TRUE;';
+const amazonSql = 'SELECT id, screen_size FROM dx_seuk.dx_seuk_tv_retail_com WHERE id IN (42);';
 assert.equal(context._buildNullRetailDisplayQuery('screen_size', {query_sql: amazonSql}, [], '2026-11-22', 3, 'Amazon', false), amazonSql);
 console.log('SEUK NULL: four-product grouping, same-day edits, bounded history and raw-date SQL passed.');

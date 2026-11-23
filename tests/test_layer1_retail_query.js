@@ -62,6 +62,9 @@ assert(bestbuyDryerSql.includes("account_name = 'Bestbuy'"));
 assert(bestbuyDryerSql.includes("batch_id = 'b_20261012_190628'"));
 assert(!bestbuyDryerSql.includes('page_type'));
 assert(!bestbuyDryerSql.includes('Asia/Seoul'));
+const seukTvSql = query.buildQuery('SEUK', 'TV', 'Currys', 'c20261130_012506', '2026-11-30');
+assert(seukTvSql.includes("WHERE crawl_datetime >= '2026-11-30'\n  AND crawl_datetime < '2026-12-01'\n"));
+assert(seukTvSql.includes("AND account_name = 'Currys'\n  AND batch_id = 'c20261130_012506'"));
 assert.strictEqual(query.buildQuery('SEA', 'REF', 'Lowes', 'l_260921_184541', '2026-09-21'),
     "SELECT *\nFROM public.ref_retail_com\nWHERE crawl_strdatetime >= '2026-09-21'\n" +
     "  AND account_name = 'Lowes'\n  AND batch_id = 'l_260921_184541'\nORDER BY item, crawl_strdatetime;");

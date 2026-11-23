@@ -654,6 +654,7 @@ function renderDetailWithTable(options) {
     detailViewState.crawlDate = crawlDate;
     detailViewState.editableDate = editableDate;
     detailViewState.dateColumn = dateColumn;
+    detailViewState.onColumnsChanged = options.onColumnsChanged || null;
     detailViewState.supportsNullAutoReview = !options.readonly && type === 'null'
         && options.supportsNullAutoReview === true;
     detailViewState.nullReviewField = options.nullReviewField || '';
@@ -893,6 +894,7 @@ function _buildDetailTable() {
                 cols.push(c);
             });
             detailViewState.columns = cols;
+            if (detailViewState.onColumnsChanged) detailViewState.onColumnsChanged(cols);
             // FilterBar 컬럼 선택 드롭다운 순서 동기화
             if (detailViewState.filterBar && detailViewState.filterBar.reorderColumns) {
                 detailViewState.filterBar.reorderColumns(cols.map(function(c) { return c.key; }));
@@ -920,6 +922,7 @@ function _buildDetailTable() {
         }
     });
     detailViewState.table.render();
+    if (detailViewState.onColumnsChanged) detailViewState.onColumnsChanged(visibleCols);
     if (isDuplicate && !isReadOnlyDuplicateTable(detailViewState.tableParam)) {
         _injectDupCheckboxHeader();
     }

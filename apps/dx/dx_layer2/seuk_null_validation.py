@@ -9,7 +9,7 @@ from apps.common.null_review_evidence import uses_new_policy
 from apps.common.retail_price import PRICE_EDITABLE_COLUMNS
 from apps.common.seuk_retail import (
     SEUK_COUNTRY, SEUK_SOURCE_CONFIG as COMMON_SOURCES, enabled, latest_scope,
-    retailer_start_date as common_start_date, normalize_retailer, product_line_for,
+    retailer_start_date as common_start_date, normalize_retailer, product_line_for, tv_review_query,
 )
 from apps.dx.dx_layer1.seuk_retail.sources import TV_START, TV_RETAILERS
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
@@ -54,13 +54,17 @@ def _mapping(target_date, source):
     return resolve_monitoring_date(target_date, 'SEUK', source['source_key'])
 
 
-def detail_columns(column):
+def detail_columns(column, *, expand_prices=False):
     identity_columns = (('item', 'retailer_sku_name', 'sku') if column == 'sku'
                         else ('item', 'sku', 'retailer_sku_name'))
+    if column in _REVIEW_COLUMNS:
+        fields = _REVIEW_COLUMNS
+    elif expand_prices and column in PRICE_EDITABLE_COLUMNS:
+        fields = ('original_sku_price', 'final_sku_price', 'savings')
+    else:
+        fields = (column,)
     return list(dict.fromkeys((
-        'id', 'crawl_datetime', *identity_columns,
-        *(_REVIEW_COLUMNS if column in _REVIEW_COLUMNS else (column,)),
-        'product_url',
+        'id', 'crawl_datetime', *identity_columns, *fields, 'product_url',
     )))
 
 
@@ -98,16 +102,6 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items):
         ORDER BY source.item, source.{source['date_column']}, source.id
     """, [*params, *items])
     return _rows(cursor)
-
-
-def _detail_query(cursor, source, retailer, start, end, rows):
-    cte, scope, params = _scope(source, start, end, retailer)
-    ids = [row['id'] for row in rows]
-    return cursor.mogrify(f"""{cte}
-        SELECT source.* {scope}
-        AND source.id = ANY(%s)
-        ORDER BY source.item, source.{source['date_column']}, source.id;""",
-                          [*params, ids]).decode('utf-8')
 
 
 def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False, format_columns=None):
@@ -255,9 +249,9 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
     result_rows.extend(row for row in targets if row.get('id') not in result_ids)
     results = [{**row, 'null_fields': [col for col in allowed if missing(row.get(col))]}
                for row in result_rows]
-    display = detail_columns(column)
-    query = (_detail_query(cursor, source, canonical_retailer, start_day, source_day, results)
-             if product_line == 'seuk_tv' and canonical_retailer in TV_RETAILERS and results else '')
+    is_tv = product_line == 'seuk_tv'
+    display = detail_columns(column, expand_prices=is_tv)
+    query = tv_review_query(display, (row['id'] for row in results)) if is_tv and results else ''
     return {
         'date': mapping['inspection_date'], 'results': results,
         'select_cols': list(source['columns']),

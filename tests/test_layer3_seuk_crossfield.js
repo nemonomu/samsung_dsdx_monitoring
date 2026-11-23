@@ -12,9 +12,17 @@ print(json.dumps([fixture(product) for product in SEUK_SOURCE_CONFIG]))
 (async () => {
     for (const fixture of fixtures) {
         const container = {innerHTML:''};
+        const queryBox = {};
+        const queryNode = {textContent: '', closest: () => queryBox};
         const urls = [];
         const context = {
-            console, document:{addEventListener(){},querySelector:()=>container},
+            console, document:{
+                addEventListener(){},querySelector:()=>container,
+                getElementById(id) {
+                    return id === 'cf-display-query-Currys' ? queryNode
+                        : id === 'cf-detail-table-area' ? container : null;
+                },
+            },
             esc:value=>String(value == null ? '' : value),escJs:String,
             getSelectedDate:()=> '2026-10-26',
             fetchAPI:async url=>{urls.push(url); return fixture.detail;},
@@ -37,11 +45,13 @@ print(json.dumps([fixture(product) for product in SEUK_SOURCE_CONFIG]))
         await vm.runInContext(action[1],context);
         assert(urls.at(-1).includes('type='+fixture.summary.product_line.toLowerCase()));
         context.renderProductUrl=value=>String(value||'');
-        context.FilterBar=function(){this.render=()=>this;};
+        context.FilterBar=function(){this.render=()=>this;this.reorderColumns=()=>{};};
+        const rebuildTable = context._cfRebuildTable;
         context._cfRebuildTable=()=>{};
         context.setTimeout=()=>{};
         context.showRetailerDetail('Currys');
-        assert(context.savedHtml.includes('3일치 Item 조회 SQL'));
+        const isTv = fixture.summary.product_line === 'SEUK_TV';
+        assert(context.savedHtml.includes(isTv ? '3일치 ID 조회 SQL' : '3일치 Item 조회 SQL'));
         assert(context.savedHtml.includes('dx_seuk.dx_seuk_'));
         const state=context._cfDetailState;
         assert.strictEqual(state.allData.filter(row=>row._rowRole==='target').length,1);
@@ -52,6 +62,21 @@ print(json.dumps([fixture(product) for product in SEUK_SOURCE_CONFIG]))
         }
         assert(!state.editableCols.has('sku'));
         assert(context._cfUsesEqualReviewCounts(fixture.summary.product_line,'Currys'));
+        if (isTv) {
+            let tableOptions;
+            context.CommonTable = function(_, options) { tableOptions = options; this.render = () => this; };
+            context.Pagination = function() {};
+            context._cfSortAndRender = () => {};
+            rebuildTable();
+            assert.strictEqual(queryNode.textContent, fixture.detail.query);
+            assert(queryNode.textContent.includes('WHERE id IN (1, 2)'));
+            tableOptions.onReorder([{key:'_no'}, {key:'savings'}, {key:'id'}, {key:'page_type'}]);
+            assert(queryNode.textContent.startsWith('SELECT savings, id\n'));
+            assert(!queryNode.textContent.includes('page_type'));
+            state.visibleKeys = ['_no', 'product_url', 'id'];
+            rebuildTable();
+            assert(queryNode.textContent.startsWith('SELECT product_url, id\n'));
+        }
         context.AppModal={setTitle(){},setBody(){},open(){}};
         await context.showRulesModal(fixture.summary.label+' 논리적 일관성');
         assert(urls.at(-1).includes('type='+fixture.summary.product_line.toLowerCase()));

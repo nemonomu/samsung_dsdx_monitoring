@@ -107,7 +107,6 @@ class SeukNullTests(unittest.TestCase):
                 'Amazon': [record(id=43, account_name='Amazon', count_of_reviews=None, sku=None)],
                 'Argos': [record(id=44, account_name='Argos', screen_size='55', sku=' ')]}
         cursor = Mock()
-        cursor.mogrify.return_value = b'SELECT source.*;'
         with patch.object(seuk, 'latest_rows', side_effect=lambda *args: (rows[args[-1]], mapping)) as load, \
              patch.object(seuk, '_load_normal_reviews', return_value={}), \
              patch.object(evidence, 'load_evidence', return_value=[]):
@@ -121,12 +120,14 @@ class SeukNullTests(unittest.TestCase):
             self.assertEqual(1, amazon['fields_detail']['screen_size'])
             self.assertEqual(1, argos['fields_detail']['sku'])
             detail = seuk.null_detail(cursor, day, 'seuk_tv_retail', 'Amazon', 'screen_size', days=1)
-            self.assertEqual((['screen_size'], str(day), 'SELECT source.*;'),
-                             (detail['results'][0]['null_fields'], detail['active_from'], detail['query_sql']))
-            sql, params = cursor.mogrify.call_args.args
-            self.assertIn('source.is_redirect IS NOT TRUE', sql)
-            self.assertIn('source.id = ANY(%s)', sql)
-            self.assertEqual([str(day), str(day), 'amazon', 'amazon', [43]], params)
+            self.assertEqual((['screen_size'], str(day)),
+                             (detail['results'][0]['null_fields'], detail['active_from']))
+            self.assertEqual(
+                'SELECT id, crawl_datetime, item, sku, retailer_sku_name, screen_size, product_url\n'
+                'FROM dx_seuk.dx_seuk_tv_retail_com\nWHERE id IN (43)\n'
+                'ORDER BY item, crawl_datetime, id;',
+                detail['query_sql'],
+            )
             load.reset_mock()
             self.assertEqual([], seuk.null_detail(cursor, day, 'seuk_tv_retail', 'Amazon', 'sku')['results'])
             load.assert_not_called()

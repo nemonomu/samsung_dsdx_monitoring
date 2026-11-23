@@ -511,6 +511,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const queryConfig = data.query_config || {};
     const dateColumn = data.date_column || 'crawl_datetime';
     const tableParam = modalState.tableParam;
+    const isSeukTv = tableParam === 'seuk_tv_retail';
     const date = data.date || getSelectedDate();
     const supportsReview = !data.readonly && data.supports_null_auto_review === true;
     const isSeaTv = tableParam === 'tv_retail';
@@ -631,9 +632,9 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     </div>
                 </div>`;
             }
-            var inlineQueryHtml = inlineQuery ? `<div class="query-box">
-                <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 ${items.length ? 'Item' : 'ID'} 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                <pre class="query-content">${_escapeTseSqlHtml(inlineQuery)}</pre>
+            var inlineQueryHtml = (inlineQuery || isSeukTv) ? `<div class="query-box">
+                <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 ${isSeukTv || !items.length ? 'ID' : 'Item'} 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+                <pre ${isSeukTv ? 'id="seuk-tv-null-query"' : ''} class="query-content">${_escapeTseSqlHtml(inlineQuery)}</pre>
             </div>` : '';
             if (inlineListHtml || inlineQueryHtml) {
                 itemQueryHtml += `<div class="null-detail-query-row">${inlineListHtml}${inlineQueryHtml}</div>`;
@@ -658,7 +659,8 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                 const query3Days = tblName === 'public.ldy_dryer_retail' || isSeibRetail
                     ? _buildNullRetailDisplayQuery(fieldName, data, records, date, historyDays, retailerName, false)
                     : `SELECT *\nFROM ${tblName}\nWHERE ${dateColumn} >= '${historyStartDate}'\n  AND ${dateColumn} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(accountName)}${batchFilter}\n  AND item IN (${inClause})\nORDER BY item, ${dateColumn};`;
-                const queryLabel = (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail)
+                const queryLabel = isSeukTv ? `${currentDays}일치 ID 조회 SQL`
+                    : (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
                 itemQueryHtml += `<div class="item-query-section">
@@ -668,11 +670,12 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     </div>
                     <div class="query-box">
                         <div class="item-copy-header"><span class="item-copy-title">${queryLabel}</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                        <pre class="query-content">${query3Days}</pre>
+                        <pre ${isSeukTv ? 'id="seuk-tv-null-query"' : ''} class="query-content">${isSeukTv ? _escapeTseSqlHtml(query3Days) : query3Days}</pre>
                     </div>
                 </div>`;
             } else if (ids.length > 0) {
-                const queryById = `SELECT ${queryCols}\nFROM ${tblName}\nWHERE id IN (${ids.join(', ')});`;
+                const queryById = isSeukTv ? data.query_sql || ''
+                    : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE id IN (${ids.join(', ')});`;
                 itemQueryHtml += `<div class="item-query-section">
                     <div class="item-list-box">
                         <div class="item-copy-header"><span class="item-copy-title">ID 목록 (${ids.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
@@ -680,7 +683,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     </div>
                     <div class="query-box">
                         <div class="item-copy-header"><span class="item-copy-title">ID 기반 조회 쿼리</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                        <pre class="query-content">${queryById}</pre>
+                        <pre ${isSeukTv ? 'id="seuk-tv-null-query"' : ''} class="query-content">${isSeukTv ? _escapeTseSqlHtml(queryById) : queryById}</pre>
                     </div>
                 </div>`;
             }
@@ -746,6 +749,16 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         data: records,
         tableParam: tableParam,
         type: 'null',
+        onColumnsChanged: isSeukTv ? function(visibleColumns) {
+            const queryEl = document.getElementById('seuk-tv-null-query');
+            if (!queryEl) return;
+            const sql = window.RetailReviewColumns.buildSeukTvQuery(
+                visibleColumns.map(column => column.key), data.select_cols || selectColumns,
+                records.map(row => row.id)
+            );
+            queryEl.textContent = sql;
+            queryEl.closest('.query-box').hidden = !sql;
+        } : null,
         selectCols: data.select_cols || null,
         editableCols: data.editable_cols || [],
         readonly: data.readonly === true,
