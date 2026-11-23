@@ -3,6 +3,7 @@ const fs = require('fs');
 const vm = require('vm');
 
 const source = fs.readFileSync('apps/dx/dx_layer2/static/dx_layer2/js/null_validation.js', 'utf8');
+const columnsSource = fs.readFileSync('static/js/retail-review-columns.js', 'utf8');
 const cases = [
     ['tv_retail', 'SEA', 'public.tv_retail_com', 'crawl_datetime', 'Bestbuy'],
     ['sea_ref_retail', 'SEA', 'public.ref_retail_com', 'crawl_strdatetime', 'Bestbuy'],
@@ -19,7 +20,8 @@ const cases = [
 ];
 
 function setup(tableParam, country, table, dateColumn, retailer) {
-    let html = '';
+    let html = '', tableOptions;
+    const queryNode = {textContent: '', closest: () => ({})};
     const sandbox = {
         console,
         renderCountryFlagLabel: value => value,
@@ -27,10 +29,13 @@ function setup(tableParam, country, table, dateColumn, retailer) {
         getSelectedDate: () => '2026-09-22',
         isInlineMode: () => true,
         buildDetailContainerHtml: options => options.itemQueryHtml,
-        renderDetailWithTable() {},
+        renderDetailWithTable(options) { tableOptions = options; },
+        document: {getElementById: () => queryNode},
         ViewStack: {push(value) { html = value; }},
     };
+    sandbox.window = sandbox;
     vm.createContext(sandbox);
+    vm.runInContext(columnsSource, sandbox);
     vm.runInContext(source, sandbox);
     vm.runInContext(`modalState.tableParam = ${JSON.stringify(tableParam)};
         modalState.tableName = ${JSON.stringify(country + ' TV')};
@@ -43,14 +48,15 @@ function setup(tableParam, country, table, dateColumn, retailer) {
         supports_day_history: true, history_days: 3,
         display_config: {ref_capacity: {select_columns: ['id', 'item', 'ref_capacity']}},
         query_config: {ref_capacity: ['id', 'item', 'ref_capacity']},
+        copy_sql_columns: ['id', 'item', 'ref_capacity', dateColumn],
     };
     sandbox.renderNullFieldDetailView('ref_capacity', data, true);
-    return {sandbox, data, html};
+    return {sandbox, data, html, tableOptions, queryNode};
 }
 
 for (const entry of cases) {
     const [tableParam, country, table, dateColumn, retailer] = entry;
-    const {sandbox, data, html} = setup(...entry);
+    const {sandbox, data, html, tableOptions, queryNode} = setup(...entry);
     const query = sandbox._buildNullRetailDisplayQuery(
         'ref_capacity', data, data.results, data.date, 3, retailer,
         country === 'TSE'
@@ -66,6 +72,12 @@ for (const entry of cases) {
     assert(html.includes('FROM ' + table), country);
     assert(html.includes('&lt;x&gt;') && !html.includes('<x>'), country);
     assert.strictEqual((html.match(/class="query-box"/g) || []).length, 1, country);
+    tableOptions.onColumnsChanged([{key: '_null_review_status'}, {key: 'ref_capacity'}, {key: 'id'}]);
+    const copy = queryNode.textContent;
+    assert(copy.startsWith('SELECT ref_capacity, id\n'), country);
+    assert(copy.indexOf('account_name') < copy.indexOf('item IN'), country);
+    assert(copy.indexOf('item IN') < copy.indexOf(dateColumn + ' >='), country);
+    if (country === 'SIEL') assert(copy.includes("'2026-09-22 00:00:00+09:00'"));
     if (country === 'SEDA') assert(!query.includes("account_name = 'Casas Bahia'"));
     if (country === 'TSE') assert(query.includes("country = 'TSE'"));
 }

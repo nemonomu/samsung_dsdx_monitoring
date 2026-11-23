@@ -124,7 +124,9 @@ class SeukNullTests(unittest.TestCase):
                              (detail['results'][0]['null_fields'], detail['active_from']))
             self.assertEqual(
                 'SELECT id, crawl_datetime, item, sku, retailer_sku_name, screen_size, product_url\n'
-                'FROM dx_seuk.dx_seuk_tv_retail_com\nWHERE id IN (43)\n'
+                "FROM dx_seuk.dx_seuk_tv_retail_com\nWHERE account_name = 'Amazon'\n"
+                "  AND item = '001'\n  AND crawl_datetime >= '2026-11-22'\n"
+                "  AND crawl_datetime < '2026-11-23'\n  AND is_redirect IS NOT TRUE\n"
                 'ORDER BY item, crawl_datetime, id;',
                 detail['query_sql'],
             )
@@ -136,6 +138,21 @@ class SeukNullTests(unittest.TestCase):
             seuk.append_null_stats(cursor, day, waiting, 'seuk_tv_retail')
             self.assertEqual('PENDING', waiting['tables'][0]['retailers'][-1]['status'])
             self.assertEqual('검증할 데이터 없음', waiting['tables'][0]['retailers'][-1]['validation_label'])
+
+    def test_copy_query_uses_one_date_range_for_items_and_missing_item_rows(self):
+        query = policy.tv_review_query(['item', 'id'], [
+            record(id=41, batch_id='previous', item="A'1"),
+            record(id=42, batch_id='current', item="A'1"),
+            record(id=43, batch_id='current', item='B'),
+            record(id=44, batch_id='current', item=' '),
+        ], date(2026, 11, 22), date(2026, 11, 23))
+        self.assertEqual(
+            "SELECT item, id\nFROM dx_seuk.dx_seuk_tv_retail_com\nWHERE account_name = 'Currys'\n"
+            "  AND (item IN ('A''1', 'B') OR id IN (44))\n"
+            "  AND crawl_datetime >= '2026-11-22'\n  AND crawl_datetime < '2026-11-24'\n"
+            "ORDER BY item, crawl_datetime, id;",
+            query,
+        )
 
     def test_counts_distinguish_raw_pending_and_reviewed_cells(self):
         mapping = seuk._mapping(DAY,SOURCE)

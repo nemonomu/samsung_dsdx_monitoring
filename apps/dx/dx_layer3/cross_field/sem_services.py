@@ -248,7 +248,7 @@ def _result(cursor, target_date, product_line):
     return source, rows, failures, failed_ids, summaries, mapping
 
 
-def build_sem_display_query(source, source_date, retailers, days=3, rows=None):
+def build_sem_display_query(source, source_date, retailers, days=3, rows=None, fields=''):
     """Copy-only source lookup using exact account names and literal dates."""
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
@@ -266,26 +266,31 @@ def build_sem_display_query(source, source_date, retailers, days=3, rows=None):
             if ids:
                 conditions.append('id IN (' + ', '.join(str(int(value)) for value in ids) + ')')
             scope += ' AND (' + ' OR '.join(conditions or ['FALSE']) + ')'
-        scopes.append('(' + scope + ')')
+        scopes.append(scope)
     column = source['date_column']
     date_expression = (
         source_date_sql(column)
         if source['source_key'] == 'sem_ldy_dryer' else column
     )
-    return (f"SELECT *\nFROM {source['table_name']}\n"
-            f"WHERE {date_expression} >= '{start}'\n"
+    requested = ('id', 'item', column, 'retailer_sku_name', *fields.split('|'), 'product_url')
+    allowed = set(get_sem_table_columns(source['source_key']))
+    columns = ', '.join(field for field in dict.fromkeys(requested) if field in allowed)
+    where = scopes[0] if len(scopes) == 1 else '(' + ' OR '.join(f'({scope})' for scope in scopes) + ')'
+    return (f"SELECT {columns}\nFROM {source['table_name']}\n"
+            f"WHERE {where if scopes else 'FALSE'}\n"
+            f"  AND {date_expression} >= '{start}'\n"
             f"  AND {date_expression} < '{end + timedelta(days=1)}'\n"
-            + '  AND (' + ' OR '.join(scopes or ['FALSE']) + ')\n'
             + f'ORDER BY item, {column};')
 
 
 def get_sem_cross_field_summary(cursor, target_date, product_line):
-    source, rows, _failures, failed_ids, rules, mapping = _result(
+    source, rows, failures, failed_ids, rules, mapping = _result(
         cursor, target_date, product_line
     )
     for rule in rules:
         rule['query'] = build_sem_display_query(
-            source, mapping['source_date'], rule['retailers'],
+            source, mapping['source_date'], rule['retailers'], fields=rule['select_fields'],
+            rows=failures[rule['rule_key']] or None,
         )
     return {
         'configured': True,
@@ -352,7 +357,8 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'total_anomalies': len(target_anomalies),
         'retailer_summary': retailer_summary,
         'queries': {
-            retailer: build_sem_display_query(source, source_date, [retailer], days, target_anomalies)
+            retailer: build_sem_display_query(source, source_date, [retailer], days, target_anomalies,
+                                              fields=rule['select_fields'])
             for retailer in retailer_summary
         },
         'anomalies': anomalies,

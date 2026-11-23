@@ -29,13 +29,17 @@ function _cfBuildDisplayQueryBox(query, retailerSafe, days, byId = false) {
         </div>`;
 }
 
-function _cfUpdateSeukTvQuery(retailer, visibleColumns) {
+function _cfUpdateCopyQuery(retailer, visibleColumns) {
+    const allowedColumns = window.crossfieldCopySqlColumns
+        || (String(window.crossfieldProductLine).toUpperCase() === 'SEUK_TV'
+            ? (window.crossfieldRetailerColumns || {})[retailer] : null);
+    if (!allowedColumns || !window.RetailReviewColumns) return;
     const queryEl = document.getElementById('cf-display-query-' + retailer.replace(/[^a-zA-Z0-9]/g, ''));
-    const data = (window.crossfieldRetailerData || {})[retailer];
-    if (!queryEl || !data) return;
-    const allowedColumns = (window.crossfieldRetailerColumns || {})[retailer] || [];
-    const sql = window.RetailReviewColumns.buildSeukTvQuery(
-        visibleColumns.map(column => column.key), allowedColumns, data.rows.map(row => row.id)
+    if (!queryEl) return;
+    const query = (window.crossfieldDisplayQueries || {})[retailer] || window.crossfieldDisplayQuery
+        || queryEl.textContent;
+    const sql = window.RetailReviewColumns.projectCopySql(
+        visibleColumns.map(column => column.key), allowedColumns, query, window.crossfieldTableName
     );
     queryEl.textContent = sql;
     queryEl.closest('.query-box').hidden = !sql;
@@ -90,10 +94,10 @@ function _cfBuildSeaTvItemQuery(
     return `SELECT
 ${selectSql}
 FROM ${tableName}
-WHERE ${dateCol} >= ${_cfSqlLiteral(startDate)}
-  AND ${dateCol} < ${_cfSqlLiteral(nextDate)}
-  AND account_name = ${_cfSqlLiteral(retailer)}
+WHERE account_name = ${_cfSqlLiteral(retailer)}
   AND item IN (${itemSql})
+  AND ${dateCol} >= ${_cfSqlLiteral(startDate)}
+  AND ${dateCol} < ${_cfSqlLiteral(nextDate)}
 ORDER BY item, ${dateCol};`;
 }
 
@@ -260,11 +264,10 @@ function showRetailerDetail(retailer) {
             window.crossfieldSelectFields || '', displayDays, sourceDate
         )
         : '';
-    const displayQuery = isCanonicalProductLine
-        ? canonicalDisplayQuery
-        : seaTvDisplayQuery;
+    const displayQuery = isCanonicalProductLine || productLineDisplay === 'TV'
+        ? canonicalDisplayQuery || seaTvDisplayQuery : '';
     const displayQueryBox = displayQuery
-        ? _cfBuildDisplayQueryBox(displayQuery, retailerSafe, displayDays, isSeukTv)
+        ? _cfBuildDisplayQueryBox(displayQuery, retailerSafe, displayDays, isSeukTv && !items.length)
         : '';
     var itemQueryHtml = '';
     if (inline) {
@@ -546,8 +549,9 @@ function _cfRebuildTable() {
     var visibleCols = st.visibleKeys.map(k => colMap[k]).filter(Boolean);
     st._visibleCols = visibleCols;
     const retailer = window._cfCurrentRetailer;
-    const isSeukTv = String(window.crossfieldProductLine || '').toUpperCase() === 'SEUK_TV';
-    if (isSeukTv && retailer) _cfUpdateSeukTvQuery(retailer, visibleCols);
+    const tracksCopyColumns = window.crossfieldCopySqlColumns
+        || String(window.crossfieldProductLine || '').toUpperCase() === 'SEUK_TV';
+    if (tracksCopyColumns && retailer) _cfUpdateCopyQuery(retailer, visibleCols);
 
     var ctColumns = visibleCols.map(c => ({
         key: c.key,
@@ -580,11 +584,11 @@ function _cfRebuildTable() {
             st.sortState = sortArr;
             _cfSortAndRender();
         },
-        onReorder: isSeukTv ? function(columns) {
+        onReorder: tracksCopyColumns ? function(columns) {
             st.visibleKeys = columns.map(column => column.key);
             st._visibleCols = st.visibleKeys.map(key => colMap[key]);
             st.filterBar.reorderColumns(st.visibleKeys);
-            _cfUpdateSeukTvQuery(retailer, st._visibleCols);
+            _cfUpdateCopyQuery(retailer, st._visibleCols);
         } : null
     }).render();
 
@@ -842,6 +846,7 @@ async function reloadCfDays() {
         window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
         window.crossfieldNormalReviews = data.normal_reviews || {};
         window.crossfieldRetailerColumns = data.retailer_columns || {};
+        window.crossfieldCopySqlColumns = data.copy_sql_columns || null;
         window.crossfieldDisplayQuery = data.query || '';
         window.crossfieldDisplayQueries = data.queries || {};
         window.crossfieldSourceDate = data.source_date || date;
@@ -980,7 +985,8 @@ async function reloadCfDays() {
                         ? queryEl.parentElement.querySelector('.query-box-title')
                         : null;
                     if (queryTitle) {
-                        queryTitle.textContent = days + (productLine === 'seuk_tv' ? '일치 ID 조회 SQL' : '일치 Item 조회 SQL');
+                        const label = productLine === 'seuk_tv' && !items.length ? 'ID' : 'Item';
+                        queryTitle.textContent = days + '일치 ' + label + ' 조회 SQL';
                     }
                 }
 

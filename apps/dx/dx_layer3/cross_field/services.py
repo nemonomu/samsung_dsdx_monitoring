@@ -229,19 +229,70 @@ def get_cross_field_rule_detail(
                 'editable_columns': editable_columns,
                 'normal_reviews': normal_reviews,
                 'retailer_columns': retailer_columns,
+                **({'queries': {
+                    retailer: build_display_query(
+                        table_name, date_col, target_date, {
+                            **rule_result, 'retailer': retailer,
+                            'error_details': [row for row in anomalies if row.get('account_name') == retailer],
+                        }, days=days,
+                    )
+                    for retailer in retailer_summary
+                }} if section == 'tv_retail' else {}),
             }
 
     return {'found': False}
 
 
-def build_display_query(table_name, date_column, source_date, rule):
+def build_display_query(table_name, date_column, source_date, rule, *, days=3):
     """Raw three-day lookup for the SEA TV/HHP rule SQL button."""
     end = date.fromisoformat(str(source_date))
     if rule.get('retailer') == 'Costco':
         from . import sea_services
+        pairs = [('Costco', row.get('item')) for row in rule.get('error_details') or []
+                 if str(row.get('account_name') or '').strip().lower() == 'costco']
         return sea_services.build_sea_display_query(end + timedelta(days=1), 'sea_tv',
-                                                    rule, days=3, retailer='Costco')
+                                                    rule, days=days, retailer='Costco',
+                                                    retailer_item_pairs=pairs)
     literal = lambda value: "'" + str(value).replace("'", "''") + "'"
+    if table_name and table_name.split('.')[-1] == 'tv_retail_com':
+        from apps.dx.dx_layer3.cross_field.sea_services import _DISPLAY_QUERY_COLUMNS
+
+        groups = {}
+        for row in rule.get('error_details') or []:
+            retailer = row.get('account_name')
+            if not retailer:
+                continue
+            items, ids = groups.setdefault(retailer, (set(), set()))
+            if str(row.get('item') or '').strip():
+                items.add(str(row['item']))
+            elif row.get('id') is not None:
+                ids.add(int(row['id']))
+        scopes = []
+        for retailer, (items, ids) in groups.items():
+            matches = []
+            if items:
+                matches.append('item IN (' + ', '.join(map(literal, sorted(items))) + ')')
+            if ids:
+                matches.append('id IN (' + ', '.join(map(str, sorted(ids))) + ')')
+            scope = 'account_name = ' + literal(retailer)
+            if matches:
+                scope += '\n  AND ' + (matches[0] if len(matches) == 1 else '(' + ' OR '.join(matches) + ')')
+            scopes.append(scope)
+        retailer = rule.get('retailer')
+        if not scopes and retailer and retailer != 'ALL':
+            scopes.append('account_name = ' + literal(retailer))
+        if len(scopes) > 1:
+            scopes = ['(' + ' OR '.join(f'({scope})' for scope in scopes) + ')']
+        scopes.extend((f"{date_column} >= '{end - timedelta(days=days - 1)}'",
+                       f"{date_column} < '{end + timedelta(days=1)}'"))
+        fields = str(rule.get('select_fields') or '').split('|')
+        allowed = _DISPLAY_QUERY_COLUMNS - {'sku', 'crawl_strdatetime', 'recommendation_intent'}
+        columns = ', '.join(column for column in dict.fromkeys(
+            ('id', 'item', date_column, 'retailer_sku_name', *fields, 'product_url')
+        ) if column in allowed)
+        where = '\n  AND '.join(scopes)
+        return (f"SELECT {columns}\nFROM {table_name}\nWHERE {where}\n"
+                f"ORDER BY item, {date_column};")
     groups = {}
     for row in rule.get('error_details') or []:
         if row.get('account_name') and row.get('item'):

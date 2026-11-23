@@ -325,14 +325,13 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
             self.assertNotIn('WITH main_batches AS', rule['query'])
             self.assertNotIn('    batch_id', rule['query'])
             self.assertIn(
-                "crawl_datetime >= '2026-09-01'",
+                "crawl_datetime >= (DATE '2026-09-01'::timestamp AT TIME ZONE 'Asia/Seoul')",
                 rule['query'],
             )
             self.assertIn(
-                "crawl_datetime < '2026-09-04'",
+                "crawl_datetime < (DATE '2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul')",
                 rule['query'],
             )
-            self.assertNotIn('AT TIME ZONE', rule['query'])
 
     def test_detail_marks_same_day_target_and_previous_day_history(self):
         rule = _rule(1, 'review_gt_star_count', 'Flipkart')
@@ -372,7 +371,7 @@ class SielCrossfieldQueryAndSummaryTests(unittest.TestCase):
         )
         self.assertNotIn('main_rank', result['editable_columns'])
         self.assertIn(
-            "crawl_datetime >= '2026-09-01'",
+            "crawl_datetime >= (DATE '2026-09-01'::timestamp AT TIME ZONE 'Asia/Seoul')",
             result['query'],
         )
         self.assertIn('    count_of_reviews', result['query'])

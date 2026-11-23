@@ -251,7 +251,10 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
                for row in result_rows]
     is_tv = product_line == 'seuk_tv'
     display = detail_columns(column, expand_prices=is_tv)
-    query = tv_review_query(display, (row['id'] for row in results)) if is_tv and results else ''
+    query = ''
+    if is_tv and results:
+        start = max(start_day, retailer_start_date(source, canonical_retailer))
+        query = tv_review_query(display, results, start, source_day)
     return {
         'date': mapping['inspection_date'], 'results': results,
         'select_cols': list(source['columns']),

@@ -347,21 +347,13 @@ def _tv_review_columns(rule):
     )
 
 
-def _tv_summary_query(source, source_date, rule, targets):
-    columns = _tv_review_columns(rule)
-    if rule['findings']:
-        return tv_review_query(columns, (row['id'] for row in rule['findings']))
+def _tv_summary_query(source_date, rule, targets, raw_accounts):
+    day = date.fromisoformat(source_date)
     retailer = rule['retailers'][0]
-    record = next((row for row in targets if row['account_name'] == retailer), None)
-    if record is None:
-        return tv_review_query(columns, ())
-    batch_id = record['batch_id']
-    batch = 'batch_id IS NULL' if batch_id is None else f'batch_id = {_literal(batch_id)}'
-    redirect = ' AND is_redirect IS NOT TRUE' if retailer == 'Amazon' else ''
-    return (f"SELECT {', '.join(columns)}\nFROM {source['table_name']}\n"
-            f"WHERE {source_date_sql('crawl_datetime')} = {_literal(source_date)}\n"
-            f"  AND LOWER(BTRIM(account_name)) = {_literal(retailer.lower())}\n"
-            f"  AND {batch}{redirect}\nORDER BY item, crawl_datetime, id;")
+    findings = rule['findings']
+    rows = findings or [row for row in targets if row['account_name'] == retailer]
+    return tv_review_query(_tv_review_columns(rule), rows, day, day,
+                           raw_accounts=raw_accounts, include_items=bool(findings))
 
 
 def _result(cursor, inspection_date, product_line, from_date=None):
@@ -378,7 +370,7 @@ def _result(cursor, inspection_date, product_line, from_date=None):
         **mapping, 'date': mapping['inspection_date'], 'source': source,
         'product_line': source['source_key'].upper(), 'label': source['display_name'],
         'table_name': source['table_name'], 'date_col': source['date_column'],
-        'configured': bool(rules), 'rules': rules, 'rows': [],
+        'configured': bool(rules), 'rules': rules, 'rows': [], 'raw_accounts': {},
         'corrections': [], 'page_exclusions': [],
     }
     if not rules:
@@ -401,6 +393,8 @@ def _result(cursor, inspection_date, product_line, from_date=None):
     corrections = [dict(value) if isinstance(value, dict) else dict(zip(names, value))
                    for value in cursor.fetchall()]
     normal = {(str(value['record_id']), str(value['rule_id'])) for value in corrections}
+    if key == 'seuk_tv':
+        result['raw_accounts'] = {row['id']: row['account_name'] for row in rows}
     for row in rows:
         row['account_name'] = normalize_retailer(source, row['account_name'])
     evaluated = {str(row['id']): evaluate_seuk_row(row) for row in rows}
@@ -432,13 +426,13 @@ def get_seuk_cross_field_summary(cursor, inspection_date, product_line):
     summaries = [{
         **{key: value for key, value in rule.items() if key != 'findings'},
         'error_count': len(rule['findings']), 'review_count': 0,
-        'query': (_tv_summary_query(result['source'], result['source_date'], rule, targets) if is_tv else
+        'query': (_tv_summary_query(result['source_date'], rule, targets, result['raw_accounts']) if is_tv else
                   display_query(result['source'], result['source_date'],
                                 items=[row['item'] for row in rule['findings']] or None, retailer=rule['retailers'][0])),
     } for rule in rules]
     return {
         **{key: value for key, value in result.items()
-           if key not in ('source', 'rows', 'rules', 'corrections')},
+           if key not in ('source', 'rows', 'rules', 'corrections', 'raw_accounts')},
         'total_checked': len(targets), 'failed_records': len(failed),
         'total_anomalies': sum(rule['error_count'] for rule in summaries),
         'passed_records': len(targets) - len(failed),
@@ -475,7 +469,10 @@ def get_seuk_cross_field_rule_detail(cursor, inspection_date, product_line, rule
             normal_reviews[f"{correction['record_id']}_{column}"] = payload
     items = sorted({str(row['item']) for row in anomalies if _present(row.get('item'))})
     if result['source']['source_key'] == 'seuk_tv':
-        query = tv_review_query(_tv_review_columns(rule), (row['id'] for row in anomalies))
+        end = date.fromisoformat(result['source_date'])
+        start = max(end - timedelta(days=days - 1), retailer_start_date(result['source'], retailer))
+        query = tv_review_query(_tv_review_columns(rule), anomalies, start, end,
+                               raw_accounts=result['raw_accounts'])
     else:
         query = display_query(result['source'], result['source_date'], days, items, retailer)
     return {

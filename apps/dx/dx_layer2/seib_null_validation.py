@@ -10,7 +10,7 @@ from apps.common.seib_retail import (
     SEIB_COUNTRY, SEIB_SOURCE_CONFIG, enabled, latest_scope,
     get_seib_null_columns,
     get_seib_null_select_columns, product_line_for, seib_retailer_key, active_retailers, is_eci_appliance,
-    is_eci_appliance_preview,
+    ECI_APPLIANCE_PREVIEW_FROM, is_eci_appliance_preview, retailer_start_date,
 )
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 
@@ -216,6 +216,7 @@ def null_detail(cursor, target_date, table, retailer, column, days=3):
         'normal_reviews': normal_reviews, **review_stats,
         'supports_day_history': not preview, 'history_days': days,
         'date_column': source['date_column'], 'readonly': preview,
+        'copy_sql_start_date': str(ECI_APPLIANCE_PREVIEW_FROM if preview else retailer_start_date(source, canonical_retailer)),
         **({'preview_mode': True, 'batch_id': rows[0].get('batch_id') if rows else None} if preview else {}),
         **mapping,
     }

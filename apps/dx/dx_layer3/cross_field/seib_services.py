@@ -209,31 +209,27 @@ def _literal(value):
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def display_query(source, source_date, days=3, items=None, retailer=RETAILER):
+def display_query(source, source_date, days=3, items=None, retailer=RETAILER, *, fields='', record_ids=()):
     retailer = normalize_retailer(source, retailer)
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
     first = (ECI_APPLIANCE_PREVIEW_FROM if is_eci_appliance_preview(source['source_key'], retailer, end)
              else retailer_start_date(source, retailer))
-    day = source_date_sql('anchor.crawl_datetime')
-    source_day = source_date_sql('source.crawl_datetime')
-    item_sql = ''
+    day = source_date_sql('crawl_datetime')
+    filters = [f"LOWER(BTRIM(account_name)) = {_literal(retailer.lower())}"]
     if items is not None:
-        item_sql = (' AND source.item IN (' + ', '.join(_literal(item) for item in sorted(set(items)))
-                    + ')') if items else ' AND FALSE'
-    return f"""WITH latest AS (
-    SELECT DISTINCT ON ({day}) {day} AS source_date, anchor.batch_id
-    FROM {source['table_name']} anchor
-    WHERE {day} BETWEEN {_literal(max(start, first))} AND {_literal(end)}
-      AND LOWER(BTRIM(anchor.account_name)) = {_literal(retailer.lower())}
-    ORDER BY {day}, anchor.id DESC
-)
-SELECT source.*
-FROM {source['table_name']} source
-JOIN latest ON {source_day} = latest.source_date
-  AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
-WHERE LOWER(BTRIM(source.account_name)) = {_literal(retailer.lower())}{item_sql}
-ORDER BY source.item, source.crawl_datetime, source.id;"""
+        matches = []
+        if items:
+            matches.append('item IN (' + ', '.join(_literal(item) for item in sorted(set(items))) + ')')
+        if record_ids:
+            matches.append('id IN (' + ', '.join(str(int(value)) for value in record_ids) + ')')
+        filters.append('(' + ' OR '.join(matches) + ')' if len(matches) > 1 else next(iter(matches), 'FALSE'))
+    filters.extend((f"{day} >= {_literal(max(start, first))}", f"{day} < {_literal(end + timedelta(days=1))}"))
+    requested = ('id', 'item', 'crawl_datetime', 'retailer_sku_name', *fields.split('|'), 'product_url')
+    columns = ', '.join(field for field in dict.fromkeys(requested) if field in table_columns(source, retailer))
+    where = '\n  AND '.join(filters)
+    return (f"SELECT {columns}\nFROM {source['table_name']}\n"
+            f"WHERE {where}\nORDER BY item, crawl_datetime, id;")
 
 
 def _result(cursor, inspection_date, product_line, from_date=None):
@@ -317,7 +313,10 @@ def get_seib_cross_field_summary(cursor, inspection_date, product_line):
         **{key: value for key, value in rule.items() if key != 'findings'},
         'error_count': len(rule['findings']), 'review_count': 0,
         'query': display_query(result['source'], result['source_date'],
-                               items=[row['item'] for row in rule['findings']] or None, retailer=rule['retailers'][0]),
+                               items=[row['item'] for row in rule['findings'] if _present(row.get('item'))]
+                               if rule['findings'] else None, retailer=rule['retailers'][0],
+                               fields=rule['select_fields'],
+                               record_ids=[row['id'] for row in rule['findings'] if not _present(row.get('item'))]),
     } for rule in rules]
     return {
         **{key: value for key, value in result.items()
@@ -359,7 +358,9 @@ def get_seib_cross_field_rule_detail(cursor, inspection_date, product_line, rule
         for column in editable_columns(retailer):
             normal_reviews[f"{correction['record_id']}_{column}"] = payload
     items = sorted({str(row['item']) for row in anomalies if _present(row.get('item'))})
-    query = display_query(result['source'], result['source_date'], days, items, retailer)
+    query = display_query(result['source'], result['source_date'], days, items, retailer,
+                          fields=rule['select_fields'],
+                          record_ids=[row['id'] for row in anomalies if not _present(row.get('item'))])
     return {
         **{key: result[key] for key in ('date', 'inspection_date', 'source_date',
                                        'offset_days', 'product_line', 'table_name', 'date_col')},

@@ -87,31 +87,52 @@ def _load_rows(cursor, source, start, end, items=None, retailer=None):
             for row in _rows(cursor)]
 
 
-def display_query(cursor, source, source_date, days=3, items=None, retailer=None, comparison_rows=(), target_ids=()):
+def display_query(cursor, source, source_date, days=3, items=None, retailer=None,
+                  comparison_rows=(), target_ids=(), *, fields='', retailers=(), findings=()):
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
     column = source['date_column']
     date_filter = f'{column} >= %s AND {column} < %s'
-    params = [str(start), str(end + timedelta(days=1))]
+    date_params = [str(start), str(end + timedelta(days=1))]
     comparison_ids = [row['id'] for row in comparison_rows]
     if comparison_ids:
         placeholders = ', '.join('%s' for _ in comparison_ids)
         date_filter = f'(({date_filter}) OR id IN ({placeholders}))'
-        params.extend(comparison_ids)
-    filters = [date_filter]
-    if retailer is not None:
-        filters.append('account_name = %s')
-        params.append('CasasBahia' if retailer == 'Casas Bahia' else retailer)
-    if items is not None:
+        date_params.extend(comparison_ids)
+    groups = {retailer: (items, target_ids)} if retailer is not None or items is not None else {
+        account: (None, ()) for account in retailers
+    }
+    if findings:
+        groups = {}
+        for row in findings:
+            products, ids = groups.setdefault(row['account_name'], (set(), set()))
+            if missing(row.get('item')):
+                ids.add(row['id'])
+            else:
+                products.add(str(row['item']))
+
+    scopes, params = [], []
+    for account, (products, ids) in groups.items():
+        account_filters = []
+        if account is not None:
+            account_filters.append('account_name = %s')
+            params.append('CasasBahia' if account == 'Casas Bahia' else account)
         item_filters = []
-        if items:
-            item_filters.append('item IN (' + ', '.join('%s' for _ in items) + ')')
-            params.extend(items)
-        if target_ids:
-            item_filters.append('id IN (' + ', '.join('%s' for _ in target_ids) + ')')
-            params.extend(target_ids)
-        filters.append('(' + ' OR '.join(item_filters) + ')' if item_filters else 'FALSE')
-    sql = (f"SELECT *\nFROM {source['table_name']}\nWHERE "
+        if products:
+            item_filters.append('item IN (' + ', '.join('%s' for _ in products) + ')')
+            params.extend(sorted(products))
+        if ids:
+            item_filters.append('id IN (' + ', '.join('%s' for _ in ids) + ')')
+            params.extend(sorted(ids))
+        if products is not None:
+            account_filters.append('(' + ' OR '.join(item_filters) + ')' if item_filters else 'FALSE')
+        scopes.append('\n  AND '.join(account_filters))
+    filters = scopes if len(scopes) <= 1 else ['(' + ' OR '.join(f'({scope})' for scope in scopes) + ')']
+    filters.append(date_filter)
+    params.extend(date_params)
+    requested = ('id', 'item', column, 'retailer_sku_name', *fields.split('|'), 'product_url')
+    columns = ', '.join(field for field in dict.fromkeys(requested) if field in SELECT_COLUMNS)
+    sql = (f"SELECT {columns}\nFROM {source['table_name']}\nWHERE "
            + '\n  AND '.join(filters) + f'\nORDER BY item, {column}')
     return cursor.mogrify(sql, params).decode('utf-8').strip() + ';'
 
@@ -234,8 +255,8 @@ def get_seda_cross_field_summary(cursor, inspection_date, product_line):
             **_public_rule(rule), 'error_count': errors_for_rule,
             'review_count': len(rule['findings']) - errors_for_rule,
             'query': display_query(cursor, source, result['source_date'],
-                                   retailer=rule['retailers'][0] if len(rule['retailers']) == 1 else None,
-                                   comparison_rows=rule['comparison_rows']),
+                                   comparison_rows=rule['comparison_rows'], fields=rule['select_fields'],
+                                   retailers=rule['retailers'], findings=rule['findings']),
         })
     retailers = sorted({retailer for rule in rules for retailer in rule['retailers']})
     return {
@@ -274,7 +295,8 @@ def get_seda_cross_field_rule_detail(cursor, inspection_date, product_line, rule
         queries[retailer] = display_query(
             cursor, source, end, days, items, retailer,
             [row for row in rule['comparison_rows'] if row['account_name'] == retailer],
-            target_ids=[row['id'] for row in targets],
+            target_ids=[row['id'] for row in targets if missing(row.get('item'))],
+            fields=rule['select_fields'],
         )
     anomalies = build_detail_history(history, rule['findings'], result['source_date'], source['date_column'], days,
                                      comparison_rows=rule['comparison_rows'])

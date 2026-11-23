@@ -105,7 +105,9 @@ class SeibCrossfieldTests(unittest.TestCase):
                 self.assertEqual(params[0], '2026-10-18')
                 query = seib_services.display_query(source, date(2026, 10, 19))
                 self.assertIn("'2026-10-18'", query)
-                self.assertIn('batch_id IS NOT DISTINCT FROM', query)
+                self.assertIn("< '2026-10-20'", query)
+                self.assertTrue(query.split('\nWHERE ', 1)[1].startswith('LOWER(BTRIM(account_name))'))
+                self.assertNotIn('batch_id IS NOT DISTINCT FROM', query)
                 self.assertNotIn('batch_id::date', query)
 
     def test_summary_and_detail_use_inspection_day_and_show_prior_history(self):

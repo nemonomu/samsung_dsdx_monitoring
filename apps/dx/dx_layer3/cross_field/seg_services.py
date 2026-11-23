@@ -1068,23 +1068,11 @@ def build_seg_display_query(
                 f"account_name = "
                 f"{_display_sql_literal(pair_retailer)}"
             )
-            pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
-        if len(pair_clauses) == 1:
-            pair_retailer, pair_items = next(iter(pair_groups.items()))
-            filters.append(
-                f'account_name = '
-                f'{_display_sql_literal(pair_retailer)}'
-            )
-            item_values = sorted({
-                item for item in pair_items if item is not None
-            })
-            if item_values:
-                filters.append('item IN (' + ', '.join(
-                    _display_sql_literal(item) for item in item_values
-                ) + ')')
-            if any(item is None for item in pair_items):
-                filters.append("(item IS NULL OR TRIM(item) = '')")
-        else:
+            if len(pair_groups) == 1:
+                filters.extend((retailer_scope, f'({item_scope})' if len(item_clauses) > 1 else item_scope))
+            else:
+                pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
+        if pair_clauses:
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
         retailer_clauses = [
@@ -1093,20 +1081,9 @@ def build_seg_display_query(
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
 
-    scope_sql = ''
-    if filters:
-        scope_sql = '\n  AND ' + '\n  AND '.join(filters)
-
     target_day = date.fromisoformat(str(inspection_date))
     start_day = target_day - timedelta(days=day_count - 1)
     date_expr = date_column
-    filters.insert(0, "country = 'SEG'")
-    if source.get('has_redirect'):
-        filters.append(
-            "(account_name <> 'Amazon' "
-            "OR redirect IS NOT TRUE)"
-        )
-    scope_sql = '\n  AND ' + '\n  AND '.join(filters)
     date_filter = (f"{date_expr} >= '{start_day.isoformat()}'\n"
                    f"  AND {date_expr} < '{(target_day + timedelta(days=1)).isoformat()}'")
     comparison_ids = sorted({int(value) for value in (comparison_record_ids or [])
@@ -1114,10 +1091,14 @@ def build_seg_display_query(
     if comparison_ids:
         date_filter = ('((' + date_filter + ') OR id IN ('
                        + ', '.join(str(value) for value in comparison_ids) + '))')
+    filters.extend((date_filter, "country = 'SEG'"))
+    if source.get('has_redirect'):
+        filters.append("(account_name <> 'Amazon' OR redirect IS NOT TRUE)")
+    where = '\n  AND '.join(filters)
     return f"""SELECT
 {select_sql}
 FROM {source['table_name']}
-WHERE {date_filter}{scope_sql}
+WHERE {where}
 ORDER BY item, {date_column};"""
 
 

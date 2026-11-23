@@ -513,26 +513,12 @@ def build_tse_display_query(
             if any(item is None for item in pair_items):
                 item_clauses.append("(item IS NULL OR TRIM(item) = '')")
             item_scope = ' OR '.join(item_clauses)
-            pair_clauses.append(
-                f'(account_name = '
-                f'{_display_sql_literal(pair_retailer)} AND ({item_scope}))'
-            )
-        if len(pair_clauses) == 1:
-            pair_retailer, pair_items = next(iter(pair_groups.items()))
-            scope_filters.append(
-                f'account_name = '
-                f'{_display_sql_literal(pair_retailer)}'
-            )
-            item_values = sorted({
-                item for item in pair_items if item is not None
-            })
-            if item_values:
-                scope_filters.append('item IN (' + ', '.join(
-                    _display_sql_literal(item) for item in item_values
-                ) + ')')
-            if any(item is None for item in pair_items):
-                scope_filters.append("(item IS NULL OR TRIM(item) = '')")
-        else:
+            retailer_scope = f'account_name = {_display_sql_literal(pair_retailer)}'
+            if len(pair_groups) == 1:
+                scope_filters.extend((retailer_scope, f'({item_scope})' if len(item_clauses) > 1 else item_scope))
+            else:
+                pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
+        if pair_clauses:
             scope_filters.append(
                 '(\n    ' + '\n OR '.join(pair_clauses) + '\n  )'
             )
@@ -565,10 +551,10 @@ def build_tse_display_query(
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
     where_filters = [
+        *scope_filters,
         f"crawl_datetime >= '{start_date}'",
         f"crawl_datetime < '{next_date}'",
         f'country = {_display_sql_literal(TSE_COUNTRY)}',
-        *scope_filters,
     ]
     where_sql = '\n  AND '.join(where_filters)
 

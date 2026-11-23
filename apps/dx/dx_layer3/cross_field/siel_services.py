@@ -829,23 +829,11 @@ def build_siel_display_query(
                 f"account_name = "
                 f"{_display_sql_literal(pair_retailer)}"
             )
-            pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
-        if len(pair_clauses) == 1:
-            pair_retailer, pair_items = next(iter(pair_groups.items()))
-            filters.append(
-                f'account_name = '
-                f'{_display_sql_literal(pair_retailer)}'
-            )
-            item_values = sorted({
-                item for item in pair_items if item is not None
-            })
-            if item_values:
-                filters.append('item IN (' + ', '.join(
-                    _display_sql_literal(item) for item in item_values
-                ) + ')')
-            if any(item is None for item in pair_items):
-                filters.append("(item IS NULL OR TRIM(item) = '')")
-        else:
+            if len(pair_groups) == 1:
+                filters.extend((retailer_scope, f'({item_scope})' if len(item_clauses) > 1 else item_scope))
+            else:
+                pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
+        if pair_clauses:
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
         retailer_clauses = [
@@ -854,19 +842,15 @@ def build_siel_display_query(
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
 
-    scope_sql = ''
-    if filters:
-        scope_sql = '\n  AND ' + '\n  AND '.join(filters)
-
     end_date = date.fromisoformat(str(inspection_date))
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
-    return f"""SELECT
-{select_sql}
-FROM {source['table_name']}
-WHERE {date_column} >= '{start_date}'
-  AND {date_column} < '{next_date}'{scope_sql}
-ORDER BY item, {date_column};"""
+    filters.extend(
+        f"{date_column} {operator} (DATE '{day}'::timestamp AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}')"
+        for operator, day in (('>=', start_date), ('<', next_date))
+    )
+    where = '\n  AND '.join(filters)
+    return f"SELECT\n{select_sql}\nFROM {source['table_name']}\nWHERE {where}\nORDER BY item, {date_column};"
 
 
 def get_siel_cross_field_summary(cursor, inspection_date, product_line):

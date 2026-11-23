@@ -23,18 +23,14 @@
         isRelated(field) { return related.has(field); },
         isPrice(field) { return priceRelated.has(field); },
         getPriceColumns() { return priceColumns.slice(); },
-        buildSeukTvQuery(columns, allowedColumns, ids) {
+        projectCopySql(columns, allowedColumns, query, table) {
             const allowed = new Set(allowedColumns);
             const fields = [...new Set(columns)].filter(column =>
                 allowed.has(column) && /^[a-z][a-z0-9_]*$/.test(column)
             );
-            const rowIds = [...new Set(ids
-                .filter(id => typeof id === 'string' || Number.isSafeInteger(id))
-                .map(String).filter(id => /^[1-9]\d*$/.test(id)))];
-            if (!fields.length) return '';
-            const where = rowIds.length ? 'id IN (' + rowIds.join(', ') + ')' : 'FALSE';
-            return 'SELECT ' + fields.join(', ') + '\nFROM dx_seuk.dx_seuk_tv_retail_com'
-                + '\nWHERE ' + where + '\nORDER BY item, crawl_datetime, id;';
+            const from = (query || '').indexOf('\nFROM ' + table + '\nWHERE ');
+            if (!fields.length || from < 0 || !/^SELECT\b/i.test(query)) return '';
+            return 'SELECT ' + fields.join(', ') + query.slice(from);
         },
         expand(fields, available, triggers) {
             const original = [...new Set(fields)];

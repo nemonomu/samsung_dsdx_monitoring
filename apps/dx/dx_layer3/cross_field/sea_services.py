@@ -949,23 +949,11 @@ def build_sea_display_query(
                 f"account_name = "
                 f"{_display_sql_literal(pair_retailer)}"
             )
-            pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
-        if len(pair_clauses) == 1:
-            pair_retailer, pair_items = next(iter(pair_groups.items()))
-            filters.append(
-                f'account_name = '
-                f'{_display_sql_literal(pair_retailer)}'
-            )
-            item_values = sorted({
-                item for item in pair_items if item is not None
-            })
-            if item_values:
-                filters.append('item IN (' + ', '.join(
-                    _display_sql_literal(item) for item in item_values
-                ) + ')')
-            if any(item is None for item in pair_items):
-                filters.append("(item IS NULL OR TRIM(item) = '')")
-        else:
+            if len(pair_groups) == 1:
+                filters.extend((retailer_scope, f'({item_scope})' if len(item_clauses) > 1 else item_scope))
+            else:
+                pair_clauses.append(f'({retailer_scope} AND ({item_scope}))')
+        if pair_clauses:
             filters.append('(\n    ' + '\n OR '.join(pair_clauses) + '\n  )')
     elif retailer_values:
         retailer_clauses = [
@@ -974,25 +962,17 @@ def build_sea_display_query(
         ]
         filters.append('(' + ' OR '.join(retailer_clauses) + ')')
 
-    scope_sql = ''
-    if filters:
-        scope_sql = '\n  AND ' + '\n  AND '.join(filters)
-
     end_date = date.fromisoformat(str(inspection_date)) - timedelta(days=1)
     start_date = end_date - timedelta(days=day_count - 1)
     next_date = end_date + timedelta(days=1)
     if key == 'sea_ldy_dryer' or (retailer_values and all(costco_layer2.is_costco(value) for value in retailer_values)):
         query_retailer = retailer_values[0] if len(retailer_values) == 1 else None
         day = costco_layer2.source_date_sql(date_column, retailer=query_retailer, product=source['product_key'], query_scope=True)
-        return (f"SELECT\n{select_sql}\nFROM {source['table_name']}\n"
-                f"WHERE {day} BETWEEN '{start_date}' AND '{end_date}'{scope_sql}\n"
-                f"ORDER BY item, {date_column};")
-    return f"""SELECT
-{select_sql}
-FROM {source['table_name']}
-WHERE {date_column} >= '{start_date}'
-  AND {date_column} < '{next_date}'{scope_sql}
-ORDER BY item, {date_column};"""
+        filters.extend((f"{day} >= '{start_date}'", f"{day} < '{next_date}'"))
+    else:
+        filters.extend((f"{date_column} >= '{start_date}'", f"{date_column} < '{next_date}'"))
+    where = '\n  AND '.join(filters)
+    return f"SELECT\n{select_sql}\nFROM {source['table_name']}\nWHERE {where}\nORDER BY item, {date_column};"
 
 
 def get_sea_cross_field_summary(cursor, inspection_date, product_line):

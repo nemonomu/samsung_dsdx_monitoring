@@ -127,7 +127,7 @@ function _tseCountryScope(alias) {
        OR ${prefix}country = '')`;
 }
 
-function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) {
+function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days, reviewCopy = false) {
     const tableName = data.actual_table || '';
     const retailer = _retailSqlAccountName(data, records, data.retailer);
     if (!_isTseSqlIdentifier(tableName, true)
@@ -165,6 +165,14 @@ function _buildTseNullQuery(fieldName, data, records, queryColumns, date, days) 
     }
     if (recordConditions.length === 0) return '';
 
+    if (reviewCopy) {
+        const filters = [
+            accountScope, '(' + recordConditions.join(' OR ') + ')',
+            'crawl_datetime >= ' + startDateSql, 'crawl_datetime < ' + nextDateSql,
+            _tseCountryScope(),
+        ];
+        return `SELECT *\nFROM ${tableName}\nWHERE ${filters.join('\n  AND ')}\nORDER BY item, crawl_datetime;`;
+    }
     return `SELECT *
 FROM ${tableName}
 WHERE crawl_datetime >= ${startDateSql}
@@ -205,11 +213,12 @@ function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, da
     return html;
 }
 
-function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, retailer, isTseRetail) {
+function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, retailer, isTseRetail, reviewCopy = false) {
     if (data.query_sql) return data.query_sql;
     if (isTseRetail) {
-        return _buildTseNullQuery(fieldName, data, records,
-            (data.query_config || {})[fieldName] || [], date, days);
+        const configured = (data.query_config || {})[fieldName] || [];
+        const columns = reviewCopy && !configured.length ? ['id', fieldName] : configured;
+        return _buildTseNullQuery(fieldName, data, records, columns, date, days, reviewCopy);
     }
     const tableName = data.actual_table || '';
     const dateColumn = data.date_column || 'crawl_datetime';
@@ -233,9 +242,23 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
         ? `TO_CHAR(NULLIF(BTRIM(CAST(${dateColumn} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`
         : (isSeib || isSeuk) ? `LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10)` : dateColumn;
     const historyStart = _tseHistoryStartDate(sourceDate, days);
+    const seibStart = (reviewCopy && data.copy_sql_start_date) || '2026-10-18';
     const startDate = isCostcoDryer && historyStart < '2026-10-09' ? '2026-10-09'
-        : isSeib && historyStart < '2026-10-18' ? '2026-10-18'
+        : isSeib && historyStart < seibStart ? seibStart
         : isSeuk && data.active_from && historyStart < data.active_from ? data.active_from : historyStart;
+    const recordScope = [];
+    if (items.length) recordScope.push(`item IN (${items.map(_tseSqlLiteral).join(', ')})`);
+    if (ids.length) recordScope.push(`id IN (${ids.join(', ')})`);
+    const recordFilter = recordScope.length > 1 ? `(${recordScope.join(' OR ')})` : recordScope[0];
+    if (reviewCopy) {
+        const zone = /^dx_siel\./.test(tableName) ? ' 00:00:00+09:00' : '';
+        const filters = [
+            `account_name = ${_tseSqlLiteral(accountName)}`, recordFilter,
+            `${dateExpression} >= ${_tseSqlLiteral(startDate + zone)}`,
+            `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate) + zone)}`,
+        ];
+        return `SELECT *\nFROM ${tableName}\nWHERE ${filters.join('\n  AND ')}\nORDER BY item, ${dateColumn};`;
+    }
     const where = [
         `${dateExpression} >= ${_tseSqlLiteral(startDate)}`,
         `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate))}`,
@@ -244,10 +267,7 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
     if (days === 1 && data.batch_id != null && data.batch_id !== '') {
         where.push(`batch_id = ${_tseSqlLiteral(data.batch_id)}`);
     }
-    const recordScope = [];
-    if (items.length) recordScope.push(`item IN (${items.map(_tseSqlLiteral).join(', ')})`);
-    if (ids.length) recordScope.push(`id IN (${ids.join(', ')})`);
-    where.push(recordScope.length > 1 ? `(${recordScope.join(' OR ')})` : recordScope[0]);
+    where.push(recordFilter);
     return `SELECT *\nFROM ${tableName}\nWHERE ${where.join('\n  AND ')}\nORDER BY item, ${dateColumn};`;
 }
 
@@ -527,6 +547,8 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     const isRetail = isLegacyRetail || isSeaRetail || isSielRetail
         || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail;
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
+    const usesReviewCopySql = isSeukTv || isTseRetail || (isRetail && tableParam !== 'hhp_retail'
+        && !tableParam.startsWith('seuk_'));
     const supportsDayHistory = isLegacyRetail
         || (isSeaAppliance && data.supports_day_history === true)
         || (isSielRetail && data.supports_day_history === true)
@@ -610,6 +632,16 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
     }
 
     // Item/쿼리 섹션 생성 (retail만)
+    const allowedCopyColumns = data.copy_sql_columns || data.select_cols || selectColumns;
+    const copyTable = data.actual_table || '';
+    const copySqlBuilder = typeof window !== 'undefined' && window.RetailReviewColumns;
+    const baseCopySql = usesReviewCopySql ? _buildNullRetailDisplayQuery(
+        fieldName, data, records, date, currentDays, modalState.retailer || '', isTseRetail, true
+    ) : '';
+    const initialCopySql = baseCopySql && copySqlBuilder ? copySqlBuilder.projectCopySql(
+        columns.map(column => column.key), allowedCopyColumns, baseCopySql, copyTable
+    ) : baseCopySql;
+    const copyQueryId = usesReviewCopySql ? 'id="retail-null-copy-query"' : '';
     if (isRetail || isTseRetail) {
         const items = [...new Set(records.map(r => r.item).filter(Boolean))].sort();
         const ids = records.map(r => r.id).filter(Boolean);
@@ -617,7 +649,7 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         if (isInlineMode()) {
             var listLabel = items.length > 0 ? 'Item 목록 (' + items.length + '개)' : ids.length > 0 ? 'ID 목록 (' + ids.length + '개)' : '';
             var listContent = items.length > 0 ? items.join(', ') : ids.join(', ');
-            var inlineQuery = _buildNullRetailDisplayQuery(
+            var inlineQuery = usesReviewCopySql ? initialCopySql : _buildNullRetailDisplayQuery(
                 fieldName, data, records, date, currentDays, modalState.retailer || '', isTseRetail
             );
             var inlineListHtml = '';
@@ -632,9 +664,9 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     </div>
                 </div>`;
             }
-            var inlineQueryHtml = (inlineQuery || isSeukTv) ? `<div class="query-box">
-                <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 ${isSeukTv || !items.length ? 'ID' : 'Item'} 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                <pre ${isSeukTv ? 'id="seuk-tv-null-query"' : ''} class="query-content">${_escapeTseSqlHtml(inlineQuery)}</pre>
+            var inlineQueryHtml = (inlineQuery || baseCopySql) ? `<div class="query-box">
+                <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 ${items.length ? 'Item' : 'ID'} 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
+                <pre ${copyQueryId} class="query-content">${_escapeTseSqlHtml(inlineQuery)}</pre>
             </div>` : '';
             if (inlineListHtml || inlineQueryHtml) {
                 itemQueryHtml += `<div class="null-detail-query-row">${inlineListHtml}${inlineQueryHtml}</div>`;
@@ -656,10 +688,11 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     modalState.retailer || '', isSedaRetail);
                 const batchFilter = historyDays === 1 && data.batch_id != null && data.batch_id !== ''
                     ? `\n  AND batch_id = ${_tseSqlLiteral(data.batch_id)}` : '';
-                const query3Days = tblName === 'public.ldy_dryer_retail' || isSeibRetail
+                const query3Days = usesReviewCopySql ? initialCopySql
+                    : tblName === 'public.ldy_dryer_retail' || isSeibRetail
                     ? _buildNullRetailDisplayQuery(fieldName, data, records, date, historyDays, retailerName, false)
                     : `SELECT *\nFROM ${tblName}\nWHERE ${dateColumn} >= '${historyStartDate}'\n  AND ${dateColumn} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(accountName)}${batchFilter}\n  AND item IN (${inClause})\nORDER BY item, ${dateColumn};`;
-                const queryLabel = isSeukTv ? `${currentDays}일치 ID 조회 SQL`
+                const queryLabel = usesReviewCopySql ? `${currentDays}일치 Item 조회 SQL`
                     : (isSeaRetail || isSielRetail || isSemRetail || isSegRetail || isSedaRetail || isSeibRetail)
                     ? `${currentDays}일치 조회 쿼리 (기준 데이터일 ${sourceDate})`
                     : `3일치 조회 쿼리 (${date} 기준)`;
@@ -670,11 +703,11 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     </div>
                     <div class="query-box">
                         <div class="item-copy-header"><span class="item-copy-title">${queryLabel}</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                        <pre ${isSeukTv ? 'id="seuk-tv-null-query"' : ''} class="query-content">${isSeukTv ? _escapeTseSqlHtml(query3Days) : query3Days}</pre>
+                        <pre ${copyQueryId} class="query-content">${usesReviewCopySql ? _escapeTseSqlHtml(query3Days) : query3Days}</pre>
                     </div>
                 </div>`;
             } else if (ids.length > 0) {
-                const queryById = isSeukTv ? data.query_sql || ''
+                const queryById = usesReviewCopySql ? initialCopySql
                     : `SELECT ${queryCols}\nFROM ${tblName}\nWHERE id IN (${ids.join(', ')});`;
                 itemQueryHtml += `<div class="item-query-section">
                     <div class="item-list-box">
@@ -683,17 +716,11 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
                     </div>
                     <div class="query-box">
                         <div class="item-copy-header"><span class="item-copy-title">ID 기반 조회 쿼리</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                        <pre ${isSeukTv ? 'id="seuk-tv-null-query"' : ''} class="query-content">${isSeukTv ? _escapeTseSqlHtml(queryById) : queryById}</pre>
+                        <pre ${copyQueryId} class="query-content">${usesReviewCopySql ? _escapeTseSqlHtml(queryById) : queryById}</pre>
                     </div>
                 </div>`;
             }
         }
-    }
-
-    if (isTseRetail && !isInlineMode()) {
-        itemQueryHtml += _buildTseNullQueryHtml(
-            fieldName, data, records, queryColumns, date, currentDays
-        );
     }
 
     if (supportsReview) {
@@ -749,12 +776,11 @@ function renderNullFieldDetailView(fieldName, data, pushStack = true) {
         data: records,
         tableParam: tableParam,
         type: 'null',
-        onColumnsChanged: isSeukTv ? function(visibleColumns) {
-            const queryEl = document.getElementById('seuk-tv-null-query');
+        onColumnsChanged: usesReviewCopySql && copySqlBuilder ? function(visibleColumns) {
+            const queryEl = document.getElementById('retail-null-copy-query');
             if (!queryEl) return;
-            const sql = window.RetailReviewColumns.buildSeukTvQuery(
-                visibleColumns.map(column => column.key), data.select_cols || selectColumns,
-                records.map(row => row.id)
+            const sql = copySqlBuilder.projectCopySql(
+                visibleColumns.map(column => column.key), allowedCopyColumns, baseCopySql, copyTable
             );
             queryEl.textContent = sql;
             queryEl.closest('.query-box').hidden = !sql;

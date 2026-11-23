@@ -39,19 +39,20 @@ for(const product of products){
     };
     if (product === 'tv') {
         data.query_sql = 'SELECT id, item, screen_size, crawl_datetime\n'
-            + 'FROM dx_seuk.dx_seuk_tv_retail_com\nWHERE id IN (42)\nORDER BY item, crawl_datetime, id;';
+            + "FROM dx_seuk.dx_seuk_tv_retail_com\nWHERE account_name = 'Currys'\n"
+            + "  AND item = 'sku''1'\n  AND crawl_datetime >= '2026-10-25'\n"
+            + "  AND crawl_datetime < '2026-10-26'\nORDER BY item, crawl_datetime, id;";
     }
     context.renderNullFieldDetailView(field,data,true);
     assert.equal(context.getDefaultNullHistoryDays(code),3);
     assert.equal(options.crawlDate,'2026-10-25');
     assert.equal(options.editableDate,'2026-10-25');
     assert(!options.editableCols.includes('loading_type'));
-    assert(html.includes(product === 'tv' ? '3일치 ID 조회 SQL' : '3일치 Item 조회 SQL'));
+    assert(html.includes('3일치 Item 조회 SQL'));
     if (product === 'tv') {
         options.onColumnsChanged([{key:'_no'}, {key:field}, {key:'item'}, {key:'id'}]);
         assert.equal(queryNode.textContent,
-            'SELECT screen_size, item, id\nFROM dx_seuk.dx_seuk_tv_retail_com\n'
-            + 'WHERE id IN (42)\nORDER BY item, crawl_datetime, id;');
+            'SELECT screen_size, item, id' + data.query_sql.slice(data.query_sql.indexOf('\n')));
         assert.equal(queryBox.hidden, false);
     }
     const sql=context._buildNullRetailDisplayQuery(field,data,data.results,data.date,3,'Currys',false);
@@ -64,6 +65,6 @@ for(const product of products){
     }
     assert(!sql.includes('AT TIME ZONE'));
 }
-const amazonSql = 'SELECT id, screen_size FROM dx_seuk.dx_seuk_tv_retail_com WHERE id IN (42);';
+const amazonSql = "SELECT id, screen_size FROM dx_seuk.dx_seuk_tv_retail_com WHERE account_name = 'Amazon' AND item = '001';";
 assert.equal(context._buildNullRetailDisplayQuery('screen_size', {query_sql: amazonSql}, [], '2026-11-22', 3, 'Amazon', false), amazonSql);
 console.log('SEUK NULL: four-product grouping, same-day edits, bounded history and raw-date SQL passed.');

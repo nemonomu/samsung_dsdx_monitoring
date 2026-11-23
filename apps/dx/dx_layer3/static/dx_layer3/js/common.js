@@ -1154,7 +1154,8 @@ function renderCrossfieldSummaryContent(title, _category, data) {
             const retailerScope = Array.isArray(rule.retailers) ? rule.retailers.join(' · ') : '';
             const ruleTitle = retailerScope ? (rule.detail_name || fieldDisplay) : fieldDisplay;
             const queryId = `crossfield-query-${idx}`;
-            const displayQuery = isCanonicalProductLine
+            const isRetailCopyQuery = isCanonicalProductLine || String(data.product_line).toUpperCase() === 'TV';
+            const displayQuery = isRetailCopyQuery
                 ? (rule.query || '쿼리 없음')
                 : replaceCrossfieldQueryPlaceholders(
                     rule.query, tableName, dateCol, noReviewTexts, targetDate
@@ -1187,7 +1188,7 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                     </div>
                     <div id="${queryId}" class="crossfield-query-box" style="display: none;">
                         <pre>${esc(displayQuery)}</pre>
-                        <button class="btn-copy-query" onclick="copyQueryToClipboard(this.previousElementSibling, ${isCanonicalProductLine})">복사</button>
+                        <button class="btn-copy-query" onclick="copyQueryToClipboard(this.previousElementSibling, ${isRetailCopyQuery})">복사</button>
                     </div>
                 </div>
             `;
@@ -1485,6 +1486,7 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
             window.crossfieldNormalReviews = data.normal_reviews || {};
             window.crossfieldRetailerColumns = data.retailer_columns || {};
+            window.crossfieldCopySqlColumns = data.copy_sql_columns || null;
             window.crossfieldDisplayQuery = data.query || '';
             window.crossfieldDisplayQueries = data.queries || {};
             window.crossfieldDays = data.days || historyDays;

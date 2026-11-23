@@ -31,6 +31,18 @@ _format_rules_cache = None
 _format_rules_cache_time = None
 
 
+def get_copy_sql_columns(cursor, table):
+    """Return the physical source columns for a review screen's copy-only SQL."""
+    schema, _, name = table.rpartition('.')
+    cursor.execute(
+        """SELECT column_name FROM information_schema.columns
+           WHERE table_schema = %s AND table_name = %s
+           ORDER BY ordinal_position""",
+        (schema or 'public', name),
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
 def load_retail_columns():
     """
     DB에서 리테일러별 컬럼 정보 로드

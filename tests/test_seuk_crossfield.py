@@ -48,7 +48,7 @@ class Cursor:
         if 'monitoring_validation_rules' in self.query:
             return [(i,self.product+'_'+key,key,'Currys') for i,key in enumerate(svc.RULES,1)]
         if 'SELECT source.*' in self.query:
-            return [row(id=1,crawl_datetime='2026-10-25T23:59:59-04:00'),row(savings='£400.00')]
+            return [row(id=1,batch_id='previous',crawl_datetime='2026-10-25T23:59:59-04:00'),row(savings='£400.00')]
         if 'monitoring_corrections' in self.query and self.confirmed:
             return [(2,7,'savings','checked','normal','tester','2026-10-26')]
         return []
@@ -284,7 +284,7 @@ class SeukTvCrossfieldTests(unittest.TestCase):
                         return [row(id=11, account_name='Amazon', original_sku_price=None,
                                     crawl_datetime='2026-11-23T23:59:59-04:00')]
                     if retailer == 'argos':
-                        return [row(id=21, account_name='Argos', savings='1%',
+                        return [row(id=21, account_name=' arGos ', savings='1%',
                                     crawl_datetime='2026-11-23T23:59:59-04:00')]
                     return []
                 return []
@@ -305,12 +305,15 @@ class SeukTvCrossfieldTests(unittest.TestCase):
         self.assertEqual(
             'SELECT id, item, crawl_datetime, count_of_reviews, retailer_sku_name, original_sku_price, '
             'final_sku_price, savings, product_url\nFROM dx_seuk.dx_seuk_tv_retail_com\n'
-            'WHERE id IN (21)\nORDER BY item, crawl_datetime, id;',
+            "WHERE account_name = ' arGos '\n  AND item = 'A'\n"
+            "  AND crawl_datetime >= '2026-11-22'\n  AND crawl_datetime < '2026-11-24'\n"
+            'ORDER BY item, crawl_datetime, id;',
             detail['query'],
         )
         rules = {rule['rule_id']: rule for rule in summary['rule_summary']}
-        self.assertEqual(detail['query'], rules[27]['query'])
-        self.assertIn("batch_id = 'current' AND is_redirect IS NOT TRUE", rules[12]['query'])
+        self.assertEqual(detail['query'].replace('2026-11-22', '2026-11-23'), rules[27]['query'])
+        self.assertIn("AND crawl_datetime < '2026-11-24'\n  AND is_redirect IS NOT TRUE", rules[12]['query'])
+        self.assertNotIn('batch_id', rules[12]['query'])
         self.assertEqual(7, len(before['rule_summary']))
 
     def test_new_retailer_edit_and_review_scope(self):

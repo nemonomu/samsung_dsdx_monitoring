@@ -1,5 +1,6 @@
 """UK retail source contracts, using the original collection date."""
-from datetime import date, datetime, time
+from collections import defaultdict
+from datetime import date, datetime, time, timedelta
 
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql, source_date_value
@@ -80,15 +81,46 @@ def get_seuk_null_select_columns(value):
     return get_seuk_source(value)['columns']
 
 
-def tv_review_query(columns, row_ids):
-    """Copy-only lookup of the SEUK TV records already selected for review."""
+def _text_filter(column, values):
+    literals = ["'" + value.replace("'", "''") + "'" for value in values]
+    if len(literals) == 1:
+        return f'{column} = {literals[0]}'
+    return f"{column} IN ({', '.join(literals)})"
+
+
+def _tv_account_scope(account, rows, include_items):
+    account_filter = _text_filter('account_name', (account,))
+    if not include_items:
+        return account_filter
+    items = sorted({row['item'] for row in rows if (row.get('item') or '').strip()})
+    missing_item_ids = sorted({int(row['id']) for row in rows if not (row.get('item') or '').strip()})
+    item_filters = []
+    if items:
+        item_filters.append(_text_filter('item', items))
+    if missing_item_ids:
+        item_filters.append(f"id IN ({', '.join(map(str, missing_item_ids))})")
+    item_filter = item_filters[0] if len(item_filters) == 1 else '(' + ' OR '.join(item_filters) + ')'
+    return account_filter + '\n  AND ' + item_filter
+
+
+def tv_review_query(columns, rows, start, end, *, raw_accounts=None, include_items=True):
+    """Copy-only item history by the original crawl_datetime date range."""
     source = SEUK_SOURCE_CONFIG['seuk_tv']
     allowed = {*source['columns'], 'is_redirect'}
     fields = [column for column in dict.fromkeys(columns) if column in allowed]
-    ids = ', '.join(str(row_id) for row_id in dict.fromkeys(int(value) for value in row_ids))
     if not fields:
         return ''
-    where = f'id IN ({ids})' if ids else 'FALSE'
+    by_account = defaultdict(list)
+    raw_accounts = raw_accounts or {}
+    for row in rows:
+        by_account[raw_accounts.get(row['id'], row['account_name'])].append(row)
+    scopes = [_tv_account_scope(account, records, include_items) for account, records in by_account.items()]
+    where = 'FALSE'
+    if scopes:
+        where = scopes[0] if len(scopes) == 1 else '(' + '\n   OR '.join(f'({scope})' for scope in scopes) + ')'
+        where += f"\n  AND crawl_datetime >= '{start}'\n  AND crawl_datetime < '{end + timedelta(days=1)}'"
+        if all(seuk_retailer_key(account) == 'amazon' for account in by_account):
+            where += '\n  AND is_redirect IS NOT TRUE'
     return (f"SELECT {', '.join(fields)}\nFROM {source['table_name']}\n"
             f"WHERE {where}\nORDER BY item, crawl_datetime, id;")
 

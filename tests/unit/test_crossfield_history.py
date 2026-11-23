@@ -30,8 +30,9 @@ class CrossfieldHistoryTests(unittest.TestCase):
         )
         self.assertIn("crawl_datetime >= '2026-02-27'", query)
         self.assertIn("crawl_datetime < '2026-03-02'", query)
-        self.assertIn("account_name = 'Lowes' AND item IN ('TV''1')", query)
-        self.assertIn("account_name = 'Bestbuy' AND item IN ('TV2')", query)
+        self.assertIn("account_name = 'Lowes'\n  AND item IN ('TV''1')", query)
+        self.assertIn("account_name = 'Bestbuy'\n  AND item IN ('TV2')", query)
+        self.assertLess(query.index('item IN'), query.index('crawl_datetime >='))
         self.assertNotRegex(query, r'CURRENT_DATE|LOWER|UPPER|TRIM|CAST|WITH|AT TIME ZONE')
 
     def test_generic_sea_d1_keeps_findings_when_history_lookup_misses_them(self):

@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from apps.common.db import dx_connection
 from apps.common.response import safe_error
 from apps.common.params import parse_date
+from apps.common.retail_columns import get_copy_sql_columns
 from .services import get_all_categories
 from . import services
 
@@ -61,6 +62,10 @@ def null_detail(request):
     try:
         with dx_connection() as (conn, cursor):
             result = services.get_null_detail(cursor, target_date, category, retailer, days, column)
+            if (result.get('results') and result.get('actual_table')
+                    and (category == 'tv_retail' or re.fullmatch(
+                        r'(sea|seda|seib|seg|sem|siel|tse)_(tv|ref|ldy|ldy_dryer)_retail', category))):
+                result['copy_sql_columns'] = get_copy_sql_columns(cursor, result['actual_table'])
             return JsonResponse(result)
     except Exception as e:
         return safe_error(e)

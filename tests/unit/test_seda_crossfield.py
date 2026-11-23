@@ -254,7 +254,9 @@ class SedaCrossfieldIntegrationTests(unittest.TestCase):
             self.assertTrue(set(group) <= set(detail['select_fields'].split('|')))
             target = next(entry for entry in detail['anomalies'] if entry['row_role'] == 'target')
             self.assertTrue(set(group) <= target.keys())
-            self.assertTrue(detail['queries']['Casas Bahia'].startswith('SELECT *\n'))
+            query = detail['queries']['Casas Bahia']
+            self.assertTrue(query.startswith('SELECT id, item, crawl_strdatetime, retailer_sku_name, '))
+            self.assertIn('WHERE account_name = %s\n  AND (item IN ', query)
         self.assertEqual('Baixou 10%', target['savings'])
 
     def test_registration_is_repeatable_and_preserves_recommendation_id(self):

@@ -51,7 +51,7 @@ print(json.dumps([fixture(product) for product in SEUK_SOURCE_CONFIG]))
         context.setTimeout=()=>{};
         context.showRetailerDetail('Currys');
         const isTv = fixture.summary.product_line === 'SEUK_TV';
-        assert(context.savedHtml.includes(isTv ? '3일치 ID 조회 SQL' : '3일치 Item 조회 SQL'));
+        assert(context.savedHtml.includes('3일치 Item 조회 SQL'));
         assert(context.savedHtml.includes('dx_seuk.dx_seuk_'));
         const state=context._cfDetailState;
         assert.strictEqual(state.allData.filter(row=>row._rowRole==='target').length,1);
@@ -69,7 +69,10 @@ print(json.dumps([fixture(product) for product in SEUK_SOURCE_CONFIG]))
             context._cfSortAndRender = () => {};
             rebuildTable();
             assert.strictEqual(queryNode.textContent, fixture.detail.query);
-            assert(queryNode.textContent.includes('WHERE id IN (1, 2)'));
+            assert(queryNode.textContent.includes("WHERE account_name = 'Currys'\n  AND item = 'A'"));
+            assert(queryNode.textContent.includes("crawl_datetime >= '2026-10-25'"));
+            assert(queryNode.textContent.includes("crawl_datetime < '2026-10-27'"));
+            assert(!queryNode.textContent.includes('batch_id'));
             tableOptions.onReorder([{key:'_no'}, {key:'savings'}, {key:'id'}, {key:'page_type'}]);
             assert(queryNode.textContent.startsWith('SELECT savings, id\n'));
             assert(!queryNode.textContent.includes('page_type'));

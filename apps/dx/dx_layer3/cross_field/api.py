@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.db import dx_connection
 from apps.common.response import safe_error, log_error
+from apps.common.retail_columns import get_copy_sql_columns
 from . import services
 from . import sea_services
 from . import siel_services
@@ -15,6 +16,13 @@ from . import tse_services
 from . import sem_services
 from . import seda_services
 from . import seib_services, seuk_services
+
+
+def _retail_rule_detail(handler, cursor, *args, **kwargs):
+    result = handler(cursor, *args, **kwargs)
+    if result.get('anomalies') and result.get('table_name'):
+        result['copy_sql_columns'] = get_copy_sql_columns(cursor, result['table_name'])
+    return result
 
 
 def cross_field_detail(request):
@@ -69,7 +77,7 @@ def cross_field_detail(request):
         if is_seib:
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = seib_services.get_seib_cross_field_rule_detail(
+                    result = _retail_rule_detail(seib_services.get_seib_cross_field_rule_detail,
                         cursor, target_date, product_line_key, rule_id, days,
                     )
                 else:
@@ -84,7 +92,7 @@ def cross_field_detail(request):
         if product_line_key in ('seda_tv', 'seda_ref', 'seda_ldy'):
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = seda_services.get_seda_cross_field_rule_detail(
+                    result = _retail_rule_detail(seda_services.get_seda_cross_field_rule_detail,
                         cursor, target_date, product_line_key, rule_id, days,
                     )
                 else:
@@ -99,7 +107,7 @@ def cross_field_detail(request):
         if is_seg:
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = seg_services.get_seg_cross_field_rule_detail(
+                    result = _retail_rule_detail(seg_services.get_seg_cross_field_rule_detail,
                         cursor, target_date, product_line, rule_id, days,
                     )
                 else:
@@ -114,7 +122,7 @@ def cross_field_detail(request):
         if is_sem:
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = sem_services.get_sem_cross_field_rule_detail(
+                    result = _retail_rule_detail(sem_services.get_sem_cross_field_rule_detail,
                         cursor, target_date, product_line, rule_id, days,
                     )
                 else:
@@ -129,7 +137,7 @@ def cross_field_detail(request):
         if is_siel:
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = siel_services.get_siel_cross_field_rule_detail(
+                    result = _retail_rule_detail(siel_services.get_siel_cross_field_rule_detail,
                         cursor, target_date, product_line, rule_id, days,
                     )
                 else:
@@ -145,7 +153,7 @@ def cross_field_detail(request):
         if is_tse:
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = tse_services.get_tse_cross_field_rule_detail(
+                    result = _retail_rule_detail(tse_services.get_tse_cross_field_rule_detail,
                         cursor, target_date, product_line, rule_id, days,
                     )
                 else:
@@ -161,7 +169,7 @@ def cross_field_detail(request):
         if is_sea:
             with dx_connection() as (conn, cursor):
                 if rule_id:
-                    result = sea_services.get_sea_cross_field_rule_detail(
+                    result = _retail_rule_detail(sea_services.get_sea_cross_field_rule_detail,
                         cursor, target_date, product_line, rule_id, days,
                     )
                 else:
@@ -185,10 +193,12 @@ def cross_field_detail(request):
 
         if rule_id:
             with dx_connection() as (conn, cursor):
-                result = services.get_cross_field_rule_detail(
-                    cursor, source_date, product_line, section, rule_id, days,
-                    inspection_date=inspection_date,
-                )
+                args = (cursor, source_date, product_line, section, rule_id, days)
+                if inspection_date is not None:
+                    result = _retail_rule_detail(services.get_cross_field_rule_detail, *args,
+                                                 inspection_date=inspection_date)
+                else:
+                    result = services.get_cross_field_rule_detail(*args, inspection_date=inspection_date)
 
             if not result.get('found'):
                 return JsonResponse({'error': '해당 규칙을 찾을 수 없습니다.'})

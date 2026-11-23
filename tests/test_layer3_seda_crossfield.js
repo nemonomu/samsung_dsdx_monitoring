@@ -20,6 +20,7 @@ try:
         summary=seda.get_seda_cross_field_summary(case.cursor, DAY, product)
         for key, retailer in (('summary_review_disappeared','Magalu'), ('review_body_count','Casas Bahia'), ('review_zero_body','Magalu'), ('final_original_price','Casas Bahia'), ('review_count_match','Casas Bahia')):
             detail=case.detail(key, product=product)
+            detail['copy_sql_columns'] = list(seda.SELECT_COLUMNS)
             fixtures.append(dict(summary=summary, detail=detail, key=key, retailer=retailer))
     print(json.dumps(fixtures))
 finally:
@@ -29,8 +30,13 @@ finally:
 (async () => {
     for (const fixture of fixtures) {
         const container = {innerHTML: ''};
+        const queryNode = {textContent: '', closest: () => ({})};
         const context = {
-            console, document: {addEventListener() {}, querySelector: () => container},
+            console, document: {
+                addEventListener() {}, querySelector: () => container,
+                getElementById: id => id === 'cf-display-query-' + fixture.retailer.replace(/[^a-zA-Z0-9]/g, '')
+                    ? queryNode : null,
+            },
             esc: value => String(value == null ? '' : value), escJs: value => String(value),
             getSelectedDate: () => '2026-09-21', fetchAPI: async () => fixture.detail,
         };
@@ -66,7 +72,10 @@ finally:
         assert(context.savedHtml.includes('3일치 Item 조회 SQL'));
         assert(context._cfUsesEqualReviewCounts('SEDA_TV', 'Casas Bahia'));
         assert(!context._cfUsesEqualReviewCounts('SEDA_TV', 'Magalu'));
-        assert(context.savedHtml.includes('SELECT *'));
+        assert(context.savedHtml.includes('SELECT id, item, crawl_strdatetime'));
+        context._cfUpdateCopyQuery(fixture.retailer, [{key:'review_body_count'}, {key:'item'}, {key:'id'}]);
+        assert(queryNode.textContent.startsWith('SELECT item, id\n'));
+        assert(queryNode.textContent.indexOf('account_name') < queryNode.textContent.indexOf('item IN'));
         const state = context._cfDetailState;
         assert.strictEqual(state.allData.filter(row => row._rowRole === 'target').length, 1);
         if (fixture.key === 'summary_review_disappeared') {
