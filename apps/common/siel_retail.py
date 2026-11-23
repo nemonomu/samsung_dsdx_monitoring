@@ -27,7 +27,7 @@ SIEL_JIOMART_FORMAT_COMMON_COLUMNS = (
 
 SIEL_NULL_COLUMNS = {
     'siel_tv': {
-        'jiomart': SIEL_JIOMART_NULL_COLUMNS,
+        'jiomart': (*SIEL_JIOMART_NULL_COLUMNS, 'screen_size'),
         'amazon': (
             'count_of_star_ratings', 'final_sku_price',
             'retailer_sku_name', 'screen_size', 'sku', 'star_rating',
@@ -40,7 +40,7 @@ SIEL_NULL_COLUMNS = {
         ),
     },
     'siel_ref': {
-        'jiomart': SIEL_JIOMART_NULL_COLUMNS,
+        'jiomart': (*SIEL_JIOMART_NULL_COLUMNS, 'ref_capacity'),
         'amazon': (
             'count_of_star_ratings', 'final_sku_price',
             'retailer_sku_name', 'sku', 'star_rating',
@@ -52,7 +52,7 @@ SIEL_NULL_COLUMNS = {
         ),
     },
     'siel_ldy': {
-        'jiomart': SIEL_JIOMART_NULL_COLUMNS,
+        'jiomart': (*SIEL_JIOMART_NULL_COLUMNS, 'ldy_capacity'),
         'amazon': (
             'count_of_star_ratings', 'final_sku_price',
             'retailer_sku_name', 'sku', 'star_rating',

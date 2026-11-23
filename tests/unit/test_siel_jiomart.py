@@ -104,9 +104,9 @@ class JiomartNullValidationTests(TestCase):
              patch.object(nulls, '_null_check_config_cache', None), \
              patch.object(nulls, '_null_check_config_cache_time', None):
             config = nulls.load_null_check_config()
-        for product in ('tv', 'ref', 'ldy'):
+        for product, field in (('tv', 'screen_size'), ('ref', 'ref_capacity'), ('ldy', 'ldy_capacity')):
             check = config[f'siel_{product}_retail']['checks']['jiomart']
-            self.assertEqual(SIEL_JIOMART_NULL_COLUMNS, tuple(check['columns']))
+            self.assertEqual((*SIEL_JIOMART_NULL_COLUMNS, field), tuple(check['columns']))
             self.assertTrue(all(rule['check_type'] == 'both' for rule in check['columns'].values()))
 
     def test_edit_locks_only_latest_operating_jiomart_batch(self):
