@@ -3,7 +3,7 @@ from apps.common.inspection_dates import resolve_monitoring_date
 from apps.common.dryer_onboarding import decorate_row
 from apps.common.seuk_retail import FIRST_SOURCE_DATE
 from .sources import (
-    SEUK_SOURCE_CONFIG, TV_START, COLLECTION_WINDOW, collection_phase, latest_scope, new_tv_retailer,
+    SEUK_SOURCE_CONFIG, COLLECTION_WINDOW, collection_phase, latest_scope, new_tv_retailer,
     retailer_start_date,
 )
 
@@ -46,9 +46,7 @@ def get_layer1_stats(cursor, target_date, now=None):
                                retailers=retailers, **mapping))
     status = ('PENDING' if phase == 'pending' else 'COLLECTING' if phase == 'collecting'
               else 'CRITICAL' if failed else 'OK')
-    return {'check': dict(name='SEUK Retail', description=(
-                          f'영국 Currys TV/REF/LDY/LDY_DRYER · {FIRST_SOURCE_DATE} 시작 / '
-                          f'AO REF/LDY/LDY_DRYER · 2026-11-01 시작 / Amazon·Argos TV · {TV_START} 시작'),
+    return {'check': dict(name='SEUK Retail', description='영국 리테일 일일 수집 현황',
                           check_type='seuk_retail', country='SEUK', status=status, phase=phase,
                           collection_window=COLLECTION_WINDOW, expected=None,
                           actual=sum(c['actual'] for c in categories), total=sum(c['total'] for c in categories),

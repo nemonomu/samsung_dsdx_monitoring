@@ -77,7 +77,7 @@ class SeukLayer1Tests(TestCase):
             self.assertEqual([], result['failed_items'])
             self.assertEqual('PENDING', result['check']['status'])
             self.assertEqual('2026-10-25', result['check']['active_from'])
-            self.assertIn('2026-10-25 시작', result['check']['description'])
+            self.assertEqual('영국 리테일 일일 수집 현황', result['check']['description'])
 
     def test_total_is_not_main_plus_bsr_and_missing_after_deadline(self):
         check = self.check()
