@@ -141,6 +141,12 @@ reportData.grouped_details.format_check['public.ref_retail_com'] = [
     ...(reportData.grouped_details.format_check['public.ref_retail_com'] || []),
     {retailer:'Lowes',status:'error',column_name:'pick_up_availability',item:'ERROR-1',reason:'HTML 수집 오류'}
 ];
+reportData.grouped_details.null_check['dx_seuk.dx_seuk_tv_retail_com'] = [
+    {retailer: 'Amazon', status: 'normal', column_name: 'star_rating', item: 'UK1'}
+];
+reportData.grouped_details.cross_field['dx_seuk.dx_seuk_tv_retail_com'] = [
+    {retailer: 'Argos', status: 'corrected', column_name: 'savings', item: 'UK2'}
+];
 
 const sandbox = {
     console,
@@ -211,8 +217,10 @@ setImmediate(() => {
     assert(nullSummary.includes('SEG OTTO LDY 확인 4건'));
     assert(nullSummary.includes('SEDA MAGALU LDY 확인 1건'));
     assert(nullSummary.includes('SEDA CASAS BAHIA TV 수정 1건'));
+    assert(nullSummary.includes('SEUK Amazon TV 확인 1건'));
     const crossSummary = renderedRows.find(row => row.includes('크로스필드 검증'));
     assert(crossSummary.includes('SEG OTTO REF 확인 1건'));
+    assert(crossSummary.includes('SEUK Argos TV 수정 1건'));
     assert(renderedRows.find(row => row.includes('형식 검증')).includes('SEG AMAZON TV 수정 1건'));
     assert(renderedRows.find(row => row.includes('중복 검증')).includes('SEG MEDIAMARKT REF 수정 1건'));
     const detailRows = renderedRows.filter(row => !row.includes('확인 8건') && !row.includes('확인 1건'));
@@ -233,6 +241,7 @@ setImmediate(() => {
     assert(!html.includes('dx_sem.dx_sem_ref_retail_com'));
     assert(!html.includes('dx_sem.dx_sem_ldy_retail_com'));
     assert(!html.includes('>Retail 수정'));
-    assert(templateSource.includes("dx_layer4/js/report.js' %}?v=20261020-save-share"));
+    assert(!html.includes('dx_seuk.dx_seuk_tv_retail_com'));
+    assert(/dx_layer4\/js\/report\.js' %\}\?v=\d{8}-[a-z-]+/.test(templateSource));
     console.log('Layer 4 retail report label tests passed');
 });

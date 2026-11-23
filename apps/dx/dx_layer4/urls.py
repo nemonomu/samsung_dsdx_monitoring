@@ -22,8 +22,9 @@ urlpatterns = [
     path('collection-status/detail/', cs_views.collection_status_detail, name='collection_status_detail'),
     path('unified-inspection/', ui_views.unified_inspection, name='unified_inspection'),
 
-    # API — 통합 검수 (현재 Step: 날짜 매핑만, DB 조회 없음)
+    # API — 통합 검수
     path('api/unified-inspection/date-mapping/', ui_api.date_mapping, name='api_unified_inspection_date_mapping'),
+    path('api/unified-inspection/seuk-tv/', ui_api.seuk_tv_snapshot, name='api_unified_inspection_seuk_tv'),
 
     # API — 수집 현황
     path('api/collection-status/', cs_api.collection_status_data, name='api_collection_status'),

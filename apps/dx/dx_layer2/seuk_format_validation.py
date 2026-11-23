@@ -1,20 +1,25 @@
-"""Layer 2 format checks for UK Currys' four retail products."""
+"""Layer 2 format checks for SEUK retailers."""
 
 import re
 from collections import defaultdict
 from datetime import date, timedelta
 
 from apps.common.seuk_retail import (
-    FIRST_SOURCE_DATE, RETAILER, SEUK_SOURCE_CONFIG, product_line_for,
+    FIRST_SOURCE_DATE, RETAILER, product_line_for,
     seuk_retailer_key,
 )
 from apps.common.source_dates import source_date_value
 from apps.dx.dx_layer2 import seuk_null_validation
+from apps.dx.dx_layer2.seuk_null_validation import SEUK_SOURCE_CONFIG, retailer_start_date
 
 
 _INTEGER = re.compile(r'^(?:0|[1-9][0-9]*)$')
 _RATING = re.compile(r'^(?:[0-4](?:\.[0-9])?|5(?:\.0)?)$')
 _GBP = re.compile(r'^£(?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)\.[0-9]{2}$')
+_PERCENT = re.compile(r'^(?:100|[1-9]?[0-9])%$')
+_ARGOS_PERCENT = re.compile(r'^(?:100(?:\.0{1,2})?|[1-9]?[0-9](?:\.[0-9]{1,2})?)%$')
+_SCREEN_INCHES = re.compile(r'^[1-9][0-9]*(?:\.[0-9]+)?\s*inch(?:es)?$', re.I)
+_AMAZON_PRICE_STATUSES = ('Out of stock', 'Currently unavailable', 'Price higher than typical')
 _REF_CAPACITY = re.compile(r'^[0-9]+(?:\.[0-9]+)?\s*L$', re.I)
 _LDY_CAPACITY = re.compile(r'^[0-9]+(?:\.[0-9]+)?\s*kg$', re.I)
 _WASHER_CAPACITY = re.compile(r'^[0-9]+(?:\.[0-9]+)?\s*kg(?:,\s*[0-9]+(?:\.[0-9]+)?\s*kg)?$', re.I)
@@ -51,39 +56,68 @@ _EXTRA_RULES = {
 }
 
 
-def format_rules(product_line):
+def format_retailers(product_line):
     source = SEUK_SOURCE_CONFIG[product_line]
-    return {**_COMMON_RULES, **_EXTRA_RULES[source['product_key']]}
+    return source['retailers'] if product_line == 'seuk_tv' else (RETAILER,)
 
 
-def get_format_columns(product_line):
-    return tuple(format_rules(product_line))
+def format_rules(product_line, retailer=RETAILER):
+    retailer = next((name for name in format_retailers(product_line)
+                     if seuk_retailer_key(name) == seuk_retailer_key(retailer)), None)
+    if retailer is None:
+        return {}
+    source = SEUK_SOURCE_CONFIG[product_line]
+    rules = {**_COMMON_RULES, **_EXTRA_RULES[source['product_key']]}
+    if retailer == RETAILER:
+        return rules
+
+    statuses = _AMAZON_PRICE_STATUSES if retailer == 'Amazon' else ('Currently unavailable',)
+    rules['account_name'] = (lambda value: seuk_retailer_key(value) == seuk_retailer_key(retailer), retailer)
+    rules['final_sku_price'] = (
+        lambda value: bool(_GBP.fullmatch(str(value).strip())) or str(value).strip() in statuses,
+        ' / '.join(('£1399.00', '£1,399.00', *statuses)),
+    )
+    rules['screen_size'] = (lambda value: bool(_SCREEN_INCHES.fullmatch(str(value).strip())),
+                            '55inch / 55 inch')
+    if retailer == 'Amazon':
+        rules.pop('count_of_reviews')
+        rules['savings'] = (lambda value: bool(_PERCENT.fullmatch(str(value).strip())), '15%')
+    else:
+        rules['savings'] = (
+            lambda value: bool(_GBP.fullmatch(str(value).strip()) or _ARGOS_PERCENT.fullmatch(str(value).strip())),
+            '£20.99 / 10% / 5.67%',
+        )
+    return rules
 
 
-def get_format_editable_columns(product_line):
-    return get_format_columns(product_line)
+def get_format_columns(product_line, retailer=RETAILER):
+    return tuple(format_rules(product_line, retailer))
+
+
+def get_format_editable_columns(product_line, retailer=RETAILER):
+    return get_format_columns(product_line, retailer)
 
 
 def get_format_rule_details(product_line, retailer=RETAILER):
     key = product_line_for(product_line)
-    if key is None or seuk_retailer_key(retailer) != seuk_retailer_key(RETAILER):
+    if key is None:
         return []
     return [{'field': field, 'description': f'{field} 값 형식', 'pattern': pattern}
-            for field, (_validator, pattern) in format_rules(key).items()]
+            for field, (_validator, pattern) in format_rules(key, retailer).items()]
 
 
-def evaluate_format(row, product_line):
-    return [field for field, (validator, _pattern) in format_rules(product_line).items()
+def evaluate_format(row, product_line, retailer=RETAILER):
+    return [field for field, (validator, _pattern) in format_rules(product_line, retailer).items()
             if row.get(field) is not None and str(row[field]).strip()
             and not validator(row[field])]
 
 
-def _serialize(row, product_line):
+def _serialize(row, product_line, retailer):
     result = dict(row)
     result['_source_date'] = source_date_value(row.get('crawl_datetime'))
-    result['error_fields'] = evaluate_format(row, product_line)
+    result['error_fields'] = evaluate_format(row, product_line, retailer)
     result['error_field'] = ', '.join(result['error_fields'])
-    rules = format_rules(product_line)
+    rules = format_rules(product_line, retailer)
     result['error_details'] = {field: {'rule': rules[field][1], 'reason': '허용 형식 또는 값과 일치하지 않습니다'}
                                for field in result['error_fields']}
     return result
@@ -110,18 +144,26 @@ def append_format_stats(cursor, target_date, validation, category=None):
     for key, source in SEUK_SOURCE_CONFIG.items():
         if category and category != source['section_code']:
             continue
-        rows, mapping = seuk_null_validation.latest_rows(cursor, target_date, source, RETAILER)
+        mapping = seuk_null_validation._mapping(target_date, source)
         normal = _normal_reviews(cursor, mapping['inspection_date'], source)
-        issues = sum(f'{row["id"]}_{field}' not in normal
-                     for row in rows for field in evaluate_format(row, key))
+        retailers = []
+        for retailer in format_retailers(key):
+            if mapping['source_date'] < str(retailer_start_date(source, retailer)):
+                continue
+            rows, _ = seuk_null_validation.latest_rows(cursor, target_date, source, retailer)
+            issues = sum(f'{row["id"]}_{field}' not in normal
+                         for row in rows for field in evaluate_format(row, key, retailer))
+            retailers.append({
+                'retailer': retailer, 'total': len(rows), 'issue_count': issues,
+                'status': 'PENDING' if not rows else 'CRITICAL' if issues else 'OK',
+            })
+        issues = sum(retailer['issue_count'] for retailer in retailers)
+        checked = sum(retailer['total'] for retailer in retailers)
         validation['tables'].append({
             'table': source['section_code'], 'table_name': source['display_name'],
-            'total_checked': len(rows), 'total_issues': issues,
-            'status': 'PENDING' if not rows else 'CRITICAL' if issues else 'OK',
-            'retailers': [{
-                'retailer': RETAILER, 'total': len(rows), 'issue_count': issues,
-                'status': 'PENDING' if not rows else 'CRITICAL' if issues else 'OK',
-            }],
+            'total_checked': checked, 'total_issues': issues,
+            'status': 'PENDING' if not checked else 'CRITICAL' if issues else 'OK',
+            'retailers': retailers,
             **mapping,
         })
         total += issues
@@ -130,12 +172,18 @@ def append_format_stats(cursor, target_date, validation, category=None):
 
 def format_detail(cursor, target_date, table, retailer=RETAILER, days=1, include_normal=False):
     key = product_line_for(table)
-    if key is None or seuk_retailer_key(retailer) != seuk_retailer_key(RETAILER):
+    if key is None or not get_format_columns(key, retailer):
         return {'results': [], 'column_names': [], 'actual_table': ''}
     source = SEUK_SOURCE_CONFIG[key]
-    rows, mapping = seuk_null_validation.latest_rows(cursor, target_date, source, RETAILER)
-    normal = _normal_reviews(cursor, mapping['inspection_date'], source)
-    current = [_serialize(row, key) for row in rows]
+    retailer = next(name for name in format_retailers(key)
+                    if seuk_retailer_key(name) == seuk_retailer_key(retailer))
+    mapping = seuk_null_validation._mapping(target_date, source)
+    active_from = str(retailer_start_date(source, retailer))
+    rows, normal = [], {}
+    if mapping['source_date'] >= active_from:
+        rows, _ = seuk_null_validation.latest_rows(cursor, target_date, source, retailer)
+        normal = _normal_reviews(cursor, mapping['inspection_date'], source)
+    current = [_serialize(row, key, retailer) for row in rows]
     counts = defaultdict(int)
     for row in current:
         row['error_fields'] = [field for field in row['error_fields']
@@ -151,29 +199,29 @@ def format_detail(cursor, target_date, table, retailer=RETAILER, days=1, include
         if items:
             source_day = date.fromisoformat(mapping['source_date'])
             history = seuk_null_validation._history_rows(
-                cursor, source, RETAILER, source_day - timedelta(days=history_days - 1),
+                cursor, source, retailer, source_day - timedelta(days=history_days - 1),
                 source_day, items,
             )
             current_by_id = {row['id']: row for row in current}
-            results = [current_by_id.get(row['id']) or _serialize(row, key) for row in history]
+            results = [current_by_id.get(row['id']) or _serialize(row, key, retailer) for row in history]
             seen = {row['id'] for row in results}
             results.extend(row for row in targets if row['id'] not in seen)
     columns = list(dict.fromkeys((
         'id', 'crawl_datetime', 'item', 'sku', 'retailer_sku_name',
-        *get_format_columns(key), 'product_url',
+        *get_format_columns(key, retailer), 'product_url',
     )))
     return {
         'date': mapping['inspection_date'], 'table': source['section_code'],
-        'retailer': RETAILER, 'actual_table': source['table_name'],
+        'retailer': retailer, 'actual_table': source['table_name'],
         'column_names': columns, 'select_cols': list(source['columns']),
-        'editable_cols': list(get_format_editable_columns(key)),
-        'validation_fields': list(get_format_columns(key)),
+        'editable_cols': list(get_format_editable_columns(key, retailer)),
+        'validation_fields': list(get_format_columns(key, retailer)),
         'target_ids': [row['id'] for row in targets],
         'batch_id': rows[0].get('batch_id') if rows else None,
         'normal_reviews': normal, 'results': results,
         'field_counts': dict(counts), 'total_format_count': sum(counts.values()),
         'supports_day_history': True, 'history_days': history_days,
-        'active_from': str(FIRST_SOURCE_DATE),
+        'active_from': active_from,
         'date_column': source['date_column'], 'readonly': False,
         **mapping,
     }

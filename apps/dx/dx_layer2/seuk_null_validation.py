@@ -104,7 +104,8 @@ def _history_rows(cursor, source, retailer, start_date, end_date, items):
     return _rows(cursor)
 
 
-def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False, format_columns=None):
+def select_record(cursor, target_date, product_line, record_id, column, *, for_edit=False,
+                  format_columns=None, format_retailers=None):
     allowed = tuple(format_columns) if format_columns is not None else get_seuk_null_columns(product_line)
     if (column not in allowed
             and not (for_edit and column in PRICE_EDITABLE_COLUMNS)):
@@ -112,12 +113,13 @@ def select_record(cursor, target_date, product_line, record_id, column, *, for_e
     source = SEUK_SOURCE_CONFIG[product_line]
     mapping = _mapping(target_date, source)
     day = mapping['source_date']
-    if format_columns is not None:
+    if format_columns is not None and format_retailers is None:
         cte, scope, params = _scope(COMMON_SOURCES[product_line], day, day)
     elif product_line == 'seuk_tv':
-        retailers = tuple(name for name in source['retailers']
+        names = source['retailers'] if format_retailers is None else format_retailers
+        retailers = tuple(name for name in names
                           if day >= str(retailer_start_date(source, name))
-                          and (column in get_seuk_null_columns(product_line, name)
+                          and (format_columns is not None or column in get_seuk_null_columns(product_line, name)
                                or (for_edit and column in PRICE_EDITABLE_COLUMNS)))
         if not retailers:
             return None

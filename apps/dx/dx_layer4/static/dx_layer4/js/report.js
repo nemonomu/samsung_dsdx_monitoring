@@ -23,7 +23,8 @@
         'TSE HOMEPRO LDY',
         'SEM Liverpool TV',
         'SEM Liverpool REF',
-        'SEM Liverpool LDY'
+        'SEM Liverpool LDY',
+        'SEUK Currys TV', 'SEUK Amazon TV', 'SEUK Argos TV'
     ];
 
     var SEA_TABLE_CATEGORY = {
@@ -74,6 +75,11 @@
         'dx_sem.dx_sem_ldy_retail_com': 'LDY'
     };
 
+    var SEUK_TABLE_CATEGORY = {
+        'dx_seuk_tv_retail_com': 'TV',
+        'dx_seuk.dx_seuk_tv_retail_com': 'TV'
+    };
+
     function isExcludedTseRetailer(tableName, retailer) {
         if (!TSE_TABLE_CATEGORY[tableName]) return false;
         var key = String(retailer || '').trim().toLowerCase();
@@ -121,6 +127,12 @@
     }
 
     function reportRetailerName(tableName, retailer, fallbackCategory) {
+        var seukCategory = SEUK_TABLE_CATEGORY[tableName];
+        if (seukCategory) {
+            var seukName = String(retailer || '').trim();
+            var canonical = {currys: 'Currys', amazon: 'Amazon', argos: 'Argos'}[seukName.toLowerCase()];
+            return canonical ? 'SEUK ' + canonical + ' ' + seukCategory : 'SEUK ' + seukCategory;
+        }
         var segCategory = SEG_TABLE_CATEGORY[tableName];
         if (segCategory) {
             return marketRetailerName('SEG', retailer, segCategory);
@@ -696,6 +708,7 @@
                             || SIEL_TABLE_CATEGORY[tn]
                             || SEM_TABLE_CATEGORY[tn]
                             || SEG_TABLE_CATEGORY[tn]
+                            || SEUK_TABLE_CATEGORY[tn]
                         );
                         var sName = isRetailTable
                             ? reportRetailerName(tn, d.retailer, tn)

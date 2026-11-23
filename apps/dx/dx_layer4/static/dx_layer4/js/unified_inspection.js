@@ -1,5 +1,5 @@
 /**
- * Unified inspection — read-only date mapping and existing TSE result reuse.
+ * Unified inspection — read-only date mapping and review summaries.
  */
 
 (function() {
@@ -160,6 +160,58 @@
         }
     }
 
+    function showSeukMessage(message, isError) {
+        var body = document.getElementById('ui-seuk-body');
+        if (!body) return;
+        body.innerHTML = '<tr><td colspan="6" class="ui-message' +
+            (isError ? ' error' : '') + '">' + escapeHtml(message) + '</td></tr>';
+    }
+
+    function seukReviewUrl(type, inspectionDate) {
+        var date = encodeURIComponent(inspectionDate);
+        if (type === 'cross_field') {
+            return '/dx/layer3/cross-field/?date=' + date + '&focus=SEUK%20TV&detail_code=seuk_tv';
+        }
+        var paths = {null_check: 'null', format_check: 'format', duplicate_check: 'anomaly'};
+        return paths[type] ? '/dx/layer2/' + paths[type] + '/?date=' + date + '&focus=seuk_tv_retail' : '';
+    }
+
+    async function loadSeukSnapshot(mapping, currentVersion) {
+        var body = document.getElementById('ui-seuk-body');
+        if (!mapping || !body) return;
+        try {
+            var response = await fetch('/dx/layer4/api/unified-inspection/seuk-tv/?date=' +
+                encodeURIComponent(mapping.inspection_date));
+            var data = await response.json();
+            if (currentVersion !== requestVersion) return;
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'SEUK TV 검수 현황을 불러오지 못했습니다.');
+            }
+            if (data.source_date !== mapping.source_date || data.inspection_date !== mapping.inspection_date) {
+                throw new Error('SEUK TV 조회일이 선택한 검수일과 일치하지 않습니다.');
+            }
+            if (!data.retailers.length) {
+                showSeukMessage(data.active_from + '부터 SEUK TV 검수 현황을 조회할 수 있습니다.', false);
+                return;
+            }
+            body.innerHTML = data.retailers.map(function(retailer) {
+                return retailer.checks.map(function(check) {
+                    var href = seukReviewUrl(check.type, data.inspection_date);
+                    var label = escapeHtml(check.label);
+                    return '<tr><td>' + escapeHtml(retailer.name) + '</td><td>' +
+                        (href ? '<a href="' + escapeHtml(href) + '">' + label + '</a>' : label) +
+                        '</td><td>' + escapeHtml(formatCount(retailer.collected)) + '</td><td>' +
+                        escapeHtml(formatCount(retailer.collected ? check.pending : null)) + '</td><td>' +
+                        escapeHtml(formatCount(check.normal)) + '</td><td>' +
+                        escapeHtml(formatCount(check.corrected)) + '</td></tr>';
+                }).join('');
+            }).join('');
+        } catch (error) {
+            if (currentVersion !== requestVersion) return;
+            showSeukMessage(error.message || 'SEUK TV 검수 현황을 불러오지 못했습니다.', true);
+        }
+    }
+
     function renderMappings(data) {
         var rows = data.countries.map(function(item) {
             var sources = item.sources.map(function(source) {
@@ -192,11 +244,13 @@
             showMessage('검수일을 선택해 주세요.', true);
             document.getElementById('ui-inspection-date').textContent = '-';
             resetTsePanel('검수일을 선택해 주세요.');
+            showSeukMessage('검수일을 선택해 주세요.', false);
             return;
         }
 
         showMessage('날짜 매핑을 불러오는 중입니다.', false);
         resetTsePanel('날짜 매핑을 기다리는 중입니다.');
+        showSeukMessage('SEUK TV 검수 현황을 불러오는 중입니다.', false);
 
         try {
             var response = await fetch(
@@ -227,12 +281,19 @@
                 showTseMessage('날짜 매핑에서 TSE를 찾지 못했습니다.', true);
                 return;
             }
-            await loadTseSnapshot(tseMapping, currentVersion);
+            var seukMapping = data.countries.find(function(item) {
+                return item.country === 'SEUK';
+            });
+            await Promise.all([
+                loadTseSnapshot(tseMapping, currentVersion),
+                loadSeukSnapshot(seukMapping, currentVersion)
+            ]);
         } catch (error) {
             if (currentVersion !== requestVersion) return;
             showMessage(error.message || '날짜 매핑을 불러오지 못했습니다.', true);
             document.getElementById('ui-inspection-date').textContent = inspectionDate;
             resetTsePanel('유효한 날짜 매핑을 먼저 확인해 주세요.');
+            showSeukMessage('유효한 날짜 매핑을 먼저 확인해 주세요.', false);
         }
     }
 

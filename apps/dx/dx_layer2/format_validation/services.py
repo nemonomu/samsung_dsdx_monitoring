@@ -2871,7 +2871,7 @@ def get_format_rules(cursor, table_name, retailer):
     if seuk_product_line:
         return static_rules(
             seuk_format_validation.get_format_rule_details(table_name, retailer),
-            lambda row: seuk_format_validation.evaluate_format(row, seuk_product_line), retailer)
+            lambda row: seuk_format_validation.evaluate_format(row, seuk_product_line, retailer), retailer)
     seib_product_line = seib_format_validation.product_line_for(table_name)
     if seib_product_line:
         return static_rules(

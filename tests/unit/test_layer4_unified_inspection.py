@@ -1,5 +1,7 @@
 import unittest
+from datetime import date
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from django.template import Context, Engine
 
@@ -48,17 +50,17 @@ class UnifiedInspectionApiTests(unittest.TestCase):
     def setUpClass(cls):
         cls.api = load_api()
 
-    def test_api_returns_six_visible_rows_and_eighteen_sources(self):
+    def test_api_adds_same_day_seuk_tv_to_the_existing_date_mapping(self):
         response = self.api.date_mapping(FakeRequest('2026-08-20'))
 
         self.assertEqual(200, response.status_code)
         self.assertTrue(response.data['success'])
         self.assertTrue(response.data['read_only'])
         self.assertEqual('2026-08-20', response.data['inspection_date'])
-        self.assertEqual(6, len(response.data['countries']))
-        self.assertEqual(18, response.data['source_count'])
+        self.assertEqual(7, len(response.data['countries']))
+        self.assertEqual(19, response.data['source_count'])
         self.assertEqual(
-            18,
+            19,
             sum(
                 len(country['sources'])
                 for country in response.data['countries']
@@ -72,11 +74,12 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         self.assertEqual('D-1', countries['SEA']['rule'])
         self.assertEqual('2026-08-19', countries['SEDA']['source_date'])
         self.assertEqual('D-1', countries['SEDA']['rule'])
-        for country in ('SEG', 'SIEL', 'SEM', 'TSE'):
+        for country in ('SEG', 'SIEL', 'SEM', 'TSE', 'SEUK'):
             self.assertEqual(
                 '2026-08-20', countries[country]['source_date']
             )
             self.assertEqual('D', countries[country]['rule'])
+        self.assertEqual([{'source_key': 'seuk_tv', 'product': 'TV'}], countries['SEUK']['sources'])
 
     def test_missing_or_invalid_date_returns_400_without_defaulting(self):
         for value in (None, '', '2026-02-30'):
@@ -85,6 +88,53 @@ class UnifiedInspectionApiTests(unittest.TestCase):
                 self.assertEqual(400, response.status_code)
                 self.assertFalse(response.data['success'])
                 self.assertNotIn('countries', response.data)
+
+    def test_seuk_tv_snapshot_combines_current_checks_with_review_counts(self):
+        from apps.common.inspection_dates import resolve_monitoring_date
+        from apps.dx.dx_layer4.unified_inspection import seuk
+
+        cursor = Mock()
+        before_launch = resolve_monitoring_date('2026-11-21', 'SEUK', 'seuk_tv')
+        self.assertEqual([], seuk.review_snapshot(cursor, before_launch)['retailers'])
+        cursor.execute.assert_not_called()
+
+        def table(retailers):
+            return {'table': 'seuk_tv_retail', 'retailers': retailers}
+
+        def append_nulls(_cursor, _day, stats, _section):
+            stats['tables'].append(table([
+                {'retailer': 'Amazon', 'total': 338, 'total_null_count': 0, 'reviewed_null_count': 59},
+                {'retailer': 'Argos', 'total': 300, 'total_null_count': 2},
+            ]))
+
+        def append_duplicates(_cursor, _day, stats, _section):
+            stats['tables'].append(table([{'retailer': 'Argos', 'duplicate_groups': 1}]))
+
+        format_stats = {'tables': [table([
+            {'retailer': 'Argos', 'issue_count': 3,
+             'format_review_counts': {'error': 1, 'legacy_normal': 1, 'registered_normal': 2}},
+        ])]}
+        cross = {'retailers': [{'retailer': 'Argos', 'total_errors': 4}]}
+        cursor.fetchall.return_value = [('argos', 'cross_field', 'corrected', 1)]
+        mapping = resolve_monitoring_date('2026-11-23', 'SEUK', 'seuk_tv')
+        with patch.object(seuk.seuk_null_validation, 'append_null_stats', side_effect=append_nulls), \
+             patch.object(seuk.seuk_duplicate_validation, 'append_duplicate_stats', side_effect=append_duplicates), \
+             patch.object(seuk, 'get_format_stats', return_value=(format_stats, 3)) as format_call, \
+             patch.object(seuk, 'get_seuk_cross_field_summary', return_value=cross):
+            snapshot = seuk.review_snapshot(cursor, mapping)
+        self.assertTrue(snapshot['read_only'])
+        self.assertEqual(mapping['source_date'], snapshot['source_date'])
+        format_call.assert_called_once_with(cursor, date(2026, 11, 23), category='seuk_tv_retail')
+        amazon, argos = snapshot['retailers']
+        self.assertEqual(('Amazon', 338), (amazon['name'], amazon['collected']))
+        self.assertEqual(59, amazon['checks'][0]['normal'])
+        self.assertIsNone(amazon['checks'][-1]['pending'])
+        self.assertEqual(('Argos', 300), (argos['name'], argos['collected']))
+        self.assertEqual(
+            [('null_check', 2, 0, 0), ('format_check', 2, 3, 0), ('duplicate_check', 1, 0, 0),
+             ('cross_field', 4, 0, 1)],
+            [(check['type'], check['pending'], check['normal'], check['corrected']) for check in argos['checks']],
+        )
 
 
 class UnifiedInspectionPageWiringTests(unittest.TestCase):
@@ -147,7 +197,9 @@ class UnifiedInspectionPageWiringTests(unittest.TestCase):
         self.assertIn('TSE 실제 조회 확인', template)
         self.assertIn('ui-tse-body', template)
         self.assertNotIn('offset_days=', template)
-        self.assertIn('기존 Layer1 조회를 읽기 전용으로 재사용합니다.', template)
+        self.assertIn('기존 Layer1 TSE TV·REF·LDY 결과', template)
+        self.assertIn('ui-seuk-body', template)
+        self.assertIn("path('api/unified-inspection/seuk-tv/'", urls)
         self.assertIn(
             '/dx/layer4/api/unified-inspection/date-mapping/?date=',
             script,
@@ -162,7 +214,7 @@ class UnifiedInspectionPageWiringTests(unittest.TestCase):
 
     def test_sidebar_does_not_mix_inspection_date_into_the_new_page(self):
         template_path = REPO_ROOT / 'templates/includes/_sidebar.html'
-        template = Engine(debug=True).from_string(
+        template = Engine(debug=True, dirs=[str(REPO_ROOT / 'templates')]).from_string(
             template_path.read_text(encoding='utf-8')
         )
         rendered = template.render(Context({

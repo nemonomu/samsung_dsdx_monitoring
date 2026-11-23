@@ -6,15 +6,18 @@ from apps.common.inspection_dates import (
     COUNTRY_ORDER,
     SOURCE_PRODUCT_BY_KEY,
     MonitoringDateError,
+    resolve_monitoring_date,
     resolve_monitoring_dates,
 )
 
 
 def date_mapping(request):
-    """Return the five-country mapping for a required inspection date."""
+    """Return the date mappings exposed by the unified inspection page."""
 
     try:
-        resolutions = resolve_monitoring_dates(request.GET.get('date'))
+        day = request.GET.get('date')
+        resolutions = resolve_monitoring_dates(day)
+        resolutions.append(resolve_monitoring_date(day, 'SEUK', 'seuk_tv'))
     except MonitoringDateError as exc:
         return JsonResponse({
             'success': False,
@@ -22,7 +25,7 @@ def date_mapping(request):
         }, status=400)
 
     countries = []
-    for country in COUNTRY_ORDER:
+    for country in (*COUNTRY_ORDER, 'SEUK'):
         country_sources = [
             resolution
             for resolution in resolutions
@@ -51,3 +54,22 @@ def date_mapping(request):
         'source_count': len(resolutions),
         'read_only': True,
     })
+
+
+def seuk_tv_snapshot(request):
+    """Read the existing SEUK TV checks for the selected inspection day."""
+    try:
+        mapping = resolve_monitoring_date(request.GET.get('date'), 'SEUK', 'seuk_tv')
+    except MonitoringDateError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    from apps.common.db import dx_connection
+    from apps.common.response import safe_error
+    from .seuk import review_snapshot
+
+    try:
+        with dx_connection() as (connection, cursor):
+            connection.set_session(isolation_level='REPEATABLE READ', readonly=True)
+            return JsonResponse({'success': True, **review_snapshot(cursor, mapping)})
+    except Exception as exc:
+        return safe_error(exc)

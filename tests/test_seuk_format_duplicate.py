@@ -106,8 +106,6 @@ class SeukFormatDuplicateTests(unittest.TestCase):
         day = date(2026, 11, 22)
         source = dup.SEUK_SOURCE_CONFIG['seuk_tv']
         self.assertEqual(('Currys', 'Amazon', 'Argos'), source['retailers'])
-        self.assertEqual([], fmt.get_format_rule_details('seuk_tv', 'Amazon'))
-        self.assertEqual([], fmt.get_format_rule_details('seuk_tv', 'Argos'))
         rows = [record(id=1, item='ABC'), record(id=2, item=' ABC '), record(id=3, item='NEW')]
         mapping = nulls._mapping(day, source)
         with patch.object(dup, 'latest_rows', side_effect=lambda *args: (rows if args[-1] != 'Currys' else [], mapping)):
@@ -127,6 +125,52 @@ class SeukFormatDuplicateTests(unittest.TestCase):
         self.assertIn('anchor.id DESC', sql)
         self.assertIn('source.is_redirect IS NOT TRUE', sql)
         self.assertEqual([str(day), str(day), 'amazon', 'amazon'], params)
+
+    def test_amazon_and_argos_tv_format_rules(self):
+        shared = {'country', 'account_name', 'count_of_star_ratings', 'star_rating',
+                  'final_sku_price', 'original_sku_price', 'savings', 'screen_size'}
+        for retailer in ('Amazon', 'Argos'):
+            fields = shared | ({'count_of_reviews'} if retailer == 'Argos' else set())
+            details = formats.get_format_rules(Mock(), 'seuk_tv', retailer)['rules']
+            self.assertEqual(fields, {rule['field'] for rule in details})
+            for rule in details:
+                self.assertTrue(rule['examples'])
+                for value in rule['examples']:
+                    self.assertEqual([], fmt.evaluate_format({rule['field']: value}, 'seuk_tv', retailer))
+            for value in ('55inch', '55 inch'):
+                self.assertEqual([], fmt.evaluate_format({'screen_size': value}, 'seuk_tv', retailer))
+            self.assertEqual(['screen_size'], fmt.evaluate_format({'screen_size': '55cm'}, 'seuk_tv', retailer))
+        for retailer, accepted, rejected in (
+            ('Amazon', {'final_sku_price': 'Out of stock', 'savings': '15%', 'count_of_reviews': 'unavailable'},
+             {'original_sku_price': 'Out of stock', 'savings': '£10.00'}),
+            ('Argos', {'final_sku_price': 'Currently unavailable', 'savings': '£10.00', 'count_of_reviews': '0'},
+             {'final_sku_price': 'Out of stock', 'savings': '110%', 'count_of_reviews': '-1'}),
+        ):
+            self.assertEqual([], fmt.evaluate_format({**accepted, 'item': '?', 'product_url': '?'}, 'seuk_tv', retailer))
+            self.assertEqual(set(rejected), set(fmt.evaluate_format(rejected, 'seuk_tv', retailer)))
+            cursor = Mock()
+            before_launch = fmt.format_detail(cursor, date(2026, 11, 21), 'seuk_tv', retailer)
+            self.assertEqual([], before_launch['results'])
+            cursor.execute.assert_not_called()
+        self.assertEqual([], fmt.evaluate_format({'savings': '5.67%'}, 'seuk_tv', 'Argos'))
+        self.assertEqual(['savings'], fmt.evaluate_format({'savings': '100.01%'}, 'seuk_tv', 'Argos'))
+
+    def test_tv_format_edit_scopes_screen_size_to_the_new_retailers(self):
+        source = policy.SEUK_SOURCE_CONFIG['seuk_tv']
+        cursor = ScriptedCursor([{'fetchone': ('55cm', 'Amazon', '123', 'latest')}, {}, {}])
+        result = edits.update_cell_value(cursor, Mock(), source['table_name'], 42, 'screen_size',
+                                         '55 inch', '2026-11-22', 'format', 'tester', 'checked')
+        self.assertTrue(result['success'], result)
+        sql, params = cursor.calls[0]
+        self.assertIn('FOR UPDATE OF source', sql)
+        self.assertIn('source.is_redirect IS NOT TRUE', sql)
+        self.assertEqual(['2026-11-22', '2026-11-22', 'amazon', str(DAY), 'argos', str(DAY), 42], params)
+        self.assertIn('format_check', cursor.calls[-1][1])
+        before_launch = ScriptedCursor([])
+        unavailable = edits.update_cell_value(before_launch, Mock(), source['table_name'], 42, 'screen_size',
+                                              '55 inch', '2026-11-21', 'format', 'tester', 'checked')
+        self.assertEqual(404, unavailable['status'])
+        self.assertEqual([], before_launch.calls)
 
     def test_format_edits_are_scoped_audited_and_exclusions_rejected(self):
         source=policy.SEUK_SOURCE_CONFIG['seuk_ref']

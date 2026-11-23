@@ -295,6 +295,47 @@ async function main() {
     assert.ok(elements['ui-tse-body'].innerHTML.includes('검수일을 선택해 주세요.'));
     assert.strictEqual(elements['ui-inspection-date'].textContent, '-');
     assert.strictEqual(requests.length, callsBeforeSlowRequest + 1);
+
+    const seuk = elements['ui-seuk-body'] = {innerHTML: ''};
+    sandbox.fetch = url => {
+        requests.push(url);
+        if (url.includes('/date-mapping/')) {
+            const mapping = pageData(selectedDate);
+            mapping.countries.push({
+                ...country('SEUK', selectedDate, selectedDate, 0),
+                sources: [{source_key: 'seuk_tv', product: 'TV'}]
+            });
+            return Promise.resolve(jsonResponse(mapping));
+        }
+        if (url.includes('/dx/layer1/api/stats/')) {
+            return Promise.resolve(jsonResponse(layer1Data(selectedDate)));
+        }
+        const reviewers = selectedDate === '2026-11-21' ? [] : [
+            {name: 'Amazon', collected: 338, checks: [
+                {type: 'null_check', label: 'NULL 검증', pending: 0, normal: 59, corrected: 0}
+            ]},
+            {name: 'Argos', collected: 300, checks: [
+                {type: 'cross_field', label: '크로스필드', pending: 0, normal: 0, corrected: 1}
+            ]}
+        ];
+        return Promise.resolve(jsonResponse({
+            success: true, inspection_date: selectedDate, source_date: selectedDate,
+            active_from: '2026-11-22', retailers: reviewers
+        }));
+    };
+    selectedDate = '2026-11-23';
+    await loadMapping();
+    assert.ok(requests.includes('/dx/layer4/api/unified-inspection/seuk-tv/?date=2026-11-23'));
+    assert.ok(seuk.innerHTML.includes('Amazon'));
+    assert.ok(seuk.innerHTML.includes('Argos'));
+    assert.ok(seuk.innerHTML.includes('>59</td>'));
+    assert.ok(seuk.innerHTML.includes('/dx/layer2/null/?date=2026-11-23'));
+    assert.ok(seuk.innerHTML.includes('/dx/layer3/cross-field/?date=2026-11-23'));
+
+    selectedDate = '2026-11-21';
+    await loadMapping();
+    assert.ok(seuk.innerHTML.includes('2026-11-22부터'));
+    assert.ok(!seuk.innerHTML.includes('Amazon'));
 }
 
 main().catch(error => {
