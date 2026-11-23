@@ -17,6 +17,14 @@ SIEL_JIOMART_NULL_COLUMNS = (
     'final_sku_price', 'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 )
 
+SIEL_JIOMART_FORMAT_SPEC = {
+    'siel_tv': 'screen_size', 'siel_ref': 'ref_capacity', 'siel_ldy': 'ldy_capacity',
+}
+SIEL_JIOMART_FORMAT_COMMON_COLUMNS = (
+    'country', 'account_name', 'final_sku_price', 'original_sku_price', 'savings',
+    'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+)
+
 SIEL_NULL_COLUMNS = {
     'siel_tv': {
         'jiomart': SIEL_JIOMART_NULL_COLUMNS,
@@ -221,6 +229,8 @@ def get_siel_format_editable_columns(product_line, retailer):
     """Return the fixed allowlist for one SIEL format-validation card."""
     key = normalize_siel_product_line(product_line)
     retailer_key = str(retailer or '').strip().casefold()
+    if retailer_key == 'jiomart':
+        return [*SIEL_JIOMART_FORMAT_COMMON_COLUMNS, SIEL_JIOMART_FORMAT_SPEC[key]]
     if retailer_key not in {'amazon', 'flipkart'}:
         return []
     specific = SIEL_FORMAT_EDITABLE_COLUMNS.get(key, {}).get(

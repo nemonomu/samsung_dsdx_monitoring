@@ -57,6 +57,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     const isTseRetail = /^tse_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSeaRetail = /^sea_(ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSielRetail = /^siel_(tv|ref|ldy)_retail$/.test(tableParam);
+    const isJiomart = isSielRetail && String(modalState.retailer || '').trim().toLowerCase() === 'jiomart';
     const isSedaRetail = /^seda_(tv|ref|ldy)_retail$/.test(tableParam);
     const isSegRetail = /^seg_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
     const isSemRetail = /^sem_(tv|ref|ldy|ldy_dryer)_retail$/.test(tableParam);
@@ -82,7 +83,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         });
         if (errorItems.size > 0) {
             filteredRecords = records.filter(function(record) {
-                return errorItems.has(record.item) || ((isSedaRetail || tableParam.startsWith('seuk_')) && !record.item
+                return errorItems.has(record.item) || ((isSedaRetail || isJiomart || tableParam.startsWith('seuk_')) && !record.item
                     && String(record[sourceDateColumn] || '').substring(0, 10) === targetDateStr
                     && (record.error_fields || []).includes(fieldName));
             });
@@ -190,7 +191,18 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
     // Item/쿼리 섹션 (retail만)
     if (isRetail) {
         const items = [...new Set(filteredRecords.map(r => r.item).filter(Boolean))].sort();
-        if (tableParam === 'sea_ldy_dryer_retail' || tableParam === 'sem_ldy_dryer_retail'
+        if (isJiomart) {
+            const baseQuery = _buildNullRetailDisplayQuery(
+                fieldName, data, filteredRecords, date, currentDays, modalState.retailer, false, true
+            );
+            const copyColumns = window.RetailReviewColumns;
+            const query = baseQuery && copyColumns
+                ? copyColumns.projectCopySql(columns.map(column => column.key), columnNames, baseQuery, data.actual_table)
+                : baseQuery;
+            if (query) {
+                itemQueryHtml += `<div class="query-box"><div class="item-copy-header"><span>${currentDays}일치 조회 SQL</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div><pre class="query-content">${_escapeTseSqlHtml(query)}</pre></div>`;
+            }
+        } else if (tableParam === 'sea_ldy_dryer_retail' || tableParam === 'sem_ldy_dryer_retail'
             || isSeibRetail
             || (isSegRetail && String(modalState.retailer || '').toLowerCase() === 'expert')) {
             const query = _buildNullRetailDisplayQuery(

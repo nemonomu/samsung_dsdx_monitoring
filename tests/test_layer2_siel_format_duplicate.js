@@ -91,4 +91,40 @@ assert(card.includes("openDetailModal('duplicate', 'SIEL TV', 'Jiomart', 2)"));
 assert(card.includes('>0건</span>'));
 assert(!card.includes('Page Type'));
 
+let detailHtml;
+Object.assign(sandbox, {
+    window: {},
+    console,
+    getDetailBody: () => ({}),
+    getSelectedDate: () => '2026-11-23',
+    renderCountryFlagLabel: String,
+    isInlineMode: () => true,
+    ViewStack: {push(value) { detailHtml = value; }},
+    buildDetailContainerHtml: options => options.itemQueryHtml,
+    renderDetailWithTable() {},
+});
+vm.runInContext(read('static/js/retail-review-columns.js'), sandbox);
+vm.runInContext(nullUi, sandbox);
+vm.runInContext(format, sandbox);
+sandbox.input = {
+    date: '2026-11-23', source_date: '2026-11-23', active_from: '2026-11-22',
+    actual_table: 'dx_siel.dx_siel_ldy_retail_com', date_column: 'crawl_datetime',
+    column_names: ['id', 'item', 'retailer_sku_name', 'crawl_datetime', 'ldy_capacity', 'product_url'],
+    results: [{
+        id: 42, item: 'item42', ldy_capacity: '1.5 L', crawl_datetime: '2026-11-23 09:04:40',
+        error_fields: ['ldy_capacity'],
+    }],
+};
+vm.runInContext(`
+    modalState.tableParam = 'siel_ldy_retail';
+    modalState.retailer = 'Jiomart';
+    modalState.tableName = 'SIEL LDY';
+    modalState.days = 3;
+    modalState.formatFieldsData = input;
+    showFormatFieldDetail('ldy_capacity');
+`, sandbox);
+assert(detailHtml.includes('SELECT id, item, retailer_sku_name, crawl_datetime, ldy_capacity, product_url'));
+assert(detailHtml.includes('::date BETWEEN &#039;2026-11-22&#039; AND &#039;2026-11-23&#039;'));
+assert(!detailHtml.includes('TIMESTAMPTZ'));
+
 console.log('Layer 2 SIEL format/duplicate UI tests passed.');

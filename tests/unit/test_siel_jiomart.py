@@ -9,6 +9,7 @@ from apps.dx.dx_layer1.rank_monitoring.sources import catalog
 from apps.dx.dx_layer1.siel_retail import jiomart, siel_retail_services
 from apps.dx.dx_layer2.anomaly_validation import services as anomaly
 from apps.dx.dx_layer2.data_edit import services as data_edit
+from apps.dx.dx_layer2.format_validation import services as formats
 from apps.dx.dx_layer2.null_validation import services as nulls
 from tests.unit.support import ScriptedCursor
 
@@ -124,8 +125,8 @@ class JiomartNullValidationTests(TestCase):
         self.assertIn('null_check', cursor.calls[-1][1])
         disallowed = Mock()
         for column in ('ref_refrigerator_type', 'sku', 'original_sku_price'):
-            self.assertIsNone(nulls.select_jiomart_null_record(disallowed, source, jiomart.START, 42, column))
-        self.assertIsNone(nulls.select_jiomart_null_record(disallowed, source, jiomart.TEST_DAY, 42, 'star_rating'))
+            self.assertIsNone(nulls.select_jiomart_review_record(disallowed, source, jiomart.START, 42, column))
+        self.assertIsNone(nulls.select_jiomart_review_record(disallowed, source, jiomart.TEST_DAY, 42, 'star_rating'))
         disallowed.execute.assert_not_called()
 
     def test_normal_review_keeps_the_existing_siel_evidence_workflow(self):
@@ -182,3 +183,53 @@ class JiomartDuplicateValidationTests(TestCase):
         self.assertIn('crawl_datetime DESC NULLS LAST, id DESC', sql)
         self.assertNotIn('page_type', sql)
         self.assertEqual(['jiomart', '2026-11-22', '2026-11-22'], params)
+
+
+class JiomartFormatValidationTests(TestCase):
+    def test_rules_show_explanations_and_only_accepted_examples(self):
+        metrics = {'country', 'account_name', 'final_sku_price', 'original_sku_price',
+                   'savings', 'star_rating', 'count_of_star_ratings', 'count_of_reviews'}
+        for product, spec in (('tv', 'screen_size'), ('ref', 'ref_capacity'), ('ldy', 'ldy_capacity')):
+            key = f'siel_{product}'
+            payload = formats.get_format_rules(Mock(), key, 'Jiomart')
+            self.assertFalse(payload['show_pattern'])
+            self.assertEqual(metrics | {spec}, {rule['field'] for rule in payload['rules']})
+            for rule in payload['rules']:
+                self.assertNotIn('pattern', rule)
+                self.assertTrue(rule['description'])
+                self.assertTrue(rule['examples'])
+                for value in rule['examples']:
+                    self.assertEqual({}, formats.evaluate_siel_format_row({rule['field']: value}, key, 'Jiomart'))
+
+        good = {'final_sku_price': '₹1,29,990.50', 'savings': '10%', 'star_rating': '5.0',
+                'screen_size': '54.6 inch', 'count_of_reviews': '0'}
+        self.assertEqual({}, formats.evaluate_siel_format_row(good, 'siel_tv', 'Jiomart'))
+        bad = {'final_sku_price': '₹123,456', 'savings': '5.67%', 'star_rating': '5.1',
+               'screen_size': '55cm', 'count_of_reviews': '-1'}
+        self.assertEqual(set(bad), set(formats.evaluate_siel_format_row(bad, 'siel_tv', 'Jiomart')))
+
+    def test_liters_are_scoped_to_mini_washers(self):
+        for capacity, name, expected in (
+            ('1.5 L', 'Portable Mini Washing Machine', set()),
+            ('1.5 L', 'Laundry Cleanser 1.5L', {'ldy_capacity'}),
+            ('4.5 L', 'Dishwash 4.5L', {'ldy_capacity'}),
+            ('1.5 L', 'Cover for Portable Mini Washer', {'ldy_capacity'}),
+            ('8.5 kg, 5 kg', 'Washer Dryer', set()),
+            ('', 'Washer', set()),
+        ):
+            row = {'ldy_capacity': capacity, 'retailer_sku_name': name}
+            self.assertEqual(expected, set(formats.evaluate_siel_format_row(row, 'siel_ldy', 'Jiomart')))
+
+    def test_format_edit_uses_jiomart_scope_and_separate_allowlist(self):
+        source = get_siel_source('siel_ldy')
+        cursor = ScriptedCursor([{'fetchone': None}, {'fetchone': ('4.5 L', 'Jiomart', 'item1', 'j1')}, {}, {}])
+        result = data_edit.update_cell_value(
+            cursor, Mock(), source['table_name'], 42, 'ldy_capacity', '8 kg',
+            '2026-11-23', 'format', 'qa', 'reviewed',
+        )
+        self.assertTrue(result['success'], result)
+        sql, params = cursor.calls[1]
+        self.assertNotIn('page_type', sql)
+        self.assertIn('FOR UPDATE OF target', sql)
+        self.assertEqual(('jiomart', '2026-11-23', '2026-11-23', 42), params)
+        self.assertIn('format_check', cursor.calls[-1][1])

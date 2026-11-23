@@ -547,10 +547,11 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         siel_row = cursor.fetchone()
         is_jiomart = siel_row and str(siel_row[1] or '').strip().casefold() == 'jiomart'
         if not siel_row or is_jiomart:
-            if correction_type in {'null', 'null_check'}:
-                from apps.dx.dx_layer2.null_validation.services import select_jiomart_null_record
-                jiomart_row = select_jiomart_null_record(
+            if correction_type in {'null', 'null_check', 'format'}:
+                from apps.dx.dx_layer2.null_validation.services import select_jiomart_review_record
+                jiomart_row = select_jiomart_review_record(
                     cursor, siel_context['source'], crawl_date, row_id, column_name,
+                    for_format=correction_type_value == 'format_check',
                 )
             siel_row = jiomart_row
     else:

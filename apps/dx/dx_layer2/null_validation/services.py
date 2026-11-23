@@ -442,11 +442,13 @@ def _build_siel_latest_batch_record_query(source, column_name):
     return query, [retailer.lower() for retailer in retailers]
 
 
-def select_jiomart_null_record(cursor, source, inspection_date, record_id, column):
-    """Lock a row from Jiomart's latest operating batch for NULL review."""
+def select_jiomart_review_record(cursor, source, inspection_date, record_id, column, *, for_format=False):
+    """Lock a row from Jiomart's latest operating batch for the requested review."""
     from apps.dx.dx_layer1.siel_retail import jiomart
 
-    if column not in _get_siel_allowed_columns(source, jiomart.RETAILER):
+    allowed_columns = (_get_siel_format_allowed_columns(source, jiomart.RETAILER) if for_format
+                       else _get_siel_allowed_columns(source, jiomart.RETAILER))
+    if column not in allowed_columns:
         return None
     day = _resolve_siel_null_date(inspection_date, source)['source_date']
     if day < str(jiomart.START):
@@ -3379,8 +3381,11 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
                 (record_id,)
             )
         row = cursor.fetchone()
-        if not row and siel_source and correction_type in {'null', 'null_check'}:
-            row = select_jiomart_null_record(cursor, siel_source, crawl_date, record_id, column_name)
+        if not row and siel_source and correction_type in {'null', 'null_check', 'format'}:
+            row = select_jiomart_review_record(
+                cursor, siel_source, crawl_date, record_id, column_name,
+                for_format=correction_type_value == 'format_check',
+            )
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 

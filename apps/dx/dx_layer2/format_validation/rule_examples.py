@@ -88,7 +88,7 @@ def checked_examples(field, pattern, accepts, retailer=''):
     return examples
 
 
-def static_rules(rules, evaluate, retailer):
+def static_rules(rules, evaluate, retailer, *, show_pattern=True):
     result = []
     for rule in rules:
         field = rule['field']
@@ -96,8 +96,11 @@ def static_rules(rules, evaluate, retailer):
             field, rule.get('pattern', ''),
             lambda value: field not in evaluate({field: value}), retailer,
         )
-        result.append({**rule, 'examples': examples})
-    return {'rules': result}
+        entry = {**rule, 'examples': examples}
+        if not show_pattern:
+            entry.pop('pattern', None)
+        result.append(entry)
+    return {'rules': result, **({'show_pattern': False} if not show_pattern else {})}
 
 
 def database_examples(row):

@@ -1539,6 +1539,8 @@ def _siel_format_source_key(table):
 
 def _resolve_siel_format_retailer(source, retailer):
     retailer_key = str(retailer or '').strip().casefold()
+    if retailer_key == 'jiomart':
+        return 'Jiomart'
     for configured in source.get('retailers', ()):
         if retailer_key == str(configured).strip().casefold():
             return configured
@@ -1547,6 +1549,8 @@ def _resolve_siel_format_retailer(source, retailer):
 
 def _get_siel_format_fields(source_key, retailer):
     retailer_key = str(retailer or '').strip().casefold()
+    if retailer_key == 'jiomart':
+        return get_siel_format_editable_columns(source_key, retailer)
     retailer_fields = SIEL_FORMAT_FIELDS.get(source_key, {}).get(
         retailer_key, ()
     )
@@ -1568,6 +1572,9 @@ def evaluate_siel_format_row(row, source_key, retailer):
     )
     if not source or not retailer_value:
         return {}
+    if retailer_value == 'Jiomart':
+        from apps.dx.dx_layer2 import siel_jiomart_format
+        return siel_jiomart_format.evaluate(row, source_key)
 
     fields = set(_get_siel_format_fields(source_key, retailer_value))
     retailer_key = retailer_value.casefold()
@@ -1879,16 +1886,26 @@ def evaluate_siel_format_row(row, source_key, retailer):
 
 def _fetch_siel_format_rows(
         cursor, start_date, end_date, source, retailer_value):
-    """Fetch each KST day's latest MAIN-anchored SIEL batch."""
+    """Fetch each KST day's latest batch for the selected retailer."""
     canonical_table = source['table_name']
     date_column = source['date_column']
     source_key = source['source_key']
     format_fields = _get_siel_format_fields(source_key, retailer_value)
+    page_columns = () if retailer_value == 'Jiomart' else ('page_type',)
     select_columns = list(dict.fromkeys((
-        'id', 'batch_id', 'country', 'product', 'account_name', 'page_type',
+        'id', 'batch_id', 'country', 'product', 'account_name', *page_columns,
         'item', 'sku', 'retailer_sku_name', *format_fields,
         date_column, 'product_url',
     )))
+    if retailer_value == 'Jiomart':
+        from apps.dx.dx_layer1.siel_retail import jiomart
+        ctes, params = jiomart.scope_sql(canonical_table, start_date, end_date)
+        columns = ', '.join('source.' + column for column in select_columns)
+        cursor.execute(f"""WITH {ctes}
+            SELECT {columns} {jiomart.LATEST_ROWS}
+            ORDER BY source.item, source.source_day, source.id
+        """, params)
+        return [dict(zip(select_columns, row)) for row in cursor.fetchall()]
     local_date = (
         f"(source.{date_column} AT TIME ZONE "
         f"'{SIEL_BUSINESS_TIMEZONE}')::date"
@@ -2040,6 +2057,11 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days, include_
             for row in history_rows
             if str(row.get('item') or '').strip().casefold() in error_items
         ]
+        if retailer_value == 'Jiomart':
+            targets = {row['id']: row for row in target_records}
+            results = [targets.get(row['id'], row) for row in results]
+            seen_ids = {row['id'] for row in results}
+            results.extend(row for row in target_records if row['id'] not in seen_ids)
 
     field_counts = {}
     for record in target_records:
@@ -2048,10 +2070,15 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days, include_
 
     format_fields = _get_siel_format_fields(source_key, retailer_value)
     date_column = source['date_column']
+    page_columns = () if retailer_value == 'Jiomart' else ('page_type',)
     column_names = list(dict.fromkeys((
-        'id', date_column, 'item', 'account_name', 'country', 'page_type',
+        'id', date_column, 'item', 'account_name', 'country', *page_columns,
         'sku', 'retailer_sku_name', *format_fields, 'product_url',
     )))
+    launch = {}
+    if retailer_value == 'Jiomart':
+        from apps.dx.dx_layer1.siel_retail import jiomart
+        launch['active_from'] = str(jiomart.START)
     return {
         'date': inspection_date,
         'inspection_date': inspection_date,
@@ -2078,12 +2105,15 @@ def _get_siel_format_detail(cursor, target_date, table, retailer, days, include_
         'date_column': date_column,
         'latest_batch_only': history_days == 1,
         'business_timezone': SIEL_BUSINESS_TIMEZONE,
+        **launch,
     }
 
 
 def _append_siel_format_stats(cursor, target_date, validation, category=None):
     if not resolve_monitoring_date or not SIEL_SOURCE_CONFIG:
         return 0
+    from apps.dx.dx_layer1.siel_retail import jiomart
+
     savepoint = 'layer2_siel_format_stats'
     cursor.execute(f'SAVEPOINT {savepoint}')
     total_issues = 0
@@ -2098,7 +2128,10 @@ def _append_siel_format_stats(cursor, target_date, validation, category=None):
             retailer_rows = []
             table_checked = 0
             table_issues = 0
-            for retailer_value in source.get('retailers', ()):
+            retailers = source.get('retailers', ())
+            if source_date >= jiomart.START:
+                retailers = (*retailers, jiomart.RETAILER)
+            for retailer_value in retailers:
                 rows = _fetch_siel_format_rows(
                     cursor, source_date, source_date, source, retailer_value
                 )
@@ -2116,7 +2149,7 @@ def _append_siel_format_stats(cursor, target_date, validation, category=None):
                     'retailer': retailer_value,
                     'total': len(rows),
                     'issue_count': issue_count,
-                    'status': get_status(issue_count),
+                    'status': 'PENDING' if retailer_value == jiomart.RETAILER and not rows else get_status(issue_count),
                 })
                 table_checked += len(rows)
                 table_issues += issue_count
@@ -2796,6 +2829,9 @@ def _get_tse_static_format_rules(product_line, retailer):
 
 
 def _get_siel_static_format_rules(source_key, retailer):
+    if str(retailer or '').strip().casefold() == 'jiomart':
+        from apps.dx.dx_layer2 import siel_jiomart_format
+        return siel_jiomart_format.rule_details(source_key)
     fields = _get_siel_format_fields(source_key, retailer)
     rules = [
         dict(SIEL_FORMAT_RULE_DETAILS[field])
@@ -2869,14 +2905,10 @@ def get_format_rules(cursor, table_name, retailer):
     from apps.dx.dx_layer2.format_validation.rule_examples import static_rules, database_examples
     seuk_product_line = seuk_format_validation.product_line_for(table_name)
     if seuk_product_line:
-        data = static_rules(
+        return static_rules(
             seuk_format_validation.get_format_rule_details(table_name, retailer),
-            lambda row: seuk_format_validation.evaluate_format(row, seuk_product_line, retailer), retailer)
-        if seuk_format_validation.uses_rule_descriptions(seuk_product_line, retailer):
-            data['show_pattern'] = False
-            for rule in data['rules']:
-                rule.pop('pattern', None)
-        return data
+            lambda row: seuk_format_validation.evaluate_format(row, seuk_product_line, retailer),
+            retailer, show_pattern=not seuk_format_validation.uses_rule_descriptions(seuk_product_line, retailer))
     seib_product_line = seib_format_validation.product_line_for(table_name)
     if seib_product_line:
         return static_rules(
@@ -2891,7 +2923,8 @@ def get_format_rules(cursor, table_name, retailer):
     if siel_source_key:
         return static_rules(
             _get_siel_static_format_rules(siel_source_key, retailer),
-            lambda row: evaluate_siel_format_row(row, siel_source_key, retailer), retailer)
+            lambda row: evaluate_siel_format_row(row, siel_source_key, retailer),
+            retailer, show_pattern=str(retailer or '').strip().casefold() != 'jiomart')
     seda_product_line = seda_format_validation.product_line_for(table_name)
     if seda_product_line:
         return static_rules(
