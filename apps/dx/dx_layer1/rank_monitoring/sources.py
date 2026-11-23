@@ -4,9 +4,16 @@ from apps.common.seib_retail import is_eci_appliance
 from apps.dx.dx_layer1.column_statistics.services import _sources
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
+from apps.dx.dx_layer1.seuk_retail.sources import new_tv_retailer
 
 COUNTRIES = ('SEA', 'SEDA', 'SIEL', 'SEG', 'SEM', 'TSE', 'SEIB', 'SEUK')
 PRODUCTS = ('TV', 'REF', 'LDY', 'LDY_DRYER')
+
+
+def supports_bsr(country, product, retailer):
+    return ((country == 'SEIB' and is_eci_appliance(product, retailer))
+            or jiomart.matches(country, product, retailer)
+            or new_tv_retailer(country, product, retailer))
 
 
 def _rank_sources():
@@ -33,10 +40,9 @@ def catalog(country):
             continue
         retailers = [r['name'] for r in by_product[product]['retailers']]
         entry = {'product': product, 'retailers': retailers}
-        if country == 'SEIB' and is_eci_appliance(product, 'ECI'):
-            entry['bsr_retailers'] = ['ECI']
-        if jiomart.matches(country, product, jiomart.RETAILER) and jiomart.RETAILER in retailers:
-            entry['bsr_retailers'] = [jiomart.RETAILER]
+        bsr_retailers = [name for name in retailers if supports_bsr(country, product, name)]
+        if bsr_retailers:
+            entry['bsr_retailers'] = bsr_retailers
         result.append(entry)
     return result
 

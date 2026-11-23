@@ -8,6 +8,8 @@ from apps.common.sem_retail import sem_batch_order
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer4.collection_status.email_services import _retailer_condition, _retailer_params
 from apps.dx.dx_layer1.siel_retail import jiomart
+from apps.dx.dx_layer1.seuk_retail.sources import new_tv_retailer, TV_START
+from .sources import supports_bsr
 
 MAX_ROWS = 15000
 
@@ -17,7 +19,9 @@ def query_spec(source, retailer, columns, day, rank_type='main', *, registered=F
     stamp = date_column(source)
     eci = source['country'] == 'SEIB' and is_eci_appliance(source['product'], retailer['name'])
     is_jiomart = jiomart.matches(source['country'], source.get('product'), retailer['name'])
-    if rank_type not in ('main', 'bsr') or (rank_type == 'bsr' and not (eci or is_jiomart)):
+    seuk_tv = new_tv_retailer(source['country'], source.get('product'), retailer['name'])
+    if rank_type not in ('main', 'bsr') or (rank_type == 'bsr' and not supports_bsr(
+            source['country'], source.get('product'), retailer['name'])):
         raise ValueError('Unsupported rank type')
     rank_column = 'bsr_rank' if rank_type == 'bsr' else 'main_rank'
     required = {'id', 'item', 'account_name', 'retailer_sku_name', 'product_url',
@@ -69,10 +73,12 @@ def query_spec(source, retailer, columns, day, rank_type='main', *, registered=F
                source.batch_id, source.collected_at
         FROM scoped source JOIN latest chosen ON chosen.source_day = source.source_day
              AND chosen.batch_id IS NOT DISTINCT FROM source.batch_id
-        {"WHERE NULLIF(BTRIM(CAST(source.product_rank AS TEXT)), '') IS NOT NULL" if eci else ''}
+        {"WHERE NULLIF(BTRIM(CAST(source.product_rank AS TEXT)), '') IS NOT NULL" if eci or seuk_tv else ''}
         ORDER BY source.source_day, source.id DESC LIMIT {MAX_ROWS + 1}
     """
     start, end = day - timedelta(days=1), day + timedelta(days=1)
+    if seuk_tv:
+        start = max(start, TV_START)
     if eci:
         if is_eci_appliance_preview(source['product'], retailer['name'], day):
             start = max(start, ECI_APPLIANCE_PREVIEW_FROM)

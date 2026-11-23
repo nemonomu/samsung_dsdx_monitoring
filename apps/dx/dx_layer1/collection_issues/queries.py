@@ -6,6 +6,7 @@ from apps.common.db import dx_connection
 from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer1.column_statistics.services import select_source
+from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
 from apps.dx.dx_layer4.collection_status.email_services import _retailer_condition, _retailer_params
 
@@ -27,7 +28,7 @@ def raw_counts(country, product, retailer, start, end):
             return {str(day): int(count) for day, count in cursor.fetchall()}
     if country == 'SEUK':
         from apps.common.seuk_retail import FIRST_SOURCE_DATE
-        start = max(start, FIRST_SOURCE_DATE)
+        start = max(start, TV_START if new_tv_retailer(country, product, retailer) else FIRST_SOURCE_DATE)
     if country == 'SEIB' and is_eci_appliance(product, retailer):
         start = max(start, ECI_APPLIANCE_START)
     if start > end:
@@ -52,10 +53,12 @@ def daily_batch_ids(country, product, retailer, start, end):
             cursor.execute(f'''WITH {ctes} SELECT source_day, ARRAY_AGG(DISTINCT batch_id ORDER BY batch_id)
                 FROM scoped WHERE NULLIF(BTRIM(batch_id), '') IS NOT NULL GROUP BY 1''', params)
             return {str(day): list(ids or []) for day, ids in cursor.fetchall()}
+    if new_tv_retailer(country, product, retailer):
+        start = max(start, TV_START)
     if country == 'SEIB' and is_eci_appliance(product, retailer):
         start = max(start, ECI_APPLIANCE_START)
-        if start > end:
-            return {}
+    if start > end:
+        return {}
     day = day_sql(source)
     batch = "NULLIF(BTRIM(CAST(source.batch_id AS TEXT)), '')"
     with dx_connection() as (_, cursor):

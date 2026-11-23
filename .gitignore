@@ -56,6 +56,7 @@ config/create_admin.py
 !sql/setup_seuk_ao_monitoring.sql
 !sql/setup_november_crossfield.sql
 !sql/setup_seuk_layer1.sql
+!sql/setup_seuk_tv_layer1.sql
 !sql/setup_seuk_null.sql
 !sql/setup_seuk_crossfield.sql
 !sql/setup_seuk_format_duplicate.sql

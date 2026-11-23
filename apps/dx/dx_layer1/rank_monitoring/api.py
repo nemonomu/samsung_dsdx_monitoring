@@ -13,11 +13,9 @@ from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.common.seib_retail import is_eci_appliance
-from apps.dx.dx_layer1.siel_retail import jiomart
 from apps.dx.dx_layer1.common.context import build_context
 from apps.dx.dx_layer1.models import RetailRankReview, RetailRankReviewImage
-from .sources import COUNTRIES, catalog, select_source
+from .sources import COUNTRIES, catalog, select_source, supports_bsr
 from . import reviews, snapshots, listing, photos
 
 logger = logging.getLogger(__name__)
@@ -53,8 +51,7 @@ def requested_scope(request):
     scope = {'country': country, 'product': product, 'retailer': retailer, 'date': str(day)}
     rank_type = request.GET.get('rank_type', 'main')
     if rank_type != 'main':
-        if rank_type != 'bsr' or not ((country == 'SEIB' and is_eci_appliance(product, retailer))
-                                       or jiomart.matches(country, product, retailer)):
+        if rank_type != 'bsr' or not supports_bsr(country, product, retailer):
             raise ValueError
         scope['rank_type'] = rank_type
     return scope, mode

@@ -12,7 +12,7 @@ for(const name of ['retail-query','retail-status','collection-volume','tse_retai
 function check(day,count=309,phase='complete') {
     const status=phase==='pending'?'PENDING':phase==='collecting'?'COLLECTING':count?'OK':'CRITICAL';
     return {check_type:'seuk_retail',country:'SEUK',name:'SEUK Retail',phase,
-        source_date:day,status,active_from:'2026-10-25',collection_window:'KST 01:00~04:00',
+        source_date:day,status,active_from:'2026-10-25',collection_window:'KST 01:00~06:00',
         categories:['TV','REF','LDY','LDY_DRYER'].map(name=>({name,source_date:day,
             actual:count,expected:null,status,retailers:day<'2026-10-25'?[]:[{
                 retailer:'Currys',actual:count,main_count:count?290:0,bsr_count:count?60:0,
@@ -44,7 +44,7 @@ result=decorate('2026-10-25',309,'observing');
 assert.equal(result.status,'VOLUME_LOW');
 let html=context.L1.renderers.seuk_retail(result,0);
 assert(html.includes('/static/img/flags/gb.svg'));
-assert(html.includes('KST 01:00~04:00'));
+assert(html.includes('KST 01:00~06:00'));
 assert(html.includes('신규 · 관찰 중 (1/5일)'));
 assert(html.includes('seuk-cat-0-3'));
 assert(!html.includes('309/0건'));
@@ -103,4 +103,30 @@ for (const previewCount of [0, 203]) {
     assert.strictEqual(ao.status,'CRITICAL');
     assert.strictEqual(current.status,'CRITICAL');
 }
-console.log('SEUK: launch, collection window, missing, observation, fixed-100 BSR, renderer and exact-day SQL passed.');
+const newDay = '2026-11-27';
+const launchCheck = check(newDay, 300);
+const amazon = {retailer:'Amazon', raw_count:300, actual:300, main_count:290, bsr_count:99,
+    status:'OK', collection_phase:'complete', batch_count:2, missing_by_raw_count:true};
+const argos = {...amazon, retailer:'Argos', bsr_count:85, batch_count:1};
+launchCheck.categories[0].retailers.push(amazon, argos);
+const mainRule = {baseline:290,days:5,rule:'median_28d',low_percent:30,review_percent:15,high_percent:30};
+const newPayload = {policy_version:4,inspection_date:newDay,snapshots:[{
+    country:'SEUK',source_date:newDay,available:true,live:true,rows:[
+        {product:'TV',retailer:'Amazon',slot:'daily',observation_state:'observing',observation_prior_days:4},
+        {product:'TV',retailer:'Argos',slot:'daily',observation_state:'ready',rules:{main:mainRule,
+            bsr:{rule:'median_28d',baseline:100,days:5,low_percent:20,review_percent:15}}},
+    ],
+}]};
+context.L1.collectionVolume.decorate({checks:[launchCheck]},newPayload,newDay);
+assert.equal(amazon.observation_days,5);
+assert.equal(amazon.volume_alerts.length,0);
+assert(context.L1.retailStatus.rowBadge(amazon).includes('배치 2개'));
+assert.equal(argos.status,'VOLUME_REVIEW');
+const amazonRule = newPayload.snapshots[0].rows[0];
+amazonRule.observation_state = 'ready';
+amazonRule.rules = {main:mainRule,bsr:{rule:'fixed_100',baseline:100,exact:false}};
+argos.bsr_count = 80;
+context.L1.collectionVolume.decorate({checks:[launchCheck]},newPayload,newDay);
+assert.equal(amazon.status,'VOLUME_LOW');
+assert.equal(argos.status,'VOLUME_LOW');
+console.log('SEUK: 06:00 window, observations, multiple batches, fixed and variable BSR, and original-date SQL passed.');

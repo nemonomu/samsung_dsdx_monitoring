@@ -5,7 +5,7 @@ from apps.common.db import dx_connection
 from apps.common.dryer_onboarding import config as dryer_config
 from apps.common.sem_retail import SEM_SOURCE_CONFIG
 from apps.common.seib_retail import ECI_APPLIANCE_PREVIEW_FROM, SEIB_SOURCE_CONFIG, is_eci_appliance_preview
-from apps.common.seuk_retail import SEUK_SOURCE_CONFIG
+from apps.dx.dx_layer1.seuk_retail.sources import SEUK_SOURCE_CONFIG, new_tv_retailer
 from apps.common.sem_retail import get_sem_table_columns, sem_batch_order
 from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer, _source
@@ -171,6 +171,8 @@ def daily_counts(country, product, retailer_name, end, days):
             raise ValueError('No configured collection fields')
         retailer = retailers[0]
         columns = ordered_columns(retailer['columns'])
+        if new_tv_retailer(country, product, retailer_name):
+            columns.append('is_redirect')
         if country == 'SEG' and retailer_name == 'Expert':
             # Expert intentionally loads savings as NULL; do not compare its collection count.
             columns = [column for column in columns if column != 'savings']

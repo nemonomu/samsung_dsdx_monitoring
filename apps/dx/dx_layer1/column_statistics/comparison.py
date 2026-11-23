@@ -7,6 +7,7 @@ from apps.common.seib_retail import (ECI_APPLIANCE_START, ECI_OBSERVATION_DAYS,
                                     is_eci_appliance, is_eci_appliance_preview)
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.siel_retail import jiomart
+from apps.dx.dx_layer1.seuk_retail import sources as seuk
 
 KST = timezone(timedelta(hours=9))
 BASELINE_DAYS = 28
@@ -32,8 +33,9 @@ def collection_complete(country, product, retailer, source_day, now=None):
     if source_day > now.date():
         return False
     if country == 'SEUK':
-        from apps.common.seuk_retail import collection_phase
-        return collection_phase(source_day, now) == 'complete'
+        if seuk.new_tv_retailer(country, product, retailer) and source_day < seuk.TV_START:
+            return False
+        return seuk.collection_phase(source_day, now) == 'complete'
     if country == 'SEIB':
         from apps.common.seib_retail import collection_phase
         from apps.common.seib_retail import get_seib_source
@@ -83,13 +85,19 @@ def compare_columns(data, target, completed):
     current = next(day for day in data['daily'] if day['date'] == str(target))
     eci_appliance = data.get('country') == 'SEIB' and is_eci_appliance(data.get('product'), data.get('retailer'))
     is_jiomart = jiomart.matches(data.get('country'), data.get('product'), data.get('retailer'))
+    excluded = (seuk.COLUMN_ALERT_EXCLUSIONS.get(str(data.get('retailer')).strip().casefold())
+                if seuk.new_tv_retailer(data.get('country'), data.get('product'), data.get('retailer')) else None)
     if eci_appliance:
         history = [day for day in history if day['date'] >= str(ECI_APPLIANCE_START)]
     rows = []
     for column in data['columns']:
+        count = current['counts'][column]
+        if column == excluded:
+            rows.append({'column': column, 'current': count, 'baseline': None, 'history_days': 0,
+                         'ratio': None, 'delta': None, 'status': 'not_applicable'})
+            continue
         values = [day['counts'][column] for day in history if column in day['counts']]
         baseline = median(values) if len(values) >= minimum_days(data) else None
-        count = current['counts'][column]
         ratio = count / baseline * 100 if baseline is not None and baseline > 0 else None
         delta = count - baseline if baseline is not None else None
         if current['total'] and ((eci_appliance and is_eci_appliance_preview(data['product'], data['retailer'], target))

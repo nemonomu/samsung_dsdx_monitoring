@@ -58,7 +58,7 @@ class AoMonitoringTests(unittest.TestCase):
             self.assertTrue(all(r['preview_mode'] and r['active_from'] == str(LAUNCH) for r in rows))
             self.assertTrue(all(r['status'] == ('OK' if count else 'PENDING') for r in rows))
             self.assertFalse(any('(AO)' in r['source'] for r in result['failed_items']))
-        for hour, minute, status in ((0,59,'PENDING'),(1,0,'COLLECTING'),(3,59,'COLLECTING'),(4,0,'CRITICAL')):
+        for hour, minute, status in ((0,59,'PENDING'),(1,0,'COLLECTING'),(5,59,'COLLECTING'),(6,0,'CRITICAL')):
             now = datetime(2026,11,1,hour,minute,tzinfo=uk.KST)
             result, _ = self.check(LAUNCH, 0, now.astimezone(timezone.utc))
             rows = [r for c in result['check']['categories'] for r in c['retailers'] if r['retailer'] == 'AO']

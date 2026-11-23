@@ -8,6 +8,7 @@ from .collector import refresh_country
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE, ECI_APPLIANCE_START
 from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE, SEM_COPPEL_DRYER_FIRST_SOURCE_DATE
 from apps.dx.dx_layer1.siel_retail import jiomart
+from apps.dx.dx_layer1.seuk_retail.sources import TV_START, TV_RETAILERS
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, EXPERT_COLUMNS, MEDIAMARKT_DRYER_START_DATE
 
@@ -42,6 +43,9 @@ def history_range(country, last_due):
                 ({'TV', 'REF', 'LDY', 'LDY_DRYER'} if costco.enabled(day, 'ldy_dryer') else {'TV', 'REF', 'LDY'}))
         and (country != 'SEUK' or {r['product'] for r in rows if r['retailer'] == 'Currys'
              and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})
+        and (country != 'SEUK' or day < TV_START or set(TV_RETAILERS) <= {
+             r['retailer'] for r in rows if r['product'] == 'TV' and r.get('active_from') == str(TV_START)
+             and r.get('source_date_basis') == 'db_original'})
         and (country != 'SEIB' or day < SEIB_START_DATE
              or {r['product'] for r in rows if r['retailer'] == 'MediaMarkt'
                  and r.get('source_date_basis') == 'db_original'} == {'TV', 'REF', 'LDY', 'LDY_DRYER'})

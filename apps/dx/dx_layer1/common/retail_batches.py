@@ -170,6 +170,11 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if is_eci_appliance(product_line, retailer) and str(source_date) < str(ECI_APPLIANCE_PREVIEW_FROM):
             return {'retailer': retailer, 'source_date': str(source_date), 'batches': [],
                     'time_basis': '원본 기록 시각', 'aggregation_basis': '운영 시작 전'}
+    if check_type == 'seuk_retail':
+        from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
+        if new_tv_retailer('SEUK', source['category'], retailer) and str(source_date) < str(TV_START):
+            return {'retailer': retailer, 'source_date': str(source_date), 'batches': [],
+                    'time_basis': '원본 기록 시각', 'aggregation_basis': '운영 시작 전'}
     column = source.get('date_column', 'crawl_datetime')
     is_costco = check_type == 'retail' and key == 'costco'
     all_batches = check_type == 'retail' and source['product_key'] == 'tv' and not is_costco

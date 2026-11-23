@@ -8,6 +8,7 @@ from apps.common.sem_retail import sem_start_date
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
 from apps.dx.dx_layer1.seg_retail.sources import retailer_start_date, get_seg_source
 from apps.dx.dx_layer1.siel_retail import jiomart
+from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
 
 
 def date_column(source):
@@ -29,7 +30,7 @@ def active_from(source, retailer):
     if dryer_config(country, product, retailer):
         return OPERATIONAL_FROM
     if country == 'SEUK':
-        return SEUK_START
+        return TV_START if new_tv_retailer(country, product, retailer) else SEUK_START
     if country == 'SEIB':
         return seib_retailer_start_date(get_seib_source(source['key']), retailer)
     if country == 'SEM' and product == 'LDY_DRYER':

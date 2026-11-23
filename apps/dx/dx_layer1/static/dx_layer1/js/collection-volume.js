@@ -134,7 +134,7 @@
                                 status: 'VOLUME_LOW', rule: 'main_lt_bsr',
                                 reason: `MAIN ${counts.main}건 / BSR ${counts.bsr}건 / MAIN이 BSR보다 적음`} : null;
                         if (rankMismatch) row.volume_alerts.push(rankMismatch);
-                        if (datesMatch && (!received(row, country) || counts.main === 0)) {
+                        if (datesMatch && (!received(row, country) || (counts.main === 0 && !row.missing_by_raw_count))) {
                             row.status = 'CRITICAL';
                             row.verification_state = 'ready';
                             return;

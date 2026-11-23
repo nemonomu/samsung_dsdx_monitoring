@@ -84,15 +84,15 @@ def enabled(day):
     return source_date_value(day) >= str(FIRST_SOURCE_DATE)
 
 
-def collection_phase(day, now=None):
+def collection_phase(day, now=None, *, start=time(1), end=time(4)):
     current = now or datetime.now(KST)
     current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
     selected = date.fromisoformat(source_date_value(day))
     if not enabled(day) or selected > current.date():
         return 'pending'
-    if selected < current.date() or current.time().replace(tzinfo=None) >= time(4):
+    if selected < current.date() or current.time().replace(tzinfo=None) >= end:
         return 'complete'
-    return 'pending' if current.time().replace(tzinfo=None) < time(1) else 'collecting'
+    return 'pending' if current.time().replace(tzinfo=None) < start else 'collecting'
 
 
 def latest_scope(source, start, end, retailer=RETAILER):

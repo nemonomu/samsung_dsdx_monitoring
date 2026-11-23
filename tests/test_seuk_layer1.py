@@ -8,17 +8,21 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tests.test_collection_statistics_backend import sample, Daily, calc, collector, automatic
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from django.test.runner import DiscoverRunner
 from apps.common import seuk_retail as policy
 from apps.common.inspection_dates import resolve_monitoring_date, SOURCE_DEFINITIONS
 from apps.common.source_dates import source_date_value, source_date_sql
 from apps.dx.dx_layer1.seuk_retail.seuk_retail_services import get_layer1_stats
+from apps.dx.dx_layer1.seuk_retail import sources as layer1_sources
 from apps.dx.dx_layer1.collection_statistics import live
 from apps.dx.dx_layer1.column_statistics import services as columns
 from apps.dx.dx_layer1.column_statistics.comparison import collection_complete, compare_columns
 from apps.dx.dx_layer1.collection_issues import services as issues, queries
+from apps.dx.dx_layer1.collection_issues import volume
 from apps.dx.dx_layer1.common import retail_batches
+from apps.dx.dx_layer1.models import CollectionIssue
+from apps.dx.dx_layer1.rank_monitoring import api as rank_api, repository as rank_repository, sources as rank_sources
 
 
 class SeukLayer1Tests(TestCase):
@@ -50,7 +54,15 @@ class SeukLayer1Tests(TestCase):
             now = datetime(2026,10,25,hour,minute,tzinfo=policy.KST)
             self.assertEqual(phase, policy.collection_phase(self.day, now))
             self.assertEqual(phase, policy.collection_phase(self.day, now.astimezone(timezone.utc)))
-            self.assertEqual(phase == 'complete', collection_complete('SEUK','TV','Currys',self.day,now))
+        for hour, minute, phase in ((0,59,'pending'), (1,0,'collecting'), (4,0,'collecting'),
+                                    (5,59,'collecting'), (6,0,'complete')):
+            now = datetime(2026,11,22,hour,minute,tzinfo=policy.KST)
+            day = now.date()
+            check = self.check(day, now=now.astimezone(timezone.utc))
+            self.assertEqual('KST 01:00~06:00', check['collection_window'])
+            self.assertEqual(phase, check['phase'])
+            for product, name in (('TV', 'Currys'), ('REF', 'AO'), ('TV', 'Amazon'), ('TV', 'Argos')):
+                self.assertEqual(phase == 'complete', collection_complete('SEUK',product,name,day,now))
         cursor = Mock()
         before = get_layer1_stats(cursor, date(2026,10,24), datetime(2026,10,24,5,tzinfo=policy.KST))['check']
         cursor.execute.assert_not_called()
@@ -92,6 +104,130 @@ class SeukLayer1Tests(TestCase):
         self.assertIn('seuk_retail',dict(before[0]))
         self.assertNotIn('seuk_retail',before[2])
         self.assertIn('seuk_retail',after[2])
+
+    def test_new_tv_retailers_are_layer1_only_and_use_original_day(self):
+        start = layer1_sources.TV_START
+        source = layer1_sources.SEUK_SOURCE_CONFIG['seuk_tv']
+        self.assertEqual(('Currys',), policy.SEUK_SOURCE_CONFIG['seuk_tv']['retailers'])
+        before = self.check(start - timedelta(days=1))
+        current = self.check(start)
+        self.assertEqual(['Currys'], [r['retailer'] for r in before['categories'][0]['retailers']])
+        self.assertEqual(['Currys', 'Amazon', 'Argos'], [r['retailer'] for r in current['categories'][0]['retailers']])
+        self.assertTrue(all([r['retailer'] for r in c['retailers']] == ['Currys', 'AO']
+                            for c in current['categories'][1:]))
+        rows = calc.normalize_check(current, 'SEUK', start)
+        self.assertEqual({'2026-11-22'}, {r['active_from'] for r in rows if r['retailer'] in ('Amazon', 'Argos')})
+        for retailer in ('Amazon', 'Argos'):
+            with self.assertRaises(ValueError):
+                columns.select_source('SEUK', 'REF', retailer)
+            cte, scope, params = layer1_sources.latest_scope(source, '2026-10-01', '2026-11-23', retailer)
+            self.assertEqual(['2026-11-22', '2026-11-23', retailer.lower(), retailer.lower()], params)
+            self.assertIn(source_date_sql('anchor.crawl_datetime'), cte)
+            self.assertIn('anchor.id DESC', cte)
+            self.assertIn('latest.source_date', scope)
+            self.assertEqual((start, 'registered'), issues.coverage_start('SEUK', 'TV', retailer))
+            self.assertEqual({}, queries.raw_counts('SEUK', 'TV', retailer, self.day, self.day))
+            self.assertEqual({}, queries.daily_batch_ids('SEUK', 'TV', retailer, self.day, self.day))
+        self.assertEqual('2026-11-23', source_date_value('2026-11-23T01:04:04+09:00'))
+        self.assertEqual('2026-11-23', source_date_value('2026-11-23T13:11:56+09:00'))
+
+    def test_volume_observation_fixed_and_variable_bsr_match_live_rules(self):
+        start = layer1_sources.TV_START
+        amazon = sample(retailer='Amazon', product='TV')
+        argos = sample(retailer='Argos', product='TV')
+        dates = [str(start + timedelta(days=day)) for day in range(5)]
+        history = [dict(amazon, source_date=day) for day in dates]
+        history += [dict(argos, source_date=day, bsr=count) for day, count in zip(dates, (100, 80, 100, 80, 100))]
+        # Another batch on the same source day does not complete the five-day window.
+        day_five = calc.compare_rows([dict(amazon, bsr=99)], [*history[:4], dict(history[0], batch_id='rerun')], 'SEUK')[0]
+        self.assertEqual(('observing', 5, []), (day_five['observation_state'], day_five['observation_days'], day_five['alerts']))
+        for retailer, actual, rule, severity in (
+                (amazon, 99, 'fixed_100', 'VOLUME_LOW'), (amazon, 100, 'fixed_100', None),
+                (argos, 86, 'median_28d', None), (argos, 85, 'median_28d', 'VOLUME_REVIEW'),
+                (argos, 81, 'median_28d', 'VOLUME_REVIEW'), (argos, 80, 'median_28d', 'VOLUME_LOW')):
+            with self.subTest(retailer=retailer['retailer'], actual=actual):
+                result = calc.compare_rows([dict(retailer, bsr=actual)], history, 'SEUK')[0]
+                self.assertEqual('ready', result['observation_state'])
+                self.assertEqual(rule, result['bsr_rule'])
+                self.assertEqual([severity] if severity else [], [a['status'] for a in result['alerts']])
+                self.assertEqual(result['alerts'], calc.current_volume_decision(result, 'SEUK')['alerts'])
+                live_rule = calc.comparison_rules(result, 'SEUK')['bsr']
+                self.assertEqual((rule, 100), (live_rule['rule'], live_rule['baseline']))
+                if rule == 'median_28d':
+                    self.assertEqual((15, 20), (live_rule['review_percent'], live_rule['low_percent']))
+
+    def test_batch_issue_is_independent_of_observation_and_column_exemptions(self):
+        start = layer1_sources.TV_START
+        now = datetime(2026, 11, 22, 6, tzinfo=policy.KST)
+        check = self.check(start, now=now)
+        with patch.object(retail_batches, 'fetch_batch_counts', return_value={'amazon': 2, 'argos': 1}):
+            retail_batches.add_batch_counts(Mock(), check, start)
+        new_rows = {r['retailer']: r for r in check['categories'][0]['retailers']}
+        self.assertEqual(2, new_rows['Amazon']['batch_count'])
+        self.assertEqual(1, new_rows['Argos']['batch_count'])
+        observed = calc.compare_rows(calc.normalize_check(check, 'SEUK', start), [], 'SEUK')
+        row = next(r for r in observed if r['retailer'] == 'Amazon')
+        self.assertEqual('observing', row['observation_state'])
+        volume.reconcile('SEUK', 'TV', 'Amazon', start, [row], ['early', 'latest'], now=now)
+        issue = CollectionIssue.objects.get(retailer='Amazon')
+        self.assertEqual((volume.BATCH_COLUMN, 2, ['early', 'latest']),
+                         (issue.column, issue.current_count, issue.evidence['batch_ids']))
+
+        target = start + timedelta(days=7)
+        for retailer, field in (('Amazon', 'count_of_reviews'), ('Argos', 'is_redirect')):
+            data = {'country': 'SEUK', 'product': 'TV', 'retailer': retailer, 'columns': [field, 'sku'], 'daily': [
+                {'date': str(start + timedelta(days=i)), 'total': 100,
+                 'counts': {field: 0 if i == 7 else 100, 'sku': 0 if i == 7 else 100}} for i in range(8)]}
+            completed = {day['date']: True for day in data['daily']}
+            excluded, ordinary = compare_columns(data, target, completed)
+            self.assertEqual(('not_applicable', 0, None), (excluded['status'], excluded['current'], excluded['baseline']))
+            self.assertEqual(('abnormal', 7), (ordinary['status'], ordinary['history_days']))
+            issues.reconcile_day(data, target, completed, 100, now=now + timedelta(days=7))
+            self.assertEqual(['sku'], list(CollectionIssue.objects.filter(retailer=retailer, source_date=target)
+                                           .values_list('column', flat=True)))
+
+    def test_saved_and_live_snapshots_share_bsr_policy(self):
+        start = layer1_sources.TV_START
+        target = start + timedelta(days=5)
+
+        def load(_country, day):
+            offset = (day - start).days
+            check = self.check(day, now=datetime(2026, 11, day.day, 6, tzinfo=policy.KST))
+            tv = {r['retailer']: r for r in check['categories'][0]['retailers']}
+            tv['Amazon']['bsr_count'] = 100 if offset < 5 else 99
+            tv['Argos']['bsr_count'] = (100, 80, 100, 80, 100, 85)[offset]
+            return check
+
+        refreshed = collector.refresh_country('SEUK', start, target, loader=load, today=target)
+        self.assertEqual({'busy': False, 'updated': 6, 'errors': 0}, refreshed)
+        saved = Daily.objects.get(country='SEUK', source_date=target).rows
+        with patch.object(live, 'load_current_check', side_effect=load):
+            current = live.current_snapshot('SEUK', target)['rows']
+        for rows in (saved, current):
+            tv_rows = {r['retailer']: r for r in rows if r['product'] == 'TV'}
+            for retailer, expected in (('Amazon', 'VOLUME_LOW'), ('Argos', 'VOLUME_REVIEW')):
+                row = tv_rows[retailer]
+                self.assertEqual(5, len(row['bsr_initial_samples']))
+                self.assertEqual([expected], [a['status'] for a in row['alerts'] if a['metric'] == 'bsr'])
+
+    def test_bsr_rank_catalog_and_sql_share_launch_and_latest_batch(self):
+        start = layer1_sources.TV_START
+        tv = next(item for item in rank_sources.catalog('SEUK') if item['product'] == 'TV')
+        self.assertEqual(['Amazon', 'Argos'], tv['bsr_retailers'])
+        for retailer in tv['bsr_retailers']:
+            for mode in ('all', 'samsung'):
+                request = RequestFactory().get('/', dict(country='SEUK', product='TV', retailer=retailer,
+                                                        date=str(start), rank_type='bsr', mode=mode))
+                with patch.object(rank_api.timezone, 'localdate', return_value=start):
+                    scope, actual_mode = rank_api.requested_scope(request)
+                self.assertEqual(('bsr', mode), (scope['rank_type'], actual_mode))
+            source, account = rank_sources.select_source('SEUK', 'TV', retailer)
+            source_columns = dict.fromkeys((*layer1_sources.SEUK_SOURCE_CONFIG['seuk_tv']['columns'], 'is_redirect'), 'text')
+            sql, params, _ = rank_repository.query_spec(source, account, source_columns, start, 'bsr')
+            self.assertEqual([retailer.lower(), str(start), str(start + timedelta(days=1))], params)
+            self.assertIn('source.bsr_rank AS product_rank', sql)
+            self.assertIn(source_date_sql('source.crawl_datetime'), sql)
+            self.assertIn('batch_id IS NOT DISTINCT FROM source.batch_id', sql)
 
     def test_fixed_100_for_all_products_before_and_after_observation(self):
         for product in ('TV', 'REF', 'LDY', 'LDY_DRYER'):
@@ -179,6 +315,13 @@ class SeukLayer1Tests(TestCase):
         self.assertTrue(parse_plpgsql(update_sql))
         self.assertNotIn('UPDATE dx_seuk.',update_sql)
         self.assertNotIn('DELETE FROM',update_sql)
+        tv_sql=(Path(__file__).resolve().parents[1]/'sql/setup_seuk_tv_layer1.sql').read_text(encoding='utf-8')
+        self.assertTrue(parse_sql(tv_sql))
+        self.assertTrue(parse_plpgsql(tv_sql))
+        self.assertIn("ARRAY['Amazon', 'Argos']", tv_sql)
+        self.assertNotIn('monitoring_retail_columns', tv_sql)
+        self.assertNotIn('UPDATE dx_seuk.', tv_sql)
+        self.assertNotIn('DELETE FROM', tv_sql)
 
 
 if __name__=='__main__':

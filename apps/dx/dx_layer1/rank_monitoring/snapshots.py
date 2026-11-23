@@ -22,6 +22,7 @@ from django.utils import timezone
 
 from apps.common.monitoring_cache import monitoring_cache_generation
 from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance, is_eci_appliance_preview
+from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
 from .sources import select_source
 from .repository import load_snapshots
@@ -86,6 +87,8 @@ def build(scope, generation):
     is_jiomart = jiomart.matches(scope['country'], scope['product'], scope['retailer'])
     if is_jiomart:
         active_from, preview = jiomart.START, jiomart.preview(day)
+    if new_tv_retailer(scope['country'], scope['product'], scope['retailer']):
+        active_from = TV_START
     today = timezone.localdate(timezone=tz(timedelta(hours=9)))
     results = {}
     for mode in ('all', 'samsung'):
