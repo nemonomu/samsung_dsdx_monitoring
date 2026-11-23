@@ -1,6 +1,6 @@
 """Immutable evidence for manually accepted retail NULL findings.
 
-Only evidence captured at confirmation time can be carried forward.  Legacy
+Only evidence captured at confirmation time can be reused.  Legacy
 monitoring_corrections rows are deliberately never converted into evidence.
 This module owns no database connection and never commits its caller's work.
 """
@@ -25,6 +25,7 @@ NON_TARGET_REQUIRED_METRICS = frozenset({
     'star_rating', 'count_of_star_ratings', 'count_of_reviews',
 })
 COUNTRIES = frozenset({'SEA', 'SEDA', 'SEM', 'SIEL', 'TSE', 'SEG', 'SEIB', 'SEUK'})
+ADJACENT_REVIEW_COUNTRIES = frozenset({'SEUK', 'SIEL'})
 PRODUCT_LINES = frozenset({'TV', 'REF', 'LDY', 'LDY_DRYER'})
 KOREA = ZoneInfo('Asia/Seoul')
 EVIDENCE_TABLE = 'public.monitoring_null_review_evidence'
@@ -208,6 +209,43 @@ def _metadata(evidence, *, automatic):
     }
 
 
+def _is_adjacent_review(country, day, reviewed_on):
+    return country in ADJACENT_REVIEW_COUNTRIES and abs((reviewed_on - day).days) == 1
+
+
+def _review_in_scope(evidence, day, *, exact_product_review=False):
+    reviewed_on = _date(evidence.get('inspection_date'))
+    if not reviewed_on or reviewed_on < POLICY_START:
+        return False
+    if _is_adjacent_review(evidence['country'], day, reviewed_on):
+        return _korean_time(evidence['reviewed_at']).date() >= POLICY_START
+    return reviewed_on <= day and (
+        exact_product_review or POLICY_START <= _korean_time(evidence['reviewed_at']).date() <= day
+    )
+
+
+def _forward_review_applies(evidence, day):
+    start = _date(evidence.get('auto_apply_from'))
+    return start is not None and start <= day and _date(evidence['inspection_date']) < day
+
+
+def _auto_review_applies(evidence, day):
+    return _is_adjacent_review(evidence['country'], day, _date(evidence['inspection_date'])) or (
+        _forward_review_applies(evidence, day)
+    )
+
+
+def _revoked_for_day(evidence, day, *, exact_product_review=False):
+    revoked_at = evidence.get('revoked_at')
+    if not revoked_at:
+        return False
+    # A revoked decision cannot newly confirm an adjacent date. A historical
+    # confirmation based on the original forward rule keeps its provenance.
+    adjacent = _is_adjacent_review(evidence['country'], day, _date(evidence['inspection_date']))
+    return (exact_product_review or _korean_time(revoked_at).date() <= day
+            or (adjacent and not _forward_review_applies(evidence, day)))
+
+
 def save_manual_evidence(
         cursor, *, correction_id, inspection_date, record, column_name,
         reason, reviewer, memo='', now=None,
@@ -298,6 +336,12 @@ def load_evidence(
         return []
     day = _date(inspection_date)
     end_time = datetime.combine(day + timedelta(days=1), time.min, KOREA)
+    date_filter = """(inspection_date <= %s AND (reviewed_at < %s OR
+                     (inspection_date = %s AND record_id = ANY(%s) AND reason = ANY(%s))))"""
+    date_params = [day, end_time, day, record_ids, list(RECORD_REVIEW_REASONS)]
+    if _text(country).upper() in ADJACENT_REVIEW_COUNTRIES:
+        date_filter += ' OR inspection_date IN (%s, %s)'
+        date_params.extend((day - timedelta(days=1), day + timedelta(days=1)))
     cursor.execute(f"""
         WITH scoped AS (
             SELECT {', '.join(_EVIDENCE_COLUMNS)}
@@ -305,9 +349,7 @@ def load_evidence(
             WHERE policy_version = %s
               AND table_name = %s AND country = %s AND product_line = %s
               AND LOWER(TRIM(retailer)) = %s
-              AND inspection_date <= %s
-              AND (reviewed_at < %s OR
-                   (inspection_date = %s AND record_id = ANY(%s) AND reason = ANY(%s)))
+              AND ({date_filter})
               AND (
                   subject_key = ANY(%s)
                   OR (inspection_date = %s AND record_id = ANY(%s)
@@ -327,8 +369,7 @@ def load_evidence(
         WHERE inspection_date = %s AND record_id = ANY(%s)
           AND (column_name = ANY(%s) OR reason = ANY(%s))
     """, (POLICY_VERSION, _table_name(table_name), _text(country).upper(),
-          _text(product_line).upper(), _text(retailer).lower(), day, end_time,
-          day, record_ids, list(RECORD_REVIEW_REASONS),
+          _text(product_line).upper(), _text(retailer).lower(), *date_params,
           subjects, day, record_ids, columns, list(RECORD_REVIEW_REASONS),
           [item for item, _ in products], [name for _, name in products],
           day, record_ids, columns, list(RECORD_REVIEW_REASONS)))
@@ -393,7 +434,7 @@ def linked_null_review(record, column, inspection_date, evidence, **context):
 
 
 def _carried_non_target_review(record, column, inspection_date, evidence, **context):
-    """Carry a product exclusion to other NULL specs in subsequent collections."""
+    """Reuse a product exclusion for other NULL specs in eligible collections."""
     day = _date(inspection_date)
     if (not uses_new_policy(day, context['country']) or column not in record
             or is_non_target_metric(column, NON_TARGET_REASON)
@@ -406,7 +447,6 @@ def _carried_non_target_review(record, column, inspection_date, evidence, **cont
     for raw in entries:
         entry = _as_dict(raw)
         source_column = entry.get('column_name')
-        reviewed_on = _date(entry.get('inspection_date'))
         if (entry.get('policy_version') != POLICY_VERSION
                 or (entry.get('item'), entry.get('product_name')) != product
                 or _table_name(entry.get('table_name')) != _table_name(context['table_name'])
@@ -414,24 +454,20 @@ def _carried_non_target_review(record, column, inspection_date, evidence, **cont
                 or entry.get('product_line') != _text(context['product_line']).upper()
                 or _text(entry.get('retailer')).casefold() != _text(context['retailer']).casefold()
                 or entry.get('subject_key') != _subject_key(record, source_column, **context)
-                or not reviewed_on or not POLICY_START <= reviewed_on <= day
-                or not POLICY_START <= _korean_time(entry['reviewed_at']).date() <= day):
+                or not _review_in_scope(entry, day)):
             continue
         previous = latest_by_column.get(source_column)
         if previous is None or order(entry) > order(previous):
             latest_by_column[source_column] = entry
     # A direct decision on the target cell must not be bypassed by another field.
     target = latest_by_column.get(column)
-    if target and (target.get('reason') != NON_TARGET_REASON or
-                   (target.get('revoked_at') and _korean_time(target['revoked_at']).date() <= day)):
+    if target and (target.get('reason') != NON_TARGET_REASON or _revoked_for_day(target, day)):
         return None
     candidates = [entry for source_column, entry in latest_by_column.items()
                   if source_column != column and entry.get('reason') == NON_TARGET_REASON
                   and not is_non_target_metric(source_column, NON_TARGET_REASON)
-                  and _date(entry.get('auto_apply_from')) is not None
-                  and day >= _date(entry['auto_apply_from'])
-                  and day > _date(entry['inspection_date'])
-                  and not (entry.get('revoked_at') and _korean_time(entry['revoked_at']).date() <= day)]
+                  and _auto_review_applies(entry, day)
+                  and not _revoked_for_day(entry, day)]
     if not candidates:
         return None
     original = max(candidates, key=order)
@@ -522,7 +558,6 @@ def match_review(
     for raw in relevant:
         decision = _as_dict(raw)
         reviewed_on = _date(decision.get('inspection_date'))
-        reviewed_at = _korean_time(decision['reviewed_at'])
         same_record = (
             str(decision.get('record_id')) == str(record.get('id'))
             and reviewed_on == day
@@ -537,9 +572,10 @@ def match_review(
             and decision.get('country') == _text(country).upper()
             and decision.get('product_line') == _text(product_line).upper()
             and _text(decision.get('retailer')).casefold() == _text(retailer).casefold()
-            and reviewed_on and POLICY_START <= reviewed_on <= day
-            and (POLICY_START <= reviewed_at.date() <= day
-                 or (same_record and decision.get('reason') in RECORD_REVIEW_REASONS))
+            and _review_in_scope(
+                decision, day,
+                exact_product_review=same_record and decision.get('reason') in RECORD_REVIEW_REASONS,
+            )
         ):
             candidates.append(decision)
     if not candidates:
@@ -553,9 +589,10 @@ def match_review(
                  key=lambda row: (_korean_time(row['reviewed_at']), int(row['id'])))
     if is_non_target_metric(column, latest.get('reason')):
         return None
-    revoked_at = latest.get('revoked_at')
-    if revoked_at and (_korean_time(revoked_at).date() <= day
-                       or (manual_candidates and latest.get('reason') in RECORD_REVIEW_REASONS)):
+    if _revoked_for_day(
+        latest, day,
+        exact_product_review=bool(manual_candidates) and latest.get('reason') in RECORD_REVIEW_REASONS,
+    ):
         return None
     if latest.get('value_snapshot') != value_snapshot(record[column]):
         return None
@@ -568,9 +605,7 @@ def match_review(
     if (
         not subject
         or canonical_reason(latest.get('reason')) not in ELIGIBLE_REASONS
-        or _date(latest.get('auto_apply_from')) is None
-        or day < _date(latest['auto_apply_from'])
-        or day <= _date(latest['inspection_date'])
+        or not _auto_review_applies(latest, day)
     ):
         return None
     return _metadata(latest, automatic=True)

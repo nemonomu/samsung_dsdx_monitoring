@@ -10,7 +10,7 @@ from math import ceil
 from threading import Lock
 from time import monotonic
 
-from apps.common.null_review_evidence import KOREA, POLICY_START
+from apps.common.null_review_evidence import ADJACENT_REVIEW_COUNTRIES, KOREA, POLICY_START
 from apps.common.sea_retail import SEA_RETAIL_SOURCES
 from apps.common.costco_layer2 import dryer_source
 from apps.dx.dx_layer2.seg_sources import SEG_SOURCE_CONFIG
@@ -153,7 +153,10 @@ def _auto_days(cursor, filters, manual, sources):
         if not source or any(filters[key] and filters[key] != source[key]
                              for key in ('country', 'product_line')):
             continue
-        day = max(_day(first), POLICY_START, filters['start'] or _day(first))
+        first_day = _day(first)
+        if source['country'] in ADJACENT_REVIEW_COUNTRIES:
+            first_day -= timedelta(days=1)
+        day = max(first_day, POLICY_START, filters['start'] or first_day)
         while day <= end:
             days.add((day, source['history_category']))
             day += timedelta(days=1)

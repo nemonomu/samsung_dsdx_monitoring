@@ -108,6 +108,15 @@ class HistoryTests(unittest.TestCase):
             end_date='2026-09-23', country='SEG'), [], history._sources())
         self.assertEqual([(TODAY, 'seg_ref_retail'), (date(2026, 9, 22), 'seg_ref_retail')], scopes)
 
+    def test_auto_history_starts_a_day_before_first_seuk_or_siel_evidence(self):
+        cursor = Mock()
+        cursor.fetchall.return_value = [('dx_siel.dx_siel_tv_retail_com', TODAY),
+                                        ('dx_seuk.dx_seuk_tv_retail_com', TODAY),
+                                        ('tv_retail_com', TODAY)]
+        scopes = history._auto_days(cursor, filters(date='2026-09-22'), [], history._sources())
+        self.assertEqual({(date(2026, 9, 22), 'siel_tv_retail'),
+                          (date(2026, 9, 22), 'seuk_tv_retail')}, set(scopes))
+
     def test_enrichment_only_uses_registry_tables_and_keeps_deleted_source_evidence(self):
         cursor = Mock()
         cursor.fetchall.return_value = [(1, 'sku-1', 'https://example.com/product',

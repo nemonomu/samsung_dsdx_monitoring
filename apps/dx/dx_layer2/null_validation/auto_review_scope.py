@@ -1,7 +1,8 @@
 """Conservative source pruning for automatic review history, never approvals."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
-from apps.common.null_review_evidence import EVIDENCE_TABLE, POLICY_VERSION
+from apps.common.null_review_evidence import ADJACENT_REVIEW_COUNTRIES, EVIDENCE_TABLE, POLICY_VERSION
 
 
 # Bound the total concurrency within each application worker, even when several
@@ -29,10 +30,14 @@ def load_scope(cursor, inspection_date):
     # Include revoked, same-day and ineligible decisions too. The existing
     # matcher must decide precedence and cancellations; this only skips scopes
     # with no evidence at all and cannot introduce a new automatic approval.
+    day = date.fromisoformat(str(inspection_date)[:10])
     cursor.execute(f'''SELECT DISTINCT table_name, retailer
                        FROM {EVIDENCE_TABLE}
-                       WHERE policy_version = %s AND inspection_date <= %s''',
-                   [POLICY_VERSION, inspection_date])
+                       WHERE policy_version = %s AND (
+                           inspection_date <= %s
+                           OR (country = ANY(%s) AND inspection_date = %s)
+                       )''',
+                   [POLICY_VERSION, day, sorted(ADJACENT_REVIEW_COUNTRIES), day + timedelta(days=1)])
     scopes = {}
     for table, retailer in cursor.fetchall():
         scopes.setdefault(str(table).removeprefix('public.'), set()).add(

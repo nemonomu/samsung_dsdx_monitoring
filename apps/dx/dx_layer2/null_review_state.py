@@ -52,8 +52,11 @@ def review_state(cursor, inspection_date, records, columns, manual_reviews,
             review = null_review_evidence.match_review(
                 record, column, inspection_date, evidence, **context,
             ) if enabled else None
-            # Same-day legacy approvals remain valid for their exact cell;
-            # only captured evidence can authorize a subsequent day's cell.
+            # Keep an exact-day manual approval even if its evidence predates
+            # capture or its reviewer confirmed it after the selected day.
+            if (review and review.get('auto_applied') and key not in exact_evidence
+                    and country in null_review_evidence.ADJACENT_REVIEW_COUNTRIES):
+                review = manual_reviews.get(key, review)
             if review:
                 reviews[key] = review
             else:

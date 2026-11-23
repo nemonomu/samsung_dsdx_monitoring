@@ -49,6 +49,30 @@ def current_record(**changes):
 
 
 class NullReviewStateTests(unittest.TestCase):
+    def test_adjacent_evidence_respects_exact_day_manual_and_keeps_history_basis(self):
+        context = dict(table_name='dx_siel.dx_siel_tv_retail_com', country='SIEL',
+                       product_line='TV', retailer='Jiomart')
+        batch = [current_record(), current_record(id=43)]
+        basis = captured_evidence(context, reason=evidence.NON_TARGET_REASON)
+        basis.update(inspection_date=date(2026, 9, 14),
+                     reviewed_at=datetime(2026, 9, 14, 10, tzinfo=evidence.KOREA),
+                     auto_apply_from=date(2026, 9, 15))
+        cursor = ScriptedCursor([{'fetchall': [basis]}])
+        manual = {'42_sku': {'reason': '상품페이지 내 항목 부재'}}
+        reviews, stats, logs = null_review_state.review_state(
+            cursor, DAY, batch, ['sku'], manual, **context,
+            is_null=lambda value, _field: value is None,
+        )
+        sql, params = cursor.calls[0]
+        self.assertIn('OR inspection_date IN (%s, %s)', sql)
+        self.assertIn(date(2026, 9, 14), params)
+        self.assertEqual(manual['42_sku'], reviews['42_sku'])
+        self.assertEqual(1, stats['manual_reviewed_count'])
+        self.assertEqual(1, stats['auto_reviewed_count'])
+        self.assertEqual(43, logs[0]['record_id'])
+        self.assertEqual('2026-09-13', logs[0]['applied_date'])
+        self.assertEqual('2026-09-14', logs[0]['original_crawl_date'])
+
     def test_seib_source_keys_reuse_canonical_product_approval(self):
         from apps.common.seib_retail import SEIB_SOURCE_CONFIG
 

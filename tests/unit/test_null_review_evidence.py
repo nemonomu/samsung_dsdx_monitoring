@@ -184,6 +184,31 @@ class NullReviewEvidenceTests(unittest.TestCase):
         self.assertIsNone(self.match(row, day='2026-09-15'))
         self.assertTrue(self.match(row, day='2026-09-16')['auto_applied'])
 
+    def test_seuk_and_siel_apply_late_confirmation_on_both_adjacent_dates(self):
+        for country in ('SEUK', 'SIEL'):
+            context = dict(self.context, country=country)
+            _, row, _ = self.capture(context=context, day='2026-09-14',
+                                     now=self.now.replace(day=16))
+            self.assertEqual(date(2026, 9, 17), row['auto_apply_from'])
+            for day in ('2026-09-13', '2026-09-15', '2026-09-17'):
+                with self.subTest(country=country, day=day):
+                    review = self.match(row, context=context, day=day)
+                    self.assertTrue(review['auto_applied'])
+                    self.assertEqual('2026-09-14', review['original_crawl_date'])
+            for day in ('2026-09-12', '2026-09-14', '2026-09-16'):
+                self.assertIsNone(self.match(row, context=context, day=day))
+            self.assertIsNone(self.match(row, context=context,
+                                         record=dict(self.record, id=43, ref_capacity='')))
+
+    def test_later_adjacent_review_can_be_revoked_without_reviving_older_review(self):
+        context = dict(self.context, country='SIEL')
+        _, old, _ = self.capture(context=context)
+        _, new, _ = self.capture(context=context, day='2026-09-14',
+                                 now=self.now.replace(day=14))
+        new.update(id=102, revoked_at=self.now.replace(day=15))
+        self.assertTrue(self.match(old, context=context)['auto_applied'])
+        self.assertIsNone(self.match([old, new], context=context))
+
     def test_korean_midnight_controls_manual_start_not_utc_date(self):
         utc_before = datetime(2026, 9, 11, 14, 59, tzinfo=timezone.utc)
         metadata, row, cursor = self.capture(now=utc_before)
