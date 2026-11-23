@@ -93,8 +93,13 @@
         const reasons = group.reasons || [];
         const queries = group.queries || {};
         const queryBlock = (title, sql) => sql ? `<div class="fr-query"><div><b>${title}</b><button data-fr="copy-sql" type="button">SQL 복사</button></div><pre>${escape(sql)}</pre></div>` : '';
-        return `<div class="fr-rule"><div class="fr-rule-original"><b>검증규칙 허용 패턴</b><code>${escape(pattern || '등록된 허용 패턴 없음')}</code>${description ? `<small>${escape(description)}</small>` : ''}</div>
-            <div class="fr-rule-examples"><b>정상 예시</b>${examples.length ? examples.map(value => `<code>${escape(value)}</code>`).join('') : '<small>표시할 예시가 없습니다. 허용 패턴과 설명을 확인하세요.</small>'}</div></div>
+        const showPattern = state.data.show_pattern !== false;
+        const ruleText = showPattern
+            ? `<b>검증규칙 허용 패턴</b><code>${escape(pattern || '등록된 허용 패턴 없음')}</code>${description ? `<small>${escape(description)}</small>` : ''}`
+            : `<b>검증 설명</b><p>${escape(description || '등록된 검증 설명이 없습니다.')}</p>`;
+        const exampleNote = showPattern ? '허용 패턴과 설명을 확인하세요.' : '검증 설명을 확인하세요.';
+        return `<div class="fr-rule"><div class="fr-rule-original">${ruleText}</div>
+            <div class="fr-rule-examples"><b>정상 예시</b>${examples.length ? examples.map(value => `<code>${escape(value)}</code>`).join('') : `<small>표시할 예시가 없습니다. ${exampleNote}</small>`}</div></div>
             <div class="fr-reasons"><b>이상 / 확인 필요 이유</b><span>${escape(reasons.join(' · ') || (group.states.error ? '이전에 오류로 확정한 값입니다.' : '기존 기준 통과 값의 재확인 대상입니다.'))}</span></div>
             <details class="fr-queries"><summary>조회 SQL · 이번 처리 대상 / 동일 값 전체 이력</summary>${queryBlock('이번 처리 대상 ID 조회', queries.targets)}${queryBlock('동일 값 전체 이력 조회', queries.all_values)}</details>`;
     }

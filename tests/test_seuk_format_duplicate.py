@@ -131,13 +131,19 @@ class SeukFormatDuplicateTests(unittest.TestCase):
                   'final_sku_price', 'original_sku_price', 'savings', 'screen_size'}
         for retailer in ('Amazon', 'Argos'):
             fields = shared | ({'count_of_reviews'} if retailer == 'Argos' else set())
-            details = formats.get_format_rules(Mock(), 'seuk_tv', retailer)['rules']
+            payload = formats.get_format_rules(Mock(), 'seuk_tv', retailer)
+            self.assertFalse(payload['show_pattern'])
+            details = payload['rules']
             self.assertEqual(fields, {rule['field'] for rule in details})
+            descriptions = {rule['field']: rule['description'] for rule in details}
+            self.assertIn('소수 허용', descriptions['screen_size'])
+            self.assertIn('정수', descriptions['savings'])
             for rule in details:
+                self.assertNotIn('pattern', rule)
                 self.assertTrue(rule['examples'])
                 for value in rule['examples']:
                     self.assertEqual([], fmt.evaluate_format({rule['field']: value}, 'seuk_tv', retailer))
-            for value in ('55inch', '55 inch'):
+            for value in ('55inch', '55 inch', '54.6 inch'):
                 self.assertEqual([], fmt.evaluate_format({'screen_size': value}, 'seuk_tv', retailer))
             self.assertEqual(['screen_size'], fmt.evaluate_format({'screen_size': '55cm'}, 'seuk_tv', retailer))
         for retailer, accepted, rejected in (
@@ -152,8 +158,13 @@ class SeukFormatDuplicateTests(unittest.TestCase):
             before_launch = fmt.format_detail(cursor, date(2026, 11, 21), 'seuk_tv', retailer)
             self.assertEqual([], before_launch['results'])
             cursor.execute.assert_not_called()
-        self.assertEqual([], fmt.evaluate_format({'savings': '5.67%'}, 'seuk_tv', 'Argos'))
-        self.assertEqual(['savings'], fmt.evaluate_format({'savings': '100.01%'}, 'seuk_tv', 'Argos'))
+        for value in ('5.67%', '5.0%', '100.00%'):
+            self.assertEqual(['savings'], fmt.evaluate_format({'savings': value}, 'seuk_tv', 'Argos'))
+        for value in ('£5.67', '0%', '100%'):
+            self.assertEqual([], fmt.evaluate_format({'savings': value}, 'seuk_tv', 'Argos'))
+        currys = formats.get_format_rules(Mock(), 'seuk_tv', 'Currys')
+        self.assertNotIn('show_pattern', currys)
+        self.assertTrue(all(rule['pattern'] for rule in currys['rules']))
 
     def test_tv_format_edit_scopes_screen_size_to_the_new_retailers(self):
         source = policy.SEUK_SOURCE_CONFIG['seuk_tv']

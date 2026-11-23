@@ -5,6 +5,7 @@ const base = 'apps/dx/dx_layer2/static/dx_layer2/js/';
 let html, options;
 const context = {
     console, URL, window: {}, document: {addEventListener() {}},
+    esc: String,
     renderCountryFlagLabel: String,
     getDetailBody: () => ({innerHTML: ''}), getSelectedDate: () => '2026-10-25',
     isInlineMode: () => true, buildDetailContainerHtml: data => data.itemQueryHtml,
@@ -61,4 +62,25 @@ for (const product of products) {
     assert(html.includes('2026-10-25'));
     assert(!html.includes('AT TIME ZONE'));
 }
-console.log('SEUK format/duplicate: groups, four products, review controls, scoped edits and original-date SQL passed.');
+(async () => {
+    const modalBody = {};
+    context.AppModal = {setTitle() {}, setBody() {}, open() {}, getBody: () => modalBody};
+    context.fetch = async url => ({
+        json: async () => url.includes('retailer=Currys')
+            ? {rules: [{field: 'savings', description: '금액 형식', pattern: '£400.99', examples: ['£400.99']}]}
+            : {show_pattern: false, rules: [
+                {field: 'screen_size', description: '1 이상의 숫자(소수 허용)', examples: ['54.6 inch']},
+            ]},
+    });
+    for (const retailer of ['Amazon', 'Argos']) {
+        await context.openRuleModal('seuk_tv_retail', retailer);
+        assert(modalBody.innerHTML.includes('<th>검증 설명</th>'));
+        assert(modalBody.innerHTML.includes('<th>정상 예시</th>'));
+        assert(modalBody.innerHTML.includes('소수 허용'));
+        assert(modalBody.innerHTML.includes('<code>54.6 inch</code>'));
+        assert(!modalBody.innerHTML.includes('허용 패턴/값'));
+    }
+    await context.openRuleModal('seuk_tv_retail', 'Currys');
+    assert(modalBody.innerHTML.includes('허용 패턴/값'));
+    console.log('SEUK format/duplicate and retailer-specific rule descriptions passed.');
+})().catch(error => {console.error(error); process.exitCode = 1;});

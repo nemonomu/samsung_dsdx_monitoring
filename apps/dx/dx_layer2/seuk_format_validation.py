@@ -17,9 +17,11 @@ _INTEGER = re.compile(r'^(?:0|[1-9][0-9]*)$')
 _RATING = re.compile(r'^(?:[0-4](?:\.[0-9])?|5(?:\.0)?)$')
 _GBP = re.compile(r'^£(?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)\.[0-9]{2}$')
 _PERCENT = re.compile(r'^(?:100|[1-9]?[0-9])%$')
-_ARGOS_PERCENT = re.compile(r'^(?:100(?:\.0{1,2})?|[1-9]?[0-9](?:\.[0-9]{1,2})?)%$')
 _SCREEN_INCHES = re.compile(r'^[1-9][0-9]*(?:\.[0-9]+)?\s*inch(?:es)?$', re.I)
-_AMAZON_PRICE_STATUSES = ('Out of stock', 'Currently unavailable', 'Price higher than typical')
+_PRICE_STATUSES = {
+    'amazon': ('Out of stock', 'Currently unavailable', 'Price higher than typical'),
+    'argos': ('Currently unavailable',),
+}
 _REF_CAPACITY = re.compile(r'^[0-9]+(?:\.[0-9]+)?\s*L$', re.I)
 _LDY_CAPACITY = re.compile(r'^[0-9]+(?:\.[0-9]+)?\s*kg$', re.I)
 _WASHER_CAPACITY = re.compile(r'^[0-9]+(?:\.[0-9]+)?\s*kg(?:,\s*[0-9]+(?:\.[0-9]+)?\s*kg)?$', re.I)
@@ -71,21 +73,21 @@ def format_rules(product_line, retailer=RETAILER):
     if retailer == RETAILER:
         return rules
 
-    statuses = _AMAZON_PRICE_STATUSES if retailer == 'Amazon' else ('Currently unavailable',)
+    statuses = _PRICE_STATUSES[seuk_retailer_key(retailer)]
     rules['account_name'] = (lambda value: seuk_retailer_key(value) == seuk_retailer_key(retailer), retailer)
     rules['final_sku_price'] = (
         lambda value: bool(_GBP.fullmatch(str(value).strip())) or str(value).strip() in statuses,
         ' / '.join(('£1399.00', '£1,399.00', *statuses)),
     )
     rules['screen_size'] = (lambda value: bool(_SCREEN_INCHES.fullmatch(str(value).strip())),
-                            '55inch / 55 inch')
+                            '55inch / 54.6 inch / 55 inches')
     if retailer == 'Amazon':
         rules.pop('count_of_reviews')
         rules['savings'] = (lambda value: bool(_PERCENT.fullmatch(str(value).strip())), '15%')
     else:
         rules['savings'] = (
-            lambda value: bool(_GBP.fullmatch(str(value).strip()) or _ARGOS_PERCENT.fullmatch(str(value).strip())),
-            '£20.99 / 10% / 5.67%',
+            lambda value: bool(_GBP.fullmatch(str(value).strip()) or _PERCENT.fullmatch(str(value).strip())),
+            '£20.99 / 10% / 25%',
         )
     return rules
 
@@ -98,11 +100,34 @@ def get_format_editable_columns(product_line, retailer=RETAILER):
     return get_format_columns(product_line, retailer)
 
 
+def uses_rule_descriptions(product_line, retailer):
+    return product_line == 'seuk_tv' and seuk_retailer_key(retailer) in _PRICE_STATUSES
+
+
+def _retailer_rule_descriptions(retailer):
+    retailer_key = seuk_retailer_key(retailer)
+    money = '£ 기호가 붙은 0 이상의 금액. 소수점 이하 두 자리이며 천 단위 쉼표는 선택입니다.'
+    percent = '0~100의 정수 뒤에 %를 붙인 할인율'
+    statuses = ', '.join(_PRICE_STATUSES[retailer_key])
+    return {
+        'country': '국가 코드 SEUK. 대소문자 무관.',
+        'account_name': f'리테일러명 {retailer_key.capitalize()}. 대소문자 무관.',
+        'count_of_reviews': '0 이상의 정수.',
+        'count_of_star_ratings': '0 이상의 정수.',
+        'star_rating': '0~5의 숫자. 소수점 이하 한 자리까지 허용합니다.',
+        'final_sku_price': f'{money} 상태 문구도 허용합니다. {statuses}',
+        'original_sku_price': money,
+        'savings': f'{percent}.' if retailer_key == 'amazon' else f'{money} {percent}도 허용합니다.',
+        'screen_size': '1 이상의 숫자(소수 허용)에 inch 또는 inches를 붙입니다. 단위 앞 공백은 선택입니다.',
+    }
+
+
 def get_format_rule_details(product_line, retailer=RETAILER):
     key = product_line_for(product_line)
     if key is None:
         return []
-    return [{'field': field, 'description': f'{field} 값 형식', 'pattern': pattern}
+    descriptions = _retailer_rule_descriptions(retailer) if uses_rule_descriptions(key, retailer) else {}
+    return [{'field': field, 'description': descriptions.get(field, f'{field} 값 형식'), 'pattern': pattern}
             for field, (_validator, pattern) in format_rules(key, retailer).items()]
 
 
@@ -118,7 +143,9 @@ def _serialize(row, product_line, retailer):
     result['error_fields'] = evaluate_format(row, product_line, retailer)
     result['error_field'] = ', '.join(result['error_fields'])
     rules = format_rules(product_line, retailer)
-    result['error_details'] = {field: {'rule': rules[field][1], 'reason': '허용 형식 또는 값과 일치하지 않습니다'}
+    descriptions = _retailer_rule_descriptions(retailer) if uses_rule_descriptions(product_line, retailer) else {}
+    result['error_details'] = {field: {'rule': descriptions.get(field, rules[field][1]),
+                                       'reason': '허용 형식 또는 값과 일치하지 않습니다'}
                                for field in result['error_fields']}
     return result
 
