@@ -151,16 +151,17 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
                    TO_CHAR(MIN(source.crawl_datetime) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS') AS started_at,
                    TO_CHAR(MAX(source.crawl_datetime) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS') AS ended_at,
                    COUNT(source.main_rank) AS main_count, COUNT(source.bsr_rank) AS bsr_count,
-                   BOOL_OR(latest.source_day IS NOT NULL) AS applied, COUNT(*) AS raw_count
+                   BOOL_OR(latest.source_day IS NOT NULL) AS applied, COUNT(*) AS raw_count,
+                   ARRAY_AGG(DISTINCT source.account_name ORDER BY source.account_name) AS account_names
             FROM scoped source LEFT JOIN latest ON source.source_day = latest.source_day
                AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
             GROUP BY source.batch_id ORDER BY MIN(source.crawl_datetime)''', args)
-        fields = ('batch_id', 'started_at', 'ended_at', 'main_count', 'bsr_count', 'applied', 'raw_count')
-        base_sql = jiomart.copy_scope(source['table_name'], day)
+        fields = ('batch_id', 'started_at', 'ended_at', 'main_count', 'bsr_count', 'applied', 'raw_count', 'account_names')
         batches = [dict(row) if isinstance(row, Mapping) else dict(zip(fields, row)) for row in cursor.fetchall()]
         for batch in batches:
-            batch['sql'] = cursor.mogrify(f'WITH {base_sql}\nSELECT * FROM scoped WHERE batch_id IS NOT DISTINCT FROM %s ORDER BY id;',
-                                          (batch['batch_id'],)).decode('utf-8')
+            batch['sql'] = jiomart.copy_batch_query(
+                source['table_name'], day, batch['batch_id'], batch.pop('account_names'),
+            )
         return {'retailer': retailer, 'source_date': str(day), 'time_basis': 'KST', 'batches': batches,
                 'aggregation_basis': 'crawl_datetime이 가장 늦은 배치'}
     if check_type == 'seib_retail':

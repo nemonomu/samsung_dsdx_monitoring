@@ -95,3 +95,24 @@ def copy_queries(table, day):
         'rows': f'WITH {ctes}\nSELECT source.* {LATEST_ROWS} ORDER BY source.id;',
         'batches': f'WITH {ctes}\nSELECT batch_id, COUNT(*) FROM scoped GROUP BY batch_id;',
     }
+
+
+def copy_batch_query(table, day, batch_id, account_names):
+    """Display the rows of an already selected Jiomart batch."""
+    _product(table)
+
+    def literal(value):
+        return "'" + value.replace("'", "''") + "'"
+
+    if preview(day):
+        dates = f"crawl_datetime = TIMESTAMPTZ '{TEST_TIMESTAMP}'"
+    else:
+        next_day = day + timedelta(days=1)
+        dates = (f"crawl_datetime >= TIMESTAMPTZ '{day} 00:00:00+09'\n"
+                 f"  AND crawl_datetime <  TIMESTAMPTZ '{next_day} 00:00:00+09'")
+    accounts = [literal(name) for name in account_names]
+    account = f'= {accounts[0]}' if len(accounts) == 1 else f"IN ({', '.join(accounts)})"
+    batch = 'IS NULL' if batch_id is None else f'= {literal(batch_id)}'
+    return (f'SELECT *\nFROM {table}\nWHERE {dates}\n'
+            f'  AND account_name {account}\n  AND batch_id {batch}\n'
+            'ORDER BY item, crawl_datetime;')

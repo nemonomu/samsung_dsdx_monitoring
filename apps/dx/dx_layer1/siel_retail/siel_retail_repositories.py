@@ -13,10 +13,12 @@ def get_jiomart_counts(cursor, source, source_date):
                                     include_preview=jiomart.preview(source_date))
     cursor.execute(f'''WITH {ctes}
         SELECT COUNT(*) AS total, COUNT(source.main_rank) AS main_count,
-               COUNT(source.bsr_rank) AS bsr_count, MAX(source.batch_id) AS batch_id
+               COUNT(source.bsr_rank) AS bsr_count, MAX(source.batch_id) AS batch_id,
+               ARRAY_AGG(DISTINCT source.account_name ORDER BY source.account_name) AS account_names
         {jiomart.LATEST_ROWS}''', params)
     row = cursor.fetchone()
-    return tuple(row[key] for key in ('total', 'main_count', 'bsr_count', 'batch_id')) if isinstance(row, Mapping) else row
+    fields = ('total', 'main_count', 'bsr_count', 'batch_id', 'account_names')
+    return tuple(row[key] for key in fields) if isinstance(row, Mapping) else row
 
 
 def get_latest_main_batch_counts(cursor, product_line, source_date):

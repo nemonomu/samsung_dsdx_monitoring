@@ -16,6 +16,7 @@ const context = {
     renderCountryFlagLabel: value => value,
     showToast: () => {},
     navigator: {},
+    URLSearchParams,
     document: {
         getElementById: id => nodes[id],
         createElement: () => ({style: {}, select() {copied = this.value;}, remove() {fallbackRemoved = true;}}),
@@ -25,7 +26,9 @@ const context = {
         create() {}, setTitle() {}, open() {},
         setBody(id, html) {
             body = html;
-            nodes['l1-query-retailer'] = {value: '0'};
+            const options = [...html.matchAll(/<option value="[^"]*">([^<]*)<\/option>/g)]
+                .map(match => ({textContent: match[1]}));
+            nodes['l1-query-retailer'] = {value: '0', options};
             nodes['l1-query-date'] = {value: html.match(/id="l1-query-date" value="([^"]*)"/)[1]};
             nodes['l1-query-sql'] = {};
             nodes['l1-query-copy'] = {};
@@ -143,6 +146,44 @@ assert(nodes['l1-query-sql'].textContent.includes('FROM dx_sem.dx_sem_tv_retail_
 assert.strictEqual(nodes['l1-query-date'].value, '2026-03-01');
 
 (async () => {
+    const todaySql = "SELECT *\nFROM dx_siel.dx_siel_tv_retail_com\n" +
+        "WHERE crawl_datetime >= TIMESTAMPTZ '2026-11-23 00:00:00+09'\n" +
+        "  AND crawl_datetime <  TIMESTAMPTZ '2026-11-24 00:00:00+09'\n" +
+        "  AND account_name = 'Jiomart'\n  AND batch_id = 'j20261123_0004'\nORDER BY item, crawl_datetime;";
+    const previousSql = todaySql.replace('2026-11-23 00:00', '2026-11-22 00:00')
+        .replace('2026-11-24 00:00', '2026-11-23 00:00').replace('j20261123_0004', 'j20261122_0100');
+    query.button('SIEL', {name: 'TV', source_date: '2026-11-23', retailers: [
+        {retailer: 'Jiomart', batch_id: 'j20261123_0004', copy_query: todaySql}
+    ]}, 2, 0);
+    query.open('SIEL-2-0');
+    assert.strictEqual(nodes['l1-query-sql'].textContent, todaySql);
+    let finishRequest;
+    context.fetch = url => {
+        const params = new URLSearchParams(url.split('?')[1]);
+        assert.strictEqual(params.get('retailer'), 'Jiomart');
+        assert.strictEqual(params.get('product_line'), 'siel_tv');
+        assert.strictEqual(params.get('source_date'), '2026-11-22');
+        return new Promise(resolve => {finishRequest = resolve;});
+    };
+    const batchResponse = () => ({ok: true, json: async () => ({batches: [
+        {applied: false, batch_id: 'earlier', sql: 'earlier SQL'},
+        {applied: true, batch_id: 'j20261122_0100', sql: previousSql},
+    ]})});
+    nodes['l1-query-date'].value = '2026-11-22';
+    const stale = query.update();
+    assert(nodes['l1-query-copy'].disabled);
+    nodes['l1-query-date'].value = '2026-11-23';
+    query.update();
+    finishRequest(batchResponse());
+    await stale;
+    assert.strictEqual(nodes['l1-query-sql'].textContent, todaySql);
+    nodes['l1-query-date'].value = '2026-11-22';
+    const loaded = query.update();
+    finishRequest(batchResponse());
+    await loaded;
+    assert.strictEqual(nodes['l1-query-sql'].textContent, previousSql);
+    assert.strictEqual(nodes['l1-query-retailer'].options[0].textContent, 'Jiomart / j20261122_0100');
+
     // The SQL shown and copied from a Casas Bahia card must use the DB account.
     query.button('SEDA', {name: 'TV', source_date: '2026-09-13',
         retailers: [{retailer: 'Casas Bahia', batch_id: 'c_20260913_200300'}]}, 9, 0);

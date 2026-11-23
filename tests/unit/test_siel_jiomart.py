@@ -31,7 +31,8 @@ class JiomartLayer1Tests(TestCase):
         now = datetime(2026, 11, 22, 11, tzinfo=jiomart.KST)
         legacy = [dict(retailer='Amazon', actual_count=300), dict(retailer='Flipkart', actual_count=300)]
         with patch.object(siel_retail_services.repo, 'get_latest_main_batch_counts', return_value=legacy), \
-             patch.object(siel_retail_services.repo, 'get_jiomart_counts', return_value=(366, 300, 100, 'batch')):
+             patch.object(siel_retail_services.repo, 'get_jiomart_counts',
+                          return_value=(366, 300, 100, 'batch', ['Jiomart'])):
             result = siel_retail_services.get_layer1_stats(Mock(), jiomart.START, now)
         check = result['check']
         self.assertEqual(2898, check['actual'])
@@ -39,6 +40,8 @@ class JiomartLayer1Tests(TestCase):
             retailer = category['retailers'][-1]
             self.assertEqual(('Jiomart', 'OK', 366, jiomart.WINDOW),
                              (retailer['retailer'], retailer['status'], retailer['actual'], retailer['collection_window']))
+            self.assertTrue(retailer['copy_query'].startswith(f"SELECT *\nFROM {category['table_name']}\n"))
+            self.assertIn("AND account_name = 'Jiomart'\n  AND batch_id = 'batch'", retailer['copy_query'])
         rows = normalize_check(check, 'SIEL', jiomart.START)
         for row in rows:
             if row['retailer'] == 'Jiomart':
@@ -50,13 +53,15 @@ class JiomartLayer1Tests(TestCase):
         legacy = [dict(retailer='Amazon', actual_count=300), dict(retailer='Flipkart', actual_count=300)]
         with patch.object(siel_retail_services.repo, 'get_latest_main_batch_counts', return_value=legacy), \
              patch.object(siel_retail_services.repo, 'get_jiomart_counts') as counts:
-            counts.return_value = (366, 300, 100, jiomart.TEST_BATCH)
+            counts.return_value = (366, 300, 100, jiomart.TEST_BATCH, ['Jiomart'])
             preview = siel_retail_services.get_layer1_stats(Mock(), jiomart.TEST_DAY, now)
-            counts.return_value = (0, 0, 0, None)
+            counts.return_value = (0, 0, 0, None, None)
             deleted = siel_retail_services.get_layer1_stats(Mock(), jiomart.TEST_DAY, now)
         self.assertEqual(1800, preview['check']['actual'])
         self.assertEqual(1800, deleted['check']['actual'])
         self.assertEqual([], deleted['failed_items'])
+        copy = preview['check']['categories'][0]['retailers'][-1]['copy_query']
+        self.assertIn(f"crawl_datetime = TIMESTAMPTZ '{jiomart.TEST_TIMESTAMP}'", copy)
         rows = normalize_check(preview['check'], 'SIEL', jiomart.TEST_DAY)
         self.assertTrue(all(row['preview_mode'] and not observation_eligible(row)
                             for row in rows if row['retailer'] == 'Jiomart'))
@@ -74,3 +79,15 @@ class JiomartLayer1Tests(TestCase):
         ready = compare_columns(data, date(2026, 11, 28), completed)[0]
         self.assertEqual((5, 100, 'abnormal'), (ready['history_days'], ready['baseline'], ready['status']))
         self.assertEqual('uncollected', compare_columns(data, date(2026, 11, 24), completed)[0]['status'])
+
+    def test_batch_copy_preserves_literal_account_names_and_next_day(self):
+        table = get_siel_source('siel_tv')['table_name']
+        sql = jiomart.copy_batch_query(table, date(2026, 11, 30), "b'1", ['Jiomart', ' jiomart '])
+        self.assertEqual(
+            f"SELECT *\nFROM {table}\n"
+            "WHERE crawl_datetime >= TIMESTAMPTZ '2026-11-30 00:00:00+09'\n"
+            "  AND crawl_datetime <  TIMESTAMPTZ '2026-12-01 00:00:00+09'\n"
+            "  AND account_name IN ('Jiomart', ' jiomart ')\n"
+            "  AND batch_id = 'b''1'\nORDER BY item, crawl_datetime;", sql,
+        )
+        self.assertIn('AND batch_id IS NULL', jiomart.copy_batch_query(table, jiomart.START, None, ['Jiomart']))

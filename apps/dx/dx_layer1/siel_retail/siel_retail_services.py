@@ -112,7 +112,7 @@ def _build_category(cursor, product_line, source, target_date, phase, now):
     source_day = _as_date(contract['source_date'])
     if jiomart.preview(source_day) or source_day >= jiomart.START:
         test = jiomart.preview(source_day)
-        total, main, bsr, batch = repo.get_jiomart_counts(cursor, source, source_day)
+        total, main, bsr, batch, accounts = repo.get_jiomart_counts(cursor, source, source_day)
         if not test or total:
             receipt = jiomart.phase(source_day, now)
             status = ('OK' if test else 'PENDING' if receipt == 'pending' else
@@ -122,7 +122,7 @@ def _build_category(cursor, product_line, source, target_date, phase, now):
                                   main_count=main, bsr_count=bsr, status=status, preview_mode=test,
                                   exclude_from_total=test, collection_phase=receipt,
                                   collection_window='테스트 조회' if test else jiomart.WINDOW,
-                                  copy_query=jiomart.copy_queries(source['table_name'], source_day)['rows'] if total else '',
+                                  copy_query=jiomart.copy_batch_query(source['table_name'], source_day, batch, accounts) if total else '',
                                   active_from=str(jiomart.START), source_date_basis=jiomart.DATE_BASIS))
     operating = [r for r in retailers if not r.get('exclude_from_total')]
     actual_total = sum(item['actual'] for item in operating)
