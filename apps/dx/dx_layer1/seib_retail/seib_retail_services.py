@@ -36,9 +36,8 @@ def get_layer1_stats(cursor, target_date, now=None):
                        collection_phase=row_phase, status=status, status_basis='historical_volume'),
                        'SEIB', key, mapping['source_date'])
             if name == 'ECI':
-                window = collection_window(source, name)
-                row['collection_window'] = (f'KST {window[0]:%H:%M}~{window[1]:%H:%M}' if window
-                                            else 'KST 다음 날 00:00 마감')
+                start, end = collection_window(source, name)
+                row['collection_window'] = f'KST {start:%H:%M}~{end:%H:%M}'
             if preview:
                 row.update(preview_mode=True, exclude_from_total=True, status='OK',
                            collection_window='테스트 적재 · 운영 집계 제외')

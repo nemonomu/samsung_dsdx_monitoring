@@ -105,9 +105,6 @@ def is_eci_appliance_preview(product, retailer, day):
 
 
 def collection_window(source, retailer):
-    if is_eci_appliance(source['source_key'], retailer):
-        # There is no agreed same-day cutoff for REF/LDY. Close at the next KST day.
-        return None
     if dryer_config(SEIB_COUNTRY, source['source_key'], retailer):
         return time(8), time(9)
     return time(1), time(4)
@@ -127,8 +124,6 @@ def collection_phase(day, now=None, *, source=None, retailer=RETAILER):
         return 'pending'
     if selected < current.date():
         return 'complete'
-    if window is None:
-        return 'collecting'
     start, end = window
     if current.time().replace(tzinfo=None) >= end:
         return 'complete'

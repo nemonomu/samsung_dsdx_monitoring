@@ -77,8 +77,6 @@ class SeibMonitoringTests(unittest.TestCase):
             _, _, params = policy.latest_scope(source, '2026-11-20', '2026-11-20', 'ECI', include_preview=True)
             self.assertEqual(['2026-11-20', '2026-11-20', 'eci', 'eci'], params)
             self.assertEqual({}, queries.raw_counts('SEIB', product, 'ECI', date(2026, 11, 20), date(2026, 11, 21)))
-            self.assertFalse(collection_complete('SEIB', product, 'ECI', start, datetime(2026, 11, 22, 23, 59, tzinfo=policy.KST)))
-            self.assertTrue(collection_complete('SEIB', product, 'ECI', start, datetime(2026, 11, 23, tzinfo=policy.KST)))
             rank_source = columns.select_source('SEIB', product, 'ECI')
             retailer = rank_source['retailers'][-1]
             rank_columns = dict.fromkeys(source['columns'], 'text')
@@ -88,6 +86,30 @@ class SeibMonitoringTests(unittest.TestCase):
             self.assertEqual(['2026-11-22', '2026-11-23'], params[-2:])
             sql, params, _ = ranks.query_spec(rank_source, retailer, rank_columns, date(2026, 11, 21), 'bsr')
             self.assertEqual(['2026-11-20', '2026-11-21'], params[-2:])
+
+    def test_eci_ref_and_ldy_stop_collecting_at_0400_kst(self):
+        day = date(2026, 11, 23)
+        media = (300, 300, 100, 'm1')
+        for hour, minute, phase, status in (
+                (0, 59, 'pending', 'PENDING'), (1, 0, 'collecting', 'COLLECTING'),
+                (3, 59, 'collecting', 'COLLECTING'), (4, 0, 'complete', 'OK')):
+            now = datetime(2026, 11, 23, hour, minute, tzinfo=policy.KST)
+            cursor = Mock()
+            cursor.fetchone.return_value = media
+            result = get_layer1_stats(cursor, day, now.astimezone(timezone.utc))
+            for category in result['check']['categories'][1:3]:
+                row = next(r for r in category['retailers'] if r['retailer'] == 'ECI')
+                self.assertEqual(('KST 01:00~04:00', phase, status),
+                                 (row['collection_window'], row['collection_phase'], row['status']))
+                self.assertEqual(phase == 'complete', collection_complete(
+                    'SEIB', category['category'], 'ECI', day, now))
+            if hour == 4:
+                dryer = next(r for r in result['check']['categories'][-1]['retailers'] if r['retailer'] == 'ECI')
+                self.assertEqual(('KST 08:00~09:00', 'pending'), (dryer['collection_window'], dryer['collection_phase']))
+                missing = (0, 0, 0, None)
+                cursor.fetchone.side_effect = [media, media, missing, media, missing, media, media]
+                result = get_layer1_stats(cursor, day, now)
+                self.assertEqual(['SEIB REF (ECI)', 'SEIB LDY (ECI)'], [r['source'] for r in result['failed_items']])
 
     def test_eci_preview_receipt_is_visible_but_deletion_does_not_change_status_or_totals(self):
         day = date(2026, 11, 20)
