@@ -102,6 +102,32 @@ class SeukFormatDuplicateTests(unittest.TestCase):
         self.assertNotIn('AT TIME ZONE',sql)
         self.assertEqual([str(DAY),str(DAY),'currys','currys'],params)
 
+    def test_seuk_tv_new_retailers_use_item_and_latest_batch_only(self):
+        day = date(2026, 11, 22)
+        source = dup.SEUK_SOURCE_CONFIG['seuk_tv']
+        self.assertEqual(('Currys', 'Amazon', 'Argos'), source['retailers'])
+        self.assertEqual([], fmt.get_format_rule_details('seuk_tv', 'Amazon'))
+        self.assertEqual([], fmt.get_format_rule_details('seuk_tv', 'Argos'))
+        rows = [record(id=1, item='ABC'), record(id=2, item=' ABC '), record(id=3, item='NEW')]
+        mapping = nulls._mapping(day, source)
+        with patch.object(dup, 'latest_rows', side_effect=lambda *args: (rows if args[-1] != 'Currys' else [], mapping)):
+            stats = {'tables': []}
+            self.assertEqual(2, dup.append_duplicate_stats(Mock(), day, stats, 'seuk_tv_retail'))
+            self.assertEqual([0, 1, 1], [r['duplicate_groups'] for r in stats['tables'][0]['retailers']])
+            for retailer in ('Amazon', 'Argos'):
+                detail = anomalies._get_anomaly_detail(Mock(), day, 'seuk_tv_retail', retailer, 1, 1, 50)
+                self.assertEqual(1, detail['results']['total_groups'])
+                self.assertEqual('ABC', detail['results']['duplicates'][0]['item'])
+                self.assertFalse(detail['allow_cleanup'])
+        cursor = Mock(description=[('id',)])
+        cursor.fetchall.return_value = []
+        table_context = duplicate_edit.source_for_table(source['table_name'])
+        duplicate_edit.scoped_rows(cursor, day, *table_context, 'Amazon')
+        sql, params = cursor.execute.call_args.args
+        self.assertIn('anchor.id DESC', sql)
+        self.assertIn('source.is_redirect IS NOT TRUE', sql)
+        self.assertEqual([str(day), str(day), 'amazon', 'amazon'], params)
+
     def test_format_edits_are_scoped_audited_and_exclusions_rejected(self):
         source=policy.SEUK_SOURCE_CONFIG['seuk_ref']
         for field in ('savings','ref_refrigerator_type'):

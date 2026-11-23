@@ -206,6 +206,7 @@ function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, da
 }
 
 function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, retailer, isTseRetail) {
+    if (data.query_sql) return data.query_sql;
     if (isTseRetail) {
         return _buildTseNullQuery(fieldName, data, records,
             (data.query_config || {})[fieldName] || [], date, days);

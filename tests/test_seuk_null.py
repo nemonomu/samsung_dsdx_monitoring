@@ -2,7 +2,7 @@
 import sys
 import unittest
 from contextlib import ExitStack
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -62,6 +62,79 @@ class SeukNullTests(unittest.TestCase):
         self.assertIn('FOR UPDATE OF source',cursor.execute.call_args.args[0])
         for field in ('loading_type','screen_size;DELETE','main_rank'):
             with self.assertRaises(ValueError): seuk.select_record(cursor,DAY,'seuk_tv',42,field)
+
+    def test_new_tv_null_columns_and_retailer_scope(self):
+        amazon = ('item', 'screen_size', 'final_sku_price', 'retailer_sku_name', 'star_rating',
+                  'count_of_star_ratings', 'country', 'account_name', 'product_url')
+        self.assertEqual(amazon, seuk.get_seuk_null_columns('seuk_tv', ' amazon '))
+        self.assertEqual(policy.get_seuk_null_columns('seuk_tv', 'Currys'),
+                         seuk.get_seuk_null_columns('seuk_tv', 'Argos'))
+        self.assertEqual(('Currys',), SOURCE['retailers'])
+        self.assertEqual(('Currys', 'Amazon', 'Argos'), seuk.SEUK_SOURCE_CONFIG['seuk_tv']['retailers'])
+        with self.assertRaises(ValueError):
+            seuk.get_seuk_null_columns('seuk_ref', 'Amazon')
+
+        day = date(2026, 11, 23)
+        scope = seuk.SEUK_SOURCE_CONFIG['seuk_tv']
+        cte, where, params = seuk._scope(scope, DAY, day, 'AMAZON')
+        self.assertEqual(['2026-11-22', str(day), 'amazon', 'amazon'], params)
+        self.assertIn(source_date_sql('anchor.crawl_datetime'), cte)
+        self.assertIn('anchor.id DESC', cte)
+        self.assertNotIn('is_redirect', cte)
+        self.assertIn('source.is_redirect IS NOT TRUE', where)
+        self.assertNotIn('is_redirect', seuk._scope(scope, DAY, day, 'Argos')[1])
+
+        cursor = Mock()
+        cursor.fetchone.return_value = None
+        seuk.select_record(cursor, day, 'seuk_tv', 42, 'final_sku_price')
+        sql, params = cursor.execute.call_args.args
+        self.assertIn('source.is_redirect IS NOT TRUE', sql)
+        self.assertIn('FOR UPDATE OF source', sql)
+        self.assertIn('amazon', params)
+        seuk.select_record(cursor, day, 'seuk_tv', 42, 'sku', for_edit=True)
+        sql, params = cursor.execute.call_args.args
+        self.assertNotIn('amazon', params)
+        self.assertNotIn('is_redirect', sql)
+        self.assertIn('argos', params)
+        seuk.select_record(cursor, day, 'seuk_tv', 42, 'final_sku_price', format_columns=('final_sku_price',))
+        self.assertEqual([str(day), str(day), 'currys', 'currys', 42], cursor.execute.call_args.args[1])
+
+    def test_new_tv_null_stats_and_detail_use_the_same_columns(self):
+        day = date(2026, 11, 22)
+        source = seuk.SEUK_SOURCE_CONFIG['seuk_tv']
+        mapping = seuk._mapping(day, source)
+        rows = {'Currys': [record(screen_size='55')],
+                'Amazon': [record(id=43, account_name='Amazon', count_of_reviews=None, sku=None)],
+                'Argos': [record(id=44, account_name='Argos', screen_size='55', sku=' ')]}
+        cursor = Mock()
+        cursor.mogrify.return_value = b'SELECT source.*;'
+        with patch.object(seuk, 'latest_rows', side_effect=lambda *args: (rows[args[-1]], mapping)) as load, \
+             patch.object(seuk, '_load_normal_reviews', return_value={}), \
+             patch.object(evidence, 'load_evidence', return_value=[]):
+            before = {'tables': []}
+            self.assertEqual(0, seuk.append_null_stats(cursor, day - timedelta(days=1), before, 'seuk_tv_retail'))
+            self.assertEqual(['Currys'], [r['retailer'] for r in before['tables'][0]['retailers']])
+            stats = {'tables': []}
+            self.assertEqual(2, seuk.append_null_stats(cursor, day, stats, 'seuk_tv_retail'))
+            currys, amazon, argos = stats['tables'][0]['retailers']
+            self.assertEqual((11, 9, 11), tuple(len(r['fields_detail']) for r in (currys, amazon, argos)))
+            self.assertEqual(1, amazon['fields_detail']['screen_size'])
+            self.assertEqual(1, argos['fields_detail']['sku'])
+            detail = seuk.null_detail(cursor, day, 'seuk_tv_retail', 'Amazon', 'screen_size', days=1)
+            self.assertEqual((['screen_size'], str(day), 'SELECT source.*;'),
+                             (detail['results'][0]['null_fields'], detail['active_from'], detail['query_sql']))
+            sql, params = cursor.mogrify.call_args.args
+            self.assertIn('source.is_redirect IS NOT TRUE', sql)
+            self.assertIn('source.id = ANY(%s)', sql)
+            self.assertEqual([str(day), str(day), 'amazon', 'amazon', [43]], params)
+            load.reset_mock()
+            self.assertEqual([], seuk.null_detail(cursor, day, 'seuk_tv_retail', 'Amazon', 'sku')['results'])
+            load.assert_not_called()
+            rows['Argos'] = []
+            waiting = {'tables': []}
+            seuk.append_null_stats(cursor, day, waiting, 'seuk_tv_retail')
+            self.assertEqual('PENDING', waiting['tables'][0]['retailers'][-1]['status'])
+            self.assertEqual('검증할 데이터 없음', waiting['tables'][0]['retailers'][-1]['validation_label'])
 
     def test_counts_distinguish_raw_pending_and_reviewed_cells(self):
         mapping = seuk._mapping(DAY,SOURCE)
@@ -181,6 +254,12 @@ class SeukNullTests(unittest.TestCase):
         self.assertTrue(parse_plpgsql(sql))
         self.assertNotIn('UPDATE dx_seuk.',sql)
         self.assertNotIn('DELETE FROM',sql)
+        tv_sql = (Path(__file__).resolve().parents[1]/'sql/setup_seuk_tv_layer2.sql').read_text(encoding='utf-8')
+        self.assertTrue(parse_sql(tv_sql))
+        self.assertTrue(parse_plpgsql(tv_sql))
+        self.assertNotIn('UPDATE dx_seuk.', tv_sql)
+        self.assertNotIn('DELETE FROM', tv_sql)
+        self.assertNotIn('format_validation', tv_sql)
 
 
 if __name__=='__main__': unittest.main()

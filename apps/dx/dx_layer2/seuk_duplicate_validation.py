@@ -1,6 +1,6 @@
 """SEUK duplicate inspection on the original collection day and latest batch."""
-from apps.common.seuk_retail import SEUK_SOURCE_CONFIG, enabled, product_line_for, normalize_retailer, retailer_start_date
-from .seuk_null_validation import latest_rows
+from apps.common.seuk_retail import enabled, product_line_for, normalize_retailer
+from .seuk_null_validation import SEUK_SOURCE_CONFIG, latest_rows, retailer_start_date
 from .sem_validation import _duplicate_groups
 
 

@@ -44,4 +44,6 @@ for(const product of products){
     assert(sql.includes("'sku''1'"));
     assert(!sql.includes('AT TIME ZONE'));
 }
+const amazonSql = 'WITH latest AS (...) SELECT * FROM dx_seuk.dx_seuk_tv_retail_com WHERE is_redirect IS NOT TRUE;';
+assert.equal(context._buildNullRetailDisplayQuery('screen_size', {query_sql: amazonSql}, [], '2026-11-22', 3, 'Amazon', false), amazonSql);
 console.log('SEUK NULL: four-product grouping, same-day edits, bounded history and raw-date SQL passed.');
