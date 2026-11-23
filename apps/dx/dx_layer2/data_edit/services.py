@@ -392,6 +392,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         and correction_type in {'null', 'null_check'}
         and column_name in PRICE_EDITABLE_COLUMNS
     )
+    jiomart_row = None
     if seuk_product_line:
         product_line = seuk_product_line
         if correction_type not in {'null', 'null_check', 'format'}:
@@ -543,19 +544,30 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         _select_siel_edit_record(
             cursor, siel_context, select_columns, row_id, crawl_date
         )
+        siel_row = cursor.fetchone()
+        is_jiomart = siel_row and str(siel_row[1] or '').strip().casefold() == 'jiomart'
+        if not siel_row or is_jiomart:
+            if correction_type in {'null', 'null_check'}:
+                from apps.dx.dx_layer2.null_validation.services import select_jiomart_null_record
+                jiomart_row = select_jiomart_null_record(
+                    cursor, siel_context['source'], crawl_date, row_id, column_name,
+                )
+            siel_row = jiomart_row
     else:
         cursor.execute(
             f"SELECT {select_columns} FROM {table_name} WHERE id = %s",
             (row_id,)
         )
-    row = seuk_row if seuk_product_line else seib_row if seib_product_line else seda_row if seda_product_line else cursor.fetchone()
+    row = (seuk_row if seuk_product_line else seib_row if seib_product_line
+           else seda_row if seda_product_line else siel_row if siel_context else cursor.fetchone())
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status': 404}
 
     old_value = row[0]
     retailer = row[1]
     item_value = str(row[2]) if row[2] else ''
-    batch_id = row[3] if tse_context or sem_context or seg_context or seda_product_line or seib_product_line or seuk_product_line else None
+    batch_id = (row[3] if tse_context or sem_context or seg_context or seda_product_line
+                or seib_product_line or seuk_product_line or jiomart_row else None)
 
     # editable 컬럼 확인
     editable_retailer = retailer
@@ -563,6 +575,8 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
         return {'error': 'Costco는 NULL·형식 검증 값만 수정할 수 있습니다', 'status': 403}
     if tse_context and not editable_retailer and column_name == 'account_name':
         editable_retailer = new_value
+    if jiomart_row and column_name == 'account_name' and str(new_value or '').strip().casefold() != 'jiomart':
+        return {'error': 'Jiomart 계정명은 다른 리테일러로 변경할 수 없습니다', 'status': 403}
     if siel_context and column_name == 'account_name':
         editable_retailer = new_value
     if sea_context and costco_layer2.homedepot_dryer.matches(sea_context['product_key'], retailer):
@@ -632,7 +646,7 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     # TSE source tables enforce UNIQUE(account_name, batch_id, item). Check
     # the candidate identity before UPDATE so the API returns a clear error
     # and no correction history is written on collision.
-    if (tse_context or sem_context or seib_product_line or seuk_product_line) and column_name in {'account_name', 'item'}:
+    if (tse_context or sem_context or seib_product_line or seuk_product_line or jiomart_row) and column_name in {'account_name', 'item'}:
         candidate_retailer = (
             update_value if column_name == 'account_name' else retailer
         )

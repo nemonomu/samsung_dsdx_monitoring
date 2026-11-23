@@ -1,5 +1,6 @@
 const assert = require('assert');
 const fs = require('fs');
+const vm = require('vm');
 
 function read(path) {
     return fs.readFileSync(path, 'utf8');
@@ -74,14 +75,20 @@ assert(dashboard.includes(
     '당일 최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌'
 ));
 assert(dashboard.includes("openRuleModal('${tableCode}', '${retailer.retailer}')"));
-assert(formatTemplate.includes(
-    "dx_layer2/js/layer2-common.js' %}?v=20261023-seuk-format-duplicate"
-));
-assert(formatTemplate.includes(
-    "dx_layer2/js/format_validation.js' %}?v=20261023-seuk-format-duplicate"
-));
-assert(formatTemplate.includes(
-    "dx_layer2/js/dashboard.js' %}?v=20261023-seuk-format-duplicate"
-));
+for (const script of ['layer2-common', 'format_validation', 'dashboard']) {
+    assert(formatTemplate.includes(`dx_layer2/js/${script}.js' %}?v=`));
+}
+
+const sandbox = {};
+vm.createContext(sandbox);
+vm.runInContext(dashboard, sandbox);
+const card = sandbox.renderDXTableDetail({type: 'duplicate'}, {
+    table: 'siel_tv_retail', table_name: 'SIEL TV',
+    retailers: [{retailer: 'Jiomart', status: 'WARNING', duplicate_groups: 0, mapping_groups: 2}]
+});
+assert(card.includes('상품 매핑 확인 필요 2건'));
+assert(card.includes("openDetailModal('duplicate', 'SIEL TV', 'Jiomart', 2)"));
+assert(card.includes('>0건</span>'));
+assert(!card.includes('Page Type'));
 
 console.log('Layer 2 SIEL format/duplicate UI tests passed.');

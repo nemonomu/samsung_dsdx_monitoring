@@ -285,7 +285,13 @@ def _siel_date_bounds(source, source_date, alias=''):
 
 
 def _get_siel_null_anchor_batch(cursor, source, source_date, retailer):
-    """Return whether a latest MAIN anchor exists and its batch id."""
+    """Return whether the retailer's latest daily batch exists and its ID."""
+    if str(retailer or '').strip().casefold() == 'jiomart':
+        from apps.dx.dx_layer1.siel_retail import jiomart
+        ctes, params = jiomart.scope_sql(source['table_name'], source_date, source_date)
+        cursor.execute(f'WITH {ctes} SELECT batch_id FROM latest', params)
+        row = cursor.fetchone()
+        return row is not None, row[0] if row else None
     date_where, params = _siel_date_bounds(source, source_date, 'anchor')
     cursor.execute(f"""
         SELECT anchor.batch_id
@@ -303,12 +309,17 @@ def _get_siel_null_anchor_batch(cursor, source, source_date, retailer):
 
 def _build_siel_null_scope(source, source_date, retailer, batch_id):
     date_where, params = _siel_date_bounds(source, source_date)
+    base_scope = f"""
+        {date_where}
+        AND LOWER(BTRIM(CAST(account_name AS TEXT))) =
+            LOWER(BTRIM(CAST(%s AS TEXT)))
+        AND batch_id IS NOT DISTINCT FROM %s
+    """
+    if str(retailer or '').strip().casefold() == 'jiomart':
+        return base_scope, [*params, retailer, batch_id]
     return (
         f"""
-            {date_where}
-            AND LOWER(BTRIM(CAST(account_name AS TEXT))) =
-                LOWER(BTRIM(CAST(%s AS TEXT)))
-            AND batch_id IS NOT DISTINCT FROM %s
+            {base_scope}
             AND LOWER(BTRIM(CAST(page_type AS TEXT))) IN ('main', 'bsr')
             AND {get_tv_validation_condition()}
         """,
@@ -328,6 +339,14 @@ def _build_siel_null_history_query(
     placeholders = ', '.join(['%s'] * len(error_items))
     table_name = source['table_name']
     date_column = source['date_column']
+    if str(retailer or '').strip().casefold() == 'jiomart':
+        from apps.dx.dx_layer1.siel_retail import jiomart
+        ctes, params = jiomart.scope_sql(table_name, start_source_date, end_source_date)
+        return (f"""WITH {ctes}
+            SELECT source.* {jiomart.LATEST_ROWS}
+            WHERE source.item IN ({placeholders})
+            ORDER BY source.item, source.{date_column}, source.id
+        """, [*params, *error_items])
     local_date = (
         f"({date_column} AT TIME ZONE '{SIEL_BUSINESS_TIMEZONE}')::date"
     )
@@ -421,6 +440,27 @@ def _build_siel_latest_batch_record_query(source, column_name):
           AND {get_tv_validation_condition('source')}
     """
     return query, [retailer.lower() for retailer in retailers]
+
+
+def select_jiomart_null_record(cursor, source, inspection_date, record_id, column):
+    """Lock a row from Jiomart's latest operating batch for NULL review."""
+    from apps.dx.dx_layer1.siel_retail import jiomart
+
+    if column not in _get_siel_allowed_columns(source, jiomart.RETAILER):
+        return None
+    day = _resolve_siel_null_date(inspection_date, source)['source_date']
+    if day < str(jiomart.START):
+        return None
+    table = source['table_name']
+    ctes, params = jiomart.scope_sql(table, day, day)
+    cursor.execute(f"""WITH {ctes}
+        SELECT target.{column}, target.account_name, target.item, target.batch_id
+        FROM {table} target
+        WHERE target.id = %s
+          AND EXISTS (SELECT 1 {jiomart.LATEST_ROWS} WHERE source.id = target.id)
+        FOR UPDATE OF target
+    """, (*params, record_id))
+    return cursor.fetchone()
 
 
 def _get_sea_null_retailer(source, *values):
@@ -791,6 +831,31 @@ def load_null_check_config():
 
     except Exception as e:
         log_error(e, 'db')
+
+    # Jiomart uses the fixed Layer 2 columns and needs no DB rule registration.
+    for key, source in SIEL_SOURCE_CONFIG.items():
+        required = SIEL_NULL_COLUMNS.get(key, {}).get('jiomart', ())
+        if not required:
+            continue
+        category = SIEL_NULL_CATEGORY_BY_SOURCE_KEY[key]
+        category_config = result.setdefault(category, {
+            'display_name': f"SIEL {source['category']}", 'display_order': 99,
+            'has_retailer': True, 'checks': {},
+        })
+        columns = {}
+        for column in required:
+            visible = list(dict.fromkeys((
+                'id', 'crawl_datetime', 'item', 'sku', 'retailer_sku_name',
+                column, 'product_url',
+            )))
+            columns[column] = {
+                'check_type': 'both', 'display_columns': visible,
+                'query_columns': visible, 'query_days': 0,
+            }
+        category_config['checks']['jiomart'] = {
+            'display_name': 'Jiomart', 'table_name': source['table_name'],
+            'date_column': source['date_column'], 'columns': columns,
+        }
 
     result = dict(sorted(
         result.items(),
@@ -2385,6 +2450,11 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
             retailer_name = check_info['display_name']
             if review_filter is not None and not review_filter(query_parts['table_name'], retailer_name):
                 continue
+            is_jiomart = siel_source and retailer_name == 'Jiomart'
+            if is_jiomart:
+                from apps.dx.dx_layer1.siel_retail import jiomart
+                if siel_date['source_date'] < str(jiomart.START):
+                    continue
             if sea_source and sea_date and costco_layer2.lowes_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.lowes_dryer.enabled(sea_date['source_date']):
                 continue
             if sea_source and sea_date and costco_layer2.homedepot_dryer.matches(sea_source['product_key'], retailer_name) and not costco_layer2.homedepot_dryer.enabled(sea_date['source_date']):
@@ -2554,6 +2624,8 @@ def get_null_stats(cursor, target_date, include_youtube=False, category=None,
                     validation_label=homedepot_inspection_label(target_date))
             if sea_source and (is_costco(retailer_name) or sea_source['product_key'] == 'ldy_dryer') and total == 0:
                 retailer_stats.update(status='PENDING', validation_label='미수집')
+            if is_jiomart and total == 0:
+                retailer_stats.update(status='PENDING', validation_label='검증할 데이터 없음')
             if monitoring_date:
                 retailer_stats.update({
                     'inspection_date': monitoring_date['inspection_date'],
@@ -3018,6 +3090,9 @@ def get_null_detail(cursor, target_date, category, retailer, days, column):
         })
         if siel_source:
             response['business_timezone'] = SIEL_BUSINESS_TIMEZONE
+            if str(retailer or '').strip().casefold() == 'jiomart':
+                from apps.dx.dx_layer1.siel_retail import jiomart
+                response['active_from'] = str(jiomart.START)
     return response
 
 
@@ -3304,10 +3379,16 @@ def save_null_review(cursor, conn, table_name, record_id, column_name, status, m
                 (record_id,)
             )
         row = cursor.fetchone()
+        if not row and siel_source and correction_type in {'null', 'null_check'}:
+            row = select_jiomart_null_record(cursor, siel_source, crawl_date, record_id, column_name)
     if not row:
         return {'error': '해당 레코드가 없습니다', 'status_code': 404}
 
     old_value = row[0]
+    if (siel_source and correction_type_value == 'null_check'
+            and str(row[1] or '').strip().casefold() == 'jiomart'
+            and not _is_field_null(old_value, 'both')):
+        return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     if seuk_product_line and not seuk_null_validation.missing(old_value):
         return {'error': '현재 NULL 검수 대상이 아닙니다', 'status_code': 409}
     if seib_product_line and correction_type_value == 'null_check' and not seib_null_validation.missing(old_value):

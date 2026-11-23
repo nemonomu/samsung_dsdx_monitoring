@@ -492,7 +492,7 @@ def _resolve_siel_duplicate_retailer(source, retailer):
 
 def _fetch_siel_duplicate_rows(
         cursor, source_date, source, retailer_value):
-    """Fetch one retailer's KST-day latest MAIN-anchored SIEL batch."""
+    """Fetch the KST-day batch used for the retailer's collection check."""
     canonical_table = source['table_name']
     date_column = source['date_column']
     select_columns = [
@@ -500,6 +500,14 @@ def _fetch_siel_duplicate_rows(
         'sku', 'retailer_sku_name', 'final_sku_price', date_column,
         'product_url',
     ]
+    if retailer_value == 'Jiomart':
+        from apps.dx.dx_layer1.siel_retail import jiomart
+
+        select_columns.remove('page_type')
+        ctes, params = jiomart.scope_sql(canonical_table, source_date, source_date)
+        columns = ', '.join('source.' + column for column in select_columns)
+        cursor.execute(f'WITH {ctes} SELECT {columns} {jiomart.LATEST_ROWS} ORDER BY source.item, source.id', params)
+        return [dict(zip(select_columns, row)) for row in cursor.fetchall()]
     cursor.execute(f"""
         WITH latest_batch AS (
             SELECT source.batch_id
@@ -618,12 +626,46 @@ def build_siel_duplicate_groups(rows):
     return groups
 
 
+def _jiomart_duplicate_findings(rows):
+    by_item, by_sku = {}, {}
+    for row in rows:
+        item = _duplicate_key(row.get('item'))
+        if not item:
+            continue
+        by_item.setdefault(item, []).append(row)
+        sku = _duplicate_key(row.get('sku'))
+        if sku:
+            by_sku.setdefault(sku, []).append(row)
+
+    def group(records, label, reason):
+        return {
+            'duplicate_type': label,
+            'item': ', '.join(sorted({_duplicate_text(row['item']) for row in records})),
+            'retailer_sku_name': ', '.join(sorted({_duplicate_text(row.get('retailer_sku_name')) for row in records} - {''})),
+            'dup_count': len(records), 'reason': reason,
+            'records': [_serialize_siel_duplicate_row(row) for row in records],
+        }
+
+    duplicates = [
+        group(records, 'Item 중복', f'같은 Item이 최신 배치에 {len(records)}행 있습니다.')
+        for records in by_item.values() if len(records) > 1
+    ]
+    mappings = []
+    for records in by_sku.values():
+        item_count = len({_duplicate_key(row['item']) for row in records})
+        if item_count > 1:
+            sku = _duplicate_text(records[0]['sku'])
+            mappings.append(group(records, '상품 매핑 확인 필요', f'같은 SKU {sku}에 서로 다른 Item {item_count}개가 연결됐습니다.'))
+    return duplicates, mappings
+
+
 def _get_siel_anomaly_detail(
         cursor, target_date, table, retailer, page, page_size):
     source_key = _siel_duplicate_source_key(table)
     source = SIEL_SOURCE_CONFIG.get(source_key)
+    is_jiomart = source and str(retailer or '').strip().casefold() == 'jiomart'
     retailer_value = (
-        _resolve_siel_duplicate_retailer(source, retailer)
+        'Jiomart' if is_jiomart else _resolve_siel_duplicate_retailer(source, retailer)
         if source else None
     )
     if not source or not retailer_value or not resolve_monitoring_date:
@@ -644,12 +686,17 @@ def _get_siel_anomaly_detail(
     rows = _fetch_siel_duplicate_rows(
         cursor, source_date, source, retailer_value
     )
-    groups = build_siel_duplicate_groups(rows)
+    groups, mapping_conflicts = (_jiomart_duplicate_findings(rows) if is_jiomart
+                                 else (build_siel_duplicate_groups(rows), []))
     total_groups = len(groups)
+    total_review_groups = total_groups + len(mapping_conflicts)
     total_pages = (
-        (total_groups + page_size - 1) // page_size if total_groups else 0
+        (total_review_groups + page_size - 1) // page_size if total_review_groups else 0
     )
     offset = (page - 1) * page_size
+    mapping_offset = max(0, offset - total_groups)
+    visible_groups = groups[offset:offset + page_size]
+    remaining = page_size - len(visible_groups)
     return {
         'date': date_mapping['inspection_date'],
         'inspection_date': date_mapping['inspection_date'],
@@ -661,7 +708,7 @@ def _get_siel_anomaly_detail(
         'retailer': retailer_value,
         'select_cols': {
             'group': [
-                'duplicate_type', 'page_type', 'item',
+                'duplicate_type', *([] if is_jiomart else ['page_type']), 'item',
                 'retailer_sku_name', 'dup_count', 'reason',
             ],
             'record': [
@@ -672,12 +719,18 @@ def _get_siel_anomaly_detail(
         'editable_cols': [],
         'actual_table': source['table_name'],
         'readonly': True,
+        **({'sku_editable': False, 'allow_cleanup': False} if is_jiomart else {}),
         'readonly_message': (
             'SIEL 중복 검증은 확인 전용이며 자동 삭제하지 않습니다.'
         ),
         'results': {
-            'duplicates': groups[offset:offset + page_size],
+            'duplicates': visible_groups,
             'total_groups': total_groups,
+            **({
+                'mapping_conflicts': mapping_conflicts[mapping_offset:mapping_offset + remaining],
+                'total_mapping_groups': len(mapping_conflicts),
+                'total_review_groups': total_review_groups,
+            } if is_jiomart else {}),
             'page': page,
             'page_size': page_size,
             'total_pages': total_pages,
@@ -688,6 +741,8 @@ def _get_siel_anomaly_detail(
 def _append_siel_anomaly_stats(cursor, target_date, validation, category=None):
     if not resolve_monitoring_date or not SIEL_SOURCE_CONFIG:
         return 0
+    from apps.dx.dx_layer1.siel_retail import jiomart
+
     savepoint = 'layer2_siel_duplicate_stats'
     cursor.execute(f'SAVEPOINT {savepoint}')
     total_issues = 0
@@ -702,17 +757,30 @@ def _append_siel_anomaly_stats(cursor, target_date, validation, category=None):
             retailer_rows = []
             table_records = 0
             table_issues = 0
-            for retailer_value in source.get('retailers', ()):
+            retailers = source.get('retailers', ())
+            if source_date >= jiomart.START:
+                retailers = (*retailers, jiomart.RETAILER)
+            for retailer_value in retailers:
                 rows = _fetch_siel_duplicate_rows(
                     cursor, source_date, source, retailer_value
                 )
-                duplicate_count = len(build_siel_duplicate_groups(rows))
+                is_jiomart = retailer_value == jiomart.RETAILER
+                groups, mapping_conflicts = (_jiomart_duplicate_findings(rows) if is_jiomart
+                                             else (build_siel_duplicate_groups(rows), []))
+                duplicate_count = len(groups)
+                status = get_status(duplicate_count)
+                if is_jiomart and not rows:
+                    status = 'PENDING'
+                elif not duplicate_count and mapping_conflicts:
+                    status = 'WARNING'
                 retailer_rows.append({
                     'retailer': retailer_value,
                     'total': len(rows),
                     'duplicate_groups': duplicate_count,
-                    'duplicate_keys': ['page_type + item'],
-                    'status': get_status(duplicate_count),
+                    'duplicate_keys': ['item'] if is_jiomart else ['page_type + item'],
+                    'status': status,
+                    **({'mapping_groups': len(mapping_conflicts)} if is_jiomart else {}),
+                    **({'validation_label': '검증할 데이터 없음'} if status == 'PENDING' else {}),
                 })
                 table_records += len(rows)
                 table_issues += duplicate_count
@@ -1062,7 +1130,8 @@ def get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_si
     result = _get_anomaly_detail(cursor, target_date, table, retailer, days, page, page_size)
     result.update(_duplicate_lookup_query(result, table))
     select_cols = result.get('select_cols', {})
-    if (not result.get('preview_mode') and isinstance(select_cols, dict) and 'sku' in select_cols.get('record', [])
+    if (not result.get('preview_mode') and result.get('sku_editable', True)
+            and isinstance(select_cols, dict) and 'sku' in select_cols.get('record', [])
             and result.get('actual_table')):
         result.update({
             'allow_cleanup': result.get('allow_cleanup', not result.get('readonly', False)),
@@ -1085,7 +1154,8 @@ def _duplicate_lookup_query(result, table):
     if not isinstance(actual, str) or not re.fullmatch(identifier, actual):
         return empty
     ids = set()
-    for group in result.get('results', {}).get('duplicates', []):
+    results = result.get('results', {})
+    for group in [*results.get('duplicates', []), *results.get('mapping_conflicts', [])]:
         for record in group.get('records', []):
             raw_id = record.get('id')
             if isinstance(raw_id, bool) or not re.fullmatch(r'[0-9]+', str(raw_id)):

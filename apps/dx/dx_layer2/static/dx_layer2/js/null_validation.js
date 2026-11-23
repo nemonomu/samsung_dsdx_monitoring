@@ -238,6 +238,8 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
     const isCostcoDryer = tableName === 'public.ldy_dryer_retail' && accountName.toLowerCase() === 'costco';
     const isSeib = /^dx_seib\./.test(tableName);
     const isSeuk = /^dx_seuk\./.test(tableName);
+    const isSiel = /^dx_siel\./.test(tableName);
+    const isJiomart = isSiel && String(retailer || '').trim().toLowerCase() === 'jiomart';
     const dateExpression = isCostcoDryer
         ? `TO_CHAR(NULLIF(BTRIM(CAST(${dateColumn} AS TEXT)), '')::timestamptz AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD')`
         : (isSeib || isSeuk) ? `LEFT(BTRIM(CAST(${dateColumn} AS TEXT)), 10)` : dateColumn;
@@ -245,18 +247,25 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
     const seibStart = (reviewCopy && data.copy_sql_start_date) || '2026-10-18';
     const startDate = isCostcoDryer && historyStart < '2026-10-09' ? '2026-10-09'
         : isSeib && historyStart < seibStart ? seibStart
-        : isSeuk && data.active_from && historyStart < data.active_from ? data.active_from : historyStart;
+        : (isSeuk || isSiel) && data.active_from && historyStart < data.active_from ? data.active_from : historyStart;
     const recordScope = [];
     if (items.length) recordScope.push(`item IN (${items.map(_tseSqlLiteral).join(', ')})`);
     if (ids.length) recordScope.push(`id IN (${ids.join(', ')})`);
     const recordFilter = recordScope.length > 1 ? `(${recordScope.join(' OR ')})` : recordScope[0];
     if (reviewCopy) {
-        const zone = /^dx_siel\./.test(tableName) ? ' 00:00:00+09:00' : '';
+        const zone = isSiel ? ' 00:00:00+09:00' : '';
+        const kstDay = `(${dateColumn} AT TIME ZONE 'Asia/Seoul')::date`;
         const filters = [
             `account_name = ${_tseSqlLiteral(accountName)}`, recordFilter,
-            `${dateExpression} >= ${_tseSqlLiteral(startDate + zone)}`,
-            `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate) + zone)}`,
         ];
+        if (isJiomart) {
+            filters.push(startDate === sourceDate
+                ? `${kstDay} = ${_tseSqlLiteral(sourceDate)}`
+                : `${kstDay} BETWEEN ${_tseSqlLiteral(startDate)} AND ${_tseSqlLiteral(sourceDate)}`);
+        } else {
+            filters.push(`${dateExpression} >= ${_tseSqlLiteral(startDate + zone)}`,
+                `${dateExpression} < ${_tseSqlLiteral(_tseNextDate(sourceDate) + zone)}`);
+        }
         return `SELECT *\nFROM ${tableName}\nWHERE ${filters.join('\n  AND ')}\nORDER BY item, ${dateColumn};`;
     }
     const where = [
@@ -377,7 +386,7 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
             var dupResults = (type === 'duplicate' && data.results) ? data.results : null;
             if (dupResults) {
                 modalState.totalPages = Math.max(1, dupResults.total_pages || 0);
-                modalState.totalGroups = dupResults.total_groups || 0;
+                modalState.totalGroups = dupResults.total_review_groups ?? (dupResults.total_groups || 0);
                 modalState.count = modalState.totalGroups;
                 modalState.currentPage = dupResults.page || 1;
             } else if (data.total_pages) {
@@ -387,7 +396,11 @@ function openDetailModal(type, tableName, retailer, count, page = 1, fieldsDetai
             }
 
             var subtitle = getDetailSubtitle();
-            if (subtitle) subtitle.textContent = tableName + ' | ' + (modalState.count || 0) + '건의 오류 데이터';
+            if (subtitle) {
+                subtitle.textContent = dupResults?.total_mapping_groups != null
+                    ? `${tableName} | Item 중복 ${dupResults.total_groups}건 · 상품 매핑 확인 필요 ${dupResults.total_mapping_groups}건`
+                    : tableName + ' | ' + (modalState.count || 0) + '건의 오류 데이터';
+            }
 
             if (type === 'format') {
                 modalState.formatFieldsData = data;

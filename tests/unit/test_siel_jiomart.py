@@ -2,11 +2,15 @@ from datetime import date, datetime
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
-from apps.common.siel_retail import get_siel_source
+from apps.common.siel_retail import SIEL_JIOMART_NULL_COLUMNS, get_siel_source
 from apps.dx.dx_layer1.collection_statistics.calculations import normalize_check, observation_eligible
 from apps.dx.dx_layer1.column_statistics.comparison import compare_columns
 from apps.dx.dx_layer1.rank_monitoring.sources import catalog
 from apps.dx.dx_layer1.siel_retail import jiomart, siel_retail_services
+from apps.dx.dx_layer2.anomaly_validation import services as anomaly
+from apps.dx.dx_layer2.data_edit import services as data_edit
+from apps.dx.dx_layer2.null_validation import services as nulls
+from tests.unit.support import ScriptedCursor
 
 
 class JiomartLayer1Tests(TestCase):
@@ -91,3 +95,90 @@ class JiomartLayer1Tests(TestCase):
             "  AND batch_id = 'b''1'\nORDER BY item, crawl_datetime;", sql,
         )
         self.assertIn('AND batch_id IS NULL', jiomart.copy_batch_query(table, jiomart.START, None, ['Jiomart']))
+
+
+class JiomartNullValidationTests(TestCase):
+    def test_null_config_requires_no_database_registration(self):
+        with patch.object(nulls, 'execute_dx_query', return_value=[]), \
+             patch.object(nulls, '_null_check_config_cache', None), \
+             patch.object(nulls, '_null_check_config_cache_time', None):
+            config = nulls.load_null_check_config()
+        for product in ('tv', 'ref', 'ldy'):
+            check = config[f'siel_{product}_retail']['checks']['jiomart']
+            self.assertEqual(SIEL_JIOMART_NULL_COLUMNS, tuple(check['columns']))
+            self.assertTrue(all(rule['check_type'] == 'both' for rule in check['columns'].values()))
+
+    def test_edit_locks_only_latest_operating_jiomart_batch(self):
+        source = get_siel_source('siel_ref')
+        table = source['table_name']
+        cursor = ScriptedCursor([{'fetchone': None}, {'fetchone': (None, 'Jiomart', 'item1', 'j1')}, {}, {}])
+        result = data_edit.update_cell_value(
+            cursor, Mock(), table, 42, 'count_of_reviews', '0', '2026-11-23', 'null', 'qa', 'reviewed',
+        )
+        self.assertTrue(result['success'], result)
+        sql, params = cursor.calls[1]
+        self.assertIn('crawl_datetime DESC NULLS LAST, id DESC', sql)
+        self.assertIn('FOR UPDATE OF target', sql)
+        self.assertNotIn('page_type', sql)
+        self.assertEqual(('jiomart', '2026-11-23', '2026-11-23', 42), params)
+        self.assertIn('null_check', cursor.calls[-1][1])
+        disallowed = Mock()
+        for column in ('ref_refrigerator_type', 'sku', 'original_sku_price'):
+            self.assertIsNone(nulls.select_jiomart_null_record(disallowed, source, jiomart.START, 42, column))
+        self.assertIsNone(nulls.select_jiomart_null_record(disallowed, source, jiomart.TEST_DAY, 42, 'star_rating'))
+        disallowed.execute.assert_not_called()
+
+    def test_normal_review_keeps_the_existing_siel_evidence_workflow(self):
+        table = get_siel_source('siel_tv')['table_name']
+        cursor = ScriptedCursor([
+            {'fetchone': None}, {'fetchone': (None, 'Jiomart', 'item1', 'j1')},
+            {'fetchone': (42, 'item1', 'Product', None, 'Jiomart')},
+            {'fetchone': None}, {'fetchone': (101,)},
+        ])
+        connection = Mock()
+        with patch.object(nulls, 'datetime', wraps=datetime) as clock, \
+             patch('apps.common.null_review_evidence.save_manual_evidence', return_value={'id': 101}) as evidence:
+            clock.now.return_value = datetime(2026, 11, 24, 12)
+            result = nulls.save_null_review(
+                cursor, connection, table, 42, 'star_rating', 'normal', '', '원본 확인',
+                '2026-11-23', 'null', 'qa',
+            )
+        self.assertTrue(result['success'], result)
+        self.assertEqual('Jiomart', evidence.call_args.kwargs['retailer'])
+        self.assertEqual('TV', evidence.call_args.kwargs['product_line'])
+        self.assertEqual('SIEL', evidence.call_args.kwargs['country'])
+        connection.commit.assert_called_once()
+
+
+class JiomartDuplicateValidationTests(TestCase):
+    def test_item_duplicates_are_separate_from_shared_skus(self):
+        def row(id, item, sku, main=None, bsr=None):
+            return dict(id=id, item=item, sku=sku, main_rank=main, bsr_rank=bsr)
+
+        rows = [
+            row(1, 'i1', 'A', 1, 1), row(2, 'i1', 'B'),
+            row(3, 'i2', 'C', 2, 2), row(4, 'i3', 'C'), row(5, '', 'C'),
+        ]
+        with patch.object(anomaly, '_fetch_siel_duplicate_rows', return_value=rows):
+            first = anomaly.get_anomaly_detail(Mock(), jiomart.START, 'siel_tv_retail', 'Jiomart', 1, 1, 1)
+            second = anomaly.get_anomaly_detail(Mock(), jiomart.START, 'siel_tv_retail', 'Jiomart', 1, 2, 1)
+        results = first['results']
+        self.assertEqual((1, 1, 2), (results['total_groups'], results['total_mapping_groups'], results['total_pages']))
+        self.assertEqual('i1', results['duplicates'][0]['item'])
+        self.assertTrue(first['readonly'])
+        self.assertEqual([], first['editable_cols'])
+        self.assertNotIn('page_type', first['select_cols']['group'])
+        self.assertEqual('i2, i3', second['results']['mapping_conflicts'][0]['item'])
+        self.assertEqual([], second['results']['duplicates'])
+        self.assertIn('id IN (3, 4)', second['query'])
+
+    def test_jiomart_duplicate_query_uses_latest_kst_batch_without_page_type(self):
+        source = get_siel_source('siel_ldy')
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+        anomaly._fetch_siel_duplicate_rows(cursor, jiomart.START, source, 'Jiomart')
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("AT TIME ZONE 'Asia/Seoul'", sql)
+        self.assertIn('crawl_datetime DESC NULLS LAST, id DESC', sql)
+        self.assertNotIn('page_type', sql)
+        self.assertEqual(['jiomart', '2026-11-22', '2026-11-22'], params)

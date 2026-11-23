@@ -866,7 +866,8 @@ function renderDXTableDetail(vType, table) {
         html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
         table.retailers.forEach(retailer => {
             const dupGroups = retailer.duplicate_groups || 0;
-            const hasIssue = dupGroups > 0;
+            const mappingGroups = retailer.mapping_groups || 0;
+            const reviewGroups = dupGroups + mappingGroups;
             let detailTableName = tableName;
             if (isYouTube) {
                 if (retailer.retailer === 'Logs') detailTableName = 'YouTube Logs';
@@ -894,13 +895,15 @@ function renderDXTableDetail(vType, table) {
                 detailText = '최신 배치의 Item 중복 및 상품 매핑 충돌';
             } else if (isSeaRetail || isSegRetail || isSedaRetail) {
                 detailText = '최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌';
+            } else if (isSielRetail && retailer.retailer === 'Jiomart') {
+                detailText = '최신 배치의 Item 중복' + (mappingGroups ? ` · 상품 매핑 확인 필요 ${mappingGroups}건` : '');
             } else if (isSielRetail) {
                 detailText = '당일 최신 배치의 Page Type + Item 중복 및 상품 매핑 충돌';
             }
             html += `
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}"
-                     onclick="openDetailModal('duplicate', '${detailTableName}', '${retailer.retailer}', ${dupGroups})"
-                     ${!hasIssue ? 'style="cursor: default;"' : ''}>
+                     onclick="openDetailModal('duplicate', '${detailTableName}', '${retailer.retailer}', ${reviewGroups})"
+                     ${!reviewGroups ? 'style="cursor: default;"' : ''}>
                     <div class="retailer-header">
                         <span class="retailer-name">${retailer.retailer}</span>
                         <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${retailer.validation_label || dupGroups + '건'}</span>

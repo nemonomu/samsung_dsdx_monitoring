@@ -118,7 +118,7 @@ function renderDetailTable(type, data, tableParam) {
 
     let records;
     if (type === 'duplicate') {
-        records = data.results?.duplicates || [];
+        records = [...(data.results?.duplicates || []), ...(data.results?.mapping_conflicts || [])];
     } else {
         records = data.records || data.results || [];
     }
@@ -145,6 +145,9 @@ function renderDetailTable(type, data, tableParam) {
         }
     } else {
         config = getColumnConfig(type, tableParam);
+    }
+    if (type === 'duplicate' && data.results?.total_mapping_groups != null) {
+        config = {...config, group: config.group.filter(column => column.key !== 'page_type')};
     }
     if (type === 'duplicate' && (tableParam === 'sea_ldy_dryer_retail' || String(data.retailer || '').toLowerCase() === 'costco')
         && data.select_cols && data.select_cols.group) {
@@ -260,7 +263,10 @@ function renderDetailTable(type, data, tableParam) {
 
         // 건수 (CommonTable의 ct-count를 전체 건수로 덮어쓰기)
         var countEl = document.querySelector('#detail-table-area .ct-count');
-        if (countEl) countEl.innerHTML = '총 <strong>' + modalState.totalGroups.toLocaleString() + '</strong>개 중복 그룹';
+        if (countEl) {
+            var groupLabel = data.results?.total_mapping_groups != null ? '검수 그룹' : '중복 그룹';
+            countEl.innerHTML = '총 <strong>' + modalState.totalGroups.toLocaleString() + '</strong>개 ' + groupLabel;
+        }
 
         // FilterBar (섹션 페이지에서만 표시)
         if (isInlineMode()) {

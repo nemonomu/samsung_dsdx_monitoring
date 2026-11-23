@@ -12,8 +12,14 @@ SIEL_COLLECTION_END = time(8, 30)
 SIEL_BUSINESS_TIMEZONE = 'Asia/Seoul'
 SIEL_RETAILERS = ('Amazon', 'Flipkart')
 
+SIEL_JIOMART_NULL_COLUMNS = (
+    'country', 'account_name', 'item', 'retailer_sku_name', 'product_url',
+    'final_sku_price', 'star_rating', 'count_of_star_ratings', 'count_of_reviews',
+)
+
 SIEL_NULL_COLUMNS = {
     'siel_tv': {
+        'jiomart': SIEL_JIOMART_NULL_COLUMNS,
         'amazon': (
             'count_of_star_ratings', 'final_sku_price',
             'retailer_sku_name', 'screen_size', 'sku', 'star_rating',
@@ -26,6 +32,7 @@ SIEL_NULL_COLUMNS = {
         ),
     },
     'siel_ref': {
+        'jiomart': SIEL_JIOMART_NULL_COLUMNS,
         'amazon': (
             'count_of_star_ratings', 'final_sku_price',
             'retailer_sku_name', 'sku', 'star_rating',
@@ -37,6 +44,7 @@ SIEL_NULL_COLUMNS = {
         ),
     },
     'siel_ldy': {
+        'jiomart': SIEL_JIOMART_NULL_COLUMNS,
         'amazon': (
             'count_of_star_ratings', 'final_sku_price',
             'retailer_sku_name', 'sku', 'star_rating',

@@ -150,15 +150,29 @@ nullSandbox.renderNullFieldDetailView('ref_capacity', {
     date: '2026-08-31',
     date_column: 'crawl_datetime'
 }, true);
-assert.ok(itemQueryHtml.includes('3일치 조회 쿼리 (기준 데이터일 2026-08-31)'));
-assert.ok(itemQueryHtml.includes('SELECT *'));
-assert.ok(itemQueryHtml.includes("crawl_datetime >= '2026-08-29'"));
-assert.ok(itemQueryHtml.includes("crawl_datetime < '2026-09-01'"));
-assert.ok(!itemQueryHtml.includes('latest_batches'));
-assert.ok(itemQueryHtml.includes(
+assert.ok(itemQueryHtml.includes('3일치 Item 조회 SQL'));
+const flipkartSql = itemQueryHtml.match(/<pre[^>]*>([\s\S]*?)<\/pre>/)[1]
+    .replace(/&#039;/g, "'").replace(/&gt;/g, '>').replace(/&lt;/g, '<');
+assert.ok(flipkartSql.startsWith('SELECT *'));
+assert.ok(flipkartSql.includes("crawl_datetime >= '2026-08-29 00:00:00+09:00'"));
+assert.ok(flipkartSql.includes("crawl_datetime < '2026-09-01 00:00:00+09:00'"));
+assert.ok(!flipkartSql.includes('latest_batches'));
+assert.ok(flipkartSql.includes(
     "account_name = 'Flipkart'"
 ));
-assert.ok(!itemQueryHtml.includes("INTERVAL '2 days'"));
+assert.ok(!flipkartSql.includes("INTERVAL '2 days'"));
+const jiomartSql = nullSandbox._buildNullRetailDisplayQuery('final_sku_price', {
+    actual_table: 'dx_siel.dx_siel_ref_retail_com',
+    source_date: '2026-11-23', active_from: '2026-11-22',
+}, [{id: 1, item: 'item-1', account_name: 'Jiomart'}], '2026-11-23', 3, 'Jiomart', false, true);
+assert.ok(jiomartSql.includes("account_name = 'Jiomart'"));
+assert.ok(jiomartSql.includes("(crawl_datetime AT TIME ZONE 'Asia/Seoul')::date BETWEEN '2026-11-22' AND '2026-11-23'"));
+assert.ok(!jiomartSql.includes('00:00:00'));
+const oneDayJiomartSql = nullSandbox._buildNullRetailDisplayQuery('final_sku_price', {
+    actual_table: 'dx_siel.dx_siel_ref_retail_com',
+    source_date: '2026-11-23', active_from: '2026-11-22',
+}, [{id: 1, item: 'item-1', account_name: 'Jiomart'}], '2026-11-23', 1, 'Jiomart', false, true);
+assert.ok(oneDayJiomartSql.includes("(crawl_datetime AT TIME ZONE 'Asia/Seoul')::date = '2026-11-23'"));
 assert.strictEqual(tableOptions.actualTable, 'dx_siel.dx_siel_ref_retail_com');
 assert.strictEqual(tableOptions.crawlDate, '2026-08-31');
 assert.strictEqual(tableOptions.editableDate, '2026-08-31');
