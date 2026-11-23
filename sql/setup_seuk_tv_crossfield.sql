@@ -1,6 +1,7 @@
 -- SEUK TV Amazon 5개, Argos 7개 크로스필드 규칙을 등록합니다.
 -- 운영은 prefix='', 테스트는 prefix='test_'를 사용합니다.
 -- 기존 Currys·AO 규칙과 원본 수집 데이터는 유지합니다.
+-- DBeaver의 입력값 팝업을 피하기 위해 동적 SQL의 값은 format의 %L로 전달합니다.
 BEGIN;
 
 DO $seuk_tv_crossfield$
@@ -59,15 +60,14 @@ BEGIN
         EXECUTE format($statement$
             UPDATE public.%I
             SET section_name='SEUK TV', product_line='seuk_tv', date_column='crawl_datetime',
-                detail_name=$1, field1=$2, field2=$3, validation_type=$4, check_type='cross_field',
-                error_message=$5, display_columns=$6, select_fields=$6, query='', query_detail='',
-                sort_order=$7, is_active=TRUE
-            WHERE rule_type='crossfield' AND section_code=$8 AND table_name=$9
-              AND detail_code=$10 AND LOWER(BTRIM(retailer))=lower($11)
-        $statement$, rules_table)
-        USING definition.detail_name, definition.field1, definition.field2, definition.rule_key,
-              definition.error_message, definition.select_fields, definition.sort_order,
-              section, source_table, detail_key, definition.retailer;
+                detail_name=%L, field1=%L, field2=%L, validation_type=%L, check_type='cross_field',
+                error_message=%L, display_columns=%L, select_fields=%L, query='', query_detail='',
+                sort_order=%L, is_active=TRUE
+            WHERE rule_type='crossfield' AND section_code=%L AND table_name=%L
+              AND detail_code=%L AND LOWER(BTRIM(retailer))=lower(%L)
+        $statement$, rules_table, definition.detail_name, definition.field1, definition.field2,
+            definition.rule_key, definition.error_message, definition.select_fields, definition.select_fields,
+            definition.sort_order, section, source_table, detail_key, definition.retailer);
         GET DIAGNOSTICS affected = ROW_COUNT;
         IF affected > 1 THEN
             RAISE EXCEPTION 'Duplicate SEUK TV cross-field rule: %', detail_key;
@@ -77,12 +77,11 @@ BEGIN
                     (rule_type, section_code, section_name, detail_code, detail_name, table_name, date_column,
                      product_line, retailer, field1, field2, validation_type, check_type, error_message,
                      display_columns, select_fields, query, query_detail, sort_order, is_active, created_at, created_id)
-                VALUES ('crossfield', $1, 'SEUK TV', $2, $3, $4, 'crawl_datetime', 'seuk_tv', $5,
-                        $6, $7, $8, 'cross_field', $9, $10, $10, '', '', $11, TRUE, NOW(), 'setup_seuk_tv_crossfield')
-            $statement$, rules_table)
-            USING section, detail_key, definition.detail_name, source_table, definition.retailer,
-                  definition.field1, definition.field2, definition.rule_key, definition.error_message,
-                  definition.select_fields, definition.sort_order;
+                VALUES ('crossfield', %L, 'SEUK TV', %L, %L, %L, 'crawl_datetime', 'seuk_tv', %L,
+                        %L, %L, %L, 'cross_field', %L, %L, %L, '', '', %L, TRUE, NOW(), 'setup_seuk_tv_crossfield')
+            $statement$, rules_table, section, detail_key, definition.detail_name, source_table,
+                definition.retailer, definition.field1, definition.field2, definition.rule_key,
+                definition.error_message, definition.select_fields, definition.select_fields, definition.sort_order);
         END IF;
     END LOOP;
     RAISE NOTICE 'SEUK TV cross-field: 12 rules registered in public.%', rules_table;
