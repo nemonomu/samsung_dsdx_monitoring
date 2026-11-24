@@ -25,6 +25,8 @@ function element() {
         innerHTML: '',
         style: {},
         children: [],
+        setAttribute(name, value) { this[name] = value; },
+        replaceChildren(...children) { this.children = children; },
         appendChild(child) { this.children.push(child); return child; }
     };
 }
@@ -150,6 +152,7 @@ reportData.grouped_details.cross_field['dx_seuk.dx_seuk_tv_retail_com'] = [
 
 const sandbox = {
     console,
+    AbortController,
     document: {
         getElementById(id) { return id === 'report-detail' ? reportDetail : element(); },
         createElement() { return element(); }
@@ -174,7 +177,7 @@ const sandbox = {
     },
     getSelectedDate() { return '2026-08-10'; },
     fetch() {
-        return Promise.resolve({ json: () => Promise.resolve(reportData) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(reportData) });
     },
     showToast() {},
     getCsrfToken() { return 'token'; }
@@ -244,4 +247,52 @@ setImmediate(() => {
     assert(!html.includes('dx_seuk.dx_seuk_tv_retail_com'));
     assert(/dx_layer4\/js\/report\.js' %\}\?v=\d{8}-[a-z-]+/.test(templateSource));
     console.log('Layer 4 retail report label tests passed');
+});
+
+async function testReportLoadFailureAndDateChange() {
+    const view = element();
+    const requests = [];
+    let date = '2026-11-23';
+    const context = {
+        ...sandbox,
+        document: {getElementById: () => view, createElement: element},
+        L4: {...sandbox.L4, _sectionHandler: {}},
+        getSelectedDate: () => date,
+        fetch: (url, {signal}) => new Promise(resolve => requests.push({url, signal, resolve}))
+    };
+    context.window = context;
+    vm.runInNewContext(source, context);
+    const load = context.L4._sectionHandler.report;
+
+    const initial = load();
+    assert.equal(view.children[0].role, 'status');
+    assert(view.children[0].children[0].textContent.includes('조회 중'));
+    await load();
+    assert.equal(requests.length, 1);
+    requests[0].resolve({ok: false, status: 504, json: async () => { throw new SyntaxError(); }});
+    await initial;
+    assert.equal(view.children[0].role, 'alert');
+    assert(view.children[0].children[0].textContent.includes('HTTP 504'));
+
+    const retry = view.children[0].children[1].onclick();
+    date = '2026-11-24';
+    const nextDay = load();
+    assert(requests[1].signal.aborted);
+    requests[1].resolve({ok: true, json: async () => reportData});
+    await retry;
+    assert(view.children[0].children[0].textContent.includes('2026-11-24'));
+    requests[2].resolve({ok: true, json: async () => ({success: true, date})});
+    await nextDay;
+    assert(view.innerHTML.includes('해당 날짜에 검수 기록이 없습니다.'));
+
+    const refresh = load();
+    assert(requests[3].url.endsWith('&refresh=1'));
+    requests[3].resolve({ok: true, json: async () => ({success: true, date})});
+    await refresh;
+    console.log('Layer 4 report loading, retry, and request ordering tests passed');
+}
+
+testReportLoadFailureAndDateChange().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
 });

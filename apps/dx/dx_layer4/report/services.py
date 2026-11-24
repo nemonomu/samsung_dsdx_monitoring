@@ -157,7 +157,7 @@ def _load_auto_null_reviews(cursor, target_date):
         from apps.dx.dx_layer2.null_validation.services import (
             get_auto_applied_null_reviews,
         )
-        return get_auto_applied_null_reviews(cursor, target_date)
+        return get_auto_applied_null_reviews(cursor, target_date, review_only=True, strict=True)
 
     from apps.dx.dx_layer2.null_validation.services import (
         get_tse_auto_applied_null_reviews,

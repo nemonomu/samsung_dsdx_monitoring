@@ -169,7 +169,7 @@ class Layer4ReportAutoNullTests(unittest.TestCase):
         self.assertEqual(['legacy'], before)
         self.assertEqual(['new'], after)
         legacy_loader.assert_called_once_with(cursor, date(2026, 9, 11))
-        new_loader.assert_called_once_with(cursor, date(2026, 9, 12))
+        new_loader.assert_called_once_with(cursor, date(2026, 9, 12), review_only=True, strict=True)
 
     def test_full_report_loads_and_counts_auto_reviews_once(self):
         cursor = ScriptedCursor([{'fetchall': []} for _ in range(8)])
@@ -195,6 +195,28 @@ class Layer4ReportAutoNullTests(unittest.TestCase):
             result['details'],
             result['grouped_details']['null_check'][review['table_name']],
         )
+
+    def test_report_cache_accepts_confirmed_error_counts_and_preserves_forced_refresh(self):
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from django.test import RequestFactory, override_settings
+        from apps.dx.dx_layer4.report import api
+
+        factory = RequestFactory()
+        request = factory.get('/dx/layer4/api/report/?date=2026-11-23')
+        refresh = factory.get('/dx/layer4/api/report/?date=2026-11-23&refresh=1')
+        request.user = refresh.user = SimpleNamespace(is_authenticated=True)
+        result = {'success': True, 'type_summary': {'format_check': {'error': 3}}}
+        with TemporaryDirectory() as directory, \
+                override_settings(DEBUG=False, MONITORING_CACHE_DIR=directory, MONITORING_CACHE_ENABLED=True), \
+                patch.object(api, 'get_report_data', return_value=result) as load:
+            first = api.report_data(request)
+            self.assertEqual(200, first.status_code)
+            self.assertEqual('no-store', first['Cache-Control'])
+            self.assertEqual(first.content, api.report_data(request).content)
+            load.assert_called_once_with(date(2026, 11, 23))
+            self.assertEqual(200, api.report_data(refresh).status_code)
+            self.assertEqual(2, load.call_count)
 
     def test_legacy_sea_retailer_is_filled_from_source_record(self):
         details = [

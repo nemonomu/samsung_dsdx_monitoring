@@ -6,6 +6,7 @@
     'use strict';
 
     var reportCache = null;
+    var reportRequest = null;
 
     // 리테일러 고정 정렬 순서
     var RETAILER_ORDER = [
@@ -335,24 +336,57 @@
     // ============================================================
     // 보고서 로드
     // ============================================================
-    function loadReport() {
-        var date = getSelectedDate();
-        if (!date) return;
+    function showReportState(detailEl, message, retry) {
+        var state = createDiv('l4-empty-state');
+        state.setAttribute('role', retry ? 'alert' : 'status');
+        var text = document.createElement('p');
+        text.textContent = message;
+        state.appendChild(text);
+        if (retry) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'app-btn app-btn-sm';
+            button.textContent = '다시 조회';
+            button.onclick = loadReport;
+            state.appendChild(button);
+        }
+        detailEl.replaceChildren(state);
+    }
 
-        fetch('/dx/layer4/api/report/?date=' + encodeURIComponent(date))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (!data.success) {
-                    showToast(data.error || '조회 실패', 'error');
-                    return;
-                }
-                reportCache = data;
-                renderReport(data);
-            })
-            .catch(function(e) {
-                console.error(e);
-                showToast('보고서 조회 중 오류가 발생했습니다.', 'error');
+    async function loadReport() {
+        var date = getSelectedDate();
+        if (!date || (reportRequest && reportRequest.date === date)) return;
+        if (reportRequest) reportRequest.controller.abort();
+        var request = {date: date, controller: new AbortController()};
+        reportRequest = request;
+
+        var refresh = reportCache && reportCache.date === date;
+        reportCache = null;
+        var detailEl = document.getElementById('report-detail');
+        var fallback = '보고서를 불러오지 못했습니다.';
+        showReportState(detailEl, date + ' 보고서 조회 중…', false);
+        try {
+            var url = '/dx/layer4/api/report/?date=' + encodeURIComponent(date);
+            var response = await fetch(url + (refresh ? '&refresh=1' : ''), {
+                signal: request.controller.signal
             });
+            var data = await response.json().catch(function() { return null; });
+            if (reportRequest !== request) return;
+            if (!response.ok || !data || !data.success) {
+                var message = (data && data.error) || fallback;
+                if (!response.ok) message += ' (HTTP ' + response.status + ')';
+                showReportState(detailEl, message, true);
+                return;
+            }
+            renderReport(data);
+            reportCache = data;
+        } catch (error) {
+            if (reportRequest !== request) return;
+            console.error(error);
+            showReportState(detailEl, fallback, true);
+        } finally {
+            if (reportRequest === request) reportRequest = null;
+        }
     }
 
     // ============================================================
