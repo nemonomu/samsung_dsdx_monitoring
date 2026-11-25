@@ -378,6 +378,21 @@ class ManualTests(TestCase):
         self.assertContains(response, '"scope": "common"')
         self.assertContains(response, '"field": "original_sku_price"')
 
+    def test_column_statistics_can_load_only_registered_manual_links(self):
+        endpoint = '/dx/layer1/api/column-alert-links/'
+        with patch.object(ColumnCheckLink.objects, 'filter') as check_urls:
+            response = self.client.get(endpoint, {'guides_only': '1'})
+        check_urls.assert_not_called()
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertEqual([], payload['links'])
+        self.assertFalse(payload['manual_error'])
+        guides = payload['guides']
+        self.assertEqual(PREFIX + '?country=SEA&product=TV&retailer=costco&column=item',
+                         guides['SEA|TV|costco|item'])
+        self.assertIn('SEIB|LDY_DRYER|mediamarkt|final_sku_price', guides)
+        self.assertNotIn('SEA|TV|costco|product_url', guides)
+
     def test_stale_save_does_not_overwrite(self):
         self.assertEqual(200, self.save().status_code)
         self.data['datasets'][0]['fields'][0]['note'] = 'stale overwrite'

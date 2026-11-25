@@ -21,6 +21,7 @@
     let selectedStatus = 'all';
     let overviewStatus = 'all';
     let controller;
+    let manualGuidesRequest;
     const detailRequests = new Map();
     const openRetailers = new Set();
 
@@ -70,7 +71,9 @@
             }).join('') + `<td class="ccs-verdict ${esc(row.status)}">${comparison.ratio(row)}</td><td class="ccs-verdict ${esc(row.status)}">${comparison.delta(row)}</td></tr>`;
         }).join('');
         if (!visible.length) html += `<tr><td colspan="${data.dates.length + 5}">해당 판정의 항목이 없습니다.</td></tr>`;
-        panel.querySelector('tbody').innerHTML = html;
+        const tbody = panel.querySelector('tbody');
+        tbody.innerHTML = html;
+        linkManualColumns(tbody, data);
         const scroll = panel.querySelector('.ccs-scroll');
         scroll.hidden = false;
         scroll.scrollLeft = scroll.scrollWidth;
@@ -137,6 +140,41 @@
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || '조회에 실패했습니다.');
             return data;
+        });
+    }
+
+    function linkManualColumns(tbody, {country, product, retailer}) {
+        const rows = tbody.querySelectorAll('tr[data-column]');
+        if (!rows.length) return;
+        if (!manualGuidesRequest) {
+            manualGuidesRequest = getJSON('/dx/layer1/api/column-alert-links/?guides_only=1').then(data => {
+                if (data.manual_error) throw new Error('DX 매뉴얼 조회 실패');
+                return data.guides;
+            }).catch(() => {
+                manualGuidesRequest = null;
+                return {};
+            });
+        }
+
+        const retailerKey = retailer.toLowerCase().replace(/[^a-z0-9]/g, '');
+        manualGuidesRequest.then(guides => {
+            for (const row of rows) {
+                const column = row.dataset.column;
+                const url = guides?.[`${country}|${product}|${retailerKey}|${column}`];
+                if (!row.isConnected || !url?.startsWith('/dx/documents/manual/?')) continue;
+                const link = document.createElement('a');
+                link.className = 'ccs-manual-link';
+                link.href = url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.setAttribute('aria-label', `${column} DX 매뉴얼 (새 탭)`);
+                link.textContent = column;
+                const icon = document.createElement('span');
+                icon.setAttribute('aria-hidden', 'true');
+                icon.textContent = '↗';
+                link.append(icon);
+                row.firstElementChild.replaceChildren(link);
+            }
         });
     }
 

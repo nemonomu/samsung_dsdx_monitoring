@@ -43,7 +43,9 @@ def selection(data):
 def links(request):
     try:
         if request.method == 'GET':
-            records = [serialize(record) for record in ColumnCheckLink.objects.filter(environment=environment())]
+            records = []
+            if request.GET.get('guides_only') != '1':
+                records = [serialize(record) for record in ColumnCheckLink.objects.filter(environment=environment())]
             try:
                 revision = current_revision()
                 guides = guide_urls(prepare_data(revision.data if revision else seed_data()))

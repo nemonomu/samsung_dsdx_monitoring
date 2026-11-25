@@ -37,6 +37,10 @@
 .ccs-filter[data-status="abnormal"] strong {color:#cf2445}
 .ccs-filter[data-status="review"] strong {color:#c65320}
 .ccs-link {display:inline-block;background:#edf6f3;color:#217767;text-decoration:none;border-radius:5px;padding:6px 10px;font-size:12px;white-space:nowrap}
+.ccs-manual-link {color:#245380;text-decoration:underline;text-underline-offset:3px}
+.ccs-manual-link:hover {color:#0f2f54}
+.ccs-manual-link:focus-visible {outline:2px solid #527db9;outline-offset:3px;border-radius:2px}
+.ccs-manual-link span {margin-left:4px;font-size:11px}
 .ccs-search-label {display:flex;gap:10px;align-items:center;font-size:12px;color:#64748b}
 .ccs-search-label input {width:200px;padding:8px 10px;border:1px solid #dbe5eb;border-radius:6px;font:inherit}
 .ccs-pagination {display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:14px 20px;color:#64748b;font-size:12px}
