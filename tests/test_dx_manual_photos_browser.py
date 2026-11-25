@@ -1,5 +1,8 @@
 """Exercise shipped manual JS with isolated fixtures; never writes production data."""
 import copy
+from base64 import b64encode
+from io import BytesIO
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,6 +13,7 @@ from tests import test_dx_manual as config
 from django.template.loader import render_to_string
 from apps.dx.dx_document.manual_catalog import prepare_data
 from playwright.sync_api import sync_playwright, expect
+from PIL import Image
 
 APP = ROOT / 'apps/dx/dx_document'
 saved = prepare_data(config.manual.seed_data())
@@ -60,18 +64,25 @@ with sync_playwright() as p:
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto('http://manual.test/')
-    expect(page.locator('#captureSelect option:checked')).to_contain_text('새 수집 화면')
+    expect(page.locator('#captureDescription')).to_contain_text('새 수집 화면')
+    expect(page.locator('#capturePosition')).to_have_text(re.compile(r'^1 / \d+$'))
+    expect(page.locator('#prevPhoto')).to_be_disabled()
+    expect(page.locator('#photoPager select')).to_have_count(0)
     assert page.locator('#photoPager').bounding_box()['y'] < page.locator('#canvas').bounding_box()['y']
     page.locator('#routeDetails').click()
     expect(page.locator('.manual-route-description').first).to_have_text('검색 → TV 선택\n이 목록에서 수집')
     page.locator('dialog[open] .close').click()
     page.locator('#editModeToggle').click()
-    page.locator('#captureSelect').select_option('1')
+    page.locator('#nextPhoto').click()
+    expect(page.locator('#capturePosition')).to_have_text(re.compile(r'^2 / \d+$'))
+    page.locator('#prevPhoto').click()
+    expect(page.locator('#captureDescription')).to_contain_text('새 수집 화면')
+    page.locator('#nextPhoto').click()
     expect(page.locator('#manualPrimaryPhoto')).to_be_enabled()
     page.locator('#manualPrimaryPhoto').click()
     expect(page.locator('#editStatus')).to_contain_text('저장됨')
     page.reload()
-    expect(page.locator('#captureSelect option:checked')).not_to_contain_text('새 수집 화면')
+    expect(page.locator('#captureDescription')).not_to_contain_text('새 수집 화면')
     page.locator('#editModeToggle').click()
     page.locator('#editImage').click()
     expect(page.locator('#replacePhoto')).to_have_text('현재 이미지 교체')
@@ -98,7 +109,7 @@ with sync_playwright() as p:
     page.reload()
     expect(page.locator('#canvas image')).to_have_attribute('href', replacement['customImage'])
     page.locator('#editModeToggle').click()
-    page.locator('#captureSelect').select_option('1')
+    page.locator('#nextPhoto').click()
     fail_save = True
     page.locator('#manualPrimaryPhoto').click()
     expect(page.locator('#saveFailure')).to_have_text('테스트 저장 실패')
@@ -121,13 +132,46 @@ with sync_playwright() as p:
     page.locator('#applyImage').click()
     expect(page.locator('#editStatus')).to_contain_text('저장됨')
     assert len(saved['photos']) == before_count + 1
-    expect(page.locator('#captureSelect option:checked')).to_contain_text('추가 캡처 확인')
+    expect(page.locator('#captureDescription')).to_contain_text('추가 캡처 확인')
     page.locator('#undoEdit').click()
     page.locator('#saveGuide').click()
     expect(page.locator('#editStatus')).to_contain_text('저장됨')
     assert len(saved['photos']) == before_count
     page.reload()
-    expect(page.locator('#captureSelect option:checked')).not_to_contain_text('추가 캡처 확인')
+    expect(page.locator('#captureDescription')).not_to_contain_text('추가 캡처 확인')
+
+    representative = page.locator('#captureDescription').inner_text()
+    page.locator('#editModeToggle').click()
+    page.locator('#editImage').click()
+    clipboard_image = BytesIO()
+    Image.new('RGB', (40, 24), 'white').save(clipboard_image, format='PNG')
+    result = page.locator('#editPhotoNote').evaluate('''(input, base64) => {
+        const data = new DataTransfer();
+        data.items.add(new File([Uint8Array.from(atob(base64), c => c.charCodeAt(0))], 'capture.png', {type:'image/png'}));
+        return input.dispatchEvent(new ClipboardEvent('paste', {clipboardData:data, bubbles:true, cancelable:true}));
+    }''', b64encode(clipboard_image.getvalue()).decode())
+    assert not result
+    expect(page.locator('#annotationCanvas image')).to_have_attribute('width', '40')
+    expect(page.locator('#editPhotoSelect option:checked')).to_have_text('새 이미지')
+    page.locator('#editPhotoStage').fill('붙여넣기 캡처')
+    page.locator('#applyImage').click()
+    expect(page.locator('#editStatus')).to_contain_text('저장됨')
+    assert len(saved['photos']) == before_count + 1
+    pasted = next(photo for photo in saved['photos'] if photo['stage'] == '붙여넣기 캡처')
+    assert pasted['captureField'] == column and pasted['boxes'] == []
+    assert pasted['customImage'].endswith('a' * 64 + '/')
+    expect(page.locator('#captureDescription')).to_contain_text('공통 · 붙여넣기 캡처')
+    expect(page.locator('#manualPrimaryPhoto')).to_be_enabled()
+    page.reload()
+    expect(page.locator('#captureDescription')).to_have_text(representative)
+    total = int(page.locator('#capturePosition').inner_text().split(' / ')[1])
+    for _ in range(total - 1):
+        page.locator('#nextPhoto').click()
+        if '붙여넣기 캡처' in page.locator('#captureDescription').inner_text():
+            break
+    expect(page.locator('#captureDescription')).to_contain_text('공통 · 붙여넣기 캡처')
+    expect(page.locator('#canvas .view-caption')).to_have_text('등록한 전체 캡처입니다.')
+    expect(page.locator('#sceneTabs [data-view="data"]')).to_have_count(0)
     assert not errors, errors
     browser.close()
-print('Manual image selection, replacement, reload, route text and save retry passed.')
+print('Manual clipboard capture, paging, representative selection, replacement, reload and save retry passed.')

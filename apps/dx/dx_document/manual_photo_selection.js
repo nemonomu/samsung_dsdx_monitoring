@@ -2,10 +2,14 @@
 function manualPhotoKey(scope, category, column) {
   return (scope === 'common' ? 'common' : category) + ':' + column;
 }
+function manualPhotoFields(photo) {
+  if (photo.boxes.length) return photo.boxes.flatMap(box => box.fields);
+  return photo.captureField ? [photo.captureField] : [];
+}
 function manualPhotoCandidates(photos, state) {
   return photos.filter(p => p.retailer === state.r && p.category !== 'hhp' &&
     (state.scope === 'common' || p.category === state.c || p.category === 'all') &&
-    p.boxes.some(b => b.fields.includes(state.field)));
+    manualPhotoFields(p).includes(state.field));
 }
 function manualPhotoLegacyOrder(p) {
   const added = /^user_photo_(\d+)$/.exec(p.name);
@@ -30,7 +34,7 @@ function manualInitializePhotoPreferences(photos) {
   for (const p of photos) {
     if (p.category === 'hhp') continue;
     const scopes = ['common', ...(p.category === 'all' ? categories : [p.category])];
-    for (const column of new Set(p.boxes.flatMap(b => b.fields))) for (const scope of scopes) {
+    for (const column of new Set(manualPhotoFields(p))) for (const scope of scopes) {
       const id = JSON.stringify([p.retailer, scope, column]);
       if (!groups.has(id)) groups.set(id, []);
       groups.get(id).push(p);

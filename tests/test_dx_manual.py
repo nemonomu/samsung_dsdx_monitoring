@@ -84,6 +84,17 @@ class ManualTests(TestCase):
             'version': version, 'data': data if data is not None else self.data,
         }, ensure_ascii=False), content_type='application/json')
 
+    def test_unannotated_capture_can_be_saved_for_a_registered_column(self):
+        photo = self.data['photos'][0]
+        column = photo['boxes'][0]['fields'][0]
+        photo.update(boxes=[], captureField=column)
+        self.assertEqual(200, self.save().status_code)
+        stored = storage.revisions().first().data['photos'][0]
+        self.assertEqual(column, stored['captureField'])
+        self.assertEqual([], stored['boxes'])
+        photo['captureField'] = 'unregistered_column'
+        self.assertEqual(400, self.save(version=1).status_code)
+
     def test_original_data_and_images_are_preserved(self):
         self.assertEqual(24, len(self.data['datasets']))
         self.assertEqual(70, len(self.data['photos']))

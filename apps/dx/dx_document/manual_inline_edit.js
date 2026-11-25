@@ -130,11 +130,3 @@ new MutationObserver(records => {
 window.addEventListener('beforeunload', event => {
   if (manualInlineEdit && manualInlineEdit.input.value.trim() !== manualInlineEdit.original) {event.preventDefault();event.returnValue = '';}
 });
-const inlinePhotoUpload = $('photoFile').onchange;
-$('photoFile').onchange = async event => {
-  await inlinePhotoUpload(event);
-  if (event.target.files?.length && workingPhoto && !$('imageError').textContent && !workingPhoto.boxes.length) {
-    drawing = true; renderImageStage();
-    showToast('이미지에서 값을 둘러싸도록 드래그해 번호 박스를 그려 주세요.');
-  }
-};

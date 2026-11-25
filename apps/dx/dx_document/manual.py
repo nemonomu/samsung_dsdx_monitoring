@@ -138,6 +138,10 @@ def validate_data(data):
         boxes = photo.get('boxes')
         if not isinstance(boxes, list) or len(boxes) > 300:
             raise ValueError('번호 박스 구성이 올바르지 않습니다.')
+        if 'captureField' in photo:
+            field = photo['captureField']
+            if not isinstance(field, str) or field not in fields_by_retailer[photo['retailer']]:
+                raise ValueError('캡처에 연결할 컬럼을 확인하세요.')
         for box in boxes:
             if not isinstance(box, dict):
                 raise ValueError('번호 박스를 확인하세요.')

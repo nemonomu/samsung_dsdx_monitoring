@@ -68,7 +68,7 @@ render = function() {
   $('fieldCount').textContent = manualScopedFields().length + '개';
   document.querySelector('.fieldpane-head h2').firstChild.textContent = common ? '공통 컬럼 ' : manualCategoryLabel(S.c) + ' 제품군별 ';
   $('manualScopeNote').textContent = common
-    ? '공통 컬럼의 설명과 이미지를 한곳에서 관리합니다. 여러 화면은 캡처 선택으로 확인하세요.'
+    ? '공통 컬럼의 설명과 이미지를 한곳에서 관리합니다.'
     : manualCategoryLabel(S.c) + '의 제품군별 컬럼입니다. 공통 컬럼은 공통 탭에서 확인하세요.';
   $('routeSummary').insertAdjacentHTML('afterbegin', '<strong class="manual-route-product">' + esc(manualCategoryLabel(S.c)) + ' · </strong>');
 };
@@ -105,7 +105,7 @@ renderLesson = function() {
     const appliesTo = manualDatasets().filter(dataset => dataset.fields.some(candidate => candidate.field === f.field));
     manualScopeBadge.textContent = appliesTo.length > 1 ? appliesTo.map(dataset => manualCategoryLabel(dataset.category)).join(' · ') + ' 적용' : manualCategoryLabel(S.c) + ' 전용';
   }
-  $('manualExampleHead').innerHTML = '<h3>' + (common ? '확인 방법 · 이미지' : esc(shortCat[S.c]) + ' 확인 방법') + '</h3><p>같은 컬럼의 여러 화면은 캡처 선택에서 바꿔 볼 수 있습니다.</p>';
+  $('manualExampleHead').innerHTML = '<h3>' + (common ? '확인 방법 · 이미지' : esc(shortCat[S.c]) + ' 확인 방법') + '</h3><p>여러 캡처는 이전·다음 버튼으로 넘길 수 있습니다.</p>';
   const photo = currentPhoto();
   if (photo && common) $('photoSource').insertAdjacentHTML('afterbegin', '<strong>' + esc(photo.category === 'all' ? '공통' : manualCategoryLabel(photo.category)) + ' 캡처</strong> · ');
 

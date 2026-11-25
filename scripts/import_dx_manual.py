@@ -11,6 +11,28 @@ import re
 import sys
 
 
+def update_photo_interaction(code):
+    """Use the application capture renderer and shared file/clipboard loader."""
+    code, rendered = re.subn(r"(?m)^if\(photo\)\{\$\('canvas'\)\.innerHTML=.*\}$",
+                             'if(photo)renderManualCapture(photo,f);', code)
+    code, loaded = re.subn(r"(?m)^\$\('photoFile'\)\.onchange=.*\n", '', code)
+    if rendered != 1 or loaded != 1:
+        raise ValueError('Source capture renderer or file chooser changed.')
+    for old, new in (
+        ('if(full){\n const fs=', 'if(full||!sel.length){\n const fs='),
+        ("+' 전체 화면 · '+field().n+'번 위치\">", "+' 전체 화면'+(sel.length?' · '+field().n+'번 위치':'')+'\">"),
+        ("if(!p.boxes.length){$('imageError')", "if(!p.boxes.length&&!p.captureField){$('imageError')"),
+        ('const linkedFields=p.boxes.flatMap(b=>b.fields)', 'const linkedFields=manualPhotoFields(p)'),
+        ('&&p.boxes.some(b=>b.fields.includes(f.field))).map(p=>p.name)',
+         '&&manualPhotoFields(p).includes(f.field)).map(p=>p.name)'),
+    ):
+        if code.count(old) != 1:
+            raise ValueError(f'Source capture code changed: {old}')
+        code = code.replace(old, new)
+    return code.replace('캡처 선택에서 목록·상세 사진을 바꿀 수 있습니다.',
+                        '이전·다음 버튼으로 목록·상세 사진을 넘길 수 있습니다.')
+
+
 def build(source):
     root = Path(__file__).resolve().parents[1] / 'apps/dx/dx_document'
     html = Path(source).read_text(encoding='utf-8')
@@ -48,7 +70,7 @@ def build(source):
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>dx 메뉴얼</title>
 <link rel="stylesheet" href="{% static 'dx_document/css/manual-guide.css' %}?v=20261021-notes-edit">
-<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261113-photo-selection">
+<link rel="stylesheet" href="{% static 'dx_document/css/manual-layout.css' %}?v=20261125-photo-pager">
 </head><body><form hidden>{% csrf_token %}</form>
 '''
     template += body
@@ -56,7 +78,7 @@ def build(source):
 <dialog id="historyDialog" class="editdialog"><div class="dialoghead"><h2>수정 이력</h2><button class="close" data-close aria-label="닫기">×</button></div><div class="dialogbody"><p>이전 버전을 불러온 후 저장하면 새 버전으로 등록됩니다.</p><div id="historyList"></div></div></dialog>
 {{ guide_data|json_script:"guide-data" }}
 {{ guide_meta|json_script:"guide-meta" }}
-<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261113-photo-selection"></script>
+<script src="{% static 'dx_document/js/manual-guide.js' %}?v=20261125-photo-paste"></script>
 </body></html>
 '''
     (root / 'templates/dx_document/manual_content.html').write_text(template, encoding='utf-8')
@@ -118,7 +140,7 @@ def build(source):
     code = code.replace('<span class="sourcepill">\'+esc(infoField.page)+\'</span>', '')
     code = code.replace("<p>'+esc(infoField.note)", "<p class=\"manual-field-note\">'+esc(infoField.note)")
     code = code.replace("<p>'+esc(photo.note)", "<p class=\"manual-photo-note\">'+esc(photo.note)")
-    code = code.replace("+esc(item.stage)+'</option>'", "+esc((S.scope==='common'?manualCategoryLabel(item.category)+' · ':'')+item.stage)+'</option>'")
+    code = update_photo_interaction(code)
     code += '\n' + (root / 'manual_field_info.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_column_groups.js').read_text(encoding='utf-8')
     code += '\n' + (root / 'manual_country_header.js').read_text(encoding='utf-8')

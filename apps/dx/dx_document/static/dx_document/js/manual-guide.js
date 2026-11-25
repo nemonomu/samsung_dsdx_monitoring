@@ -29,12 +29,12 @@ function renderFields(){const q=S.q.toLowerCase(),rows=manualScopedFields().filt
 function svg(p,full=false){
 const all=p.boxes.map(b=>({...b,ns:b.fields.map(f=>ds().fields.find(r=>!r.deleted&&r.field===f)?.n).filter(Boolean)})).filter(b=>b.ns.length),sel=all.filter(b=>b.fields.includes(S.field));let vb=[0,0,p.width,p.height];
 
-if(full){
+if(full||!sel.length){
  const fs=Math.max(16,p.width/85),stroke=Math.max(3,p.width/500);
  const marks=sel.map(b=>{const nums=b.ns.join(' · '),bw=Math.min(p.width,Math.max(fs*1.7,nums.length*fs*.62+fs)),bh=fs*1.6,x=Math.max(0,Math.min(p.width-bw,b.x-4)),y=b.y>bh+6?b.y-bh-6:Math.min(p.height-bh,b.y+b.h+6);
  return '<rect x="'+b.x+'" y="'+b.y+'" width="'+b.w+'" height="'+b.h+'" rx="3" fill="#dc4352" fill-opacity=".04" stroke="#dc4352" stroke-width="'+stroke+'"/><rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'" rx="5" fill="#dc4352"/><text x="'+(x+bw/2)+'" y="'+(y+bh*.71)+'" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="'+fs+'" font-weight="700">'+nums+'</text>'
  }).join('');
- return '<svg viewBox="0 0 '+p.width+' '+p.height+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(field().label)+' 전체 화면 · '+field().n+'번 위치"><rect width="'+p.width+'" height="'+p.height+'" fill="white"/><image href="'+esc(photoSrc(p))+'" width="'+p.width+'" height="'+p.height+'"/>'+marks+'</svg>';
+ return '<svg viewBox="0 0 '+p.width+' '+p.height+'" preserveAspectRatio="xMidYMid meet" role="img" aria-label="'+esc(field().label)+' 전체 화면'+(sel.length?' · '+field().n+'번 위치':'')+'"><rect width="'+p.width+'" height="'+p.height+'" fill="white"/><image href="'+esc(photoSrc(p))+'" width="'+p.width+'" height="'+p.height+'"/>'+marks+'</svg>';
 }
 if(!full&&sel.length){const x0=Math.min(...sel.map(b=>b.x)),y0=Math.min(...sel.map(b=>b.y)),x1=Math.max(...sel.map(b=>b.x+b.w)),y1=Math.max(...sel.map(b=>b.y+b.h));const w=Math.min(p.width,Math.max(x1-x0+180,620)),h=Math.min(p.height,Math.max(y1-y0+110,180)),x=Math.max(0,Math.min(p.width-w,x0-90)),y=Math.max(0,Math.min(p.height-h,y0-55));vb=[x,y,w,h]}
 let lx=vb[0]+12;const labels=sel.map(b=>{const nums=b.ns.join(' · '),w=Math.max(32,nums.length*9+18),x=lx;lx+=w+12;return '<path d="M'+(x+w/2)+' '+(vb[1]-8)+' L'+(b.x+12)+' '+(b.y-4)+'" stroke="#dc4352" stroke-width="1.5" fill="none"/><rect x="'+x+'" y="'+(vb[1]-34)+'" width="'+w+'" height="26" rx="6" fill="#dc4352"/><text x="'+(x+w/2)+'" y="'+(vb[1]-16)+'" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="14" font-weight="700">'+nums+'</text>'}).join('');
@@ -48,7 +48,7 @@ $('sceneTabs').innerHTML=photo?[['full','전체 화면'],['data','수집데이�
 $('sceneTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.view=b.dataset.view;renderLesson()});
 $('canvas').dataset.view=S.view;
 $('zoomOpen').hidden=!photo;$('originalLink').hidden=!photo;$('commonNote').hidden=!photo?.commonExample;if(photo?.commonExample)$('commonNote').textContent='냉장고 표본으로 보는 공통 위치입니다. 선택한 제품군의 실제 값과 구분해 주세요.';
-if(photo){$('canvas').innerHTML='<div class="view-caption">'+(S.view==='full'?'이미지 전체에서 <strong>'+f.n+'번 박스</strong>의 위치를 확인하세요.':'같은 캡처의 <strong>'+f.n+'번 박스 주변</strong>을 확대했습니다.')+'</div>'+svg(photo,S.view==='full');$('originalLink').href=photoSrc(photo);$('photoSource').innerHTML=esc(photo.stage)+(photo.url?' · <a href="'+esc(photo.url)+'" target="_blank" rel="noopener">출처 페이지 ↗</a>':' · 제공된 캡처')+'<br>'+esc(photo.region)+' · '+esc(photo.date);$('photoPager').innerHTML='<button id="prevPhoto" aria-label="이전 캡처" '+(S.photo===0?'disabled':'')+'>‹</button><select id="captureSelect" aria-label="캡처 선택">'+a.map((item,i)=>'<option value="'+i+'" '+(i===S.photo?'selected':'')+'>'+(i+1)+' / '+a.length+' · '+esc((S.scope==='common'?manualCategoryLabel(item.category)+' · ':'')+item.stage)+'</option>').join('')+'</select><button id="nextPhoto" aria-label="다음 캡처" '+(S.photo===a.length-1?'disabled':'')+'>›</button>';$('captureSelect').onchange=e=>{S.photo=Number(e.target.value);renderLesson()};$('prevPhoto').onclick=()=>{S.photo--;renderLesson()};$('nextPhoto').onclick=()=>{S.photo++;renderLesson()};}
+if(photo)renderManualCapture(photo,f);
 else{$('canvas').innerHTML='<div class="empty"><div class="emptyicon">'+icon(p.blocked?'lock':f.direct?'image':'info')+'</div><strong>'+esc(p.blocked?'현재 사이트 화면을 확인하지 못했어요.':f.direct?'이번 표본에는 번호 캡처가 없어요.':'쇼핑몰에 직접 표시되는 값이 아니에요.')+'</strong><p>'+esc(p.blocked?p.blocked:f.direct?'아래의 확인 위치와 원문 항목명을 따라 찾아보세요. 확인하지 않은 화면을 예시로 만들지 않았습니다.':'상품 화면의 숫자를 찾는 대신, 아래에서 이 컬럼의 의미와 출처를 확인하세요.')+'</p></div>';$('photoSource').textContent=p.region;$('photoPager').textContent=p.blocked?'현재 화면 미확인':'위치 · 의미 안내';}
 const infoField=manualDisplayField(f,photo),shownExample=manualShownExample(f,photo);
 $('inspector').innerHTML='<div class="facts"><div class="fact"><div class="facttitle">'+(photo?.commonExample?'선택 제품의 값 · 확인 상태':'확인하는 값')+'</div><div class="example '+(shownExample.length>24?'long':'')+'">'+(f.field==='product_url'&&shownExample.startsWith('http')?'<a target="_blank" rel="noopener" href="'+esc(shownExample)+'">표본 상품 열기 ↗</a>':esc(shownExample))+'</div></div><div class="fact"><div class="facttitle">어디서 찾나요?</div><div class="where">'+esc(infoField.position)+'</div></div><div class="fact"><div class="facttitle">화면의 원문 항목</div><div class="origin">'+esc(infoField.original)+'</div><div class="facttitle" style="margin-top:12px">수집 구분 · '+esc(infoField.scope)+'</div></div></div><details class="attention" '+(/capacity|screen_size/.test(f.field)?'open':'')+'><summary>'+icon('info')+'헷갈리기 쉬운 부분</summary><p class="manual-field-note">'+esc(infoField.note)+'</p>'+(photo?'<p class="manual-photo-note">'+esc(photo.note)+'</p>':'')+'</details>';
@@ -57,7 +57,7 @@ function openInfo(title,content){$('infoTitle').textContent=title;$('infoBody').
 function routeInfo(){const p=profile();openInfo(profile().name+' 방문 방법','<h3>'+S.mode+' · '+shortCat[S.c]+'</h3><p><a href="'+esc(entry())+'" target="_blank" rel="noopener">쇼핑몰에서 시작하기 ↗</a></p><p>검색어 <strong>'+esc(p.queries[S.c])+'</strong><br>정렬 · '+esc(S.mode==='main'?p.mainSort:p.bsrSort)+'</p><h3>목록과 상세에서 확인할 것</h3><p>'+esc(p.summary)+'</p><h3>사용한 지역</h3><p>'+esc(p.region)+'</p><h3>확인할 때 주의하세요</h3><p>'+esc(p.warning)+'</p>'+(p.blocked?'<p>'+esc(p.blocked)+'</p>':''))}
 function renderTable(){const q=$('tableSearch').value.toLowerCase();$('tableTitle').textContent=profile().name+' · '+shortCat[S.c]+' 전체 '+ds().fields.length+'개 컬럼';$('tableRows').innerHTML=ds().fields.filter(f=>!q||[f.field,f.label,f.position,f.original].join(' ').toLowerCase().includes(q)).map(f=>'<tr><td><button class="tablelink" data-jump="'+f.field+'">'+f.n+' →</button></td><td><code>'+esc(f.field)+'</code><br><strong>'+esc(f.label)+'</strong></td><td>'+esc(f.scope)+'</td><td><strong>'+esc(f.page)+'</strong><br>'+esc(f.position)+'<small>'+esc(f.original)+'</small></td><td>'+esc(f.example)+'<small>'+esc(f.note)+'</small></td></tr>').join('');$('tableRows').querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>{$('tableDialog').close();setField(b.dataset.jump)})}
 function coverage(){openInfo('참고 자료와 확인 범위','<p>등록 쇼핑몰 '+Object.keys(D.profiles).length+'개 · '+D.datasets.filter(d=>d.category!=='all').length+'개 제품군 조합. 표와 화면의 번호는 각 데이터셋 안에서 유지됩니다. 사진과 값은 '+D.date+' 확인 표본이며 조회 시점·지역·옵션에 따라 바뀔 수 있습니다.</p><div class="covergrid">'+Object.entries(D.profiles).map(([r,p])=>'<article><strong>'+esc(p.country+' · '+p.name)+'</strong>'+D.datasets.filter(d=>d.retailer===r&&d.category!=='all').map(d=>shortCat[d.category]).join(' · ')+'<p>'+esc(p.blocked||'각 컬럼에서 등록된 설명과 캡처를 확인하세요. 새로 추가된 컬럼은 설명과 이미지를 등록해 주세요.')+'</p></article>').join('')+'</div><h3>별도로 확인해야 하는 차이</h3><p>Expert 냉장고 TSK5O881ES의 제목 124 l와 사양 142가 다릅니다. 현재 수집은 제목 우선입니다. Kühlschränke 검색은 일반 목록 대신 안내 페이지로 이동했습니다. Liverpool 세탁 용량 보완 후보에 Capacidad de secado도 포함되어 있어 세탁·건조 라벨을 구분해야 합니다.</p><h3>확인하지 못한 항목</h3><p>접근이 제한된 사이트의 현재 가격·사양·리뷰, Costco 로그인 전 숨겨진 회원 가격은 확인하지 못했습니다. 제품별 캡처가 없는 컬럼은 위치 안내 또는 명시된 공통 예시로 구분했습니다. Expert의 같은 모델 PDF 보완 경로는 안내만 포함하며 PDF 내용 자체는 검증하지 않았습니다.</p><details class="reference"><summary>참고 엑셀의 원래 번호 보기 · 92개 행</summary><p>미국 참고 엑셀의 데이터셋은 컬럼 정의 표입니다. BestBuy 냉장고 1–21, Lowe’s 냉장고 31–55, BestBuy 세탁기 61–81, Lowe’s 세탁기 91–115를 보존했습니다. 현재 프로젝트의 다른 리테일러에 이 컬럼을 그대로 적용하지 않았으며 각 실제 스키마 순서로 번호를 부여했습니다.</p><div class="tablewrap"><table><thead><tr><th>번호</th><th>대상</th><th>화면 구분</th><th>컬럼</th><th>설명</th></tr></thead><tbody>'+D.reference.map(r=>'<tr><td>'+esc(r.B)+'</td><td>'+esc(r.C+' / '+r.F+' / '+r.D)+'</td><td>'+esc(r.G)+'</td><td><code>'+esc(r.H)+'</code></td><td>'+esc(r.I)+'</td></tr>').join('')+'</tbody></table></div></details><p>국가·쇼핑몰·컬럼 구성은 등록된 수집 설정을 참고합니다. 매뉴얼 편집은 실제 수집 설정을 변경하지 않습니다. 변경 내용은 저장 버튼을 눌러 서버에 보관합니다.</p>')}
-function help(){openInfo('세 단계면 충분해요.','<div class="helpsteps"><article><b>01</b><h3>어디를 볼지 고르세요.</h3><p>국가 → 리테일러를 선택하고, 공통 컬럼 또는 제품군별 탭을 선택합니다. 공통 컬럼은 한 곳에서 설명과 여러 캡처를 확인하고 수정합니다. main과 bsr의 방문 링크·정렬은 상단에서 바꿀 수 있어요.</p></article><article><b>02</b><h3>궁금한 컬럼을 누르세요.</h3><p>한국어 이름이나 실제 컬럼명으로 찾을 수 있어요. 용량·가격·리뷰처럼 묶인 목록에서 하나씩 살펴보세요.</p></article><article><b>03</b><h3>전체 위치와 수집할 값을 확인하세요.</h3><p>전체 화면에서 빨간 번호 박스로 위치를 확인하고, 수집데이터에서 박스 주변을 확대해 값을 읽으세요. 캡처 선택에서 목록·상세 사진을 바꿀 수 있습니다.</p></article></div><p>전체 컬럼 표에서도 표시 대상 컬럼을 확인할 수 있습니다. 편집 모드에서 쇼핑몰·컬럼을 추가하고 여러 이미지를 등록한 뒤 저장하세요. 현재 확인하지 못한 항목은 그 상태를 함께 안내합니다.</p>')}
+function help(){openInfo('세 단계면 충분해요.','<div class="helpsteps"><article><b>01</b><h3>어디를 볼지 고르세요.</h3><p>국가 → 리테일러를 선택하고, 공통 컬럼 또는 제품군별 탭을 선택합니다. 공통 컬럼은 한 곳에서 설명과 여러 캡처를 확인하고 수정합니다. main과 bsr의 방문 링크·정렬은 상단에서 바꿀 수 있어요.</p></article><article><b>02</b><h3>궁금한 컬럼을 누르세요.</h3><p>한국어 이름이나 실제 컬럼명으로 찾을 수 있어요. 용량·가격·리뷰처럼 묶인 목록에서 하나씩 살펴보세요.</p></article><article><b>03</b><h3>전체 위치와 수집할 값을 확인하세요.</h3><p>전체 화면에서 빨간 번호 박스로 위치를 확인하고, 수집데이터에서 박스 주변을 확대해 값을 읽으세요. 이전·다음 버튼으로 목록·상세 사진을 넘길 수 있습니다.</p></article></div><p>전체 컬럼 표에서도 표시 대상 컬럼을 확인할 수 있습니다. 편집 모드에서 쇼핑몰·컬럼을 추가하고 여러 이미지를 등록한 뒤 저장하세요. 현재 확인하지 못한 항목은 그 상태를 함께 안내합니다.</p>')}
 $('brandIcon').innerHTML=icon('grid');$('searchIcon').innerHTML=icon('search');$('externalIcon').innerHTML=icon('external');$('prevField').innerHTML=icon('left');$('nextField').innerHTML=icon('right');$('zoomOpen').innerHTML=icon('zoom')+'크게 보기';
 $('fieldSearch').oninput=e=>{S.q=e.target.value;renderFields()};$('mainMode').onclick=()=>{S.mode='main';render()};$('bsrMode').onclick=()=>{S.mode='bsr';render()};$('prevField').onclick=()=>setField(ds().fields[ds().fields.indexOf(field())-1].field);$('nextField').onclick=()=>setField(ds().fields[ds().fields.indexOf(field())+1].field);$('routeDetails').onclick=routeInfo;$('coverageOpen').onclick=coverage;document.querySelectorAll('[data-help]').forEach(b=>b.onclick=help);document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());$('tableOpen').onclick=()=>{$('tableSearch').value='';renderTable();$('tableDialog').showModal()};$('tableSearch').oninput=renderTable;$('zoomOpen').onclick=()=>{const p=currentPhoto();if(!p)return;$('zoomTitle').textContent=field().n+' · '+field().label;$('zoomBody').innerHTML=svg(p,S.view==='full')+'<p class="zoomcaption">'+esc(p.note)+'</p>';$('zoomDialog').showModal()};
 /* Local editor. No upload or network service is used for user images. */
@@ -67,7 +67,7 @@ function cloneValue(v){return JSON.parse(JSON.stringify(v))}
 function showToast(message){$('editorToast').textContent=message;$('editorToast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{$('editorToast').hidden=true},3500)}
 
 function changed(){revision++;renderEditorStatus()}
-function refreshImageLinks(){for(const d of D.datasets)for(const f of d.fields){f.images=[...new Set(D.photos.filter(p=>p.retailer===d.retailer&&(d.category==='all'||p.category===d.category||p.category==='all')&&p.boxes.some(b=>b.fields.includes(f.field))).map(p=>p.name))];if('verified'in f)f.verified=Boolean(f.images.length)}}
+function refreshImageLinks(){for(const d of D.datasets)for(const f of d.fields){f.images=[...new Set(D.photos.filter(p=>p.retailer===d.retailer&&(d.category==='all'||p.category===d.category||p.category==='all')&&manualPhotoFields(p).includes(f.field)).map(p=>p.name))];if('verified'in f)f.verified=Boolean(f.images.length)}}
 function restoreObject(target,before){for(const key of Object.keys(target))delete target[key];Object.assign(target,cloneValue(before))}
 function pushUndo(item){undoStack.push(item);if(undoStack.length>25)undoStack.shift()}
 function today(){const t=new Date();return [t.getFullYear(),String(t.getMonth()+1).padStart(2,'0'),String(t.getDate()).padStart(2,'0')].join('-')}
@@ -98,8 +98,7 @@ for(const id of ['boxX','boxY','boxW','boxH']){$(id).oninput=()=>{boxInputsToDra
 $('removeBox').onclick=()=>{if(!workingPhoto||selectedBox<0)return;workingPhoto.boxes.splice(selectedBox,1);selectedBox=Math.min(selectedBox,workingPhoto.boxes.length-1);renderImageStage();renderBoxControls()};
 $('replacePhoto').onclick=()=>{newUpload=false;$('photoFile').value='';$('photoFile').click()};
 $('addPhoto').onclick=()=>{newUpload=true;$('photoFile').value='';$('photoFile').click()};
-$('photoFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;if(!['image/png','image/jpeg','image/webp'].includes(file.type)){$('imageError').textContent='PNG, JPG, WEBP 이미지를 선택하세요.';return}if(file.size>15*1024*1024){$('imageError').textContent='15MB 이하의 이미지를 선택하세요.';return}try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});const size=await new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve({width:im.naturalWidth,height:im.naturalHeight});im.onerror=reject;im.src=data});photoMetadataToDraft();if(newUpload||!workingPhoto){editingPhotoIndex=-1;workingPhoto={retailer:S.r,category:S.scope==='common'?'all':S.c,stage:'상세',region:profile().region,note:'사용자가 추가한 이미지입니다.',name:'user_photo_'+Date.now(),url:'',date:today(),boxes:[]}}workingPhoto.customImage=data;workingPhoto.width=size.width;workingPhoto.height=size.height;workingPhoto.boxes=[];selectedBox=-1;drawing=false;drawStart=null;$('imageError').textContent='';renderPhotoEditor();showToast('이미지를 불러왔습니다. 번호 박스를 새로 그려 주세요.')}catch{$('imageError').textContent='이미지를 읽지 못했습니다. 다른 파일을 선택하세요.'}};
-$('applyImage').onclick=()=>{boxInputsToDraft();photoMetadataToDraft();const p=workingPhoto;if(!p){$('imageError').textContent='이미지를 먼저 추가하세요.';return}if(!p.boxes.length){$('imageError').textContent='값을 가리키는 번호 박스를 한 개 이상 추가하세요.';return}if(p.boxes.some(b=>!b.fields.length)){$('imageError').textContent='모든 박스에 연결할 컬럼을 한 개 이상 선택하세요.';return}if(p.url&&!/^https?:\/\//i.test(p.url)){$('imageError').textContent='출처는 http 또는 https 주소를 입력하거나 비워 두세요.';return}if(!p.stage.trim())p.stage='상세';p.userEdited=true;if(editingPhotoIndex>=0){const target=D.photos[editingPhotoIndex];pushUndo({kind:'photo',target,before:cloneValue(target)});restoreObject(target,p)}else{const target=cloneValue(p);D.photos.push(target);pushUndo({kind:'addPhoto',target})}refreshImageLinks();const appliedPhoto=editingPhotoIndex>=0?D.photos[editingPhotoIndex]:D.photos[D.photos.length-1];const selectedFields=p.boxes[selectedBox]?.fields||[];const linkedFields=p.boxes.flatMap(b=>b.fields);const focusFields=selectedFields.length?selectedFields:linkedFields;S.field=focusFields.includes(S.field)?S.field:(focusFields.find(name=>ds().fields.some(f=>f.field===name))||S.field);S.scene='전체';S.q='';$('fieldSearch').value='';S.photo=Math.max(0,shownPhotos().indexOf(appliedPhoto));changed();renderFields();renderLesson();$('imageEditor').close();showToast('수정한 이미지와 번호가 적용되었습니다. Ctrl+S로 서버에 저장하세요.')};
+$('applyImage').onclick=()=>{boxInputsToDraft();photoMetadataToDraft();const p=workingPhoto;if(!p){$('imageError').textContent='이미지를 먼저 추가하세요.';return}if(!p.boxes.length&&!p.captureField){$('imageError').textContent='값을 가리키는 번호 박스를 한 개 이상 추가하세요.';return}if(p.boxes.some(b=>!b.fields.length)){$('imageError').textContent='모든 박스에 연결할 컬럼을 한 개 이상 선택하세요.';return}if(p.url&&!/^https?:\/\//i.test(p.url)){$('imageError').textContent='출처는 http 또는 https 주소를 입력하거나 비워 두세요.';return}if(!p.stage.trim())p.stage='상세';p.userEdited=true;if(editingPhotoIndex>=0){const target=D.photos[editingPhotoIndex];pushUndo({kind:'photo',target,before:cloneValue(target)});restoreObject(target,p)}else{const target=cloneValue(p);D.photos.push(target);pushUndo({kind:'addPhoto',target})}refreshImageLinks();const appliedPhoto=editingPhotoIndex>=0?D.photos[editingPhotoIndex]:D.photos[D.photos.length-1];const selectedFields=p.boxes[selectedBox]?.fields||[];const linkedFields=manualPhotoFields(p);const focusFields=selectedFields.length?selectedFields:linkedFields;S.field=focusFields.includes(S.field)?S.field:(focusFields.find(name=>ds().fields.some(f=>f.field===name))||S.field);S.scene='전체';S.q='';$('fieldSearch').value='';S.photo=Math.max(0,shownPhotos().indexOf(appliedPhoto));changed();renderFields();renderLesson();$('imageEditor').close();showToast('수정한 이미지와 번호가 적용되었습니다. Ctrl+S로 서버에 저장하세요.')};
 
 /* Server persistence is appended below. */
 window.addEventListener('beforeunload',e=>{if(revision!==downloadedRevision){e.preventDefault();e.returnValue=''}});
@@ -322,7 +321,7 @@ render = function() {
   $('fieldCount').textContent = manualScopedFields().length + '개';
   document.querySelector('.fieldpane-head h2').firstChild.textContent = common ? '공통 컬럼 ' : manualCategoryLabel(S.c) + ' 제품군별 ';
   $('manualScopeNote').textContent = common
-    ? '공통 컬럼의 설명과 이미지를 한곳에서 관리합니다. 여러 화면은 캡처 선택으로 확인하세요.'
+    ? '공통 컬럼의 설명과 이미지를 한곳에서 관리합니다.'
     : manualCategoryLabel(S.c) + '의 제품군별 컬럼입니다. 공통 컬럼은 공통 탭에서 확인하세요.';
   $('routeSummary').insertAdjacentHTML('afterbegin', '<strong class="manual-route-product">' + esc(manualCategoryLabel(S.c)) + ' · </strong>');
 };
@@ -359,7 +358,7 @@ renderLesson = function() {
     const appliesTo = manualDatasets().filter(dataset => dataset.fields.some(candidate => candidate.field === f.field));
     manualScopeBadge.textContent = appliesTo.length > 1 ? appliesTo.map(dataset => manualCategoryLabel(dataset.category)).join(' · ') + ' 적용' : manualCategoryLabel(S.c) + ' 전용';
   }
-  $('manualExampleHead').innerHTML = '<h3>' + (common ? '확인 방법 · 이미지' : esc(shortCat[S.c]) + ' 확인 방법') + '</h3><p>같은 컬럼의 여러 화면은 캡처 선택에서 바꿔 볼 수 있습니다.</p>';
+  $('manualExampleHead').innerHTML = '<h3>' + (common ? '확인 방법 · 이미지' : esc(shortCat[S.c]) + ' 확인 방법') + '</h3><p>여러 캡처는 이전·다음 버튼으로 넘길 수 있습니다.</p>';
   const photo = currentPhoto();
   if (photo && common) $('photoSource').insertAdjacentHTML('afterbegin', '<strong>' + esc(photo.category === 'all' ? '공통' : manualCategoryLabel(photo.category)) + ' 캡처</strong> · ');
 
@@ -678,14 +677,6 @@ new MutationObserver(records => {
 window.addEventListener('beforeunload', event => {
   if (manualInlineEdit && manualInlineEdit.input.value.trim() !== manualInlineEdit.original) {event.preventDefault();event.returnValue = '';}
 });
-const inlinePhotoUpload = $('photoFile').onchange;
-$('photoFile').onchange = async event => {
-  await inlinePhotoUpload(event);
-  if (event.target.files?.length && workingPhoto && !$('imageError').textContent && !workingPhoto.boxes.length) {
-    drawing = true; renderImageStage();
-    showToast('이미지에서 값을 둘러싸도록 드래그해 번호 박스를 그려 주세요.');
-  }
-};
 
 // Route guidance is shared by products within one country/retailer, separately per mode.
 function manualRouteText(p, mode) {
@@ -822,10 +813,14 @@ renderEditorStatus = function() {detailsEditorStatus();renderManualDetails();};
 function manualPhotoKey(scope, category, column) {
   return (scope === 'common' ? 'common' : category) + ':' + column;
 }
+function manualPhotoFields(photo) {
+  if (photo.boxes.length) return photo.boxes.flatMap(box => box.fields);
+  return photo.captureField ? [photo.captureField] : [];
+}
 function manualPhotoCandidates(photos, state) {
   return photos.filter(p => p.retailer === state.r && p.category !== 'hhp' &&
     (state.scope === 'common' || p.category === state.c || p.category === 'all') &&
-    p.boxes.some(b => b.fields.includes(state.field)));
+    manualPhotoFields(p).includes(state.field));
 }
 function manualPhotoLegacyOrder(p) {
   const added = /^user_photo_(\d+)$/.exec(p.name);
@@ -850,7 +845,7 @@ function manualInitializePhotoPreferences(photos) {
   for (const p of photos) {
     if (p.category === 'hhp') continue;
     const scopes = ['common', ...(p.category === 'all' ? categories : [p.category])];
-    for (const column of new Set(p.boxes.flatMap(b => b.fields))) for (const scope of scopes) {
+    for (const column of new Set(manualPhotoFields(p))) for (const scope of scopes) {
       const id = JSON.stringify([p.retailer, scope, column]);
       if (!groups.has(id)) groups.set(id, []);
       groups.get(id).push(p);
@@ -881,17 +876,44 @@ photos = function() {
 };
 
 const manualPhotoRenderLesson = renderLesson;
+
+function renderManualCapture(photo, f) {
+  const annotated = photo.boxes.some(box => box.fields.includes(f.field));
+  const full = !annotated || S.view === 'full';
+  if (!annotated) $('sceneTabs').innerHTML = '<span class="scene-tab on">전체 화면</span>';
+  const caption = !annotated ? '등록한 전체 캡처입니다.' : full
+    ? '이미지 전체에서 <strong>' + f.n + '번 박스</strong>의 위치를 확인하세요.'
+    : '같은 캡처의 <strong>' + f.n + '번 박스 주변</strong>을 확대했습니다.';
+  $('canvas').dataset.view = full ? 'full' : 'data';
+  $('canvas').innerHTML = '<div class="view-caption">' + caption + '</div>' + svg(photo, full);
+  $('originalLink').href = photoSrc(photo);
+  $('photoSource').innerHTML = esc(photo.stage) + (photo.url
+    ? ' · <a href="' + esc(photo.url) + '" target="_blank" rel="noopener">출처 페이지 ↗</a>'
+    : ' · 제공된 캡처') + '<br>' + esc(photo.region) + ' · ' + esc(photo.date);
+}
+
 renderLesson = function() {
   manualPhotoRenderLesson();
   const p = currentPhoto();
   if (!p) return;
   const candidates = shownPhotos();
-  const select = $('captureSelect');
-  if (select) for (const option of select.options) {
-    const item = candidates[Number(option.value)];
-    option.textContent = (item === candidates[0] ? '대표 · ' : '') + option.textContent + ' · ' + item.date;
+  const pager = $('photoPager');
+  pager.innerHTML = '<button type="button" id="prevPhoto" aria-label="이전 캡처" ' + (S.photo === 0 ? 'disabled' : '') + '>' + icon('left') + '</button>' +
+    '<span id="capturePosition" role="status">' + (S.photo + 1) + ' / ' + candidates.length + '</span>' +
+    '<button type="button" id="nextPhoto" aria-label="다음 캡처" ' + (S.photo === candidates.length - 1 ? 'disabled' : '') + '>' + icon('right') + '</button>' +
+    '<span id="captureDescription">' + (S.photo === 0 ? '대표 · ' : '') +
+    esc((S.scope === 'common' ? manualCategoryLabel(p.category) + ' · ' : '') + p.stage + ' · ' + p.date) + '</span>';
+  for (const [id, step] of [['prevPhoto', -1], ['nextPhoto', 1]]) {
+    $(id).onclick = () => {
+      S.photo += step;
+      renderLesson();
+      const sameButton = $(id);
+      const focus = sameButton.disabled ? $(id === 'prevPhoto' ? 'nextPhoto' : 'prevPhoto') : sameButton;
+      focus.focus({preventScroll: true});
+    };
   }
   const button = document.createElement('button');
+  button.type = 'button';
   button.id = 'manualPrimaryPhoto';
   button.textContent = p === candidates[0] ? '대표 캡처' : '이 캡처를 대표로 설정';
   button.hidden = !editing;
@@ -905,7 +927,7 @@ renderLesson = function() {
     renderLesson();
     await saveManual();
   };
-  $('photoPager').append(button);
+  pager.append(button);
 };
 // Keep the capture chooser visible before a tall screenshot.
 $('canvas').before($('photoPager'));
@@ -914,10 +936,87 @@ $('replacePhoto').title = '선택한 캡처를 교체합니다. 저장 전 이�
 $('addPhoto').textContent = '별도 캡처 추가';
 $('addPhoto').title = '기존 캡처를 유지하고 이 컬럼의 대표 캡처를 추가합니다.';
 $('applyImage').textContent = '적용 후 저장';
+
+const manualClipboardHelp = document.createElement('small');
+manualClipboardHelp.textContent = 'Ctrl+V로 캡처 붙여넣기';
+$('photoFile').before(manualClipboardHelp);
+const manualImageTypes = ['image/png', 'image/jpeg', 'image/webp'];
+let manualImageRead = null;
+
+async function loadManualImage(file, add, fromClipboard = false) {
+  const editor = $('imageEditor');
+  if (!editor.open || saveBusy) return;
+  if (!manualImageTypes.includes(file.type)) {
+    $('imageError').textContent = 'PNG, JPG, WEBP 이미지를 선택하세요.';
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    $('imageError').textContent = '15MB 이하의 이미지를 선택하세요.';
+    return;
+  }
+  const reading = {};
+  const previousDraft = workingPhoto;
+  manualImageRead = reading;
+  $('applyImage').disabled = true;
+  $('imageError').textContent = '';
+  try {
+    const src = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const image = new Image();
+    image.src = src;
+    await image.decode();
+    if (manualImageRead !== reading || !editor.open || workingPhoto !== previousDraft) return;
+    photoMetadataToDraft();
+    if (add || !workingPhoto) {
+      editingPhotoIndex = -1;
+      workingPhoto = {retailer:S.r, category:S.scope === 'common' ? 'all' : S.c,
+        stage:'상세', region:profile().region, note:'사용자가 추가한 이미지입니다.',
+        name:'user_photo_' + Date.now(), url:'', date:today(), boxes:[]};
+      if (fromClipboard) workingPhoto.captureField = S.field;
+    }
+    Object.assign(workingPhoto, {customImage:src, width:image.naturalWidth, height:image.naturalHeight, boxes:[]});
+    selectedBox = -1;
+    drawing = !fromClipboard;
+    drawStart = null;
+    renderPhotoEditor();
+    showToast(fromClipboard ? '캡처를 붙여넣었습니다. 바로 저장하거나 번호 박스를 그릴 수 있습니다.'
+      : '이미지에서 값을 둘러싸도록 드래그해 번호 박스를 그려 주세요.');
+  } catch {
+    if (manualImageRead === reading) $('imageError').textContent = '이미지를 읽지 못했습니다. 다른 이미지를 사용해주세요.';
+  } finally {
+    if (manualImageRead === reading) {
+      manualImageRead = null;
+      $('applyImage').disabled = saveBusy;
+    }
+  }
+}
+
+$('photoFile').onchange = event => {
+  const file = event.target.files?.[0];
+  if (file) void loadManualImage(file, newUpload);
+};
+document.addEventListener('paste', event => {
+  if (!$('imageEditor').open || saveBusy || event.defaultPrevented) return;
+  const clipboard = event.clipboardData;
+  const file = Array.from(clipboard?.files || []).find(item => item.type.startsWith('image/'))
+    || Array.from(clipboard?.items || []).find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+  if (!file) return;
+  event.preventDefault();
+  void loadManualImage(file, true, true);
+});
+$('imageEditor').addEventListener('close', () => {
+  manualImageRead = null;
+  $('applyImage').disabled = saveBusy;
+});
+
 const manualPhotoEditorStatus = renderEditorStatus;
 renderEditorStatus = function() {
   manualPhotoEditorStatus();
-  $('applyImage').disabled = saveBusy;
+  $('applyImage').disabled = saveBusy || manualImageRead !== null;
   const button = $('manualPrimaryPhoto');
   if (button) {
     button.hidden = !editing;
@@ -927,13 +1026,16 @@ renderEditorStatus = function() {
 
 const manualPhotoApply = $('applyImage').onclick;
 $('applyImage').onclick = async () => {
-  if (saveBusy) return;
+  if (saveBusy || manualImageRead !== null) return;
+  const addingPastedCapture = editingPhotoIndex < 0 && workingPhoto?.captureField;
   manualInitializePhotoPreferences(D.photos);
   manualPhotoApply();
   if ($('imageEditor').open) return; // Validation failed; keep the draft.
-  const p = currentPhoto();
-  if (p) manualMakePrimary(D.photos, p, S);
-  S.photo = 0;
+  if (!addingPastedCapture) {
+    const p = currentPhoto();
+    if (p) manualMakePrimary(D.photos, p, S);
+    S.photo = 0;
+  }
   renderLesson();
   await saveManual();
 };
