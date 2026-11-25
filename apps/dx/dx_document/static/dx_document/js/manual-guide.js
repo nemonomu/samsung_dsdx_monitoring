@@ -892,6 +892,54 @@ function renderManualCapture(photo, f) {
     : ' · 제공된 캡처') + '<br>' + esc(photo.region) + ' · ' + esc(photo.date);
 }
 
+function enableCaptureDrag(image, count) {
+  let drag;
+  const reset = () => {
+    drag = null;
+    image.classList.remove('is-dragging');
+    image.style.transform = '';
+  };
+  image.onpointerdown = event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    drag = {id: event.pointerId, x: event.clientX, y: event.clientY, axis: null};
+    image.setPointerCapture(event.pointerId);
+  };
+  image.onpointermove = event => {
+    if (event.pointerId !== drag?.id) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.axis && Math.max(Math.abs(dx), Math.abs(dy)) >= 8) {
+      drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (drag.axis !== 'x') return;
+    const hasNeighbor = dx > 0 ? S.photo > 0 : S.photo < count - 1;
+    const offset = Math.min(Math.abs(dx) * (hasNeighbor ? 0.8 : 0.2), hasNeighbor ? 96 : 16);
+    image.classList.add('is-dragging');
+    image.style.transform = `translateX(${Math.sign(dx) * offset}px)`;
+  };
+  image.onpointerup = event => {
+    if (event.pointerId !== drag?.id) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    const step = dx < 0 ? 1 : -1;
+    const next = S.photo + step;
+    const shouldMove = drag.axis === 'x' && Math.abs(dx) >= 52 && Math.abs(dx) > Math.abs(dy)
+      && next >= 0 && next < count;
+    reset();
+    if (!shouldMove) return;
+    S.photo = next;
+    renderLesson();
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      $('canvas').querySelector(':scope > svg')?.animate(
+        [{transform: `translateX(${step * 36}px)`}, {transform: 'translateX(0)'}],
+        {duration: 180, easing: 'ease-out'});
+    }
+  };
+  image.onpointercancel = reset;
+  image.onlostpointercapture = reset;
+  image.ondragstart = event => event.preventDefault();
+}
+
 function renderCaptureNavigation(count) {
   const canvas = $('canvas');
   const image = canvas.querySelector(':scope > svg');
@@ -923,6 +971,7 @@ function renderCaptureNavigation(count) {
       (i === S.photo ? ' is-current' : '') + '"></span>').join('');
   image.before(arrow('prevPhoto', -1, '이전 캡처', 'left', S.photo === 0));
   image.after(arrow('nextPhoto', 1, '다음 캡처', 'right', S.photo === count - 1), position);
+  enableCaptureDrag(image, count);
 }
 
 renderLesson = function() {

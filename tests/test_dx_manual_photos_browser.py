@@ -71,9 +71,22 @@ def assert_carousel_layout(page):
     assert abs((dots['x'] + dots['width'] / 2) - (image['x'] + image['width'] / 2)) < 2
 
 
+def drag_capture(page, dx, dy=0):
+    image = page.locator('#canvas > svg')
+    image.scroll_into_view_if_needed()
+    box = image.bounding_box()
+    x = box['x'] + box['width'] / 2
+    y = box['y'] + box['height'] / 2
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x + dx, y + dy, steps=6)
+    page.mouse.up()
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(channel='msedge', headless=True)
     page = browser.new_page(viewport=dict(width=1440, height=1000))
+    page.emulate_media(reduced_motion='reduce')
     page.route('**/*', route_request)
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
@@ -91,6 +104,16 @@ with sync_playwright() as p:
     assert_carousel_layout(page)
     page.set_viewport_size({'width': 1440, 'height': 1000})
     assert page.locator('#photoPager').bounding_box()['y'] < page.locator('#canvas').bounding_box()['y']
+    expect(page.locator('#nextPhoto')).to_have_css('color', 'rgb(255, 255, 255)')
+    drag_capture(page, 100)
+    drag_capture(page, -25)
+    drag_capture(page, -5, 100)
+    expect(page.locator('#capturePosition')).to_have_text(f'1 / {total}')
+    drag_capture(page, -105)
+    expect(page.locator('#capturePosition')).to_have_text(f'2 / {total}')
+    expect(dots.nth(1)).to_have_class(re.compile(r'\bis-current\b'))
+    drag_capture(page, 105)
+    expect(page.locator('#capturePosition')).to_have_text(f'1 / {total}')
     page.locator('#routeDetails').click()
     expect(page.locator('.manual-route-description').first).to_have_text('검색 → TV 선택\n이 목록에서 수집')
     page.locator('dialog[open] .close').click()
