@@ -35,6 +35,30 @@ def alerts_page(request):
 
 
 @require_GET
+def overview(request):
+    from .overview import country_overview, selected_scopes
+
+    country = request.GET.get('country', 'SEA')
+    product = request.GET.get('product', 'all')
+    retailer = request.GET.get('retailer', 'all')
+    today = timezone.localdate(timezone=tz(timedelta(hours=9)))
+    try:
+        day = date.fromisoformat(request.GET.get('date', str(today)))
+        if day > today:
+            raise ValueError('Future date')
+        selections = selected_scopes(country, product, retailer, day)
+    except (ValueError, TypeError, OverflowError):
+        return JsonResponse({'error': '국가·제품군·리테일러·날짜를 확인해주세요.'}, status=400)
+    authenticated = getattr(getattr(request, 'user', None), 'is_authenticated', False)
+    try:
+        result = country_overview(country, selections, include_reviews=authenticated)
+    except Exception:
+        return JsonResponse({'error': '수집 통계를 조회하지 못했습니다. 잠시 후 다시 조회해주세요.'}, status=503)
+    return JsonResponse({**result, 'country': country, 'product': product, 'retailer': retailer,
+                         'inspection_date': str(day)})
+
+
+@require_GET
 def daily(request):
     try:
         country = request.GET.get('country', 'SEA')
@@ -62,6 +86,10 @@ def daily(request):
         preview = eci_preview or (jiomart.matches(country, product, retailer) and jiomart.preview(target)) \
             or is_preview(country, product, retailer, target)
         result = None if preview else cache.get(key)
+        if result is None and not preview and request.GET.get('prepared') == '1':
+            from .overview import detail_counts
+
+            result = detail_counts((country, product, retailer), target, query_days)
         if result is None:
             result = daily_counts(country, product, retailer, target, query_days)
             totals = {} if eci_preview else raw_counts(country, product, retailer, target, target)

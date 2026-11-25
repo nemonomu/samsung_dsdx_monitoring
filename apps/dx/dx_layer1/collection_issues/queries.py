@@ -4,7 +4,7 @@ import hashlib
 from django.core.cache import cache
 from apps.common.db import dx_connection
 from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
-from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
+from apps.dx.dx_layer1.column_statistics.dates import day_range_sql, day_sql, date_column
 from apps.dx.dx_layer1.column_statistics.services import select_source
 from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
@@ -35,7 +35,7 @@ def raw_counts(country, product, retailer, start, end):
     day = day_sql(source)
     sql = (f"SELECT {day}, COUNT(*) FROM {source['table_name']} source "
            f"WHERE {_retailer_condition(source, account, include_unassigned=False)} "
-           f"AND ({day}) BETWEEN %s AND %s GROUP BY 1 ORDER BY 1")
+           f"AND {day_range_sql(source)} GROUP BY 1 ORDER BY 1")
     with dx_connection() as (_, cursor):
         cursor.execute("SET LOCAL statement_timeout = '20s'")
         cursor.execute(sql, _retailer_params(account) + [str(start), str(end)])

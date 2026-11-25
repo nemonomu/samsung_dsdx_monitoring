@@ -35,3 +35,8 @@ assert.equal(c.matches(confirmed,'all'),true);
 assert(c.badge(confirmed).includes('정상 확인'));
 assert(c.badge({...confirmed,review:null}).includes('이상 확인'));
 assert(c.badge({...confirmed,review:null}).includes('data-column-review'));
+const rows = [...['abnormal', 'review', 'normal', 'uncollected'].map(status => ({status})), confirmed];
+assert.deepEqual(rows.filter(row => c.matches(row, 'attention')).map(row => row.status), ['abnormal', 'review']);
+assert.match(c.tabs(rows, 'attention', false), /data-status="attention" aria-pressed="true">확인 및 이상 <strong>2<\/strong>/);
+assert(!c.tabs(rows, 'attention', false).includes('data-status="normal"'));
+assert(!c.tabs(rows, 'alerts', true).includes('data-status="attention"'));

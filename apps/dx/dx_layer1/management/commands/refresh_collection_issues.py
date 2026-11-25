@@ -12,7 +12,7 @@ def refresh_all(*, country=None, report=None):
         for retailer in source['retailers']:
             job = (source['country'], source['product'], retailer)
             try:
-                result = refresh_target(*job, volume_cache=volume_cache)
+                result = refresh_target(*job, volume_cache=volume_cache, prepare_overview=True)
                 if report:
                     report(' '.join(job) + f": days={result['days']}, busy={result['busy']}")
             except Exception:

@@ -1,5 +1,6 @@
 """Durable source-day incidents. Source queries are read-only; evidence is local."""
 import hashlib
+import logging
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -22,6 +23,7 @@ START_DATE = date(2026, 10, 1)
 POLICY_VERSION = 1  # Original-day missing/column + MAIN/BSR + distinct batches.
 JIOMART_POLICY_VERSION = 2  # Recheck coverage using the SIEL business day.
 CHUNK_DAYS = 28
+logger = logging.getLogger(__name__)
 
 
 def environment():
@@ -109,7 +111,7 @@ def _reconcile_day(data, target, completed, raw_total, *, now=None):
             issue.save()
 
 
-def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
+def refresh_target(country, product, retailer, *, now=None, volume_cache=None, prepare_overview=False):
     """Recent days, one backfill chunk, and every still-open source day."""
     now = now or timezone.now()
     source, _ = selection(country, product, retailer)
@@ -158,6 +160,11 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
             days = [d for d in pending if d <= end]
             pending = [d for d in pending if d > end]
             query_start = first-timedelta(days=28)
+            generation = None
+            if prepare_overview and end == target:
+                from apps.dx.dx_layer1.column_statistics.overview import prepared_generation, prepare_recent
+
+                generation = prepared_generation()
             data = daily_counts(country, product, retailer, end, (end-query_start).days+1)
             totals = raw_counts(country, product, retailer, first, end)
             batches = daily_batch_ids(country, product, retailer, first, end)
@@ -172,6 +179,11 @@ def refresh_target(country, product, retailer, *, now=None, volume_cache=None):
                     volume_pending |= volumes.get(str(day), []) is None
                     volume.reconcile(country, product, retailer, day, volumes.get(str(day)) or [],
                                      batches.get(str(day), []), now=now)
+            if generation is not None:
+                try:
+                    prepare_recent(data, totals, days, target, now, generation)
+                except Exception:
+                    logger.warning('Failed to prepare column statistics for %s', scope, exc_info=True)
             if not Lease.objects.filter(name=lease_key, owner=owner, expires_at__gt=timezone.now()).update(
                     expires_at=timezone.now()+timedelta(minutes=15)):
                 raise RuntimeError('Collection issue scan lease expired')

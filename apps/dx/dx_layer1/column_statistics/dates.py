@@ -23,6 +23,14 @@ def day_sql(source, alias='source'):
     return source_date_sql(column)
 
 
+def day_range_sql(source, alias='source'):
+    if source['country'] == 'SIEL':
+        column = f'{alias}.{date_column(source)}'
+        return (f"({column} >= (%s::date::timestamp AT TIME ZONE 'Asia/Seoul') "
+                f"AND {column} < ((%s::date + 1)::timestamp AT TIME ZONE 'Asia/Seoul'))")
+    return f'({day_sql(source, alias)}) BETWEEN %s AND %s'
+
+
 def active_from(source, retailer):
     country, product = source['country'], source['product']
     if jiomart.matches(country, product, retailer):

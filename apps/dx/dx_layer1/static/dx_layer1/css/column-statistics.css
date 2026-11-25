@@ -71,3 +71,24 @@
 .cca-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
 .cca-dialog-actions button{padding:9px 18px;border:1px solid #ccd9e3;border-radius:6px;cursor:pointer}
 #cca-url-error{color:#b3263a}
+.ccs-product-group {border:1px solid #e2e8f0;border-radius:8px;margin:0 16px 12px;overflow:clip}
+.ccs-overview-row {display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(90px,.6fr) minmax(90px,.6fr) minmax(145px,1fr);gap:10px;align-items:center;padding:9px 14px;line-height:1.5;font-size:13px}
+.ccs-overview-row > :nth-child(2),.ccs-overview-row > :nth-child(3) {text-align:center;font-variant-numeric:tabular-nums}
+.ccs-overview-row > :last-child {text-align:right}
+.ccs-overview-row:is(summary) {cursor:pointer;list-style:none}
+.ccs-overview-row::-webkit-details-marker {display:none}
+.ccs-overview-row:focus-visible {outline:2px solid #33796b;outline-offset:-2px}
+.ccs-product-summary {background:#f3f7fb;font-weight:600}
+.ccs-retailer-summary {padding-left:28px;border-top:1px solid #e2e8f0}
+.ccs-retailer-summary:hover,details[open] > .ccs-retailer-summary {background:#f8fbfa}
+.ccs-overview-head {padding-left:28px;border-top:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:11px}
+.ccs-overview-title {display:flex;align-items:flex-start;gap:8px;min-width:0}
+.ccs-overview-title small {display:block;font-size:11px;font-weight:400;color:#64748b;overflow-wrap:anywhere}
+.ccs-disclosure {flex:none;color:#64748b;font-size:10px;line-height:1.9}
+details[open] > summary .ccs-disclosure {transform:rotate(90deg)}
+.ccs-overview-badges {display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap}
+.ccs-retailer-detail {border-top:1px solid #e2e8f0;padding:12px}
+.ccs-retailer-detail .ccs-status-filters {padding:0 0 8px}
+.ccs-retailer-detail .ccs-scroll {border:1px solid #e2e8f0;border-radius:6px;max-height:480px}
+.ccs-overview-empty {margin:0 16px 16px;padding:14px;background:#f8fafc;border-radius:6px;color:#64748b;font-size:13px}
+@media(max-width:900px) {.ccs-overview-row {grid-template-columns:minmax(95px,1fr) minmax(62px,.55fr) minmax(100px,1fr);gap:5px;padding:8px} .ccs-overview-row > :nth-child(3) {display:none}}

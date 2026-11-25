@@ -25,7 +25,7 @@
     const rank = row => row.review?.active ? 8 : ({abnormal: 0, review: 1, uncollected: 2, insufficient: 3, no_baseline: 4, pending: 5, normal: 6}[row.status] ?? 7);
     const detail = (data, column) => '/dx/layer1/column-statistics/?' + new URLSearchParams({country: data.country, product: data.product, retailer: data.retailer, date: data.inspection_date || data.comparison_date, days: '7', column});
     function tabs(rows, selected, alerts) {
-        const choices = alerts ? [['alerts', '알림'], ['abnormal', '이상'], ['review', '확인 필요'], ['uncollected', '전체 미수집'], ['unavailable', '대기·비교 불가']] : [['all', '전체'], ['abnormal', '이상'], ['review', '확인 필요'], ['uncollected', '전체 미수집'], ['normal', '정상'], ['unavailable', '대기·비교 불가']];
+        const choices = alerts ? [['alerts', '알림'], ['abnormal', '이상'], ['review', '확인 필요'], ['uncollected', '전체 미수집'], ['unavailable', '대기·비교 불가']] : [['all', '전체'], ['abnormal', '이상'], ['review', '확인 필요'], ['uncollected', '전체 미수집'], ['attention', '확인 및 이상'], ['unavailable', '대기·비교 불가']];
         choices.push(['confirmed', '정상 확인']);
         return choices.map(([value, label]) => {
             const count = rows.filter(row => matches(row, value)).length;
@@ -33,7 +33,10 @@
         }).join('');
     }
     function matches(row, status) {
-        return status === 'all' || (status === 'alerts' ? ['abnormal', 'review', 'uncollected'].includes(group(row)) : group(row) === status);
+        const statusGroup = group(row);
+        if (status === 'attention') return ['abnormal', 'review'].includes(statusGroup);
+        if (status === 'alerts') return ['abnormal', 'review', 'uncollected'].includes(statusGroup);
+        return status === 'all' || statusGroup === status;
     }
     window.ColumnComparison = {labels, esc, number, badge, ratio, delta, group, rank, detail, tabs, matches};
 })();

@@ -16,7 +16,7 @@ from apps.dx.dx_layer4.collection_status.email_services import (
     _configured_retailers, _present, _retailer_condition, _retailer_params,
 )
 
-from .dates import active_from, day_sql
+from .dates import active_from, day_range_sql, day_sql
 
 FIRST_COLUMNS = (
     'item', 'sku', 'retailer_sku_name', 'count_of_reviews', 'star_rating',
@@ -98,7 +98,7 @@ def query_spec(source, retailer, columns, start, end):
     if launch:
         start = max(start, launch)
     day = day_sql(source)
-    clauses = [_retailer_condition(source, retailer), f'({day}) BETWEEN %s AND %s']
+    clauses = [_retailer_condition(source, retailer), day_range_sql(source)]
     params = _retailer_params(retailer) + [str(start), str(end)]
     if retailer.get('exclude_redirect'):
         clauses.append('COALESCE(source.redirect, FALSE) IS NOT TRUE')

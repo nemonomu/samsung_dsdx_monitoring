@@ -2,7 +2,7 @@ from datetime import datetime
 from apps.dx.dx_layer1.collection_issues.services import reconcile_day, coverage_start
 
 
-def remember_comparison(data, target):
+def apply_collection_coverage(data, target):
     start, basis = coverage_start(data['country'],data['product'],data['retailer'])
     data['monitoring_start'] = str(start) if start else None
     data['monitoring_start_basis'] = basis
@@ -10,6 +10,12 @@ def remember_comparison(data, target):
         for row in data['comparisons']:
             if row['status'] == 'uncollected':
                 row['status'] = 'not_scheduled' if basis == 'registered' else 'unverified_start'
+        return False
+    return True
+
+
+def remember_comparison(data, target):
+    if not apply_collection_coverage(data, target):
         return
     current = next(d for d in data['daily'] if d['date'] == str(target))
     reconcile_day(data, target, data['completion'], current['raw_total'],
