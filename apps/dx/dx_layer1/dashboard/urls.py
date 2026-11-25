@@ -7,6 +7,7 @@ from apps.dx.dx_layer1.collection_statistics.live import current as live_collect
 from apps.dx.dx_layer1.column_statistics import api as column_statistics_api
 from apps.dx.dx_layer1.collection_issues import api as issues_api
 from apps.dx.dx_layer1.column_statistics.links import links as column_links
+from apps.dx.dx_layer1.column_statistics.notes import notes as column_notes
 
 urlpatterns = [
     path('past-review/', issues_api.page, name='past_review'),
@@ -19,6 +20,7 @@ urlpatterns = [
     path('column-statistics/', column_statistics_api.page, name='column_statistics'),
     path('api/column-statistics/', column_statistics_api.daily, name='api_column_statistics'),
     path('api/column-statistics/overview/', column_statistics_api.overview, name='api_column_statistics_overview'),
+    path('api/column-statistics/notes/', column_notes, name='api_column_statistics_notes'),
     path('collection-statistics/', statistics_api.page, name='collection_statistics'),
     path('api/collection-statistics/', statistics_api.weekly, name='api_collection_statistics'),
     path('api/collection-volume/', statistics_api.alerts, name='api_collection_volume'),

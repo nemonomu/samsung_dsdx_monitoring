@@ -41,6 +41,23 @@
 .ccs-manual-link:hover {color:#0f2f54}
 .ccs-manual-link:focus-visible {outline:2px solid #527db9;outline-offset:3px;border-radius:2px}
 .ccs-manual-link span {margin-left:4px;font-size:11px}
+.ccs-table .ccs-note-col {width:225px;min-width:225px;max-width:225px;text-align:left}
+.ccs-table td.ccs-note-col {padding:6px 10px}
+.ccs-note-cell {display:block;width:100%;border:0;border-radius:4px;padding:5px 8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.ccs-note-cell:hover {background:#eaf3f0}
+.ccs-note-cell:focus-visible {outline:2px solid #33796b;outline-offset:1px}
+.ccs-note-text {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;white-space:pre-wrap}
+.ccs-note-cell .ccs-note-dates {font-size:10px;line-height:1.5;margin-top:3px}
+.ccs-note-dialog {width:min(460px,calc(100% - 28px));margin:auto;padding:20px;border:1px solid #ccd9e3;border-radius:10px;color:#294452;box-sizing:border-box}
+.ccs-note-dialog::backdrop {background:#14263866}
+.ccs-note-dialog h3 {margin:0 0 5px;font-size:16px}
+.ccs-note-dialog label {display:block;margin:16px 0 6px;font-size:13px;font-weight:600}
+.ccs-note-dialog textarea {box-sizing:border-box;width:100%;min-height:106px;padding:9px 10px;resize:vertical;border:1px solid #b9cad8;border-radius:6px;font:inherit}
+.ccs-note-error {margin:8px 0 0;color:#b3263a;font-size:12px}
+.ccs-note-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.ccs-note-actions button {padding:7px 14px;border-radius:6px;cursor:pointer}
+.ccs-note-actions button[type=button] {border:1px solid #ccd9e3;background:white;color:inherit}
+.ccs-note-actions button:disabled {opacity:.55;cursor:default}
 .ccs-search-label {display:flex;gap:10px;align-items:center;font-size:12px;color:#64748b}
 .ccs-search-label input {width:200px;padding:8px 10px;border:1px solid #dbe5eb;border-radius:6px;font:inherit}
 .ccs-pagination {display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:14px 20px;color:#64748b;font-size:12px}

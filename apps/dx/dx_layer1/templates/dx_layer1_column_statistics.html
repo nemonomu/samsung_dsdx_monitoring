@@ -1,7 +1,7 @@
 {% extends 'base_layer1.html' %}
 {% load static %}
 {% block page_title %}컬럼별 수집데이터 통계{% endblock %}
-{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=20261125-country-manual-links"><link rel="stylesheet" href="{% static 'dx_layer1/css/column-review.css' %}?v=20261113-evidence">{% endblock %}
+{% block layer1_css %}<link rel="stylesheet" href="{% static 'dx_layer1/css/column-statistics.css' %}?v=20261125-country-manual-links-notes"><link rel="stylesheet" href="{% static 'dx_layer1/css/column-review.css' %}?v=20261113-evidence">{% endblock %}
 {% block layer1_content %}
 <section class="cs-page ccs-page" aria-label="컬럼별 수집데이터 통계">
     <div class="cs-intro"><div><p class="cs-eyebrow">collected fields</p><p>수집 항목별 건수와 평소 기준 대비 변화를 확인하세요.</p></div><span id="ccs-updated" class="cs-muted"></span></div>
@@ -39,6 +39,20 @@
         <p class="cs-footnote ccs-detail-sku-note" hidden>SEA TV의 sku 건수는 <a href="/dx/data/item-master/">데이터 관리 · 아이템 마스터</a>의 현재 저장값을 기준으로 집계합니다.</p>
     </div>
 </template>
+<dialog id="ccs-note-dialog" class="ccs-note-dialog" aria-labelledby="ccs-note-title">
+    <form id="ccs-note-form">
+        {% csrf_token %}
+        <h3 id="ccs-note-title">수집 항목 비고</h3>
+        <p id="ccs-note-scope" class="cs-muted"></p>
+        <label for="ccs-note-text">메모</label>
+        <textarea id="ccs-note-text" maxlength="2000" rows="4"></textarea>
+        <p id="ccs-note-error" class="ccs-note-error" role="alert" hidden></p>
+        <div class="ccs-note-actions">
+            <button type="button" id="ccs-note-cancel">취소</button>
+            <button type="submit" id="ccs-note-save" class="cs-primary">저장</button>
+        </div>
+    </form>
+</dialog>
 {{ column_catalog|json_script:'ccs-catalog' }}
 {% endblock %}
-{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=20261125-attention"></script><script src="{% static 'dx_layer1/js/column-review.js' %}?v=20261113-evidence"></script><script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=20261125-country-manual-links"></script>{% endblock %}
+{% block layer1_js %}<script src="{% static 'dx_layer1/js/column-comparison.js' %}?v=20261125-attention"></script><script src="{% static 'dx_layer1/js/column-review.js' %}?v=20261113-evidence"></script><script src="{% static 'dx_layer1/js/column-statistics-notes.js' %}?v=1"></script><script src="{% static 'dx_layer1/js/column-statistics.js' %}?v=20261125-country-manual-links-notes"></script>{% endblock %}

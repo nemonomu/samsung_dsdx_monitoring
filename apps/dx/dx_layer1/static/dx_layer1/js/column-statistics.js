@@ -16,6 +16,7 @@
     const esc = value => String(value).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
     const number = value => Number(value).toLocaleString('ko-KR');
     const comparison = window.ColumnComparison;
+    const notes = window.ColumnStatisticsNotes;
     let loadedData;
     let overviewData;
     let selectedStatus = 'all';
@@ -60,20 +61,21 @@
     }
     function renderTable(panel, data, status) {
         panel.querySelector('.ccs-status-filters').innerHTML = comparison.tabs(data.comparisons, status, false);
-        panel.querySelector('thead').innerHTML = '<tr><th scope="col">수집 항목</th><th scope="col">검수 판정</th><th scope="col">평소 기준<small>이전 28일 중앙값</small></th>' + data.dates.map(day => `<th scope="col" class="${day === data.comparison_date ? 'ccs-target' : ''}">${esc(day.slice(5))}<small>${day === data.comparison_date ? '비교일' : '수집 건수'}</small></th>`).join('') + '<th scope="col">기준 대비<small>현재 ÷ 기준</small></th><th scope="col">증감 건수<small>현재 − 기준</small></th></tr>';
-        let html = '<tr class="ccs-total"><th scope="row">실제 수집 데이터</th><td colspan="2">전체 건수</td>' + data.daily.map(day => `<td class="${day.date === data.comparison_date ? 'ccs-target' : ''}"><span class="${day.total === 0 ? 'ccs-zero' : ''}">${number(day.total)}</span>${day.total === 0 ? '<small>수집 데이터 없음</small>' : ''}</td>`).join('') + '<td>—</td><td>—</td></tr>';
+        panel.querySelector('thead').innerHTML = '<tr><th scope="col">수집 항목</th><th scope="col">검수 판정</th><th scope="col">평소 기준<small>이전 28일 중앙값</small></th>' + data.dates.map(day => `<th scope="col" class="${day === data.comparison_date ? 'ccs-target' : ''}">${esc(day.slice(5))}<small>${day === data.comparison_date ? '비교일' : '수집 건수'}</small></th>`).join('') + '<th scope="col">기준 대비<small>현재 ÷ 기준</small></th><th scope="col">증감 건수<small>현재 − 기준</small></th><th scope="col" class="ccs-note-col">비고<small>더블클릭으로 편집</small></th></tr>';
+        let html = '<tr class="ccs-total"><th scope="row">실제 수집 데이터</th><td colspan="2">전체 건수</td>' + data.daily.map(day => `<td class="${day.date === data.comparison_date ? 'ccs-target' : ''}"><span class="${day.total === 0 ? 'ccs-zero' : ''}">${number(day.total)}</span>${day.total === 0 ? '<small>수집 데이터 없음</small>' : ''}</td>`).join('') + '<td>—</td><td>—</td><td>—</td></tr>';
         const visible = data.comparisons.filter(row => comparison.matches(row, status));
         html += visible.map(row => {
             const column = row.column;
             return `<tr data-column="${esc(column)}" class="${column === params.get('column') ? 'ccs-focused' : ''}"><th scope="row">${esc(column)}</th><td>${comparison.badge(row)}</td><td><strong>${comparison.number(row.baseline)}</strong><small>기준 이력 ${row.history_days}일</small></td>` + data.daily.map(day => {
                 const target = day.date === data.comparison_date;
                 return `<td class="${target ? 'ccs-target ' + esc(row.status) : ''}"><strong class="${day.total && day.counts[column] === 0 ? 'ccs-zero' : ''}">${day.total ? number(day.counts[column]) : '—'}</strong></td>`;
-            }).join('') + `<td class="ccs-verdict ${esc(row.status)}">${comparison.ratio(row)}</td><td class="ccs-verdict ${esc(row.status)}">${comparison.delta(row)}</td></tr>`;
+            }).join('') + `<td class="ccs-verdict ${esc(row.status)}">${comparison.ratio(row)}</td><td class="ccs-verdict ${esc(row.status)}">${comparison.delta(row)}</td><td class="ccs-note-col" data-note-column="${esc(column)}">—</td></tr>`;
         }).join('');
-        if (!visible.length) html += `<tr><td colspan="${data.dates.length + 5}">해당 판정의 항목이 없습니다.</td></tr>`;
+        if (!visible.length) html += `<tr><td colspan="${data.dates.length + 6}">해당 판정의 항목이 없습니다.</td></tr>`;
         const tbody = panel.querySelector('tbody');
         tbody.innerHTML = html;
         linkManualColumns(tbody, data);
+        notes.render(tbody, data);
         const scroll = panel.querySelector('.ccs-scroll');
         scroll.hidden = false;
         scroll.scrollLeft = scroll.scrollWidth;
@@ -289,6 +291,7 @@
         overviewData = null;
         loadedData = null;
         detailRequests.clear();
+        notes.reset();
         openRetailers.clear();
         const query = new URLSearchParams(Object.fromEntries(Object.entries(controls).map(([key, el]) => [key, el.value])));
         history.replaceState(null, '', '?' + query);
