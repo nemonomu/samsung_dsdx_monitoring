@@ -1,4 +1,4 @@
-"""SEG TV text formats from the September 23 exports; populated fields only."""
+"""SEG retailer text formats for TV and selected OTTO appliance fields."""
 import re
 from datetime import date
 
@@ -22,6 +22,22 @@ _EN_DATE_YEAR = re.compile(_EN_DATE.pattern + r', ([0-9]{4})')
 # Keep this separate from _DATES: fastest/paid/appointment variants were not reviewed.
 _YEAR_RANGE_DELIVERY = re.compile(rf'FREE delivery {_DATE}, [0-9]{{4}} - {_DATE}, [0-9]{{4}}\.?')
 _PERIOD = re.compile(r'(?:Usually ready to ship in ([1-9][0-9]*) to ([1-9][0-9]*) (?:days|weeks|months)|Gewoehnlich versandfertig in ([1-9][0-9]*) bis ([1-9][0-9]*) (?:Tagen|Wochen|Monaten))')
+_OTTO_WORKING_DAYS = re.compile(r'(?:Available - at your door|At your door) in ([1-9][0-9]*)-([1-9][0-9]*) working days')
+_OTTO_WEEK_COUNT = re.compile(r'Available in [1-9][0-9]* weeks')
+_OTTO_MONTH_DAY = rf'({_MONTH}) ([1-9][0-9]?)'
+_OTTO_BY_DATE = re.compile(rf'At your door by {_WEEKDAY}, {_OTTO_MONTH_DAY}')
+_OTTO_BY_TOMORROW = re.compile(rf'At your door by tomorrow, {_OTTO_MONTH_DAY}')
+_OTTO_NEXT_DAY = 'Available - at your door the next working day'
+_OTTO_DELIVERY_FORMS = (
+    f'{_OTTO_NEXT_DAY} / Available - at your door in N-M working days / Available in N weeks / '
+    'At your door in N-M working days / At your door by 요일, 월 일 '
+    '(N·M은 양의 정수, N ≤ M, 영문 요일·월과 유효한 일자)'
+)
+_OTTO_DISCOUNTS = (
+    'Deal & Win', 'Deal of the week', 'Deal of the month', 'Black Friday',
+    'Black Friday Hot-Deals', 'Our Hero', 'Premium Hero',
+)
+_OTTO_APPLIANCE_PRODUCTS = ('seg_ref', 'seg_ldy')
 
 
 def _match(pattern):
@@ -75,13 +91,24 @@ def _mediamarkt_delivery(value):
     return True
 
 
-def _otto_delivery(value):
-    if value == 'Available - at your door the next working day':
+def _otto_delivery(value, *, allow_tomorrow=False):
+    if value == _OTTO_NEXT_DAY or _OTTO_WEEK_COUNT.fullmatch(value):
         return True
-    match = re.fullmatch(r'Available - at your door in ([1-9][0-9]*)-([1-9][0-9]*) working days', value)
+    match = _OTTO_WORKING_DAYS.fullmatch(value)
     if match:
-        return int(match[1]) <= int(match[2])
-    return re.fullmatch(r'Available in [1-9][0-9]* weeks', value) is not None
+        start, end = match.groups()
+        return (len(start), start) <= (len(end), end)
+    match = _OTTO_BY_DATE.fullmatch(value)
+    if not match and allow_tomorrow:
+        match = _OTTO_BY_TOMORROW.fullmatch(value)
+    if not match:
+        return False
+    try:
+        # A yearless date can include February 29.
+        date(2000, _MONTHS.index(match[1]) + 1, int(match[2]))
+    except ValueError:
+        return False
+    return True
 
 
 def _inventory(value):
@@ -115,8 +142,9 @@ RULES = {
     'otto': {
         'sku_popularity': (lambda v: v == 'Very popular', 'Very popular'),
         'sku_status': (lambda v: v == 'Sponsored', 'Sponsored'),
-        'discount_type': (lambda v: v in ('Deal & Win', 'Deal of the week', 'Deal of the month'), 'Deal & Win / Deal of the week / Deal of the month'),
-        'delivery_availability': (_otto_delivery, 'Available - at your door the next working day / Available - at your door in N-M working days / Available in N weeks (양의 정수, N ≤ M)'),
+        'discount_type': (lambda v: v in _OTTO_DISCOUNTS, ' / '.join(_OTTO_DISCOUNTS)),
+        'delivery_availability': (lambda v: _otto_delivery(v, allow_tomorrow=True),
+                                  _OTTO_DELIVERY_FORMS + ' / At your door by tomorrow, 월 일'),
     },
     'amazon': {
         'sku_popularity': (lambda v: v in ('Bestseller', 'Amazons Tipp'), 'Bestseller / Amazons Tipp'),
@@ -128,14 +156,21 @@ RULES = {
         'inventory_status': (_inventory, 'In Stock / Currently unavailable. / Currently out of stock. / Only N left in stock (선택 추가 입고 문구) / Usually ready to ship in N to M days·weeks·months / Gewoehnlich versandfertig in N bis M Tagen·Wochen·Monaten'),
     },
 }
+_OTTO_APPLIANCE_RULES = {
+    **RULES['otto'],
+    'delivery_availability': (_otto_delivery, _OTTO_DELIVERY_FORMS),
+}
 
 
 def get_rules(product_line, retailer=None):
-    if product_line != 'seg_tv':
-        return {}
-    if retailer is None:
-        return {field: rule for rules in RULES.values() for field, rule in rules.items()}
-    return RULES.get(str(retailer).strip().casefold(), {})
+    retailer_key = str(retailer).strip().casefold()
+    if product_line == 'seg_tv':
+        if retailer is None:
+            return {field: rule for rules in RULES.values() for field, rule in rules.items()}
+        return RULES.get(retailer_key, {})
+    if product_line in _OTTO_APPLIANCE_PRODUCTS and (retailer is None or retailer_key == 'otto'):
+        return _OTTO_APPLIANCE_RULES
+    return {}
 
 
 def evaluate(row, product_line, retailer):
@@ -148,5 +183,5 @@ def evaluate(row, product_line, retailer):
 
 
 def rule_details(product_line, retailer):
-    return [{'field': field, 'description': 'SEG TV 리테일러별 문구 형식 (빈값 제외)', 'pattern': forms}
+    return [{'field': field, 'description': f'SEG {product_line.removeprefix("seg_").upper()} 리테일러별 문구 형식 (빈값 제외)', 'pattern': forms}
             for field, (_, forms) in get_rules(product_line, retailer).items()]

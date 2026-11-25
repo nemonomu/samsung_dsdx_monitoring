@@ -8,10 +8,10 @@ from apps.dx.dx_layer2 import seg_validation
 
 
 class SegTvTextFormatTests(unittest.TestCase):
-    def check_values(self, retailer, field, valid, invalid):
+    def check_values(self, retailer, field, valid, invalid, *, product='seg_tv'):
         for value, expected in [(v, False) for v in valid] + [(v, True) for v in invalid]:
-            with self.subTest(retailer=retailer, field=field, value=value):
-                errors = seg_validation.evaluate_format_row({field: value}, 'seg_tv', retailer)
+            with self.subTest(product=product, retailer=retailer, field=field, value=value):
+                errors = seg_validation.evaluate_format_row({field: value}, product, retailer)
                 self.assertEqual(expected, field in errors)
 
     def test_mediamarkt_all_fields(self):
@@ -38,6 +38,34 @@ class SegTvTextFormatTests(unittest.TestCase):
              'Available in 2 weeks', 'Available - at your door in 10-12 working days'],
             ['Available - at your door in 5-2 working days', 'Available in 0 weeks',
              'Available - at your door in 0-3 working days', 'Available in -2 weeks', 'Available soon'])
+
+    def test_otto_discount_allowlist_and_delivery_formats(self):
+        discounts = ['Deal & Win', 'Deal of the week', 'Deal of the month', 'Black Friday',
+                     'Black Friday Hot-Deals', 'Our Hero', 'Premium Hero']
+        delivery_examples = [
+            'Available - at your door the next working day',
+            'Available - at your door in 2-3 working days',
+            'Available in 2 weeks',
+            'At your door in 6-8 working days',
+            'At your door by Friday, November 27',
+            'At your door by Tuesday, December 1',
+            'At your door by Thursday, February 29',
+        ]
+        invalid_delivery = [
+            'At your door by Tuesday, April 31', 'At your door by Friday, February 30',
+            'At your door by Friday, November 0', 'At your door by Funday, November 27',
+            'At your door by Friday, November 27, 2026', 'At your door by Friday, November 27 extra',
+            'At your door in 8-6 working days', 'At your door in 0-3 working days',
+        ]
+        tomorrow = 'At your door by tomorrow, November 26'
+        for product in ('seg_tv', 'seg_ref', 'seg_ldy'):
+            self.check_values('OTTO', 'sku_popularity', ['Very popular'], ['Popular'], product=product)
+            self.check_values('OTTO', 'sku_status', ['Sponsored'], ['Sponsored product'], product=product)
+            self.check_values('OTTO', 'discount_type', discounts,
+                              ['black friday', 'Black Friday ||| Our Hero', 'Black Friday Special'], product=product)
+            valid = delivery_examples + ([tomorrow] if product == 'seg_tv' else [])
+            invalid = invalid_delivery + ([tomorrow] if product != 'seg_tv' else [])
+            self.check_values('OTTO', 'delivery_availability', valid, invalid, product=product)
 
     def test_amazon_quantities_and_inventory_contamination(self):
         self.check_values('Amazon', 'sku_popularity', ['Bestseller', 'Amazons Tipp'], ['Very popular', 'Popular'])
@@ -132,7 +160,10 @@ class SegTvTextFormatTests(unittest.TestCase):
             for field in rules:
                 self.assertEqual(1, sum(r['field'] == field for r in details))
             for product in ('seg_ref', 'seg_ldy'):
-                self.assertEqual({}, seg_tv_format.evaluate(dict.fromkeys(rules, 'bad'), product, retailer))
+                expected = set(rules) if retailer == 'otto' else set()
+                self.assertEqual(expected, set(seg_tv_format.evaluate(dict.fromkeys(rules, 'bad'), product, retailer)))
+                self.assertEqual(expected, {rule['field'] for rule in seg_tv_format.rule_details(product, retailer)})
+                self.assertEqual(expected, set(rules) & set(get_seg_format_columns(product, retailer)))
         self.assertNotIn('sku_status', get_seg_format_columns('seg_tv', 'Amazon'))
         self.assertEqual({}, seg_validation.evaluate_format_row({'sku_status': 'unconfirmed'}, 'seg_tv', 'Amazon'))
         self.assertNotIn('pick_up_availability', get_seg_format_columns('seg_tv', 'OTTO'))

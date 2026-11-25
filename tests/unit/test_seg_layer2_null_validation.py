@@ -242,12 +242,13 @@ class SegFormatValidationTests(unittest.TestCase):
                     self.assertEqual(not valid, 'discount_type' in errors)
             for retailer in ('Mediamarkt', 'OTTO'):
                 with self.subTest(product_line=product_line, retailer=retailer):
-                    self.assertEqual(product_line == 'seg_tv',
+                    enabled = product_line == 'seg_tv' or retailer == 'OTTO'
+                    self.assertEqual(enabled,
                         'discount_type' in get_seg_format_columns(product_line, retailer))
                     errors = seg_validation.evaluate_format_row(
                         {'discount_type': 'Special Price'}, product_line, retailer
                     )
-                    self.assertEqual(product_line == 'seg_tv', 'discount_type' in errors)
+                    self.assertEqual(enabled, 'discount_type' in errors)
             self.assertNotIn('discount_type', get_seg_null_columns(product_line, 'Amazon'))
             rule = next(
                 rule for rule in seg_validation.get_format_rule_details(product_line, 'Amazon')
@@ -506,7 +507,7 @@ class SegLayer2DataEditTests(unittest.TestCase):
                 ('Amazon', 'format', True),
                 ('Amazon', 'null', False),
                 ('Mediamarkt', 'format', product_line == 'seg_tv'),
-                ('OTTO', 'format', product_line == 'seg_tv'),
+                ('OTTO', 'format', True),
             ):
                 with self.subTest(product_line=product_line, retailer=retailer,
                                   validation_type=validation_type):
