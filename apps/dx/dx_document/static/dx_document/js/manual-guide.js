@@ -892,26 +892,48 @@ function renderManualCapture(photo, f) {
     : ' · 제공된 캡처') + '<br>' + esc(photo.region) + ' · ' + esc(photo.date);
 }
 
-renderLesson = function() {
-  manualPhotoRenderLesson();
-  const p = currentPhoto();
-  if (!p) return;
-  const candidates = shownPhotos();
-  const pager = $('photoPager');
-  pager.innerHTML = '<button type="button" id="prevPhoto" aria-label="이전 캡처" ' + (S.photo === 0 ? 'disabled' : '') + '>' + icon('left') + '</button>' +
-    '<span id="capturePosition" role="status">' + (S.photo + 1) + ' / ' + candidates.length + '</span>' +
-    '<button type="button" id="nextPhoto" aria-label="다음 캡처" ' + (S.photo === candidates.length - 1 ? 'disabled' : '') + '>' + icon('right') + '</button>' +
-    '<span id="captureDescription">' + (S.photo === 0 ? '대표 · ' : '') +
-    esc((S.scope === 'common' ? manualCategoryLabel(p.category) + ' · ' : '') + p.stage + ' · ' + p.date) + '</span>';
-  for (const [id, step] of [['prevPhoto', -1], ['nextPhoto', 1]]) {
-    $(id).onclick = () => {
+function renderCaptureNavigation(count) {
+  const canvas = $('canvas');
+  const image = canvas.querySelector(':scope > svg');
+  const showNavigation = count > 1 && image !== null;
+  canvas.classList.toggle('manual-capture-carousel', showNavigation);
+  if (!showNavigation) return;
+  const arrow = (id, step, label, direction, disabled) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.id = id;
+    button.className = 'manual-capture-arrow';
+    button.setAttribute('aria-label', label);
+    button.innerHTML = icon(direction);
+    button.disabled = disabled;
+    button.onclick = () => {
       S.photo += step;
       renderLesson();
       const sameButton = $(id);
       const focus = sameButton.disabled ? $(id === 'prevPhoto' ? 'nextPhoto' : 'prevPhoto') : sameButton;
       focus.focus({preventScroll: true});
     };
-  }
+    return button;
+  };
+  const position = document.createElement('div');
+  position.id = 'capturePosition';
+  position.setAttribute('role', 'status');
+  position.innerHTML = '<span class="manual-capture-count">' + (S.photo + 1) + ' / ' + count + '</span>' +
+    Array.from({length: count}, (_, i) => '<span aria-hidden="true" class="manual-capture-dot' +
+      (i === S.photo ? ' is-current' : '') + '"></span>').join('');
+  image.before(arrow('prevPhoto', -1, '이전 캡처', 'left', S.photo === 0));
+  image.after(arrow('nextPhoto', 1, '다음 캡처', 'right', S.photo === count - 1), position);
+}
+
+renderLesson = function() {
+  manualPhotoRenderLesson();
+  const p = currentPhoto();
+  const candidates = p ? shownPhotos() : [];
+  renderCaptureNavigation(candidates.length);
+  if (!p) return;
+  const pager = $('photoPager');
+  pager.innerHTML = '<span id="captureDescription">' + (S.photo === 0 ? '대표 · ' : '') +
+    esc((S.scope === 'common' ? manualCategoryLabel(p.category) + ' · ' : '') + p.stage + ' · ' + p.date) + '</span>';
   const button = document.createElement('button');
   button.type = 'button';
   button.id = 'manualPrimaryPhoto';
@@ -929,7 +951,7 @@ renderLesson = function() {
   };
   pager.append(button);
 };
-// Keep the capture chooser visible before a tall screenshot.
+// Keep capture details and the representative action above a tall screenshot.
 $('canvas').before($('photoPager'));
 $('replacePhoto').textContent = '현재 이미지 교체';
 $('replacePhoto').title = '선택한 캡처를 교체합니다. 저장 전 이미지는 수정 이력에 남습니다.';

@@ -57,6 +57,20 @@ def route_request(route):
         route.fulfill(status=404)
 
 
+def assert_carousel_layout(page):
+    image = page.locator('#canvas > svg').bounding_box()
+    previous = page.locator('#prevPhoto').bounding_box()
+    following = page.locator('#nextPhoto').bounding_box()
+    dots = page.locator('#capturePosition').bounding_box()
+    assert previous['x'] + previous['width'] <= image['x'] + 1
+    assert following['x'] >= image['x'] + image['width'] - 1
+    center = image['y'] + image['height'] / 2
+    for arrow in (previous, following):
+        assert abs((arrow['y'] + arrow['height'] / 2) - center) < 2
+    assert dots['y'] >= image['y'] + image['height'] - 1
+    assert abs((dots['x'] + dots['width'] / 2) - (image['x'] + image['width'] / 2)) < 2
+
+
 with sync_playwright() as p:
     browser = p.chromium.launch(channel='msedge', headless=True)
     page = browser.new_page(viewport=dict(width=1440, height=1000))
@@ -68,6 +82,14 @@ with sync_playwright() as p:
     expect(page.locator('#capturePosition')).to_have_text(re.compile(r'^1 / \d+$'))
     expect(page.locator('#prevPhoto')).to_be_disabled()
     expect(page.locator('#photoPager select')).to_have_count(0)
+    dots = page.locator('#capturePosition .manual-capture-dot')
+    total = int(page.locator('#capturePosition .manual-capture-count').text_content().split(' / ')[1])
+    expect(dots).to_have_count(total)
+    expect(dots.nth(0)).to_have_class(re.compile(r'\bis-current\b'))
+    assert_carousel_layout(page)
+    page.set_viewport_size({'width': 560, 'height': 900})
+    assert_carousel_layout(page)
+    page.set_viewport_size({'width': 1440, 'height': 1000})
     assert page.locator('#photoPager').bounding_box()['y'] < page.locator('#canvas').bounding_box()['y']
     page.locator('#routeDetails').click()
     expect(page.locator('.manual-route-description').first).to_have_text('검색 → TV 선택\n이 목록에서 수집')
@@ -75,6 +97,8 @@ with sync_playwright() as p:
     page.locator('#editModeToggle').click()
     page.locator('#nextPhoto').click()
     expect(page.locator('#capturePosition')).to_have_text(re.compile(r'^2 / \d+$'))
+    expect(dots.nth(1)).to_have_class(re.compile(r'\bis-current\b'))
+    expect(page.locator('#capturePosition .is-current')).to_have_count(1)
     page.locator('#prevPhoto').click()
     expect(page.locator('#captureDescription')).to_contain_text('새 수집 화면')
     page.locator('#nextPhoto').click()
