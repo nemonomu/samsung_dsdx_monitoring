@@ -209,7 +209,7 @@ def inventory(cursor, day, table, retailer, scopes=None):
     fingerprint = digest(context)
     scope = scopes.get(fingerprint)
     data = apply_detail(data, scopes)
-    rule_data = get_format_rules(cursor, table, data['retailer']) if cursor is not None else {}
+    rule_data = get_format_rules(cursor, table, data['retailer'], day) if cursor is not None else {}
     rules = {}
     for rule in rule_data.get('rules', []):
         field = rule.get('field')

@@ -2029,7 +2029,11 @@ async function openRuleModal(tableName, retailer) {
     }
 
     try {
-        const response = await fetch(`/dx/layer2/api/format-rules/?table=${encodeURIComponent(dbTableName)}&retailer=${encodeURIComponent(retailer)}`);
+        let url = `/dx/layer2/api/format-rules/?table=${encodeURIComponent(dbTableName)}&retailer=${encodeURIComponent(retailer)}`;
+        if (dbTableName.startsWith('sem_') && retailer === 'HomeDepot') {
+            url += `&date=${encodeURIComponent(getSelectedDate())}`;
+        }
+        const response = await fetch(url);
         const data = await response.json();
         const rules = data.rules || [];
         const showPattern = data.show_pattern !== false;

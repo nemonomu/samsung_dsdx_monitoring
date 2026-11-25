@@ -78,6 +78,37 @@ class HomeDepotRulesTests(unittest.TestCase):
         for value in ('-0%', '-100%'):
             self.assertNotIn('savings', layer2.evaluate_format(record(savings=value), 'sem_ref', 'HomeDepot'))
 
+    def test_savings_sign_changes_on_the_recorded_collection_day(self):
+        for product in ('sem_ref', 'sem_ldy', 'sem_ldy_dryer'):
+            for crawled, value, is_error in (
+                ('2026-11-24T23:55:00-06:00', '-26%', False),
+                ('2026-11-24T23:55:00-06:00', '26%', True),
+                ('2026-11-25T00:05:00+09:00', '26%', False),
+                ('2026-11-25T00:05:00+09:00', '-26%', True),
+                ('2026-11-25T00:05:00+09:00', '0%', False),
+                ('2026-11-25T00:05:00+09:00', '100%', False),
+                ('2026-11-25T00:05:00+09:00', '101%', True),
+                ('2026-11-25T00:05:00+09:00', '26.5%', True),
+                ('2026-11-25T00:05:00+09:00', None, False),
+            ):
+                with self.subTest(product=product, crawled=crawled, value=value):
+                    row = record(crawl_datetime=crawled, savings=value)
+                    self.assertEqual(is_error, 'savings' in layer2.evaluate_format(row, product, 'HomeDepot'))
+
+    def test_popup_shows_discount_examples_for_the_selected_day(self):
+        for day, expected in ((date(2026, 11, 24), '-30%'), (date(2026, 11, 25), '30%')):
+            with self.subTest(day=day):
+                rules = formats.get_format_rules(None, 'sem_ref', 'HomeDepot', day)['rules']
+                savings = next(rule for rule in rules if rule['field'] == 'savings')
+                self.assertEqual(expected, savings['pattern'])
+                self.assertIn(expected, savings['examples'])
+
+    def test_crossfield_reads_all_digits_of_unsigned_discount(self):
+        crawled = '2026-11-25T00:05:00+09:00'
+        self.assertEqual(set(), errors(crawl_datetime=crawled, savings='26%'))
+        self.assertEqual({'savings_rate_match'}, errors(crawl_datetime=crawled, savings='27%'))
+        self.assertEqual(set(), errors(crawl_datetime=crawled, savings='-27%'))
+
     def test_all_eight_presence_combinations(self):
         expected = {
             (False, False, False): set(),

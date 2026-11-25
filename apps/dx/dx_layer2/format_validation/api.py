@@ -66,10 +66,14 @@ def format_rules(request):
     if table_name not in VALID_TABLES_RULES:
         return JsonResponse({'error': '잘못된 테이블 파라미터'}, status=400)
     retailer = request.GET.get('retailer', 'Amazon')
+    date_value = request.GET.get('date')
+    inspection_day = parse_date(date_value, default=None)
+    if date_value and inspection_day is None:
+        return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
 
     try:
         with dx_connection() as (conn, cursor):
-            data = get_format_rules(cursor, table_name, retailer)
+            data = get_format_rules(cursor, table_name, retailer, inspection_day)
             return JsonResponse(data)
     except Exception as e:
         log_error(e, 'db')

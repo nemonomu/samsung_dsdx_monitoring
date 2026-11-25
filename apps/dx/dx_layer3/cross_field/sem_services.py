@@ -18,6 +18,7 @@ from apps.common.sem_retail import (
 )
 from apps.dx.dx_layer2.sem_validation import (
     _COPPEL_SAVINGS, _format_checks, _history_rows, _latest_rows, product_line_for, _mapping,
+    homedepot_savings_rate,
 )
 
 
@@ -141,7 +142,8 @@ def _homedepot_price_rules(row, checks):
         return ['original_missing']
     if not all((final, original, savings)):
         return []
-    if any(not checks[field](row[field]) for field in fields):
+    discount = homedepot_savings_rate(row['savings'], row.get('crawl_datetime'))
+    if discount is None or any(not checks[field](row[field]) for field in fields[:2]):
         return []
     # Integer cents make the boundary comparison exact without a float or
     # a rounded division, even immediately below the next integer percent.
@@ -150,7 +152,6 @@ def _homedepot_price_rules(row, checks):
     original_cents = cents(row['original_sku_price'])
     if original_cents <= 0 or final_cents >= original_cents:
         return []
-    discount = int(str(row['savings']).strip()[1:-1])
     difference = (original_cents - final_cents) * 100
     if not discount * original_cents <= difference < (discount + 1) * original_cents:
         return ['savings_rate_match']

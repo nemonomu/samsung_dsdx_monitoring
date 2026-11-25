@@ -2897,7 +2897,7 @@ def _get_siel_static_format_rules(source_key, retailer):
     return rules
 
 
-def get_format_rules(cursor, table_name, retailer):
+def get_format_rules(cursor, table_name, retailer, inspection_day=None):
     """
     형식검증 규칙 조회.
     Returns dict: {rules: [...]}
@@ -2937,9 +2937,14 @@ def get_format_rules(cursor, table_name, retailer):
             lambda row: seg_validation.evaluate_format_row(row, seg_product_line, retailer), retailer)
     sem_product_line = sem_validation.product_line_for(table_name)
     if sem_product_line:
+        source_day = sem_validation.HOMEDEPOT_UNSIGNED_SAVINGS_FROM
+        if inspection_day is not None:
+            source = sem_validation.SEM_SOURCE_CONFIG[sem_product_line]
+            source_day = sem_validation._mapping(inspection_day, source)['source_date']
         return static_rules(
-            sem_validation.get_format_rule_details(sem_product_line, retailer),
-            lambda row: sem_validation.evaluate_format(row, sem_product_line, retailer), retailer)
+            sem_validation.get_format_rule_details(sem_product_line, retailer, source_day),
+            lambda row: sem_validation.evaluate_format(
+                row, sem_product_line, retailer, source_day=source_day), retailer)
 
     sea_product_key = _sea_format_product_key(table_name)
     if sea_product_key:

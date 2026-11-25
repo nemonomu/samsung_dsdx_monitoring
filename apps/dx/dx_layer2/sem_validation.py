@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from apps.common.dryer_onboarding import config as dryer_config
 from apps.common.sem_retail import active_sem_rule_retailers
 from apps.common.inspection_dates import resolve_monitoring_date
-from apps.common.source_dates import source_date_sql
+from apps.common.source_dates import source_date_sql, source_date_value
 from apps.common.null_review_evidence import uses_new_policy
 from apps.dx.dx_layer2.null_review_state import add_review_totals, review_state
 from apps.common.sem_retail import (
@@ -37,7 +37,9 @@ _URL = re.compile(r'^https://(?:www\.)?liverpool\.com\.mx/tienda/pdp/', re.I)
 _HOMEDEPOT_URL = re.compile(r'^https://(?:www\.)?homedepot\.com\.mx/p/[^\s]+$', re.I)
 _HOMEDEPOT_WEEK = re.compile(r'^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$')
 _HOMEDEPOT_PRICE = re.compile(rf'^{_MONEY_VALUE}$')
-_HOMEDEPOT_SAVINGS = re.compile(r'^-(?:0|[1-9]\d?|100)%$')
+HOMEDEPOT_UNSIGNED_SAVINGS_FROM = '2026-11-25'
+_HOMEDEPOT_LEGACY_SAVINGS = re.compile(r'^-(0|[1-9]\d?|100)%$')
+_HOMEDEPOT_UNSIGNED_SAVINGS = re.compile(r'^(0|[1-9]\d?|100)%$')
 _HOMEDEPOT_REF_TYPES = {'Top Mount', 'Bottom Mount', 'French Door', 'Side by Side'}
 _COPPEL_MONEY = r'\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?'
 _COPPEL_PRICE = re.compile(rf'^{_COPPEL_MONEY}$')
@@ -282,7 +284,18 @@ def _valid_datetime(value):
     return True
 
 
-def _format_checks(product_line, retailer=SEM_RETAILER):
+def _uses_unsigned_homedepot_savings(source_day):
+    return source_date_value(source_day) >= HOMEDEPOT_UNSIGNED_SAVINGS_FROM
+
+
+def homedepot_savings_rate(value, source_day):
+    pattern = (_HOMEDEPOT_UNSIGNED_SAVINGS if _uses_unsigned_homedepot_savings(source_day)
+               else _HOMEDEPOT_LEGACY_SAVINGS)
+    match = pattern.fullmatch(str(value).strip())
+    return int(match[1]) if match else None
+
+
+def _format_checks(product_line, retailer=SEM_RETAILER, source_day=None):
     if dryer_config('SEM', product_line, retailer):
         return {}
     retailer = normalize_sem_retailer(product_line, retailer)
@@ -322,7 +335,7 @@ def _format_checks(product_line, retailer=SEM_RETAILER):
             'product_url': lambda value: bool(_HOMEDEPOT_URL.fullmatch(str(value).strip())),
             'final_sku_price': lambda value: bool(_HOMEDEPOT_PRICE.fullmatch(str(value).strip())),
             'original_sku_price': lambda value: bool(_HOMEDEPOT_PRICE.fullmatch(str(value).strip())),
-            'savings': lambda value: bool(_HOMEDEPOT_SAVINGS.fullmatch(str(value).strip())),
+            'savings': lambda value: homedepot_savings_rate(value, source_day) is not None,
         })
         if product_line == 'sem_ref':
             checks['ref_refrigerator_type'] = lambda value: str(value).strip() in _HOMEDEPOT_REF_TYPES
@@ -361,7 +374,8 @@ def get_review_allowed_columns(product_line, correction_type, retailer=SEM_RETAI
     return ()
 
 
-def get_format_rule_details(product_line, retailer=SEM_RETAILER):
+def get_format_rule_details(product_line, retailer=SEM_RETAILER,
+                            source_day=HOMEDEPOT_UNSIGNED_SAVINGS_FROM):
     """Return popup metadata for the exact rules used by SEM validation."""
     retailer = normalize_sem_retailer(product_line, retailer)
     details = dict(_FORMAT_RULE_DETAILS)
@@ -375,6 +389,11 @@ def get_format_rule_details(product_line, retailer=SEM_RETAILER):
             'savings': {'description': '마이너스 부호와 정수 할인율, 크기 0~100', 'pattern': '-30%'},
             'ref_refrigerator_type': {'description': '허용된 HomeDepot 냉장고 유형', 'pattern': 'Top Mount / Bottom Mount / French Door / Side by Side'},
         })
+        if _uses_unsigned_homedepot_savings(source_day):
+            details['savings'] = {
+                'description': '부호 없는 0~100의 정수 할인율에 %를 붙인 값',
+                'pattern': '30%',
+            }
     if retailer == SEM_COPPEL_RETAILER:
         details.update({
             'account_name': {'description': 'SEM 수집 리테일러명과 일치', 'pattern': 'Coppel'},
@@ -471,9 +490,9 @@ def _load_normal_reviews(cursor, target_date, product_line,
     return reviews
 
 
-def evaluate_format(row, product_line, retailer=SEM_RETAILER):
+def evaluate_format(row, product_line, retailer=SEM_RETAILER, *, source_day=None):
     errors = []
-    checks = _format_checks(product_line, retailer)
+    checks = _format_checks(product_line, retailer, row.get('crawl_datetime') or source_day)
 
     for field, validator in checks.items():
         value = row.get(field)
