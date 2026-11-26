@@ -106,9 +106,10 @@
                             && (!check.source_date || check.source_date === snapshot.source_date)
                             && (snapshot.rows || []).find(s => s.product === product && s.retailer === row.retailer && s.slot === (slot.name || 'daily'));
                         const complete = windowComplete(check, slot, row);
-                        row.observation_state = saved && saved.observation_state || 'unknown';
+                        const startingObservation = datesMatch && row.observation_start === selectedDate;
+                        row.observation_state = saved?.observation_state || (startingObservation ? 'observing' : 'unknown');
                         row.observation_days = row.observation_state === 'observing'
-                            ? Math.min(5, Number(saved.observation_prior_days || 0) + (collectedToday(check, slots, row.retailer, country) ? 1 : 0)) : null;
+                            ? Math.min(5, Number(saved?.observation_prior_days || 0) + (collectedToday(check, slots, row.retailer, country) ? 1 : 0)) : null;
                         row.volume_alerts = [];
                         row.bsr_comparison_state = saved && saved.bsr_comparison_state;
                         row.bsr_baseline_rule = saved && saved.rules && saved.rules.bsr;

@@ -9,6 +9,10 @@
     margin: -32px -24px;
 }
 
+@media (max-width: 768px) {
+    .l1-layout { flex-direction: column; }
+}
+
 .l1-content {
     flex: 1;
     min-width: 0;
@@ -135,6 +139,9 @@
     .retail-missing-item.volume-review { color: #1d4ed8; background: #eff6ff; }
     .retail-missing-item a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
     .retail-missing-item a:hover { text-decoration-thickness: 2px; }
+    @media (min-width: 1101px) {
+        .sem-observation-check .retail-missing-summary { flex-basis: 360px; }
+    }
     @media (max-width: 1100px) {
         .retail-check-main .check-info { flex: 1 1 200px; }
         .retail-missing-summary { order: 3; flex: 1 0 100%; justify-content: flex-start; }
@@ -292,6 +299,12 @@
     .retail-rank-wrap .ct td.rt-extra { font-size: 12px; color: var(--text-secondary); }
     .retail-rank-wrap .ct td.rt-total { font-weight: 700; }
     .retail-rank-wrap .ct td.rt-status { overflow: visible; }
+    .retail-rank-wrap .ct td.rt-observation-status { white-space: normal; }
+    .rt-observation-status .status-badge { margin-block: 2px; white-space: nowrap; }
+    @media (max-width: 768px) {
+        .retail-rank-wrap:has(.rt-observation-status) { overflow-x: auto; }
+        .retail-rank-wrap .ct:has(.rt-observation-status) { min-width: 900px; }
+    }
     .retail-rank-wrap .ct tr.rt-sum { background: #f0fdf4; }
     .retail-rank-wrap .ct tr.rt-sum td { color: var(--color-ok); font-weight: 700; }
     .retail-rank-wrap .ct tr.rt-sum td:first-child { color: var(--text-secondary); font-weight: 600; }

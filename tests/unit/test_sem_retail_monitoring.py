@@ -55,13 +55,38 @@ class SemRetailConfigurationTests(unittest.TestCase):
             self.assertTrue(source['table_name'].startswith('dx_sem.'))
             self.assertEqual(key, product_line_for(source['section_code']))
             self.assertEqual(key, product_line_for(source['table_name']))
-        self.assertEqual(('Liverpool',), SEM_LAYER1_RETAILERS['sem_tv'])
+        self.assertEqual(('Liverpool', 'Walmart', "Sam's Club"), SEM_LAYER1_RETAILERS['sem_tv'])
         self.assertEqual(
             ('Liverpool', 'HomeDepot', 'Coppel'), SEM_LAYER1_RETAILERS['sem_ref']
         )
         self.assertEqual(
             ('Liverpool', 'HomeDepot', 'Coppel'), SEM_LAYER1_RETAILERS['sem_ldy']
         )
+
+    def test_sem_tv_observation_starts_on_november_27(self):
+        start = date(2026, 11, 27)
+        utc9 = timezone(timedelta(hours=9))
+        cursor = object()
+        with patch.object(sem_retail_repositories, 'get_latest_batch_counts', return_value=None), \
+             patch.object(sem_retail_repositories, 'get_previous_main_counts', return_value=[]), \
+             patch.object(sem_retail_repositories, 'get_tv_observation_counts', return_value={
+                 'walmart': dict(batch_id='wmx-test', raw_count=350, main_count=300, bsr_count=100),
+             }) as latest:
+            def tv_rows(day, now):
+                return sem_retail_services.get_layer1_stats(cursor, day, now)['check']['categories'][0]['retailers']
+
+            previous = tv_rows(start - timedelta(days=1), datetime(2026, 11, 27, 8, tzinfo=utc9))
+            upcoming = tv_rows(start, datetime(2026, 11, 27, 8, tzinfo=utc9))
+            latest.assert_not_called()
+            completed = tv_rows(start, datetime(2026, 11, 27, 14, tzinfo=utc9))
+            latest.assert_called_once_with(cursor, start.isoformat())
+
+        self.assertEqual(['Liverpool'], [row['retailer'] for row in previous])
+        self.assertEqual(['Liverpool', 'Walmart', "Sam's Club"], [row['retailer'] for row in upcoming])
+        self.assertEqual(['PENDING', 'PENDING'], [row['status'] for row in upcoming[1:]])
+        self.assertEqual(start.isoformat(), completed[1]['observation_start'])
+        self.assertEqual((350, 300, 100), tuple(completed[1][key] for key in ('raw_count', 'main_count', 'bsr_count')))
+        self.assertEqual('CRITICAL', completed[2]['status'])
 
     def test_layer1_repository_filters_requested_retailer(self):
         cursor = ScriptedCursor([{

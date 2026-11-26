@@ -87,6 +87,8 @@ def normalize_check(check, country, inspection_date):
                 })
                 if country in SOURCE_START_DATES:
                     rows[-1]['source_date_basis'] = 'db_original'
+                if retailer.get('observation_start'):
+                    rows[-1].update(active_from=retailer['observation_start'], source_date_basis='db_original')
                 if new_tv_retailer(country, product, name):
                     rows[-1]['active_from'] = str(TV_START)
                 if eci_appliance:

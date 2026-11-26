@@ -11,6 +11,8 @@ from apps.common.sem_retail import (
     SEM_REVIEW_DEVIATION,
     SEM_HISTORY_DAYS,
     SEM_SOURCE_CONFIG,
+    SEM_TV_OBSERVATION_RETAILERS,
+    SEM_TV_OBSERVATION_START,
     SEM_DRYER_FIRST_SOURCE_DATE,
     get_sem_collection_phase,
     get_sem_count_status,
@@ -98,6 +100,27 @@ def _retailer(cursor, product_line, retailer_name, source_date, phase):
     }
 
 
+def _tv_observation_rows(cursor, source_day, phase):
+    if source_day < str(SEM_TV_OBSERVATION_START):
+        return []
+    counts = repo.get_tv_observation_counts(cursor, source_day) if phase != 'pending' else {}
+    rows = []
+    for retailer in SEM_TV_OBSERVATION_RETAILERS:
+        current = counts.get(retailer.lower(), {})
+        raw = current.get('raw_count', 0)
+        main = current.get('main_count', 0)
+        status = ('PENDING' if phase == 'pending' else 'COLLECTING' if phase == 'collecting'
+                  else 'OK' if raw else 'CRITICAL')
+        rows.append(dict(
+            retailer=retailer, batch_id=current.get('batch_id'),
+            raw_count=raw, main_count=main, bsr_count=current.get('bsr_count', 0),
+            actual=main, count=main, expected=None, expected_precise=None, rate=None,
+            status=status, collection_phase=phase, status_basis='historical_volume',
+            observation_start=str(SEM_TV_OBSERVATION_START), missing_by_raw_count=True,
+        ))
+    return rows
+
+
 def _category(cursor, product_line, source, target_date, phase):
     mapping = resolve_monitoring_date(
         _as_date(target_date), SEM_COUNTRY, source['source_key']
@@ -108,6 +131,8 @@ def _category(cursor, product_line, source, target_date, phase):
         )
         for retailer_name in active_sem_retailers(product_line, mapping['source_date'])
     ]
+    if product_line == 'sem_tv':
+        retailers.extend(_tv_observation_rows(cursor, mapping['source_date'], phase))
     for row in retailers:
         decorate_row(row, 'SEM', product_line, mapping['source_date'])
     expected_values = [row['expected'] for row in retailers]
