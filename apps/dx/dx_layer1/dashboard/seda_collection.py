@@ -26,7 +26,7 @@ def fetch_collection(cursor, source, target_date):
     return cursor.fetchone() or (0, None, None, 0, 0)
 
 
-def get_collection_status(target_date, now):
+def get_collection_status(target_date, now, *, read=None):
     day = date.fromisoformat(str(target_date))
     start = datetime.combine(day, time(9), KST)
     end = datetime.combine(day, time(15), KST)
@@ -39,8 +39,12 @@ def get_collection_status(target_date, now):
                    collection_phase=phase, count=0, main_count=0, bsr_count=0,
                    last_collected_at=None, last_collected_timezone='DB 원본', batch_id=None)
         try:
-            with dx_connection() as (_, cursor):
-                count, stamp, batch, main, bsr = fetch_collection(cursor, source, day)
+            if read:
+                counts = read(fetch_collection, source, ('SEDA', row['product'], row['retailer']))
+            else:
+                with dx_connection() as (_, cursor):
+                    counts = fetch_collection(cursor, source, day)
+            count, stamp, batch, main, bsr = counts
             row.update(count=int(count or 0), main_count=int(main or 0), bsr_count=int(bsr or 0),
                        last_collected_at=stamp, batch_id=batch)
             row['status'] = ('received' if row['count'] else 'uncollected' if phase == 'complete'

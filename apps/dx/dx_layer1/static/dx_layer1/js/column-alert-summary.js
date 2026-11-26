@@ -27,7 +27,7 @@
         if (historyNotice) historyNotice.hidden = true;
         if (historyDetail) historyDetail.textContent = '';
     }
-    function load(date, force = false) {
+    function load(date, force = false, refresh = false) {
         if (window.CollectionIssues) window.CollectionIssues.load({date});
         if (!force && selectedDate === date) return pending;
         if (controller) controller.abort();
@@ -52,7 +52,7 @@
             while (next < jobs.length && !current.signal.aborted) {
                 const job = jobs[next++];
                 try {
-                    const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force});
+                    const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force, refresh});
                     if (current.signal.aborted) return;
                     if (data.issue_history_error) {
                         const diagnostic = data.issue_history_diagnostic || {};

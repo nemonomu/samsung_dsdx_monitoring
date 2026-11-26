@@ -77,13 +77,15 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
 
     // Exercise the actual dashboard loader: late saved statistics cannot undo live recovery.
     let resolveSaved;
-    const dashboard=setup(async url=>{
+    const dashboardRequests=[], ddayRequests=[];
+    const dashboard=setup(async (url, options)=>{
+        dashboardRequests.push({url,options});
         if(url.includes('collection-current')) return response(snapshot());
         if(url.includes('collection-volume')) return new Promise(resolve=>{resolveSaved=resolve;});
         return {ok:true,json:async()=>({summary:{},checks:[{...snapshot(0,0,0).check,is_target_date:true}]})};
     });
     const renders=[];
-    Object.assign(dashboard.context,{getSelectedDate:()=>day,loadDdayCollection(){},
+    Object.assign(dashboard.context,{getSelectedDate:()=>day,loadDdayCollection(date, options){ddayRequests.push({date,options})},
         loadCheckStatus:async()=>({}),loadSeaRetailSummaries:async()=>({}),
         recordRender(value){const r=value.checks[0].categories[0].time_slots[0].retailers[0];renders.push([r.status,r.count]);}});
     dashboard.context.L1.initLayer1Page=()=>{};
@@ -97,6 +99,15 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     const oldSnapshot=snapshot(0,0,0);oldSnapshot.rows[0].rules={};oldSnapshot.live=false;
     resolveSaved(response(oldSnapshot));await flush();
     assert.deepEqual(renders.at(-1),['OK',204]);
+    assert.equal(ddayRequests[1].options.background,true);
+    const manual=dashboard.context.loadAllData(true);
+    await flush();
+    const explicit=dashboardRequests.filter(request=>request.url.includes('/api/stats/')).at(-1);
+    assert.equal(new URL(explicit.url, 'http://test').searchParams.get('refresh'), '1');
+    assert.equal(explicit.options.cache, 'no-store');
+    assert.equal(ddayRequests.at(-1).options.refresh,true);
+    resolveSaved(response(oldSnapshot));
+    await manual;
     dashboard.context.liveCollectionPoll.stop();
 
     // Bound concurrent country reads and do not duplicate a still-running sweep on focus.

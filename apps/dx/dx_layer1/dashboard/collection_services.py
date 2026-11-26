@@ -9,7 +9,7 @@ from .collection_repositories import SOURCES, fetch_collection
 from apps.dx.dx_layer1.retail import costco, homedepot_dryer
 
 
-def get_collection_status(target_date, now=None):
+def get_collection_status(target_date, now=None, *, read=None):
     current = now or datetime.now(KST)
     current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
     rows = []
@@ -36,8 +36,12 @@ def get_collection_status(target_date, now=None):
         enabled = retailer != 'HomeDepot' or homedepot_source_enabled(target_date)
         if enabled:
             try:
-                with dx_connection() as (_conn, cursor):
-                    count, last_at, batch, main_count, bsr_count = fetch_collection(cursor, source, target_date)
+                if read:
+                    counts = read(fetch_collection, source, ('SEA', product, retailer))
+                else:
+                    with dx_connection() as (_conn, cursor):
+                        counts = fetch_collection(cursor, source, target_date)
+                count, last_at, batch, main_count, bsr_count = counts
                 row.update(count=int(count or 0), main_count=int(main_count or 0),
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
                 if 0 <= row['main_count'] < row['bsr_count']:
@@ -67,12 +71,16 @@ def get_collection_status(target_date, now=None):
             'checked_at': current.isoformat(), 'retailers': rows}
 
 
-def get_dday_collection_status(target_date, now=None):
+def get_dday_collection_status(target_date, now=None, *, reuse_normal=False):
     from . import seda_collection
+    from .collection_revisions import CollectionReads
 
     current = now or datetime.now(KST)
-    sea = get_collection_status(target_date, current)
-    return {**sea, 'countries': [
-        dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
-        seda_collection.get_collection_status(target_date, current),
-    ]}
+    reads = CollectionReads(target_date) if reuse_normal else None
+    options = {'read': reads.read} if reads and reads.revisions else {}
+    sea = get_collection_status(target_date, current, **options)
+    countries = [dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
+                 seda_collection.get_collection_status(target_date, current, **options)]
+    if options:
+        reads.store(countries)
+    return {**sea, 'countries': countries}

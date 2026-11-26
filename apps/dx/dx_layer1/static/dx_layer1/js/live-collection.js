@@ -2,15 +2,12 @@
 (function () {
     const countries = {retail:'SEA', seda_retail:'SEDA', siel_retail:'SIEL', seg_retail:'SEG',
         sem_retail:'SEM', tse_retail:'TSE', seib_retail:'SEIB', seuk_retail:'SEUK'};
-    const currentDay = () => {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    };
+    const currentDay = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Seoul'}).format(new Date());
     const clone = value => JSON.parse(JSON.stringify(value));
     const isInspecting = () => Boolean(document.querySelector(
         'dialog[open], .modal.show, .modal-overlay.show, .l1-batch-toggle[aria-expanded="true"]'));
 
-    function poll(context, receive) {
+    function poll(context, receive, afterRefresh) {
         let generation = 0, timer = null, running = false, stopped = false, signature = '';
         const controllers = new Set();
         const schedule = () => {
@@ -56,7 +53,11 @@
             }
             // Bound DB concurrency even when the page displays every country.
             await Promise.all([worker(), worker(), worker()]);
-            if (request === generation) { running = false; schedule(); }
+            if (request === generation) {
+                running = false;
+                schedule();
+                afterRefresh?.();
+            }
         }
         const visible = () => { if (!document.hidden) refresh(); };
         const hide = () => {

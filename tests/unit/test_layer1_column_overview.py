@@ -134,6 +134,23 @@ class ColumnOverviewTests(unittest.TestCase):
         self.assertEqual(json.loads(response.content)['product'], 'all')
         self.assertEqual(len(summary.call_args.args[1]), 9)
 
+    def test_force_reload_reads_all_days_even_when_prepared_history_is_requested(self):
+        factory = RequestFactory()
+        request = factory.get('/dx/layer1/api/column-statistics/',
+                              dict(country='SIEL', product='TV', retailer='Amazon', date=str(DAY),
+                                   days='5', refresh='1', prepared='1', reuse_history='1'))
+        with patch.object(api.cache, 'get') as cached, \
+                patch.object(overview, 'detail_counts') as prepared, \
+                patch.object(overview, 'live_counts') as incremental, \
+                patch.object(api, 'daily_counts', return_value=raw_window()) as original, \
+                patch.object(api, 'raw_counts', return_value={str(DAY): 117}), \
+                patch('apps.dx.dx_layer1.column_statistics.observations.remember_comparison'):
+            result = api.daily(request)
+        self.assertEqual(result.status_code, 200)
+        original.assert_called_once_with(*SCOPE, DAY, 29)
+        for call in (cached, prepared, incremental):
+            call.assert_not_called()
+
     def test_native_siel_query_uses_kst_bounds_and_text_sources_keep_original_day(self):
         siel = {'country': 'SIEL', 'key': 'siel_tv', 'date_column': 'crawl_datetime'}
         seuk = {'country': 'SEUK', 'key': 'seuk_tv', 'date_column': 'crawl_datetime'}

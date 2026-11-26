@@ -30,15 +30,17 @@
         }};
         persist();
     }
-    async function load(job, date, {signal, force = false} = {}) {
+    async function load(job, date, {signal, force = false, refresh = false} = {}) {
         const key = keyFor(job, date);
-        if (!force && fresh(entries[key])) return structuredClone(entries[key].data);
+        if (!force && !refresh && fresh(entries[key])) return structuredClone(entries[key].data);
         // A failed manual refresh must not leave an earlier successful value behind.
         delete entries[key];
         persist();
         const query = new URLSearchParams({...job, date, days: '5'});
-        if (window.LAYER1.section === 'dashboard' && !force) query.set('reuse_history', '1');
-        const response = await fetch('/dx/layer1/api/column-statistics/?' + query, {signal});
+        if (refresh) query.set('refresh', '1');
+        else if (window.LAYER1.section === 'dashboard' && !force) query.set('reuse_history', '1');
+        const response = await fetch('/dx/layer1/api/column-statistics/?' + query,
+            {signal, ...(refresh ? {cache:'no-store'} : {})});
         if (!response.ok) throw new Error('Query failed');
         const data = await response.json();
         if (!Array.isArray(data.comparisons)) throw new Error('Invalid comparison response');

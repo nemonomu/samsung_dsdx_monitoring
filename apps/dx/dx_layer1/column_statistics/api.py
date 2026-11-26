@@ -80,6 +80,7 @@ def daily(request):
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·리테일러·기간·날짜를 확인해주세요.'}, status=400)
     query_days = max(days, 29)
+    refresh = request.GET.get('refresh') == '1'
     key = f'column-statistics:v5-source-day:{country}:{product}:{retailer}:{target}:{query_days}'
     try:
         eci_preview = country == 'SEIB' and is_eci_appliance_preview(product, retailer, target)
@@ -87,13 +88,13 @@ def daily(request):
             or is_preview(country, product, retailer, target)
         scope = (country, product, retailer)
         result = None
-        if not preview and query_days == 29 and request.GET.get('reuse_history') == '1':
+        if not refresh and not preview and query_days == 29 and request.GET.get('reuse_history') == '1':
             from .overview import history_reuse_enabled, live_counts
             if history_reuse_enabled(scope):
                 result = live_counts(scope, target)
-        if result is None and not preview:
+        if result is None and not refresh and not preview:
             result = cache.get(key)
-        if result is None and not preview and request.GET.get('prepared') == '1':
+        if result is None and not refresh and not preview and request.GET.get('prepared') == '1':
             from .overview import detail_counts
 
             result = detail_counts((country, product, retailer), target, query_days)

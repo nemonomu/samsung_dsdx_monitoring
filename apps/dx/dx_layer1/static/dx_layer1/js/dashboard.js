@@ -12,11 +12,11 @@ var CHECK_TYPE_URL = {
 var layer1StatsRequestId = 0;
 var liveCollectionPoll = null;
 
-async function loadStats() {
+async function loadStats(refresh = false) {
     liveCollectionPoll?.stop();
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
-    loadDdayCollection(selectedDate);
+    loadDdayCollection(selectedDate, {refresh});
     let data = null;
     let volume = null;
     const liveSnapshots = new Map();
@@ -38,19 +38,20 @@ async function loadStats() {
         volume = result;
         render();
     });
-    const statusRequest = loadCheckStatus(selectedDate).then(function(status) {
+    const statusRequest = loadCheckStatus(selectedDate, refresh).then(function(status) {
         if (requestId !== layer1StatsRequestId) return;
         currentCheckStatus = status;
         render();
     }).catch(function() {});
-    const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
+    const summaryRequest = loadSeaRetailSummaries(selectedDate, refresh).then(render).catch(function() {});
     if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
 
     try {
-        const url = selectedDate
-            ? `/dx/layer1/api/stats/?date=${selectedDate}`
-            : '/dx/layer1/api/stats/';
-        const response = await fetch(url);
+        const params = [];
+        if (selectedDate) params.push('date=' + encodeURIComponent(selectedDate));
+        if (refresh) params.push('refresh=1');
+        const url = '/dx/layer1/api/stats/' + (params.length ? '?' + params.join('&') : '');
+        const response = await fetch(url, refresh ? {cache:'no-store'} : undefined);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         data = await response.json();
         if (requestId !== layer1StatsRequestId) return;
@@ -62,6 +63,11 @@ async function loadStats() {
                 if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
                 liveSnapshots.set(snapshot.country, snapshot);
                 if (!L1.liveCollection.isInspecting()) L1.liveCollection.preserveView(render);
+            }, () => {
+                if (requestId === layer1StatsRequestId && getSelectedDate() === selectedDate
+                    && !L1.liveCollection.isInspecting()) {
+                    loadDdayCollection(selectedDate, {background:true});
+                }
             });
             // The initial response already contains current counts; wait for the next sweep.
         }
@@ -148,8 +154,8 @@ function renderLayer1Stats(data) {
 }
 
 
-function loadAllData() {
-    loadStats();
+function loadAllData(refresh = false) {
+    return loadStats(refresh);
 }
 
 // 수요증감율 부족 키워드 모달

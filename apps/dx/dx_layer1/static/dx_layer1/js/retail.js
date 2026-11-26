@@ -609,7 +609,7 @@ function syncSeaRetailSummaryGlobals(summaryCache) {
     currentNullData = nullColumns;
 }
 
-async function loadSeaRetailSummaries(inspectionDate) {
+async function loadSeaRetailSummaries(inspectionDate, refresh = false) {
     var selectedInspectionDate = inspectionDate || getSelectedDate();
     var loadId = ++seaRetailSummaryLoadId;
     seaRetailSummaryDate = selectedInspectionDate;
@@ -621,9 +621,9 @@ async function loadSeaRetailSummaries(inspectionDate) {
         product.key !== 'ldy_dryer' || selectedInspectionDate >= '2026-10-10'
     ).map(async function(product) {
         var url = '/dx/layer1/retail/api/summary/?type=' + encodeURIComponent(product.key) +
-            '&date=' + encodeURIComponent(selectedInspectionDate);
+            '&date=' + encodeURIComponent(selectedInspectionDate) + (refresh ? '&refresh=1' : '');
         try {
-            var response = await fetch(url);
+            var response = await fetch(url, refresh ? {cache:'no-store'} : undefined);
             if (response.ok === false) throw new Error('HTTP ' + response.status);
             var data = await response.json();
             if (data && data.error) throw new Error(data.error);

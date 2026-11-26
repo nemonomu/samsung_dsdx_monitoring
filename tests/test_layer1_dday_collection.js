@@ -4,9 +4,10 @@ const vm = require('vm');
 const elements = {};
 const requests = [];
 const sandbox = {
+    URLSearchParams,
     document: { getElementById(id) { return elements[id] ||= { innerHTML: '', textContent: '' }; } },
     esc(value) { return String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'); },
-    fetch(url) { return new Promise(resolve => requests.push({ url, resolve })); }
+    fetch(url, options) { return new Promise(resolve => requests.push({ url, options, resolve })); }
 };
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/collection-status.js', 'utf8'), sandbox);
@@ -132,9 +133,25 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.strictEqual(elements['dday-collection-list'].innerHTML, html);
     assert(html.includes('수집 대상일: 2026-09-21'));
     assert(html.includes('수집일: DB 원본 날짜 · 표시 시각: KST'));
-    assert(requests[1].url.endsWith('date=2026-09-21'));
+    const params = (index) => new URL(requests[index].url, 'https://dashboard.test').searchParams;
+    assert.equal(params(1).get('date'), '2026-09-21');
+    assert.equal(params(1).get('reuse_normal'), '1');
+    const background = sandbox.loadDdayCollection('2026-09-21', {background:true});
+    assert.equal(elements['dday-collection-list'].innerHTML, html);
+    await sandbox.loadDdayCollection('2026-09-21', {background:true});
+    assert.equal(requests.length, 3);
+    assert.equal(params(2).get('reuse_normal'), '1');
+    const manual = sandbox.loadDdayCollection('2026-09-22', {refresh:true});
+    assert.equal(params(3).get('refresh'), '1');
+    assert.equal(params(3).has('reuse_normal'), false);
+    assert.equal(requests[3].options.cache, 'no-store');
+    respond(3, data('2026-09-22', ['received', 'waiting', 'waiting']));
+    await manual;
+    respond(2, data('2026-09-21', ['waiting', 'waiting', 'waiting']));
+    await background;
+    assert(elements['dday-collection-list'].innerHTML.includes('수집 대상일: 2026-09-22'));
     const failed = sandbox.loadDdayCollection('2026-09-22');
-    requests[2].resolve({ ok: false });
+    requests[4].resolve({ ok: false });
     await failed;
     assert(elements['dday-collection-list'].innerHTML.includes('조회 실패'));
     assert(!elements['dday-collection-list'].innerHTML.includes('수집 대기'));

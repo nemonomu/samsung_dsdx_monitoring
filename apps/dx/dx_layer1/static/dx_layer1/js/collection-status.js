@@ -1,4 +1,6 @@
 var ddayCollectionRequestId = 0;
+var ddayCollectionPending = false;
+var ddayCollectionMarkup = '';
 
 function ddayStatusBadge(status, reason) {
     const styles = {
@@ -95,19 +97,33 @@ function renderDdayCollection(data) {
         '<div class="sentiment-categories">' + categories + '</div></div></details>';
 }
 
-async function loadDdayCollection(selectedDate) {
-    const requestId = ++ddayCollectionRequestId;
+async function loadDdayCollection(selectedDate, {refresh = false, background = false} = {}) {
     const container = document.getElementById('dday-collection-list');
-    if (!container) return;
-    container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황을 불러오는 중...</div></div>';
+    if (!container || (background && ddayCollectionPending)) return;
+    const requestId = ++ddayCollectionRequestId;
+    ddayCollectionPending = true;
+    if (!background) {
+        ddayCollectionMarkup = '';
+        container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황을 불러오는 중...</div></div>';
+    }
     try {
-        const response = await fetch('/dx/layer1/api/collection-status/?date=' + encodeURIComponent(selectedDate));
+        const query = new URLSearchParams({date:selectedDate});
+        if (refresh) query.set('refresh', '1');
+        if (!refresh) query.set('reuse_normal', '1');
+        const response = await fetch('/dx/layer1/api/collection-status/?' + query,
+            refresh || background ? {cache:'no-store'} : undefined);
         if (!response.ok) throw new Error('collection status unavailable');
         const data = await response.json();
+        if (data.source_date !== selectedDate) throw new Error('collection status date mismatch');
         if (requestId !== ddayCollectionRequestId) return;
-        container.innerHTML = renderDdayCollection(data);
+        const markup = renderDdayCollection(data);
+        if (markup !== ddayCollectionMarkup) container.innerHTML = markup;
+        ddayCollectionMarkup = markup;
     } catch (error) {
         if (requestId !== ddayCollectionRequestId) return;
+        ddayCollectionMarkup = '';
         container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황 조회 실패 · 다시 조회해 주세요.</div></div>';
+    } finally {
+        if (requestId === ddayCollectionRequestId) ddayCollectionPending = false;
     }
 }

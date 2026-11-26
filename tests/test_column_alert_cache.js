@@ -36,6 +36,14 @@ const reply = (req, ok = true) => req.resolve({ok, json:async () => structuredCl
     reply(dashboard.requests[1]);
     await manualDashboardRead;
 
+    const forcedDashboardRead = dashboard.cache.load(jobs[0], date, {force:true, refresh:true});
+    const forced = new URL(dashboard.requests[2].url, 'https://dashboard.test').searchParams;
+    assert.equal(forced.get('refresh'), '1');
+    assert.equal(forced.has('reuse_history'), false);
+    assert.equal(dashboard.requests[2].options.cache, 'no-store');
+    reply(dashboard.requests[2]);
+    await forcedDashboardRead;
+
     const first = page();
     const cold = jobs.map(job => first.cache.load(job, date));
     assert.equal(first.requests.length, 37);

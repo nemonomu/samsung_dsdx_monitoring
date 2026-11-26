@@ -21,4 +21,6 @@ def layer_stats(request):
 @cached_monitoring_stats
 def collection_status(request):
     target_date = parse_date(request.GET.get('date'))
+    if request.GET.get('reuse_normal') == '1' and request.GET.get('refresh') != '1':
+        return JsonResponse(get_dday_collection_status(target_date, reuse_normal=True))
     return JsonResponse(get_dday_collection_status(target_date))
