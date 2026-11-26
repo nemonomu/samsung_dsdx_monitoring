@@ -222,8 +222,8 @@ setImmediate(() => {
     assert(html.includes('SEM Liverpool TV'));
     assert(html.includes('SEM Liverpool REF'));
     assert(html.includes('SEM Liverpool LDY'));
-    assert(html.includes('<td>Walmart</td><td>3</td><td>2</td><td>1</td><td>이상 있음</td>'));
-    assert(html.includes("<td>Sam's Club</td><td>0</td><td>0</td><td>0</td><td>검수 대기</td>"));
+    assert(html.includes('<td>Walmart</td><td>3</td><td>2</td><td>1</td><td>0</td><td>이상 있음</td>'));
+    assert(html.includes("<td>Sam's Club</td><td>0</td><td>0</td><td>0</td><td>0</td><td>검수 대기</td>"));
     assert(!renderedRows.find(row => row.includes('크로스필드 검증')).includes("Sam's Club"));
     const nullSummary = renderedRows.find(row => row.includes('NULL 검증'));
     assert(nullSummary.includes('SEG OTTO REF 확인 8건'));
