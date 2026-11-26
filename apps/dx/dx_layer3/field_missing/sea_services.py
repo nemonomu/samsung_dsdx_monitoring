@@ -1,14 +1,13 @@
-"""SEA REF/LDY field-missing validation.
-
-The source scope follows the unified SEA contract: inspection date D-1 and,
-for each source date/retailer, only the newest MAIN anchor batch plus rows from
-that same MAIN/BSR batch.
-"""
+"""Field-missing checks backed by the latest batch per retailer and date."""
 
 from datetime import timedelta
 import re
 
 from apps.common.sea_retail import get_sea_retail_source
+from apps.common.sem_retail import (
+    SEM_TV_OBSERVATION_RETAILERS, SEM_TV_OBSERVATION_START, get_sem_source,
+    sem_tv_observation_retailer,
+)
 
 
 SEA_FIELD_MISSING_COLUMNS = {
@@ -38,6 +37,7 @@ _PRODUCT_ALIASES = {
     'sea_ref': 'sea_ref',
     'ldy': 'sea_ldy',
     'sea_ldy': 'sea_ldy',
+    'sem_tv': 'sem_tv',
 }
 
 _IDENTIFIER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
@@ -47,15 +47,25 @@ def normalize_product_line(product_line):
     key = str(product_line or '').strip().lower()
     canonical = _PRODUCT_ALIASES.get(key)
     if canonical is None:
-        raise ValueError(f'허용되지 않은 SEA 필드 누락 제품군: {product_line}')
+        raise ValueError(f'허용되지 않은 필드 누락 제품군: {product_line}')
     return canonical
 
 
 def is_sea_product_line(product_line):
+    return is_batch_product_line(product_line) and not is_sem_tv(product_line)
+
+
+def is_sem_tv(product_line):
+    return str(product_line or '').strip().lower() == 'sem_tv'
+
+
+def is_batch_product_line(product_line):
     return str(product_line or '').strip().lower() in _PRODUCT_ALIASES
 
 
 def get_validation_columns(product_line, retailer=None):
+    if is_sem_tv(product_line):
+        return ['retailer_sku_name', 'final_sku_price']
     if not is_sea_product_line(product_line):
         return []
     columns = list(SEA_FIELD_MISSING_COLUMNS[normalize_product_line(product_line)])
@@ -73,7 +83,7 @@ def get_default_related_columns(product_line, field):
 
 def get_retailers(product_line):
     key = normalize_product_line(product_line)
-    return list(get_sea_retail_source(key)['retailers'])
+    return list(_source(key)['retailers'])
 
 
 def get_source_key(product_line):
@@ -81,6 +91,8 @@ def get_source_key(product_line):
 
 
 def _source(product_line):
+    if is_sem_tv(product_line):
+        return {**get_sem_source('sem_tv'), 'retailers': SEM_TV_OBSERVATION_RETAILERS}
     return get_sea_retail_source(normalize_product_line(product_line))
 
 
@@ -126,12 +138,23 @@ def _retailer_name(value):
 
 def _load_latest_rows(
         cursor, start_date, end_date, product_line, retailer, columns):
-    """Load newest MAIN-anchor rows for every source day in the range."""
+    """Load the latest eligible batch from each requested original collection date."""
     source = _source(product_line)
     table_name = source['table_name']
     date_column = source['date_column']
+    sem_tv = is_sem_tv(product_line)
     selected = _safe_columns(columns)
-    base_columns = ['id', 'account_name', 'page_type', 'item', date_column]
+    base_columns = ['id', 'account_name', 'item', date_column]
+    if sem_tv:
+        retailer = sem_tv_observation_retailer('sem_tv', retailer)
+        start_date = max(start_date, SEM_TV_OBSERVATION_START)
+        if not retailer or start_date > end_date:
+            return []
+        selected = [column for column in selected if column in get_validation_columns(product_line)]
+    else:
+        base_columns.insert(2, 'page_type')
+    main_filter = "" if sem_tv else "AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'"
+    page_filter = "" if sem_tv else "AND UPPER(TRIM(COALESCE(source.page_type, ''))) IN ('MAIN', 'BSR')"
     selected = [column for column in selected if column not in base_columns]
     if 'product_url' not in selected:
         selected.append('product_url')
@@ -150,7 +173,7 @@ def _load_latest_rows(
             WHERE LEFT(TRIM(CAST({date_column} AS TEXT)), 10)
                       BETWEEN %s AND %s
               AND LOWER(TRIM(account_name)) = LOWER(TRIM(%s))
-              AND UPPER(TRIM(COALESCE(page_type, ''))) = 'MAIN'
+              {main_filter}
               AND NULLIF(TRIM(batch_id), '') IS NOT NULL
             GROUP BY LEFT(TRIM(CAST({date_column} AS TEXT)), 10),
                      account_name, batch_id
@@ -174,8 +197,7 @@ def _load_latest_rows(
         WHERE LEFT(TRIM(CAST(source.{date_column} AS TEXT)), 10)
                   BETWEEN %s AND %s
           AND LOWER(TRIM(source.account_name)) = LOWER(TRIM(%s))
-          AND UPPER(TRIM(COALESCE(source.page_type, '')))
-              IN ('MAIN', 'BSR')
+          {page_filter}
         ORDER BY source.item, source.{date_column}, source.id
     """, (
         str(start_date), str(end_date), retailer,
@@ -225,7 +247,7 @@ def _load_previously_seen_items(
     return seen
 
 
-def _classify_missing(rows, target_date, columns, date_column):
+def _classify_missing(rows, target_date, columns, date_column, *, include_new=True):
     """Classify existing-item gaps and first-seen NULL items by field."""
     target_text = str(target_date)
     stats = {
@@ -263,7 +285,9 @@ def _classify_missing(rows, target_date, columns, date_column):
             null_target_rows = [
                 row for row in target_rows if not _has_value(row.get(column))
             ]
-            if not null_target_rows or not (is_new or previous_has_value):
+            if not include_new and len(null_target_rows) != len(target_rows):
+                continue
+            if not null_target_rows or not (previous_has_value or (include_new and is_new)):
                 continue
 
             finding_type = 'new' if is_new else 'missing'
@@ -310,6 +334,8 @@ def field_missing_detection(
         get_retailers(key) if str(retailer).lower() == 'all' else [retailer]
     )
     total_missing = 0
+    sem_tv = is_sem_tv(key)
+    comparable = False
 
     for current_retailer in retailers:
         if current_retailer not in source['retailers']:
@@ -320,28 +346,30 @@ def field_missing_detection(
             key, current_retailer, columns,
         )
         field_stats = _classify_missing(
-            rows, target_date, columns, source['date_column']
+            rows, target_date, columns, source['date_column'], include_new=not sem_tv
         )
+        comparable = comparable or any(stat['prev_count'] for stat in field_stats.values())
 
-        try:
-            cursor.execute("""
-                SELECT column_name, COUNT(DISTINCT item)
-                FROM monitoring_corrections
-                WHERE layer = 3 AND correction_type = 'field_missing'
-                  AND table_name = %s AND crawl_date = %s
-                  AND retailer = %s AND status = 'normal'
-                GROUP BY column_name
-            """, (
-                source['table_name'], str(inspection_date or target_date),
-                current_retailer,
-            ))
-            for column, count in cursor.fetchall():
-                if column in field_stats:
-                    field_stats[column]['missing_count'] = max(
-                        0, field_stats[column]['missing_count'] - count
-                    )
-        except Exception:
-            pass
+        if not sem_tv:
+            try:
+                cursor.execute("""
+                    SELECT column_name, COUNT(DISTINCT item)
+                    FROM monitoring_corrections
+                    WHERE layer = 3 AND correction_type = 'field_missing'
+                      AND table_name = %s AND crawl_date = %s
+                      AND retailer = %s AND status = 'normal'
+                    GROUP BY column_name
+                """, (
+                    source['table_name'], str(inspection_date or target_date),
+                    current_retailer,
+                ))
+                for column, count in cursor.fetchall():
+                    if column in field_stats:
+                        field_stats[column]['missing_count'] = max(
+                            0, field_stats[column]['missing_count'] - count
+                        )
+            except Exception:
+                pass
 
         for column in columns:
             stats = field_stats[column]
@@ -368,7 +396,8 @@ def field_missing_detection(
         'total_missing_cases': total_missing,
         'fields_with_issues': len(result['missing_fields']),
         'status': (
-            'OK' if total_missing == 0
+            'PENDING' if sem_tv and not comparable
+            else 'OK' if total_missing == 0
             else 'WARNING' if total_missing < 10
             else 'CRITICAL'
         ),
@@ -443,7 +472,7 @@ def field_missing_detail_problem(
         key, retailer, columns,
     )
     stats = _classify_missing(
-        rows, target_date, columns, source['date_column']
+        rows, target_date, columns, source['date_column'], include_new=not is_sem_tv(key)
     )
     data = []
     for column in columns:
@@ -543,7 +572,7 @@ def field_missing_detail_by_field(
         if _source_date(row, source['date_column']) >= str(validation_start)
     ]
     stats = _classify_missing(
-        validation_rows, target_date, [field], source['date_column']
+        validation_rows, target_date, [field], source['date_column'], include_new=not is_sem_tv(key)
     )[field]
     finding_types = {
         finding['item']: finding['finding_type']
@@ -629,8 +658,9 @@ def field_missing_detail_by_field(
         'data': data,
         'table_name': source['table_name'],
         'date_column': date_column,
-        'editable_columns': editable_cols,
-        'normal_reviews': _normal_reviews(
+        'editable_columns': [] if is_sem_tv(key) else editable_cols,
+        'readonly': is_sem_tv(key),
+        'normal_reviews': {} if is_sem_tv(key) else _normal_reviews(
             cursor, inspection_date or target_date, source['table_name']
         ),
         'default_columns': (

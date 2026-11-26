@@ -14,11 +14,12 @@ function toggleFieldMissing() {
 const fieldMissingRetailers = {
     tv: ['Amazon', 'Bestbuy', 'Walmart'],
     sea_ref: ['Bestbuy', 'Lowes'],
-    sea_ldy: ['Bestbuy', 'Lowes']
+    sea_ldy: ['Bestbuy', 'Lowes'],
+    sem_tv: ['Walmart', "Sam's Club"]
 };
 
 function fieldMissingProductLabel(productLine) {
-    return { tv: 'TV', sea_ref: 'REF', sea_ldy: 'LDY' }[productLine] || String(productLine || '').toUpperCase();
+    return { tv: 'TV', sea_ref: 'REF', sea_ldy: 'LDY', sem_tv: 'SEM TV' }[productLine] || String(productLine || '').toUpperCase();
 }
 
 // 현재 선택된 SEA 제품군
@@ -52,7 +53,7 @@ function switchFieldMissingTab(pl) {
         if (badgeEl) badgeEl.id = `badge-${pl}-${retailer}`;
 
         // 리테일러 이름 업데이트 (TV_Amazon, HHP_Bestbuy 등)
-        const nameEl = document.getElementById(`retailer-name-${retailer}`);
+        const nameEl = card.querySelector('.retailer-name');
         if (nameEl) nameEl.textContent = `${plLabel}_${retailer}`;
     });
 
@@ -89,6 +90,7 @@ async function loadAllRetailersMissing() {
     let totalMissing = 0;
     let totalFields = 0;
     let allLoaded = true;
+    let pending = false;
 
     for (const retailer of retailers) {
         try {
@@ -98,6 +100,8 @@ async function loadAllRetailersMissing() {
             const inspectionDate = data.inspection_date || date;
             const sourceDate = data.source_date || data.date || date;
 
+            const isPending = data.summary?.status === 'PENDING';
+            pending ||= isPending;
             const missingCount = Number(data.summary?.total_missing_cases || 0);
             const fieldsCount = Number(data.summary?.fields_with_issues || 0);
             totalMissing += missingCount;
@@ -106,7 +110,10 @@ async function loadAllRetailersMissing() {
             // 배지 업데이트
             const badgeEl = document.getElementById(`badge-${currentFieldMissingPL}-${retailer}`);
             if (badgeEl) {
-                if (missingCount === 0) {
+                if (isPending) {
+                    badgeEl.className = 'retailer-badge';
+                    badgeEl.textContent = '비교 대기';
+                } else if (missingCount === 0) {
                     badgeEl.className = 'retailer-badge ok';
                     badgeEl.textContent = '정상';
                 } else if (missingCount < 10) {
@@ -130,7 +137,7 @@ async function loadAllRetailersMissing() {
 
             const dateScopeEl = document.getElementById('field-missing-date-scope');
             if (dateScopeEl) {
-                dateScopeEl.textContent = `검수일 ${inspectionDate} · 데이터일 ${sourceDate} · D-1`;
+                dateScopeEl.textContent = `검수일 ${inspectionDate} · 데이터일 ${sourceDate} · ${productLine === 'sem_tv' ? 'D' : 'D-1'}`;
             }
         } catch (error) {
             if (requestId !== fieldMissingRequestId || date !== getSelectedDate()) return;
@@ -155,7 +162,10 @@ async function loadAllRetailersMissing() {
 
     const statusBadge = document.getElementById('field-missing-status');
     if (statusBadge) {
-        if (totalMissing === 0) {
+        if (totalMissing === 0 && pending) {
+            statusBadge.className = 'status-badge';
+            statusBadge.textContent = '비교 대기';
+        } else if (totalMissing === 0) {
             statusBadge.className = 'status-badge ok';
             statusBadge.textContent = 'OK';
         } else if (totalMissing < 10) {
@@ -242,6 +252,10 @@ function renderMissingSummary(missingFields, summary, date, prevDates, retailer,
         : (sourceDate || date);
     const periodEnd = sourceDate || date;
 
+    if (summary.status === 'PENDING') {
+        AppModal.setBody('detail', '<p class="loading">비교할 직전 수집 이력이 없습니다.</p>');
+        return;
+    }
     if (missingFields.length === 0) {
         AppModal.setBody('detail', `
             <div style="padding: 40px; text-align: center;">
@@ -361,7 +375,9 @@ function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retaile
 
     // 카드 목록
     var cardsHtml = '';
-    if (missingFields.length === 0) {
+    if (summary.status === 'PENDING') {
+        cardsHtml = '<p class="loading">비교할 직전 수집 이력이 없습니다.</p>';
+    } else if (missingFields.length === 0) {
         cardsHtml = '<div style="padding:40px;text-align:center;">'
             + '<div style="font-size:16px;font-weight:600;color:#059669;">누락된 필드가 없습니다</div></div>';
     } else {
@@ -385,7 +401,7 @@ function _fmRenderSummaryInline(missingFields, summary, date, prevDates, retaile
         cardsHtml += '<p style="margin-top:12px;font-size:12px;color:var(--text-secondary);">* 필드명을 클릭하면 해당 필드의 누락 item 데이터를 볼 수 있습니다.</p>';
     }
 
-    var dateScope = '검수일 ' + date + ' · 데이터일 ' + (sourceDate || date) + ' · D-1';
+    var dateScope = '검수일 ' + date + ' · 데이터일 ' + (sourceDate || date) + (currentFieldMissingPL === 'sem_tv' ? ' · D' : ' · D-1');
     var html = '<div class="inline-detail">'
         + '<button class="btn-back" onclick="ViewStack.pop()">&#8592; 뒤로가기</button>'
         + '<div class="rule-summary-section">'
@@ -1359,7 +1375,7 @@ async function showFieldMissingDetailInline(retailer, fieldName) {
 function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days) {
     var tableName = data.table_name || (productLine === 'tv' ? 'tv_retail_com' : 'hhp_retail_com');
     var dateCol = data.date_column || (productLine === 'tv' ? 'crawl_datetime' : 'crawl_strdatetime');
-    var editableCols = new Set(data.editable_columns || []);
+    var editableCols = new Set(data.readonly ? [] : (data.editable_columns || []));
     var normalReviews = data.normal_reviews || {};
     var columns = data.columns || [];
     var rawRows = data.data || [];
@@ -1478,6 +1494,7 @@ function _fmRenderInlineView(data, retailer, fieldName, productLine, date, days)
         allColumns: allColumns,
         visibleKeys: defaultVisibleKeys.slice(),
         editableCols: editableCols,
+        readonly: data.readonly === true,
         normalReviews: normalReviews,
         sortState: [],
         table: null,
@@ -1768,6 +1785,7 @@ function _fmClearFilter() {
 var fmPendingEdits = {};
 
 function _fmBindEditEvents() {
+    if (window._fmDetailState?.readonly) return;
     var container = document.getElementById('fm-detail-table-area');
     if (!container) return;
     var tableEl = container.querySelector('table');

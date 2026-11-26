@@ -1163,7 +1163,12 @@ function renderCrossfieldSummaryContent(title, _category, data) {
             const detailTitle = `${ruleTitle}${retailerScope ? ' [' + retailerScope + ']' : ''} (${rule.error_message})`;
             const errorCount = Number(rule.error_count || 0);
             const reviewCount = Number(rule.review_count || 0);
-            const countBadges = rule.preview_mode
+            const sellerChecks = Object.entries(rule.retailer_checks || {});
+            const noComparable = sellerChecks.length && sellerChecks.every(([, stat]) => !stat.checked);
+            const countBadges = noComparable
+                ? '<span class="rule-count zero">' + (sellerChecks.some(([, stat]) => stat.received)
+                    ? '비교 대상 없음' : '검수 대기') + '</span>'
+                : rule.preview_mode
                 ? `<span class="rule-count zero">테스트 조회 · ${errorCount.toLocaleString()}건</span>`
                 : errorCount === 0 && reviewCount === 0
                 ? '<span class="rule-count zero">0건</span>'
@@ -1179,6 +1184,9 @@ function renderCrossfieldSummaryContent(title, _category, data) {
                             </div>
                             ${retailerScope ? `<div class="rule-desc">적용 대상: ${esc(retailerScope)}</div><div class="rule-desc">${esc(fieldDisplay)}</div>` : ''}
                             <div class="rule-desc">${esc(rule.error_message)}</div>
+                            ${sellerChecks.map(([retailer, stat]) => `<div class="rule-desc">${esc(retailer)} · ${stat.checked
+                                ? '비교 ' + Number(stat.checked).toLocaleString() + '건'
+                                : stat.received ? '비교 대상 없음' : '검수 대기'}</div>`).join('')}
                             ${Number(rule.missing_comparison_count || 0) > 0
                                 ? `<div class="rule-desc">이전 5일 내 비교 기록 없음 ${Number(rule.missing_comparison_count).toLocaleString()}건</div>`
                                 : ''}
@@ -1454,7 +1462,14 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
         const anomalies = data.anomalies || [];
         const retailerSummary = data.retailer_summary || {};
         if (anomalies.length === 0) {
-            html += '<p>해당 검증 유형에 대한 이상 또는 확인 필요 데이터가 없습니다.</p>';
+            const coverage = Object.values(retailerSummary).filter(info => Object.hasOwn(info, 'checked'));
+            if (coverage.length && coverage.every(info => !info.checked)) {
+                html += coverage.some(info => info.received)
+                    ? '<p>이 규칙을 비교할 수 있는 상품이 없습니다.</p>'
+                    : '<p>수집 데이터 도착 후 검수를 시작합니다.</p>';
+            } else {
+                html += '<p>해당 검증 유형에 대한 이상 또는 확인 필요 데이터가 없습니다.</p>';
+            }
         } else {
             // 리테일러별 rows 그룹핑 (건수 계산은 백엔드 retailer_summary 사용)
             const retailerData = {};

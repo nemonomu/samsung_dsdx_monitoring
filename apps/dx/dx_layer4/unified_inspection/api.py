@@ -73,3 +73,22 @@ def seuk_tv_snapshot(request):
             return JsonResponse({'success': True, **review_snapshot(cursor, mapping)})
     except Exception as exc:
         return safe_error(exc)
+
+
+def sem_tv_snapshot(request):
+    """Read the new SEM TV retailer checks for the selected inspection day."""
+    try:
+        mapping = resolve_monitoring_date(request.GET.get('date'), 'SEM', 'sem_tv')
+    except MonitoringDateError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    from apps.common.db import dx_connection
+    from apps.common.response import safe_error
+    from .sem import review_snapshot
+
+    try:
+        with dx_connection() as (connection, cursor):
+            connection.set_session(isolation_level='REPEATABLE READ', readonly=True)
+            return JsonResponse({'success': True, **review_snapshot(cursor, mapping)})
+    except Exception as exc:
+        return safe_error(exc)

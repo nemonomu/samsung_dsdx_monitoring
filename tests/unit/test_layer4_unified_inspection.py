@@ -137,6 +137,41 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         )
 
 
+    def test_sem_tv_snapshot_keeps_unassessed_counts_empty(self):
+        from apps.common.inspection_dates import resolve_monitoring_date
+        from apps.dx.dx_layer4.unified_inspection import sem
+
+        cursor = Mock()
+        before = resolve_monitoring_date('2026-11-26', 'SEM', 'sem_tv')
+        self.assertEqual([], sem.review_snapshot(cursor, before)['retailers'])
+
+        row = {'id': 1, 'country': 'SEM', 'account_name': 'Walmart',
+               'item': '0001', 'retailer_sku_name': 'TV',
+               'product_url': 'https://www.walmart.com.mx/ip/0001',
+               'crawl_datetime': '2026-11-27T10:00:00-06:00',
+               'calendar_week': 'W48', 'final_sku_price': None}
+        latest_batches = [([row, {**row, 'id': 2, 'final_sku_price': 'bad'}], {}), ([], {})]
+
+        mapping = resolve_monitoring_date('2026-11-27', 'SEM', 'sem_tv')
+        cross = {'rule_summary': [{'rule_key': 'mx_tv_savings_amount_match', 'retailer_checks': {
+            'Walmart': {'received': 2, 'checked': 1, 'failed': 0},
+            "Sam's Club": {'received': 0, 'checked': 0, 'failed': 0},
+        }}]}
+        missing = {'summary': {'status': 'PENDING', 'total_missing_cases': 0}}
+        with patch.object(sem.sem_validation, '_latest_rows', side_effect=latest_batches) as latest, \
+             patch.object(sem.sem_validation, '_load_normal_reviews', return_value={}), \
+             patch.object(sem, 'get_sem_cross_field_summary', return_value=cross), \
+             patch.object(sem, 'field_missing_detection', return_value=missing):
+            snapshot = sem.review_snapshot(cursor, mapping)
+        walmart, sams = snapshot['retailers']
+        self.assertTrue(snapshot['read_only'])
+        self.assertEqual('2026-11-27', snapshot['source_date'])
+        self.assertEqual([1, 1, 1, 0, None], [check['pending'] for check in walmart['checks']])
+        self.assertEqual(2, latest.call_count)
+        self.assertTrue(all(check['pending'] is None for check in sams['checks']))
+        cursor.execute.assert_not_called()
+
+
 class UnifiedInspectionPageWiringTests(unittest.TestCase):
     def test_context_exposes_direct_active_sidebar_link(self):
         context_module = load_module(

@@ -25,6 +25,7 @@ urlpatterns = [
     # API — 통합 검수
     path('api/unified-inspection/date-mapping/', ui_api.date_mapping, name='api_unified_inspection_date_mapping'),
     path('api/unified-inspection/seuk-tv/', ui_api.seuk_tv_snapshot, name='api_unified_inspection_seuk_tv'),
+    path('api/unified-inspection/sem-tv/', ui_api.sem_tv_snapshot, name='api_unified_inspection_sem_tv'),
 
     # API — 수집 현황
     path('api/collection-status/', cs_api.collection_status_data, name='api_collection_status'),

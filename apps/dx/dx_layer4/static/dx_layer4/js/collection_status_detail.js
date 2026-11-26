@@ -19,7 +19,9 @@
 
         // 뒤로가기 링크
         var backBtn = document.getElementById('csd-back-btn');
-        backBtn.href = '/dx/layer4/collection-status/?date=' + encodeURIComponent(date);
+        backBtn.href = '/dx/layer4/collection-status/?date=' + encodeURIComponent(date)
+            + '&focus=' + encodeURIComponent('항목별 NULL 현황')
+            + '&category=' + encodeURIComponent(category);
 
         var container = document.getElementById('csd-container');
         container.innerHTML = '<div class="l4-empty-state"><p>조회 중...</p></div>';
@@ -67,9 +69,9 @@
             html += '<tr>';
             columns.forEach(function(col) {
                 var val = row[col];
-                if (col === 'product_url' && val) {
+                if (col === 'product_url' && /^https?:\/\//i.test(String(val || ''))) {
                     html += '<td>'
-                        + '<a href="' + L4.escapeHtml(val) + '" target="_blank" style="color:var(--page-color);text-decoration:none;margin-right:4px;vertical-align:middle;">'
+                        + '<a href="' + L4.escapeHtml(val) + '" target="_blank" rel="noopener noreferrer" style="color:var(--page-color);text-decoration:none;margin-right:4px;vertical-align:middle;">'
                         + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>'
                         + '<span>' + L4.escapeHtml(val) + '</span></td>';
                 } else if (!val && val !== 0) {

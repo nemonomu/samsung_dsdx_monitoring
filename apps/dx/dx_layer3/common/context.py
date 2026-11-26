@@ -257,6 +257,9 @@ def _get_sidebar_items():
             {'name': 'REF', 'label': 'REF', 'detail_code': 'sea_ref'},
             {'name': 'LDY', 'label': 'LDY', 'detail_code': 'sea_ldy'},
         ],
+    }, {
+        'name': 'SEM Retail',
+        'children': [{'name': 'SEM TV', 'label': 'TV', 'detail_code': 'sem_tv'}],
     }]
 
     return sidebar

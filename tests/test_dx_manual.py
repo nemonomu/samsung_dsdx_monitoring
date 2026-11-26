@@ -140,6 +140,28 @@ class ManualTests(TestCase):
         self.assertEqual(upgraded, prepare_data(upgraded, rows))
         manual.validate_data(upgraded)
 
+    def test_sem_tv_evidenced_fields_have_guides_without_db_configuration(self):
+        original = copy.deepcopy(self.data)
+        data = prepare_data(self.data, [])
+        for name, token, url in (('Walmart', 'walmart', 'https://www.walmart.com.mx/'),
+                                  ("Sam's Club", 'samsclub', 'https://www.sams.com.mx/')):
+            key = 'SEM/' + token
+            self.assertEqual(url, data['profiles'][key]['homepage'])
+            row = next(row for row in data['datasets'] if row['key'] == key + '/tv')
+            self.assertEqual({'item', 'product_url', 'retailer_sku_name', 'screen_size',
+                              'final_sku_price', 'original_sku_price', 'savings'},
+                             {field['field'] for field in row['fields']})
+            self.assertTrue(all(field['original'] == '' and not field['images'] for field in row['fields']))
+            target, error = requested_target(data, dict(country='SEM', product='TV', retailer=name, column='savings'))
+            self.assertEqual(key, target['retailer'])
+            self.assertEqual('', error)
+            self.assertIn('SEM|TV|' + token + '|savings', guide_urls(data))
+            row['fields'][0]['note'] = '기존 검수 메모'
+        self.assertEqual(original, self.data)
+        self.assertEqual(original['photos'], data['photos'])
+        self.assertEqual(data, prepare_data(data, []))
+        manual.validate_data(data)
+
     def test_hhp_catalog_is_excluded_but_saved_hhp_data_remains_valid(self):
         rows = [dict(product_line=line, retailer='Amazon', column_name='sku')
                 for line in ('tv', 'hhp', 'sea_hhp', 'seg_hhp')]
@@ -260,7 +282,7 @@ class ManualTests(TestCase):
         self.assertIn('SEG/amazon', data['profiles'])
         self.assertIn('SIEL/amazon', data['profiles'])
         self.assertIn('SEDA/magalu', data['profiles'])
-        self.assertEqual(19, len(data['profiles']))
+        self.assertEqual(21, len(data['profiles']))
         manual.validate_data(data)
 
     def test_save_reload_audit_and_restore(self):

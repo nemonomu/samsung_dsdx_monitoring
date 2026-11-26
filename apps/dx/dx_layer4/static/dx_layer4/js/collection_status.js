@@ -153,6 +153,7 @@
 
     var VALID_NULL_CATEGORIES = {
         'tv': true,
+        'sem_tv': true,
         'tse_tv': true,
         'tse_ref': true,
         'tse_ldy': true
@@ -345,6 +346,20 @@
                     var prefix = country.toLowerCase();
                     var productLine = String(cat.product_line || (prefix + '_' + String(cat.name || '').toLowerCase())).toLowerCase();
                     var retailerRows = cat.retailers || [];
+                    if (productLine === 'sem_tv' && retailerRows.some(function(row) {
+                        return row.observation_start || ['Walmart', "Sam's Club"].includes(row.retailer);
+                    })) {
+                        retailerRows.forEach(function(retailer) {
+                            rows.push({
+                                no: no++, category: country,
+                                name: country + ' TV ' + retailer.retailer + ' 수집 데이터',
+                                table_name: cat.table_name || TABLE_NAME_MAP[productLine],
+                                expected: typeof retailer.expected === 'number' ? retailer.expected : '-',
+                                actual: Number(retailer.actual || 0)
+                            });
+                        });
+                        return;
+                    }
                     var expected = typeof cat.expected === 'number' ? cat.expected : 0;
                     var actual = typeof cat.total === 'number' ? cat.total : (typeof cat.actual === 'number' ? cat.actual : 0);
                     if (retailerRows.length > 0) {
@@ -778,6 +793,27 @@
         // 래퍼 table 닫기
         html += '</td></tr></table>';
         html += '</div>';
+        var observation = emailData.sem_tv_preview;
+        if (observation) {
+            html += '<div class="email-preview"><h3>SEM TV 신규 수집 현황 · 내부 조회</h3>';
+            if (observation.error) {
+                html += '<p>' + L4.escapeHtml(observation.error) + '</p>';
+            } else {
+                html += '<p>데이터일 ' + L4.escapeHtml(formatEmailDataDate(
+                    observation.source_date, observation.offset_days)) + '</p>';
+                var pendingRetailers = observation.retailers.filter(function(retailer) {
+                    return !retailer.has_data;
+                });
+                if (pendingRetailers.length) {
+                    html += '<p>수집 대기 ' + L4.escapeHtml(pendingRetailers.map(function(retailer) {
+                        return retailer.retailer;
+                    }).join(', ')) + '</p>';
+                }
+                html += buildEmailRetailerRankTable(observation.retailers);
+                html += buildNullTable(observation.retailers, '', false);
+            }
+            html += '</div>';
+        }
         container.innerHTML = html;
         emailRenderedDate = date;
     }

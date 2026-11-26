@@ -22,7 +22,7 @@
         'TSE HOMEPRO TV',
         'TSE HOMEPRO REF',
         'TSE HOMEPRO LDY',
-        'SEM Liverpool TV',
+        'SEM Liverpool TV', 'SEM Walmart TV', "SEM Sam's Club TV",
         'SEM Liverpool REF',
         'SEM Liverpool LDY',
         'SEUK Currys TV', 'SEUK Amazon TV', 'SEUK Argos TV'
@@ -71,6 +71,7 @@
     };
 
     var SEM_TABLE_CATEGORY = {
+        'dx_sem_tv_retail_com': 'TV',
         'dx_sem.dx_sem_tv_retail_com': 'TV',
         'dx_sem.dx_sem_ref_retail_com': 'REF',
         'dx_sem.dx_sem_ldy_retail_com': 'LDY'
@@ -145,12 +146,11 @@
         var semCategory = SEM_TABLE_CATEGORY[tableName];
         if (semCategory) {
             var semRetailer = String(retailer || '').trim();
-            if (!semRetailer || semRetailer.toLowerCase() === 'sem') {
-                semRetailer = 'Liverpool';
-            } else if (semRetailer.toLowerCase() === 'liverpool') {
-                semRetailer = 'Liverpool';
-            }
-            return 'SEM ' + semRetailer + ' ' + semCategory;
+            var canonicalSemRetailers = {liverpool: 'Liverpool', walmart: 'Walmart', "sam's club": "Sam's Club"};
+            var key = semRetailer.toLowerCase();
+            var semName = !key || key === 'sem' ? 'Liverpool'
+                : (Object.hasOwn(canonicalSemRetailers, key) ? canonicalSemRetailers[key] : semRetailer);
+            return 'SEM ' + semName + ' ' + semCategory;
         }
         var tseCategory = TSE_TABLE_CATEGORY[tableName];
         if (tseCategory) {
@@ -671,6 +671,36 @@
         parentEl.appendChild(section);
     }
 
+    function renderSemTvObservation(parentEl, observation, date) {
+        var section = createDiv('report-section');
+        section.appendChild(createDiv('report-section-title', '■ SEM TV 신규 판매처 크로스필드 현황'));
+        if (observation.error) {
+            section.appendChild(createDiv('report-item', observation.error));
+        } else {
+            section.appendChild(createDiv('rpt-sub-title',
+                '데이터일 ' + observation.source_date + ' · ' + observation.rule_name));
+            createReportTable(section, [
+                { key: 'retailer', label: '리테일러' },
+                { key: 'received', label: '수집' },
+                { key: 'checked', label: '비교 가능' },
+                { key: 'failed', label: '이상' },
+                { key: 'status', label: '상태' }
+            ], observation.retailers, function(row) {
+                var status = !row.received ? '검수 대기'
+                    : !row.checked ? '비교 대상 없음' : row.failed ? '이상 있음' : '이상 없음';
+                return '<tr><td>' + L4.escapeHtml(row.retailer)
+                    + '</td><td>' + Number(row.received) + '</td><td>' + Number(row.checked)
+                    + '</td><td>' + Number(row.failed) + '</td><td>' + status + '</td></tr>';
+            });
+            var link = document.createElement('a');
+            link.href = '/dx/layer3/cross-field/?date=' + encodeURIComponent(date)
+                + '&focus=SEM%20TV&detail_code=sem_tv';
+            link.textContent = 'SEM TV에서 상세 검증 보기';
+            section.appendChild(link);
+        }
+        parentEl.appendChild(section);
+    }
+
     // ============================================================
     // 보고서 메인 렌더링
     // ============================================================
@@ -680,6 +710,7 @@
         var date = data.date || '';
         var collectionStatus = data.collection_status || [];
         var collectionIssues = data.collection_issues || [];
+        var semTvObservation = data.sem_tv_observation;
         var groupedDetails = filterMonitoringDetails(data.grouped_details || {});
         var typeSummary = summarizeMonitoringDetails(groupedDetails);
 
@@ -694,7 +725,7 @@
         var hasIssues = collectionIssues.length > 0;
         var hasCorrections = totalCorrected > 0 || totalNormal > 0 || totalErrors > 0;
 
-        if (!hasCollection && !hasIssues && !hasCorrections) {
+        if (!hasCollection && !hasIssues && !hasCorrections && !semTvObservation) {
             detailEl.innerHTML = '<div class="l4-empty-state"><p>해당 날짜에 검수 기록이 없습니다.</p></div>';
             return;
         }
@@ -888,6 +919,8 @@
             }
             sectionNo++;
         });
+
+        if (semTvObservation) renderSemTvObservation(detailEl, semTvObservation, date);
 
         // ━━━ 비제품 제외 ━━━
         var excludedItems2 = data.excluded_items || [];

@@ -19,7 +19,10 @@ const commonSource = fs.readFileSync(
 
 assert(source.includes('data.inspection_date || date'));
 assert(source.includes('data.source_date || data.date || date'));
-assert(source.includes('검수일 ${inspectionDate} · 데이터일 ${sourceDate} · D-1'));
+assert(source.includes("productLine === 'sem_tv' ? 'D' : 'D-1'"));
+assert(source.includes("data.summary?.status === 'PENDING'"));
+assert(template.includes('data-pl="sem_tv"'));
+assert(template.includes("Sam's Club"));
 assert(source.includes('st.sourceDate || window._fmSourceDate'));
 assert(source.includes('window._fmDate = inspectionDate'));
 assert(source.includes('window._fmSourceDate = sourceDate'));
@@ -41,12 +44,12 @@ assert(template.includes('id="field-missing-date-scope"'));
 assert(template.includes('data-pl="sea_ref"'));
 assert(template.includes('data-pl="sea_ldy"'));
 assert(template.includes('data-retailer="Lowes"'));
-assert(template.includes("field-missing.js' %}?v=20260922-simple-sql"));
+assert(template.includes("field-missing.js' %}?v=20261127-sem-tv"));
 assert(dashboardTemplate.includes('data-pl="sea_ref"'));
 assert(dashboardTemplate.includes('data-pl="sea_ldy"'));
 assert(dashboardTemplate.includes('data-retailer="Lowes"'));
-assert(dashboardTemplate.includes("field-missing.js' %}?v=20260922-simple-sql"));
-assert(indexTemplate.includes("field-missing.js' %}?v=20260922-simple-sql"));
+assert(dashboardTemplate.includes("field-missing.js' %}?v=20261127-sem-tv"));
+assert(indexTemplate.includes("field-missing.js' %}?v=20261127-sem-tv"));
 
 console.log('Layer3 SEA field-missing date tests passed.');
 

@@ -40,6 +40,14 @@ const reportData = {
     collection_issues: [],
     missing_keywords: [],
     excluded_items: [],
+    sem_tv_observation: {
+        source_date: '2026-11-27',
+        rule_name: '절감액 일치',
+        retailers: [
+            {retailer: 'Walmart', received: 3, checked: 2, failed: 1},
+            {retailer: "Sam's Club", received: 0, checked: 0, failed: 0}
+        ]
+    },
     type_summary: {
         null_check: { corrected: 4 },
         duplicate_check: { corrected: 1 },
@@ -214,6 +222,9 @@ setImmediate(() => {
     assert(html.includes('SEM Liverpool TV'));
     assert(html.includes('SEM Liverpool REF'));
     assert(html.includes('SEM Liverpool LDY'));
+    assert(html.includes('<td>Walmart</td><td>3</td><td>2</td><td>1</td><td>이상 있음</td>'));
+    assert(html.includes("<td>Sam's Club</td><td>0</td><td>0</td><td>0</td><td>검수 대기</td>"));
+    assert(!renderedRows.find(row => row.includes('크로스필드 검증')).includes("Sam's Club"));
     const nullSummary = renderedRows.find(row => row.includes('NULL 검증'));
     assert(nullSummary.includes('SEG OTTO REF 확인 8건'));
     assert(nullSummary.includes('SEG MEDIAMARKT LDY 확인 6건'));

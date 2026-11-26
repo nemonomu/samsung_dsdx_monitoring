@@ -15,10 +15,12 @@ from apps.common.sem_retail import (
     get_sem_editable_columns,
     get_sem_table_columns,
     active_sem_retailers,
+    sem_start_date,
+    sem_tv_observation_retailer,
 )
 from apps.dx.dx_layer2.sem_validation import (
     _COPPEL_SAVINGS, _format_checks, _history_rows, _latest_rows, product_line_for, _mapping,
-    homedepot_savings_rate,
+    homedepot_savings_rate, _validation_retailers,
 )
 
 
@@ -62,6 +64,23 @@ _COPPEL_RULES = (
 )
 
 
+_NEW_TV_DISCOUNT = (
+    'mx_tv_savings_amount_match', '할인금액 일치', 'savings', 'original_sku_price',
+    '같은 상품의 유효한 MXN 원가·최종가·절감액이 있을 때 원가 − 최종가와 절감액을 비교합니다.',
+)
+_PRICE_FIELDS = ('final_sku_price', 'original_sku_price', 'savings')
+
+
+def _new_tv_discount_matches(row, checks):
+    if any(_blank(row.get(field)) or not checks[field](row[field]) for field in _PRICE_FIELDS):
+        return None
+    final, original, savings = (
+        Decimal(str(row[field]).strip().replace('$', '').replace(',', ''))
+        for field in _PRICE_FIELDS
+    )
+    return original - final == savings
+
+
 def _blank(value):
     return value is None or str(value).strip() == ''
 
@@ -74,7 +93,7 @@ def _number(value):
 
 
 def _rule_select_fields(field1, field2, rule_key=None):
-    if rule_key in {rule[0] for rule in (*_HOMEDEPOT_RULES, *_COPPEL_RULES)}:
+    if rule_key in {rule[0] for rule in (*_HOMEDEPOT_RULES, *_COPPEL_RULES, _NEW_TV_DISCOUNT)}:
         return 'final_sku_price|original_sku_price|savings'
     fields = (field1, field2)
     if any(field in _REVIEW_COLUMNS for field in fields):
@@ -83,6 +102,9 @@ def _rule_select_fields(field1, field2, rule_key=None):
 
 
 def _failed_rules(row, retailer=SEM_RETAILER, product_line='sem_ref'):
+    if sem_tv_observation_retailer(product_line, retailer):
+        matches = _new_tv_discount_matches(row, _format_checks(product_line, retailer))
+        return [_NEW_TV_DISCOUNT[0]] if matches is False else []
     if retailer == SEM_COPPEL_RETAILER:
         return _coppel_price_rules(row, _format_checks(product_line, retailer))
     original_row = row
@@ -197,16 +219,21 @@ def _result(cursor, target_date, product_line):
         raise ValueError(f'Unsupported SEM product line: {product_line}')
     mapping = _mapping(target_date, source)
     active_retailers = active_sem_retailers(key, mapping['source_date'])
+    new_tv_retailers = tuple(
+        retailer for retailer in _validation_retailers(key, mapping['source_date'])
+        if sem_tv_observation_retailer(key, retailer)
+    )
     definitions = _RULES + (
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in active_retailers else ()
     ) + (
         _COPPEL_RULES if SEM_COPPEL_RETAILER in active_retailers else ()
-    )
+    ) + ((_NEW_TV_DISCOUNT,) if new_tv_retailers else ())
     rows = []
     page_exclusions = []
     failures = {rule[0]: [] for rule in definitions}
     failed_ids = set()
-    for retailer in active_retailers:
+    new_tv_stats = {}
+    for retailer in (*active_retailers, *new_tv_retailers):
         if retailer == SEM_RETAILER:
             retailer_rows, mapping = _latest_rows(cursor, target_date, source)
         else:
@@ -216,6 +243,22 @@ def _result(cursor, target_date, product_line):
             country='SEM', product_line=source['category'],
         )
         page_exclusions.extend(excluded)
+        if retailer in new_tv_retailers:
+            checks = _format_checks(key, retailer)
+            checked = failed = 0
+            rule_key = _NEW_TV_DISCOUNT[0]
+            for row in retailer_rows:
+                matches = _new_tv_discount_matches(row, checks)
+                if matches is None:
+                    continue
+                checked += 1
+                rows.append(row)
+                if not matches:
+                    failed += 1
+                    failures[rule_key].append({**row, 'account_name': retailer})
+                    failed_ids.add(row.get('id'))
+            new_tv_stats[retailer] = {'received': len(retailer_rows), 'checked': checked, 'failed': failed}
+            continue
         rows.extend(retailer_rows)
         for row in retailer_rows:
             for rule_key in _failed_rules(row, retailer, key):
@@ -225,7 +268,8 @@ def _result(cursor, target_date, product_line):
     for index, rule in enumerate(definitions, 1):
         rule_key, name, field1, field2, message = rule
         applicable_retailers = (
-            [SEM_COPPEL_RETAILER] if rule in _COPPEL_RULES
+            list(new_tv_retailers) if rule == _NEW_TV_DISCOUNT
+            else [SEM_COPPEL_RETAILER] if rule in _COPPEL_RULES
             else [SEM_HOMEDEPOT_RETAILER] if rule in _HOMEDEPOT_RULES
             else [retailer for retailer in active_retailers
                   if retailer != SEM_COPPEL_RETAILER
@@ -244,21 +288,35 @@ def _result(cursor, target_date, product_line):
             'error_count': len(failures[rule_key]),
             'select_fields': _rule_select_fields(field1, field2, rule_key),
             'sort_order': index * 10,
+            **({'retailer_checks': new_tv_stats} if rule == _NEW_TV_DISCOUNT else {}),
         })
     mapping = {**mapping, 'page_exclusions': page_exclusions}
     return source, rows, failures, failed_ids, summaries, mapping
 
 
 def build_sem_display_query(source, source_date, retailers, days=3, rows=None, fields=''):
-    """Copy-only source lookup using exact account names and literal dates."""
+    """Copy-only lookup for the displayed source scope and item identities."""
     end = date.fromisoformat(str(source_date))
     start = end - timedelta(days=min(30, max(1, int(days))) - 1)
     literal = lambda value: "'" + str(value).replace("'", "''") + "'"
     scopes = []
+    column = source['date_column']
+    source_day = source_date_sql(column)
     for retailer in retailers:
         scope = 'account_name = ' + literal(retailer)
+        new_tv = sem_tv_observation_retailer(source['source_key'], retailer)
+        if new_tv:
+            launch = sem_start_date(source['source_key'], retailer)
+            scope = (
+                f'LOWER(BTRIM(account_name)) = LOWER({literal(retailer)})'
+                f' AND {source_day} BETWEEN {literal(max(start, launch))} AND {literal(end)}'
+                f' AND batch_id = (SELECT latest.batch_id FROM {source["table_name"]} latest'
+                f' WHERE {source_date_sql("latest." + column)} = {source_date_sql("source." + column)}'
+                ' AND LOWER(BTRIM(latest.account_name)) = LOWER(BTRIM(source.account_name))'
+                " AND NULLIF(BTRIM(latest.batch_id), '') IS NOT NULL ORDER BY latest.id DESC LIMIT 1)"
+            )
         if rows is not None:
-            targets = [row for row in rows if row.get('account_name') == retailer]
+            targets = [row for row in rows if str(row.get('account_name') or '').strip().casefold() == retailer.casefold()]
             items = sorted({str(row['item']) for row in targets if not _blank(row.get('item'))})
             ids = [row['id'] for row in targets if _blank(row.get('item'))]
             conditions = []
@@ -268,20 +326,18 @@ def build_sem_display_query(source, source_date, retailers, days=3, rows=None, f
                 conditions.append('id IN (' + ', '.join(str(int(value)) for value in ids) + ')')
             scope += ' AND (' + ' OR '.join(conditions or ['FALSE']) + ')'
         scopes.append(scope)
-    column = source['date_column']
-    date_expression = (
-        source_date_sql(column)
-        if source['source_key'] == 'sem_ldy_dryer' else column
-    )
+    new_tv_rule = bool(retailers) and all(sem_tv_observation_retailer(source['source_key'], r) for r in retailers)
+    date_expression = source_day if source['source_key'] == 'sem_ldy_dryer' else column
     requested = ('id', 'item', column, 'retailer_sku_name', *fields.split('|'), 'product_url')
     allowed = set(get_sem_table_columns(source['source_key']))
     columns = ', '.join(field for field in dict.fromkeys(requested) if field in allowed)
     where = scopes[0] if len(scopes) == 1 else '(' + ' OR '.join(f'({scope})' for scope in scopes) + ')'
-    return (f"SELECT {columns}\nFROM {source['table_name']}\n"
-            f"WHERE {where if scopes else 'FALSE'}\n"
-            f"  AND {date_expression} >= '{start}'\n"
-            f"  AND {date_expression} < '{end + timedelta(days=1)}'\n"
-            + f'ORDER BY item, {column};')
+    date_scope = (f"  AND {date_expression} >= '{start}'\n"
+                  f"  AND {date_expression} < '{end + timedelta(days=1)}'\n")
+    has_new_tv = any(sem_tv_observation_retailer(source['source_key'], r) for r in retailers)
+    table = source['table_name'] + (' source' if has_new_tv else '')
+    return (f"SELECT {columns}\nFROM {table}\nWHERE {where if scopes else 'FALSE'}\n"
+            + ('' if new_tv_rule else date_scope) + f'ORDER BY item, {column};')
 
 
 def get_sem_cross_field_summary(cursor, target_date, product_line):
@@ -322,27 +378,32 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     source_date = date.fromisoformat(mapping['source_date'])
     history = []
     retailer_summary = {}
-    for retailer in active_sem_retailers(source['source_key'], source_date):
-        if rule['rule_key'].startswith('coppel_') and retailer != SEM_COPPEL_RETAILER:
-            continue
-        if retailer == SEM_COPPEL_RETAILER and retailer not in rule['retailers']:
-            continue
+    readonly = rule['rule_key'] == _NEW_TV_DISCOUNT[0]
+    detail_retailers = rule['retailers'] if readonly else [
+        retailer for retailer in active_sem_retailers(source['source_key'], source_date)
+        if (not rule['rule_key'].startswith('coppel_') or retailer == SEM_COPPEL_RETAILER)
+        and (retailer != SEM_COPPEL_RETAILER or retailer in rule['retailers'])
+    ]
+    for retailer in detail_retailers:
         targets = [row for row in target_anomalies
                    if str(row.get('account_name') or '').strip().casefold() == retailer.casefold()]
         items = sorted({str(row['item']) for row in targets if not _blank(row.get('item'))})
-        retailer_summary[retailer] = {'count': len(targets), 'items': items}
+        retailer_summary[retailer] = {'count': len(targets), 'items': items,
+                                      **rule.get('retailer_checks', {}).get(retailer, {})}
         if days > 1 and items:
             options = {} if retailer == SEM_RETAILER else {'retailer': retailer}
-            history.extend(_history_rows(
+            prior = _history_rows(
                 cursor, source, source_date - timedelta(days=days - 1),
                 source_date - timedelta(days=1), items, **options,
-            ))
-    history = [row for row in history
-               if str(row.get('country') or '').strip().upper() == SEM_COUNTRY]
+            )
+            if readonly:
+                history.extend({**row, 'account_name': retailer} for row in prior)
+            else:
+                history.extend(row for row in prior if str(row.get('country') or '').strip().upper() == SEM_COUNTRY)
     anomalies = build_detail_history(
         history, target_anomalies, source_date, source['date_column'], days,
     )
-    editable_columns = list(get_sem_editable_columns(source['source_key'], None))
+    editable_columns = [] if readonly else list(get_sem_editable_columns(source['source_key'], None))
     table_columns = list(get_sem_table_columns(source['source_key']))
     return {
         'found': True,
@@ -366,12 +427,13 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'select_fields': rule['select_fields'],
         'table_name': source['table_name'],
         'date_col': source['date_column'],
+        'readonly': readonly,
         'editable_columns': editable_columns,
-        'retailer_editable_columns': {
+        'retailer_editable_columns': {} if readonly else {
             retailer: list(get_sem_editable_columns(source['source_key'], retailer))
             for retailer in source['retailers']
         },
         'normal_reviews': {},
-        'retailer_columns': {retailer: table_columns for retailer in source['retailers']},
+        'retailer_columns': {retailer: table_columns for retailer in detail_retailers},
         **mapping,
     }

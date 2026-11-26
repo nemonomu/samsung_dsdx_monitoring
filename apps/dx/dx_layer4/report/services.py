@@ -2,7 +2,12 @@
 Layer 4 보고서 Services — 보고서 데이터 조회
 """
 
+import logging
+
 from apps.common.db import dx_connection
+from apps.common.sem_retail import SEM_TV_OBSERVATION_RETAILERS, SEM_TV_OBSERVATION_START
+
+logger = logging.getLogger(__name__)
 
 
 _SEA_REPORT_SOURCE_TABLES = {
@@ -163,6 +168,29 @@ def _load_auto_null_reviews(cursor, target_date):
         get_tse_auto_applied_null_reviews,
     )
     return get_tse_auto_applied_null_reviews(cursor, target_date)
+
+
+def _sem_tv_observation_summary(target_date):
+    if str(target_date)[:10] < str(SEM_TV_OBSERVATION_START):
+        return None
+
+    from apps.dx.dx_layer3.cross_field.sem_services import get_sem_cross_field_summary
+
+    try:
+        with dx_connection() as (connection, cursor):
+            connection.set_session(readonly=True)
+            cursor.execute("SET LOCAL statement_timeout = '8s'")
+            summary = get_sem_cross_field_summary(cursor, target_date, 'sem_tv')
+        rule = next(item for item in summary['rule_summary'] if item['rule_key'] == 'mx_tv_savings_amount_match')
+        checks = rule['retailer_checks']
+        return {
+            'source_date': summary['source_date'],
+            'rule_name': rule['detail_name'],
+            'retailers': [{'retailer': seller, **checks[seller]} for seller in SEM_TV_OBSERVATION_RETAILERS],
+        }
+    except Exception:
+        logger.exception('SEM TV observation summary unavailable')
+        return {'error': 'SEM TV 신규 판매처 검증 현황을 조회하지 못했습니다.'}
 
 
 def get_report_data(target_date):
@@ -351,6 +379,7 @@ def get_report_data(target_date):
         'date': str(target_date),
         'collection_status': collection_status,
         'collection_issues': collection_issues,
+        'sem_tv_observation': _sem_tv_observation_summary(target_date),
         'missing_keywords': missing_keywords,
         'type_summary': type_summary,
         'reason_summary': reason_summary,

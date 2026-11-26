@@ -2,7 +2,7 @@ import unittest
 from datetime import date, timedelta
 from unittest.mock import patch
 
-from apps.common import inspection_dates, sea_retail
+from apps.common import inspection_dates, sea_retail, sem_retail
 from contextlib import contextmanager
 from types import SimpleNamespace
 from tests.unit.support import ScriptedCursor, load_module, module_stub, package_stub
@@ -37,6 +37,7 @@ sea_services = load_module(
     {
         'apps': package_stub('apps'),
         'apps.common': package_stub('apps.common'),
+        'apps.common.sem_retail': sem_retail,
         'apps.common.sea_retail': module_stub(
             'apps.common.sea_retail', get_sea_retail_source=get_sea_source,
         ),
@@ -109,6 +110,49 @@ api = load_module(
         'apps.dx.dx_layer3.field_missing.services': services,
     },
 )
+
+
+class SemFieldMissingTests(unittest.TestCase):
+    def test_only_comparable_products_are_checked_in_latest_original_day_batches(self):
+        checks = ['id', 'account_name', 'item', 'crawl_datetime', 'retailer_sku_name', 'final_sku_price']
+        cursor = ScriptedCursor([{
+            'description': [(name,) for name in checks],
+            'fetchall': [
+                (1, "Sam's Club", '0001', '2026-11-27T23:00:00-06:00', 'TV', '2030'),
+                (2, "Sam's Club", '0001', '2026-11-28T01:00:00-06:00', 'TV', None),
+                (3, "Sam's Club", '0002', '2026-11-28T01:00:00-06:00', 'TV', None),
+            ],
+        }])
+        result = sea_services.field_missing_detection(cursor, date(2026, 11, 28), 'sem_tv', "Sam's Club")
+        self.assertEqual(1, result['summary']['total_missing_cases'])
+        self.assertEqual('final_sku_price', result['missing_fields'][0]['column'])
+        self.assertEqual(0, result['missing_fields'][0]['new_items'])
+        sql, params = cursor.calls[0]
+        self.assertEqual(('2026-11-27', '2026-11-28', "Sam's Club") * 2, params)
+        self.assertIn('dx_sem.dx_sem_tv_retail_com', sql)
+        self.assertIn("NULLIF(TRIM(batch_id), '') IS NOT NULL", sql)
+        self.assertNotIn('page_type', sql)
+
+    def test_previous_rows_for_a_different_item_cannot_make_checks_ready(self):
+        cols = ['id', 'account_name', 'item', 'crawl_datetime', 'retailer_sku_name', 'final_sku_price']
+        cursor = ScriptedCursor([{
+            'description': [(name,) for name in cols],
+            'fetchall': [
+                (1, 'Walmart', '100', '2026-11-27', 'TV', '$99.00'),
+                (2, 'Walmart', '200', '2026-11-28', 'TV', None),
+            ],
+        }])
+        result = sea_services.field_missing_detection(cursor, date(2026, 11, 28), 'sem_tv', 'Walmart')
+        self.assertEqual('PENDING', result['summary']['status'])
+        self.assertEqual([], result['missing_fields'])
+
+    def test_before_launch_is_pending_without_a_read(self):
+        cursor = ScriptedCursor([])
+        target = date(2026, 11, 26)
+        result = sea_services.field_missing_detection(cursor, target, 'sem_tv', 'Walmart')
+        self.assertEqual('PENDING', result['summary']['status'])
+        self.assertEqual([], cursor.calls)
+        self.assertEqual('2026-11-26', services.resolve_field_missing_date_contract(target, 'sem_tv')['source_date'])
 
 
 class SeaFieldMissingDateTests(unittest.TestCase):

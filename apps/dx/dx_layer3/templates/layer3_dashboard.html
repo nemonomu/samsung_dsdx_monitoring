@@ -51,6 +51,7 @@
             <button class="field-missing-tab active" data-pl="tv" onclick="switchFieldMissingTab('tv')">TV</button>
             <button class="field-missing-tab" data-pl="sea_ref" onclick="switchFieldMissingTab('sea_ref')">REF</button>
             <button class="field-missing-tab" data-pl="sea_ldy" onclick="switchFieldMissingTab('sea_ldy')">LDY</button>
+            <button class="field-missing-tab" data-pl="sem_tv" onclick="switchFieldMissingTab('sem_tv')">SEM TV</button>
         </div>
         <!-- 리테일러 카드들 -->
         <div class="field-missing-retailers" id="field-missing-retailers">
@@ -84,6 +85,16 @@
                     <button class="btn-view-3days" onclick="view3DaysData('Walmart')">3일치 보기</button>
                 </div>
             </div>
+            <div class="field-missing-retailer-card" data-retailer="Sam's Club" style="display: none;">
+                <div class="retailer-card-header">
+                    <span class="retailer-name">Sam's Club</span>
+                    <span class="retailer-badge">-</span>
+                </div>
+                <div class="retailer-card-actions">
+                    <button class="btn-view-summary" onclick="viewMissingSummary(this.closest('.field-missing-retailer-card').dataset.retailer)">누락분 보기</button>
+                    <button class="btn-view-3days" onclick="view3DaysData(this.closest('.field-missing-retailer-card').dataset.retailer)">3일치 보기</button>
+                </div>
+            </div>
             <div class="field-missing-retailer-card" data-retailer="Lowes" style="display: none;">
                 <div class="retailer-card-header">
                     <span class="retailer-name" id="retailer-name-Lowes">REF_Lowes</span>
@@ -106,9 +117,9 @@
 {% endblock %}
 
 {% block layer3_js %}
-<script src="{% static 'dx_layer3/js/common.js' %}?v=20261123-retail-review-sql"></script>
+<script src="{% static 'dx_layer3/js/common.js' %}?v=20261127-sem-tv"></script>
 <script src="{% static 'dx_layer3/js/time-series.js' %}"></script>
 <script src="{% static 'dx_layer3/js/cross-field.js' %}?v=20261123-retail-review-sql"></script>
 <script src="{% static 'dx_layer3/js/category-spec.js' %}?v=20261030-inspection-date"></script>
-<script src="{% static 'dx_layer3/js/field-missing.js' %}?v=20260922-simple-sql"></script>
+<script src="{% static 'dx_layer3/js/field-missing.js' %}?v=20261127-sem-tv"></script>
 {% endblock %}

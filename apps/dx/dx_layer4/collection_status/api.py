@@ -41,7 +41,7 @@ def email_report_data(request):
         return JsonResponse({'error': '날짜 형식이 올바르지 않습니다.'}, status=400)
 
     try:
-        return JsonResponse(get_email_report_data(target_date))
+        return JsonResponse(get_email_report_data(target_date, include_sem_tv_preview=True))
     except Exception as error:
         return safe_error(error)
 

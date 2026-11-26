@@ -615,7 +615,7 @@ def layer_stats(request):
                         ),
                     })
 
-            # SEM TV/REF/LDY는 검수일 D의 Liverpool 최신 배치를 검증한다.
+            # SEM은 검수일 D의 판매처별 최신 배치를 검증한다.
             if run_crossfield:
                 sem_product_lines = (
                     list(SEM_SOURCE_CONFIG)
@@ -640,7 +640,11 @@ def layer_stats(request):
                         'category': '크로스 필드 검증',
                         'name': f"{sem_result['label']} 논리적 일관성",
                         'detail_code': sem_product_line,
-                        'description': '평점·리뷰 수와 최종가·원가 논리 검증',
+                        'description': (
+                            '판매처별 평점·리뷰, 가격과 절감액 검증'
+                            if any(rule.get('retailer_checks') for rule in sem_result.get('rule_summary', []))
+                            else '평점·리뷰 수와 최종가·원가 논리 검증'
+                        ),
                         'checked': sem_total,
                         'passed': max(0, sem_total - sem_failed),
                         'failed': sem_failed,

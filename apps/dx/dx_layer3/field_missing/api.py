@@ -21,6 +21,9 @@ def _validation_columns(product_line, retailer, *, cursor=None):
 
 
 def _columns_with_related(product_line, retailer):
+    if product_line == 'sem_tv':
+        return [{'column_name': column, 'related_columns': ''}
+                for column in services.get_field_missing_validation_columns(product_line)]
     from apps.common.retail_columns import get_retail_columns_with_related
     configured = get_retail_columns_with_related(product_line, retailer)
     fixed = services.get_field_missing_validation_columns(product_line)
@@ -122,7 +125,7 @@ def field_missing_detail_all(request):
     )
 
     # DB에서 리테일러별 수집 필드 로드
-    if services.is_sea_field_missing_product_line(product_line):
+    if services.is_batch_field_missing_product_line(product_line):
         retail_columns = [
             column['column_name']
             for column in _columns_with_related(product_line, retailer)
@@ -170,7 +173,7 @@ def field_missing_detail_problem(request):
     )
 
     # DB에서 리테일러별 수집 필드 로드
-    if services.is_sea_field_missing_product_line(product_line):
+    if services.is_batch_field_missing_product_line(product_line):
         retail_columns = services.get_field_missing_validation_columns(
             product_line
         )
@@ -251,10 +254,12 @@ def field_missing_detail_by_field(request):
     if field not in display_fields:
         return JsonResponse({'status': 'error', 'message': '허용되지 않은 필드'})
 
-    editable_cols = get_editable_columns(product_line, retailer)
-    editable_cols = list(dict.fromkeys(
-        editable_cols + get_sea_field_missing_editable_columns(product_line, retailer)
-    ))
+    editable_cols = []
+    if product_line != 'sem_tv':
+        editable_cols = list(dict.fromkeys(
+            get_editable_columns(product_line, retailer)
+            + get_sea_field_missing_editable_columns(product_line, retailer)
+        ))
 
     try:
         with dx_connection() as (conn, cursor):

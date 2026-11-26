@@ -3,6 +3,7 @@ import copy
 import json
 import logging
 import re
+from itertools import chain
 from pathlib import Path
 from django.db import connections, DatabaseError, transaction
 
@@ -16,6 +17,12 @@ COMMON = {'sku', 'retailer_sku_name', 'item', 'final_sku_price', 'original_sku_p
           'sku_status', 'sku_popularity', 'discount_type', 'delivery_availability',
           'pick_up_availability', 'available_quantity_for_purchase'}
 CATALOG_PATH = Path(__file__).with_name('manual_data') / 'collection_catalog.json'
+SEM_TV_MANUAL_FIELDS = ('item', 'product_url', 'retailer_sku_name', 'screen_size',
+                        'final_sku_price', 'original_sku_price', 'savings')
+SEM_TV_MANUAL_SITES = {
+    'Walmart': 'https://www.walmart.com.mx/',
+    "Sam's Club": 'https://www.sams.com.mx/',
+}
 
 
 def retailer_token(value):
@@ -76,7 +83,9 @@ def prepare_data(data, catalog=None):
     identities = {(key.split('/')[0], retailer_token(key.split('/')[1])): key for key in profiles}
     identities.update({(key.split('/')[0], retailer_token(profile['name'])): key for key, profile in profiles.items()})
     by_key = {(ds['retailer'], ds['category']): ds for ds in rows}
-    for item in catalog:
+    sem_tv = (dict(product_line='sem_tv', retailer=retailer, column_name=column)
+              for retailer in SEM_TV_MANUAL_SITES for column in SEM_TV_MANUAL_FIELDS)
+    for item in chain(catalog, sem_tv):
         identity = source_identity(item['product_line'], item['retailer'])
         if identity is None:
             continue
@@ -86,8 +95,11 @@ def prepare_data(data, catalog=None):
         if key not in profiles:
             display = {'amazon': 'Amazon', 'bestbuy': 'Bestbuy', 'walmart': 'Walmart', 'lowes': 'Lowes',
                        'mediamarkt': 'MediaMarkt', 'otto': 'OTTO', 'homedepot': 'Home Depot',
-                       'flipkart': 'Flipkart', 'casasbahia': 'Casas Bahia', 'magalu': 'Magalu'}.get(token, item['retailer'])
+                       'flipkart': 'Flipkart', 'casasbahia': 'Casas Bahia', 'magalu': 'Magalu',
+                       'samsclub': "Sam's Club"}.get(token, item['retailer'])
             profiles[key] = blank_profile(COUNTRIES[country], display)
+            if (country, category) == ('SEM', 'tv') and display in SEM_TV_MANUAL_SITES:
+                profiles[key].update(homepage=SEM_TV_MANUAL_SITES[display], currency='MXN')
         profile = profiles[key]
         profile.setdefault('queries', {}).setdefault(category, '')
         profile.setdefault('bsr', {}).setdefault(category, '')

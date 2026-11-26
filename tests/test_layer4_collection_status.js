@@ -900,6 +900,39 @@ async function run() {
     ));
     assert(!semSavingsRow[1].includes('637'));
 
+    const observedSams = {
+        retailer: "Sam's Club", has_data: false, total_count: 0, main_count: 0, bsr_count: 0,
+        columns: [{column: 'item', total_count: 0, null_count: 0}]
+    };
+    const observationPage = loadPage(
+        '?focus=' + encodeURIComponent('이메일 보고'), layer1Data, {},
+        {...semEmailData, sem_tv_preview: {source_date: '2026-11-27', offset_days: 0, retailers: [observedSams]}}
+    );
+    observationPage.L4._sectionHandler.collection_status();
+    await flushPromises();
+    const observationHtml = observationPage.elements['cs-email-container'].innerHTML;
+    const internalStart = observationHtml.indexOf('<div class="email-preview"><h3>SEM TV');
+    assert(internalStart > 0);
+    assert(observationHtml.slice(0, internalStart).endsWith('</td></tr></table></div>'));
+    assert(!observationHtml.slice(0, internalStart).includes("Sam's Club"));
+    assert(observationHtml.slice(internalStart).includes("수집 대기 Sam's Club"));
+    assert(!observationPage.elements['email-send-btn'].disabled);
+
+    const semNullPage = loadPage(
+        '?focus=' + encodeURIComponent('항목별 NULL 현황') + '&category=sem_tv',
+        layer1Data,
+        {byCategory: {sem_tv: {success: true, retailers: [{
+            ...observedSams, total_count: 1,
+            columns: [{column: 'final_sku_price', total_count: 1, null_count: 1}]
+        }]}}}
+    );
+    semNullPage.selectedDate.value = '2026-11-27';
+    semNullPage.L4._sectionHandler.collection_status();
+    await flushPromises();
+    assert(semNullPage.elements['cs-container'].innerHTML.includes(
+        "/dx/layer4/collection-status/detail/?date=2026-11-27&category=sem_tv&retailer=Sam's%20Club&column=final_sku_price"
+    ));
+
     const redirectData = {
         success: true,
         retailers: [{

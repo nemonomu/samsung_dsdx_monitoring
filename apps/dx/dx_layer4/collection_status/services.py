@@ -36,7 +36,7 @@ _DATE_COL_MAP = {
     **{product_line: 'crawl_datetime' for product_line in TSE_SOURCE_CONFIG},
 }
 
-VALID_COLLECTION_CATEGORIES = frozenset(_TABLE_MAP)
+VALID_COLLECTION_CATEGORIES = frozenset((*_TABLE_MAP, 'sem_tv'))
 
 _BATCH_DATE_EXPR = "substring(COALESCE(batch_id, '') from '([0-9]{8})')"
 
@@ -139,8 +139,33 @@ def _get_tse_collection_status(target_date, product_line):
     }
 
 
+def _get_sem_tv_collection_status(target_date):
+    from apps.common.sem_retail import SEM_SOURCE_CONFIG
+    from apps.dx.dx_layer2 import sem_validation as sem
+
+    source = SEM_SOURCE_CONFIG['sem_tv']
+    mapping = sem._mapping(target_date, source)
+    retailers = []
+    with dx_connection() as (_, cursor):
+        for retailer in sem._validation_retailers('sem_tv', mapping['source_date']):
+            rows, mapping = sem._latest_rows(cursor, target_date, source, retailer)
+            retailers.append({
+                'retailer': retailer,
+                'total_count': len(rows),
+                'columns': [
+                    {'column': column, 'total_count': len(rows),
+                     'null_count': sum(sem._missing(row.get(column)) for row in rows)}
+                    for column in sem._validation_required_columns('sem_tv', retailer)
+                ],
+            })
+    return {'success': True, 'category': 'sem_tv', 'label': source['display_name'],
+            'retailers': retailers, **mapping}
+
+
 def get_collection_status(target_date, category):
     """리테일러별 수집 건수 + 컬럼별 NULL 수 조회"""
+    if category == 'sem_tv':
+        return _get_sem_tv_collection_status(target_date)
     if category in TSE_SOURCE_CONFIG:
         return _get_tse_collection_status(target_date, category)
 
@@ -255,6 +280,8 @@ def get_collection_status(target_date, category):
 
 def get_null_detail(target_date, category, retailer, column):
     """특정 리테일러/컬럼의 NULL 행 상세 조회"""
+    if category == 'sem_tv':
+        return _get_sem_tv_null_detail(target_date, retailer, column)
     if category in TSE_SOURCE_CONFIG:
         return _get_tse_null_detail(target_date, category, retailer, column)
 
@@ -293,6 +320,26 @@ def get_null_detail(target_date, category, retailer, column):
             rows.append(d)
 
     return {'success': True, 'columns': col_names, 'rows': rows}
+
+
+def _get_sem_tv_null_detail(target_date, retailer, column):
+    from apps.common.sem_retail import SEM_SOURCE_CONFIG
+    from apps.dx.dx_layer2 import sem_validation as sem
+
+    source = SEM_SOURCE_CONFIG['sem_tv']
+    retailer = sem._validation_retailer('sem_tv', retailer)
+    if column not in sem._validation_required_columns('sem_tv', retailer):
+        raise ValueError('허용되지 않은 컬럼입니다.')
+    columns = list(dict.fromkeys(('id', 'crawl_datetime', 'account_name', 'item', column, 'product_url')))
+    mapping = sem._mapping(target_date, source)
+    result = []
+    if retailer in sem._validation_retailers('sem_tv', mapping['source_date']):
+        with dx_connection() as (_, cursor):
+            rows, mapping = sem._latest_rows(cursor, target_date, source, retailer)
+        result = [{name: row.get(name) for name in columns}
+                  for row in rows if sem._missing(row.get(column))]
+    return {'success': True, 'columns': columns, 'rows': result,
+            'actual_table': source['table_name'], 'read_only': True, **mapping}
 
 
 def _get_tse_null_detail(target_date, product_line, retailer, column):

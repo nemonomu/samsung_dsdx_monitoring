@@ -1,5 +1,6 @@
 """DB-configured collection counts for the Layer 4 email report."""
 
+import logging
 import re
 
 from apps.common.db import dx_connection
@@ -8,6 +9,8 @@ from apps.common.sea_dates import appliance_source_date_sql
 from apps.common.sea_collection import homedepot_source_enabled
 
 from .email_registry import EMAIL_REPORT_SOURCES
+
+logger = logging.getLogger(__name__)
 
 
 _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -318,7 +321,7 @@ def _query_redirect_count(cursor, source, retailer, target_date, batch_id):
     return int((row[0] if row else 0) or 0)
 
 
-def _query_retailer(cursor, source, retailer, target_date):
+def _query_retailer(cursor, source, retailer, target_date, *, require_batch=False):
     """Return one retailer's actual collection and Missing quantities."""
     if (source['key'] in {'sea_ref', 'sea_ldy'}
             and _normalize_name(retailer['name']) == 'homedepot'):
@@ -346,6 +349,8 @@ def _query_retailer(cursor, source, retailer, target_date):
             and source['collection_scope'] == 'main'
         ):
             latest_scope = f"{latest_scope} AND {_MAIN_SCOPE}"
+        if require_batch:
+            latest_scope += f" AND NULLIF(BTRIM(source.{source['batch_column']}), '') IS NOT NULL"
         cursor.execute(
             f"SELECT source.{source['batch_column']} "
             f"FROM {table_name} source "
@@ -476,7 +481,27 @@ def _query_source(source, target_date):
     }
 
 
-def get_email_report_data(target_date, sources=None):
+def _sem_tv_observation_preview(target_date):
+    from apps.common.sem_retail import SEM_TV_OBSERVATION_RETAILERS, SEM_TV_OBSERVATION_START
+    from apps.dx.dx_layer2.sem_validation import _validation_required_columns
+
+    source = next(source for source in EMAIL_REPORT_SOURCES if source['key'] == 'sem_tv')
+    mapping = _resolve_email_source_date(source, target_date)
+    if mapping['source_date'] < str(SEM_TV_OBSERVATION_START):
+        return None
+
+    retailers = []
+    with dx_connection() as (connection, cursor):
+        connection.set_session(readonly=True)
+        cursor.execute("SET LOCAL statement_timeout = '8s'")
+        for name in SEM_TV_OBSERVATION_RETAILERS:
+            retailer = {'name': name, 'aliases': (name,),
+                        'columns': _validation_required_columns('sem_tv', name)}
+            retailers.append(_query_retailer(cursor, source, retailer, mapping['source_date'], require_batch=True))
+    return {'retailers': retailers, **mapping}
+
+
+def get_email_report_data(target_date, sources=None, *, include_sem_tv_preview=False):
     """Read each allow-listed source, preserving explicit partial failures."""
     configured_sources = EMAIL_REPORT_SOURCES if sources is None else sources
     rows = []
@@ -492,7 +517,7 @@ def get_email_report_data(target_date, sources=None):
                 'message': '데이터 조회에 실패했습니다.',
             })
 
-    return {
+    result = {
         'success': not errors,
         'complete': not errors,
         'date': str(target_date),
@@ -500,3 +525,10 @@ def get_email_report_data(target_date, sources=None):
         'sources': rows,
         'errors': errors,
     }
+    if include_sem_tv_preview:
+        try:
+            result['sem_tv_preview'] = _sem_tv_observation_preview(target_date)
+        except Exception:
+            logger.exception("SEM TV observation preview unavailable")
+            result['sem_tv_preview'] = {'error': 'SEM TV 관찰 대상 조회에 실패했습니다.'}
+    return result
