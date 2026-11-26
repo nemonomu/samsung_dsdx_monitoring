@@ -195,8 +195,9 @@ old result after a write. Legacy layer URLs use the same invalidation path.
         self.get_response = get_response
 
     def __call__(self, request):
-        # Reviews on these paths and column notes are read separately from aggregate snapshots.
-        if request.path_info in ('/dx/layer2/api/admin-review/check/',
+        # These routes update separate review or document records, not source aggregates.
+        if request.path_info in ('/dx/documents/manual/save/',
+                                 '/dx/layer2/api/admin-review/check/',
                                  '/layer2/api/admin-review/check/',
                                  '/dx/layer1/rank/api/review/',
                                  '/dx/layer1/api/column-statistics/notes/'):
