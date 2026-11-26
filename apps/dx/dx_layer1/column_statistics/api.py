@@ -50,15 +50,8 @@ def overview(request):
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·리테일러·날짜를 확인해주세요.'}, status=400)
     authenticated = getattr(getattr(request, 'user', None), 'is_authenticated', False)
-    dashboard = request.GET.get('dashboard') == '1'
-    if dashboard and not authenticated:
-        return JsonResponse({'error': '로그인이 필요합니다.'}, status=401)
     try:
-        if dashboard:
-            result = country_overview(country, selections, include_reviews=True, record_issues=True,
-                                      refresh=request.GET.get('refresh') == '1')
-        else:
-            result = country_overview(country, selections, include_reviews=authenticated)
+        result = country_overview(country, selections, include_reviews=authenticated)
     except Exception:
         return JsonResponse({'error': '수집 통계를 조회하지 못했습니다. 잠시 후 다시 조회해주세요.'}, status=503)
     return JsonResponse({**result, 'country': country, 'product': product, 'retailer': retailer,

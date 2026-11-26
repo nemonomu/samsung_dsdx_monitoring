@@ -16,13 +16,7 @@ async function loadStats(refresh = false) {
     liveCollectionPoll?.stop();
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
-    const params = ['dashboard=1'];
-    if (selectedDate) params.push('date=' + encodeURIComponent(selectedDate));
-    if (refresh) params.push('refresh=1');
-    const statsRequest = fetch('/dx/layer1/api/stats/?' + params.join('&'),
-        refresh ? {cache:'no-store'} : undefined);
-    const ddayRequest = loadDdayCollection(selectedDate, {refresh});
-    if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.cancel();
+    loadDdayCollection(selectedDate, {refresh});
     let data = null;
     let volume = null;
     const liveSnapshots = new Map();
@@ -53,7 +47,11 @@ async function loadStats(refresh = false) {
     if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
 
     try {
-        const response = await statsRequest;
+        const params = [];
+        if (selectedDate) params.push('date=' + encodeURIComponent(selectedDate));
+        if (refresh) params.push('refresh=1');
+        const url = '/dx/layer1/api/stats/' + (params.length ? '?' + params.join('&') : '');
+        const response = await fetch(url, refresh ? {cache:'no-store'} : undefined);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         data = await response.json();
         if (requestId !== layer1StatsRequestId) return;
@@ -73,6 +71,7 @@ async function loadStats(refresh = false) {
             });
             // The initial response already contains current counts; wait for the next sweep.
         }
+        await Promise.allSettled([statusRequest, summaryRequest]);
     } catch (error) {
         if (requestId !== layer1StatsRequestId) return;
         data = null;
@@ -81,10 +80,6 @@ async function loadStats(refresh = false) {
         document.getElementById('daily-checks-list').innerHTML = errorHtml;
         document.getElementById('period-checks-list').innerHTML = errorHtml;
     }
-    if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
-    const columnRequest = typeof ColumnAlertSummary !== 'undefined'
-        ? ColumnAlertSummary.load(selectedDate, true, refresh) : null;
-    await Promise.allSettled([statusRequest, summaryRequest, ddayRequest, columnRequest]);
 }
 
 function renderLayer1Stats(data) {

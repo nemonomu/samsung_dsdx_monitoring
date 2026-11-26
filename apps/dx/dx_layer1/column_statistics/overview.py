@@ -1,4 +1,4 @@
-"""Country column summaries and prepared column counts."""
+"""Read-only overview and prepared counts for the country statistics page."""
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
@@ -13,7 +13,6 @@ from apps.common.dryer_onboarding import is_preview
 from apps.common.inspection_dates import PRODUCT_ORDER, resolve_monitoring_date
 from apps.common.monitoring_cache import monitoring_cache_generation, monitoring_cached_value
 from apps.common.seib_retail import is_eci_appliance_preview
-from apps.dx.dx_layer1.collection_issues.errors import storage_error
 from apps.dx.dx_layer1.collection_issues.queries import raw_counts
 from apps.dx.dx_layer1.siel_retail import jiomart
 
@@ -137,9 +136,9 @@ def _live_identity(scope, target, history):
     return [*scope, str(target), history['updated_at'] if history else None]
 
 
-def live_counts(scope, target, *, refresh=False):
+def live_counts(scope, target):
     preview = _preview(scope, target)
-    generation, history = (None, None) if refresh or preview else _prior_window(scope, target)
+    generation, history = (None, None) if preview else _prior_window(scope, target)
 
     def read():
         country, product, retailer = scope
@@ -166,7 +165,7 @@ def live_counts(scope, target, *, refresh=False):
         data.setdefault('read_days', _WINDOW)
         return _window(data, target, totals, started)
 
-    if refresh or preview:
+    if preview:
         return read()
     return monitoring_cached_value('column-overview-live-v4', _live_identity(scope, target, history), read)
 
@@ -225,40 +224,22 @@ def _summary(data, active_reviews):
                 and fingerprint(context_for(data, row)) in active_reviews):
             item['review'] = {'active': True}
         rows.append(item)
-    item = {'product': data['product'], 'retailer': data['retailer'],
+    return {'product': data['product'], 'retailer': data['retailer'],
             'comparison_date': data['comparison_date'], 'total': data['daily'][-1]['total'],
             'column_count': len(data['columns']), 'comparisons': rows}
-    for key in ('read_days', 'issue_history_error', 'issue_history_diagnostic'):
-        if key in data:
-            item[key] = data[key]
-    return item
 
 
-def _observe(counts, day, now):
-    from .observations import remember_comparison
-
-    compared = attach_comparisons(counts, day, now)
-    try:
-        remember_comparison(compared, day)
-    except Exception as exc:
-        compared['issue_history_error'] = True
-        compared['issue_history_diagnostic'] = storage_error(exc, 'remember_comparison')
-    return compared
-
-
-def country_overview(country, selections, *, include_reviews, now=None, record_issues=False, refresh=False):
+def country_overview(country, selections, *, include_reviews, now=None):
     now = now or timezone.now()
-    prepared = {} if record_issues else _prepared_counts(selections)
-    compare = _observe if record_issues else _compare
-    read_options = {'refresh': True} if refresh else {}
-    futures = {selection: _POOL.submit(live_counts, *selection, **read_options)
+    prepared = _prepared_counts(selections)
+    futures = {selection: _POOL.submit(live_counts, *selection)
                for selection in selections if selection not in prepared}
     scoped = {}
     for selection in selections:
         scope, day = selection
         try:
             counts = prepared[selection] if selection in prepared else futures[selection].result()
-            scoped[selection] = compare(counts, day, now)
+            scoped[selection] = _compare(counts, day, now)
         except Exception:
             scoped[selection] = None
             logger.warning('Column statistics unavailable for %s on %s', scope, day, exc_info=True)

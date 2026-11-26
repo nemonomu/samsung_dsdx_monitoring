@@ -2,7 +2,6 @@
 Layer 1 Dashboard Services: 통계 오케스트레이션 비즈니스 로직
 """
 
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from apps.common.db import dx_connection
 from apps.common.response import log_error
@@ -275,53 +274,7 @@ def _get_active_services(target_date=None):
     return service_order, daily_types, target_date_types
 
 
-_DASHBOARD_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix='layer1-daily')
-_DASHBOARD_GROUPS = (
-    frozenset(('retail', 'tse_retail', 'market_competitor', 'market_competitor_event')),
-    frozenset(('seda_retail', 'seg_retail', 'seuk_retail')),
-)
-
-
-def get_dashboard_stats(target_date, check_type_filter=None, *, parallel=False):
-    if not parallel or check_type_filter:
-        return _read_dashboard_stats(target_date, check_type_filter)
-    order, daily, targets = _get_active_services(target_date)
-    groups = [[], [], []]
-    first, second = _DASHBOARD_GROUPS
-    for check in order:
-        check_type = check[0]
-        groups[0 if check_type in first else 1 if check_type in second else 2].append(check)
-    pending = [_DASHBOARD_POOL.submit(_read_dashboard_stats, target_date, services=(group, daily, targets))
-               for group in groups if group]
-    if not pending:
-        return _read_dashboard_stats(target_date, services=(order, daily, targets))
-    parts = [task.result() for task in pending]
-    result = parts[0]
-    order_index = {check_type: index for index, (check_type, _) in enumerate(order)}
-    checks = [check for part in parts for check in part['checks']]
-    checks.sort(key=lambda check: order_index.get(check['check_type'], len(order)))
-    result['checks'] = _sort_checks_for_display(checks)
-    result['failed_items'] = [item for part in parts for item in part['failed_items']]
-    error = next((part['error'] for part in parts if 'error' in part), None)
-    result['summary'] = _dashboard_summary(result['checks'])
-    if error:
-        result['error'] = error
-        result['summary']['status'] = 'ERROR'
-    return result
-
-
-def _dashboard_summary(checks):
-    targets = [check['status'] for check in checks if check.get('is_target_date', False)]
-    completed = [status for status in targets if status not in ('PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING')]
-    passed = completed.count('OK')
-    failed = completed.count('CRITICAL')
-    return {'total_checked': len(targets), 'total_completed': len(completed),
-            'passed': passed, 'failed': failed,
-            'pass_rate': round(passed / len(targets) * 100, 1) if targets else 0,
-            'status': 'CRITICAL' if failed else 'REVIEW' if 'REVIEW' in completed else 'OK'}
-
-
-def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None):
+def get_dashboard_stats(target_date, check_type_filter=None):
     """Layer 1 statistics orchestration for active configured services."""
     now = datetime.now()
     siel_now = _get_siel_kst_now()
@@ -354,7 +307,7 @@ def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None)
 
     try:
         with dx_connection() as (conn, cursor):
-            service_order, daily_types, target_date_types = services or _get_active_services(target_date)
+            service_order, daily_types, target_date_types = _get_active_services(target_date)
             comp_batch_id = None
 
             for check_type, svc in service_order:
@@ -482,7 +435,29 @@ def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None)
         results['checks'] = _sort_checks_for_display(results['checks'])
 
         if not check_type_filter:
-            results['summary'] = _dashboard_summary(results['checks'])
+            check_items = [
+                {'status': c['status'], 'is_target': c.get('is_target_date', False)}
+                for c in results['checks']
+            ]
+            target_items = [item for item in check_items if item['is_target']]
+            target_statuses = [item['status'] for item in target_items]
+            completed_statuses = [s for s in target_statuses if s not in ('PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING')]
+
+            passed = len([s for s in completed_statuses if s == 'OK'])
+            failed = len([s for s in completed_statuses if s == 'CRITICAL'])
+            needs_review = 'REVIEW' in completed_statuses
+
+            results['summary'] = {
+                'total_checked': len(target_items),
+                'total_completed': len(completed_statuses),
+                'passed': passed,
+                'failed': failed,
+                'pass_rate': round((passed / len(target_items) * 100), 1) if target_items else 0,
+                'status': (
+                    'CRITICAL' if failed > 0
+                    else 'REVIEW' if needs_review else 'OK'
+                )
+            }
 
     except Exception as e:
         results['error'] = log_error(e)

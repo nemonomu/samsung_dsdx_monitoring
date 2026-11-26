@@ -105,36 +105,6 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             stubs,
         )
 
-    def test_parallel_dashboard_matches_serial_and_keeps_competitor_batch(self):
-        from copy import deepcopy
-
-        @contextmanager
-        def connection():
-            yield object(), RecordingCursor()
-
-        class FreshService(StatsService):
-            def get_layer1_stats(self, *args, **kwargs):
-                return deepcopy(super().get_layer1_stats(*args, **kwargs))
-
-        order = ['youtube', 'seg_retail', 'market_competitor', 'retail', 'market_competitor_event']
-        services = {check: FreshService({
-            'check': {'check_type': check, 'status': 'REVIEW' if check == 'seg_retail' else 'OK'},
-            'comp_batch_id': 'batch-7' if check == 'market_competitor' else None,
-            'failed_items': [],
-        }) for check in order}
-        with patch.object(self.service, 'dx_connection', connection), \
-                patch.object(self.service, '_get_active_services', return_value=(
-                    list(services.items()), {'retail', 'seg_retail', 'youtube'}, set(order),
-                )), patch.object(self.service, 'add_batch_counts'):
-            day = date(2026, 11, 26)
-            serial = self.service.get_dashboard_stats(day)
-            grouped = self.service.get_dashboard_stats(day, parallel=True)
-        serial.pop('timestamp')
-        grouped.pop('timestamp')
-        self.assertEqual(serial, grouped)
-        self.assertEqual([call[1]['comp_batch_id'] for call in
-                          services['market_competitor_event'].calls], ['batch-7', 'batch-7'])
-
     def test_seg_query_failure_is_rolled_back_locally(self):
         cursor = RecordingCursor()
         result = self.service._get_seg_retail_stats_isolated(

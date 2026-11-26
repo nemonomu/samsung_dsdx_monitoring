@@ -285,7 +285,6 @@ function getSelectedDate() {
 }
 
 function initFilterBar(options) {
-    const isDashboard = typeof LAYER1 !== 'undefined' && LAYER1.section === 'dashboard';
     var saved = sessionStorage.getItem('monitoringSelectedDate');
     var today = getLayer1SeoulDate(0);
     var maxDate = getLayer1SeoulDate(1);
@@ -298,11 +297,9 @@ function initFilterBar(options) {
         return maxDate;
     }
 
-    function onDateChange() {
+    function onDateChange(refresh = false) {
         sessionStorage.setItem('monitoringSelectedDate', filterBar.getDate());
-        if (typeof ColumnAlertSummary !== 'undefined' && !isDashboard) {
-            ColumnAlertSummary.load(filterBar.getDate(), true);
-        }
+        if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.load(filterBar.getDate(), true, refresh && LAYER1.section === 'dashboard');
     }
 
     var config = {
@@ -311,8 +308,8 @@ function initFilterBar(options) {
             { type: 'date', key: 'targetDate', label: '조회 날짜', value: defaultDate, max: maxDate, maxToday: false, showWeekday: true },
             { type: 'button', label: '조회', style: 'primary', onClick: function() {
                 if (filterBar.getDate() > refreshMaxDate()) { showToast('내일 이후 날짜로는 조회할 수 없습니다.', 'warning'); filterBar.setDate(maxDate); return; }
-                const refresh = isDashboard;
-                onDateChange(); loadAllData(refresh);
+                const refresh = LAYER1.section === 'dashboard';
+                onDateChange(refresh); loadAllData(refresh);
             } },
             { type: 'button', label: '전날', style: 'outline', onClick: function() { filterBar.prevDay(); onDateChange(); loadAllData(); } },
             { type: 'button', label: '다음날', style: 'outline', onClick: function() {
@@ -330,9 +327,7 @@ function initFilterBar(options) {
     }
 
     filterBar = new FilterBar('#filter-bar-container', config).render();
-    if (typeof ColumnAlertSummary !== 'undefined' && !isDashboard) {
-        ColumnAlertSummary.load(filterBar.getDate());
-    }
+    if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.load(filterBar.getDate());
 }
 
 // ============================================================
