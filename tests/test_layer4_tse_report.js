@@ -42,9 +42,9 @@ const reportData = {
     excluded_items: [],
     sem_tv_observation: {
         source_date: '2026-11-27',
-        rule_name: '절감액 일치',
+        rule_count: 8,
         retailers: [
-            {retailer: 'Walmart', received: 3, checked: 2, failed: 1},
+            {retailer: 'Walmart', received: 3, checked: 2, failed: 1, review_count: 0},
             {retailer: "Sam's Club", received: 0, checked: 0, failed: 0}
         ]
     },

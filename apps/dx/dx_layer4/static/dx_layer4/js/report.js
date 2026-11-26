@@ -678,19 +678,22 @@
             section.appendChild(createDiv('report-item', observation.error));
         } else {
             section.appendChild(createDiv('rpt-sub-title',
-                '데이터일 ' + observation.source_date + ' · ' + observation.rule_name));
+                '데이터일 ' + observation.source_date + ' · 크로스필드 규칙 ' + Number(observation.rule_count) + '개'));
             createReportTable(section, [
                 { key: 'retailer', label: '리테일러' },
                 { key: 'received', label: '수집' },
                 { key: 'checked', label: '비교 가능' },
                 { key: 'failed', label: '이상' },
+                { key: 'review_count', label: '확인 필요' },
                 { key: 'status', label: '상태' }
             ], observation.retailers, function(row) {
                 var status = !row.received ? '검수 대기'
-                    : !row.checked ? '비교 대상 없음' : row.failed ? '이상 있음' : '이상 없음';
+                    : !row.checked ? '비교 대상 없음' : row.failed ? '이상 있음'
+                        : row.review_count ? '확인 필요' : '이상 없음';
                 return '<tr><td>' + L4.escapeHtml(row.retailer)
                     + '</td><td>' + Number(row.received) + '</td><td>' + Number(row.checked)
-                    + '</td><td>' + Number(row.failed) + '</td><td>' + status + '</td></tr>';
+                    + '</td><td>' + Number(row.failed) + '</td><td>' + Number(row.review_count || 0)
+                    + '</td><td>' + status + '</td></tr>';
             });
             var link = document.createElement('a');
             link.href = '/dx/layer3/cross-field/?date=' + encodeURIComponent(date)

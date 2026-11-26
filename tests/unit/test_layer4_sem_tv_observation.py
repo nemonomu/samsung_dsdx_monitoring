@@ -59,11 +59,13 @@ class Layer4SemTvObservationTests(unittest.TestCase):
         self.assertEqual(external['complete'], internal['complete'])
 
     def test_report_uses_cross_field_counts_without_creating_corrections(self):
-        summary = {'source_date': str(START), 'rule_summary': [{
-            'rule_key': 'mx_tv_savings_amount_match', 'detail_name': '절감액 일치',
-            'retailer_checks': {'Walmart': {'received': 9, 'checked': 6, 'failed': 1},
-                                "Sam's Club": {'received': 0, 'checked': 0, 'failed': 0}},
-        }]}
+        summary = {
+            'source_date': str(START),
+            'rule_summary': [{'retailer_checks': {'Walmart': {}}},
+                             {'retailer_checks': {"Sam's Club": {}}}],
+            'retailer_checks': {'Walmart': {'received': 9, 'checked': 6, 'failed': 1, 'review_count': 2},
+                                "Sam's Club": {'received': 0, 'checked': 0, 'failed': 0, 'review_count': 0}},
+        }
         connection, cursor = Mock(), Mock()
 
         @contextmanager
@@ -79,3 +81,5 @@ class Layer4SemTvObservationTests(unittest.TestCase):
         connection.set_session.assert_called_once_with(readonly=True)
         self.assertEqual('2026-11-27', result['source_date'])
         self.assertEqual([1, 0], [row['failed'] for row in result['retailers']])
+        self.assertEqual([2, 0], [row['review_count'] for row in result['retailers']])
+        self.assertEqual(2, result['rule_count'])

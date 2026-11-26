@@ -634,6 +634,7 @@ def layer_stats(request):
                     except Exception as e:
                         log_error(e)
                         continue
+                    sem_reviews = sem_result.get('review_needed_records', 0)
                     total_checked += sem_total
                     total_anomalies += sem_findings
                     results['checks'].append({
@@ -646,10 +647,14 @@ def layer_stats(request):
                             else '평점·리뷰 수와 최종가·원가 논리 검증'
                         ),
                         'checked': sem_total,
-                        'passed': max(0, sem_total - sem_failed),
+                        'passed': sem_result.get('passed_records', max(0, sem_total - sem_failed)),
                         'failed': sem_failed,
                         'finding_count': sem_findings,
-                        'status': get_status(sem_failed, sem_total),
+                        'review_needed': sem_reviews,
+                        'status': (
+                            'REVIEW_NEEDED' if sem_reviews and not sem_failed
+                            else get_status(sem_failed, sem_total)
+                        ),
                     })
 
             # TSE TV/REF/LDY는 스키마가 분리되어 있으며, 날짜·리테일러별

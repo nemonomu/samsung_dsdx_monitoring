@@ -19,7 +19,7 @@ def report_data(request):
         authenticated = getattr(getattr(request, 'user', None), 'is_authenticated', False)
         if request.method == 'GET' and authenticated and request.GET.get('refresh') != '1':
             data = monitoring_cached_value(
-                'layer4-daily-report-observation', target_date.isoformat(),
+                'layer4-daily-report-sem-tv-rules', target_date.isoformat(),
                 lambda: get_report_data(target_date),
                 cacheable=lambda result: (result.get('success') is True
                                           and not (result.get('sem_tv_observation') or {}).get('error')),

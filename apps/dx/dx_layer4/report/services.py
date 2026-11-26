@@ -181,11 +181,10 @@ def _sem_tv_observation_summary(target_date):
             connection.set_session(readonly=True)
             cursor.execute("SET LOCAL statement_timeout = '8s'")
             summary = get_sem_cross_field_summary(cursor, target_date, 'sem_tv')
-        rule = next(item for item in summary['rule_summary'] if item['rule_key'] == 'mx_tv_savings_amount_match')
-        checks = rule['retailer_checks']
+        checks = summary['retailer_checks']
         return {
             'source_date': summary['source_date'],
-            'rule_name': rule['detail_name'],
+            'rule_count': sum(bool(rule.get('retailer_checks')) for rule in summary['rule_summary']),
             'retailers': [{'retailer': seller, **checks[seller]} for seller in SEM_TV_OBSERVATION_RETAILERS],
         }
     except Exception:

@@ -153,10 +153,10 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         latest_batches = [([row, {**row, 'id': 2, 'final_sku_price': 'bad'}], {}), ([], {})]
 
         mapping = resolve_monitoring_date('2026-11-27', 'SEM', 'sem_tv')
-        cross = {'rule_summary': [{'rule_key': 'mx_tv_savings_amount_match', 'retailer_checks': {
-            'Walmart': {'received': 2, 'checked': 1, 'failed': 0},
-            "Sam's Club": {'received': 0, 'checked': 0, 'failed': 0},
-        }}]}
+        cross = {'retailer_checks': {
+            'Walmart': {'received': 2, 'checked': 1, 'failed': 0, 'review_count': 1},
+            "Sam's Club": {'received': 0, 'checked': 0, 'failed': 0, 'review_count': 0},
+        }}
         missing = {'summary': {'status': 'PENDING', 'total_missing_cases': 0}}
         with patch.object(sem.sem_validation, '_latest_rows', side_effect=latest_batches) as latest, \
              patch.object(sem.sem_validation, '_load_normal_reviews', return_value={}), \
@@ -166,7 +166,7 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         walmart, sams = snapshot['retailers']
         self.assertTrue(snapshot['read_only'])
         self.assertEqual('2026-11-27', snapshot['source_date'])
-        self.assertEqual([1, 1, 1, 0, None], [check['pending'] for check in walmart['checks']])
+        self.assertEqual([1, 1, 1, 1, None], [check['pending'] for check in walmart['checks']])
         self.assertEqual(2, latest.call_count)
         self.assertTrue(all(check['pending'] is None for check in sams['checks']))
         cursor.execute.assert_not_called()

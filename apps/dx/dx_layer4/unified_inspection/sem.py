@@ -24,8 +24,7 @@ def review_snapshot(cursor, mapping):
     null_reviews = sem_validation._load_normal_reviews(cursor, inspection_day, _PRODUCT, 'null_check')
     format_reviews = sem_validation._load_normal_reviews(cursor, inspection_day, _PRODUCT, 'format_check')
     cross = get_sem_cross_field_summary(cursor, inspection_day, _PRODUCT)
-    discount = next(rule['retailer_checks'] for rule in cross['rule_summary']
-                    if rule['rule_key'] == 'mx_tv_savings_amount_match')
+    cross_checks = cross['retailer_checks']
 
     for retailer in SEM_TV_OBSERVATION_RETAILERS:
         rows, _ = sem_validation._latest_rows(cursor, inspection_day, source, retailer)
@@ -39,13 +38,14 @@ def review_snapshot(cursor, mapping):
             f"{row.get('id')}_{field}" not in format_reviews
             for row in rows for field in sem_validation.evaluate_format(row, _PRODUCT, retailer)
         )
-        check = discount.get(retailer, {})
+        cross_check = cross_checks.get(retailer, {})
         missing = field_missing_detection(cursor, source_day, _PRODUCT, retailer)['summary']
         checks = (
             ('null_check', 'NULL 검증', null_count if collected else None),
             ('format_check', '형식검증', format_count if collected else None),
             ('duplicate_check', '중복검증', len(sem_validation._duplicate_groups(rows)) if collected else None),
-            ('cross_field', '크로스필드', check['failed'] if check.get('checked') else None),
+            ('cross_field', '크로스필드',
+             cross_check['failed'] + cross_check['review_count'] if cross_check.get('checked') else None),
             ('field_missing', '필드 누락', missing['total_missing_cases'] if missing['status'] != 'PENDING' else None),
         )
         payload['retailers'].append({

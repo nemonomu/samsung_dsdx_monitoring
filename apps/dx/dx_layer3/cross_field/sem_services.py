@@ -23,6 +23,8 @@ from apps.dx.dx_layer2.sem_validation import (
     homedepot_savings_rate, _validation_retailers,
 )
 
+from . import sem_tv_rules
+
 
 _RULES = (
     ('rating_count_consistency', '평점과 평가 수 일치', 'star_rating',
@@ -64,23 +66,6 @@ _COPPEL_RULES = (
 )
 
 
-_NEW_TV_DISCOUNT = (
-    'mx_tv_savings_amount_match', '할인금액 일치', 'savings', 'original_sku_price',
-    '같은 상품의 유효한 MXN 원가·최종가·절감액이 있을 때 원가 − 최종가와 절감액을 비교합니다.',
-)
-_PRICE_FIELDS = ('final_sku_price', 'original_sku_price', 'savings')
-
-
-def _new_tv_discount_matches(row, checks):
-    if any(_blank(row.get(field)) or not checks[field](row[field]) for field in _PRICE_FIELDS):
-        return None
-    final, original, savings = (
-        Decimal(str(row[field]).strip().replace('$', '').replace(',', ''))
-        for field in _PRICE_FIELDS
-    )
-    return original - final == savings
-
-
 def _blank(value):
     return value is None or str(value).strip() == ''
 
@@ -93,7 +78,7 @@ def _number(value):
 
 
 def _rule_select_fields(field1, field2, rule_key=None):
-    if rule_key in {rule[0] for rule in (*_HOMEDEPOT_RULES, *_COPPEL_RULES, _NEW_TV_DISCOUNT)}:
+    if rule_key in sem_tv_rules.PRICE_RULE_KEYS or rule_key in {rule[0] for rule in (*_HOMEDEPOT_RULES, *_COPPEL_RULES)}:
         return 'final_sku_price|original_sku_price|savings'
     fields = (field1, field2)
     if any(field in _REVIEW_COLUMNS for field in fields):
@@ -103,8 +88,9 @@ def _rule_select_fields(field1, field2, rule_key=None):
 
 def _failed_rules(row, retailer=SEM_RETAILER, product_line='sem_ref'):
     if sem_tv_observation_retailer(product_line, retailer):
-        matches = _new_tv_discount_matches(row, _format_checks(product_line, retailer))
-        return [_NEW_TV_DISCOUNT[0]] if matches is False else []
+        retailer = sem_tv_observation_retailer(product_line, retailer)
+        return [rule for rule, verdict in sem_tv_rules.evaluate(
+            row, retailer, _format_checks(product_line, retailer)).items() if verdict == 'anomaly']
     if retailer == SEM_COPPEL_RETAILER:
         return _coppel_price_rules(row, _format_checks(product_line, retailer))
     original_row = row
@@ -227,12 +213,14 @@ def _result(cursor, target_date, product_line):
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in active_retailers else ()
     ) + (
         _COPPEL_RULES if SEM_COPPEL_RETAILER in active_retailers else ()
-    ) + ((_NEW_TV_DISCOUNT,) if new_tv_retailers else ())
+    ) + (sem_tv_rules.RULES if new_tv_retailers else ())
     rows = []
     page_exclusions = []
     failures = {rule[0]: [] for rule in definitions}
     failed_ids = set()
+    review_ids = set()
     new_tv_stats = {}
+    rule_stats = {rule: {} for rule in sem_tv_rules.RULE_KEYS}
     for retailer in (*active_retailers, *new_tv_retailers):
         if retailer == SEM_RETAILER:
             retailer_rows, mapping = _latest_rows(cursor, target_date, source)
@@ -245,19 +233,34 @@ def _result(cursor, target_date, product_line):
         page_exclusions.extend(excluded)
         if retailer in new_tv_retailers:
             checks = _format_checks(key, retailer)
-            checked = failed = 0
-            rule_key = _NEW_TV_DISCOUNT[0]
+            checked = 0
+            seller_failed, seller_reviews = set(), set()
+            for rule_key, counts in rule_stats.items():
+                if retailer == 'Walmart' or rule_key not in sem_tv_rules.WALMART_ONLY:
+                    counts[retailer] = {'received': len(retailer_rows), 'checked': 0,
+                                        'failed': 0, 'review_count': 0}
             for row in retailer_rows:
-                matches = _new_tv_discount_matches(row, checks)
-                if matches is None:
+                verdicts = sem_tv_rules.evaluate(row, retailer, checks)
+                if not verdicts:
                     continue
                 checked += 1
                 rows.append(row)
-                if not matches:
-                    failed += 1
-                    failures[rule_key].append({**row, 'account_name': retailer})
-                    failed_ids.add(row.get('id'))
-            new_tv_stats[retailer] = {'received': len(retailer_rows), 'checked': checked, 'failed': failed}
+                for rule_key, verdict in verdicts.items():
+                    stats = rule_stats[rule_key][retailer]
+                    stats['checked'] += 1
+                    if verdict == 'ok':
+                        continue
+                    failures[rule_key].append({**row, 'account_name': retailer, 'finding_level': verdict})
+                    if verdict == 'review_needed':
+                        stats['review_count'] += 1
+                        seller_reviews.add(row['id'])
+                    else:
+                        stats['failed'] += 1
+                        seller_failed.add(row['id'])
+            new_tv_stats[retailer] = {'received': len(retailer_rows), 'checked': checked,
+                                      'failed': len(seller_failed), 'review_count': len(seller_reviews - seller_failed)}
+            review_ids.update(seller_reviews)
+            failed_ids.update(seller_failed)
             continue
         rows.extend(retailer_rows)
         for row in retailer_rows:
@@ -268,7 +271,7 @@ def _result(cursor, target_date, product_line):
     for index, rule in enumerate(definitions, 1):
         rule_key, name, field1, field2, message = rule
         applicable_retailers = (
-            list(new_tv_retailers) if rule == _NEW_TV_DISCOUNT
+            list(rule_stats[rule_key]) if rule_key in sem_tv_rules.RULE_KEYS
             else [SEM_COPPEL_RETAILER] if rule in _COPPEL_RULES
             else [SEM_HOMEDEPOT_RETAILER] if rule in _HOMEDEPOT_RULES
             else [retailer for retailer in active_retailers
@@ -285,13 +288,14 @@ def _result(cursor, target_date, product_line):
             'field2': field2,
             'validation_type': rule_key,
             'error_message': message,
-            'error_count': len(failures[rule_key]),
+            'error_count': sum(row.get('finding_level') != 'review_needed' for row in failures[rule_key]),
+            'review_count': sum(row.get('finding_level') == 'review_needed' for row in failures[rule_key]),
             'select_fields': _rule_select_fields(field1, field2, rule_key),
             'sort_order': index * 10,
-            **({'retailer_checks': new_tv_stats} if rule == _NEW_TV_DISCOUNT else {}),
+            **({'retailer_checks': rule_stats[rule_key]} if rule_key in sem_tv_rules.RULE_KEYS else {}),
         })
     mapping = {**mapping, 'page_exclusions': page_exclusions}
-    return source, rows, failures, failed_ids, summaries, mapping
+    return source, rows, failures, failed_ids, summaries, mapping, new_tv_stats, review_ids - failed_ids
 
 
 def build_sem_display_query(source, source_date, retailers, days=3, rows=None, fields=''):
@@ -341,7 +345,7 @@ def build_sem_display_query(source, source_date, retailers, days=3, rows=None, f
 
 
 def get_sem_cross_field_summary(cursor, target_date, product_line):
-    source, rows, failures, failed_ids, rules, mapping = _result(
+    source, rows, failures, failed_ids, rules, mapping, new_tv_stats, review_ids = _result(
         cursor, target_date, product_line
     )
     for rule in rules:
@@ -358,8 +362,11 @@ def get_sem_cross_field_summary(cursor, target_date, product_line):
         'date_col': source['date_column'],
         'total_checked': len(rows),
         'failed_records': len(failed_ids),
-        'passed_records': max(0, len(rows) - len(failed_ids)),
+        'passed_records': max(0, len(rows) - len(failed_ids) - len(review_ids)),
+        'review_needed_records': len(review_ids),
         'total_anomalies': sum(rule['error_count'] for rule in rules),
+        'total_review_needed': sum(rule['review_count'] for rule in rules),
+        'retailer_checks': new_tv_stats,
         'rule_summary': rules,
         'no_review_texts': '',
         **mapping,
@@ -367,7 +374,7 @@ def get_sem_cross_field_summary(cursor, target_date, product_line):
 
 
 def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, days=1):
-    source, _rows, failures, _failed_ids, rules, mapping = _result(
+    source, _, failures, _, rules, mapping, _, _ = _result(
         cursor, target_date, product_line
     )
     rule = next((item for item in rules if str(item['rule_id']) == str(rule_id)), None)
@@ -378,7 +385,7 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     source_date = date.fromisoformat(mapping['source_date'])
     history = []
     retailer_summary = {}
-    readonly = rule['rule_key'] == _NEW_TV_DISCOUNT[0]
+    readonly = rule['rule_key'] in sem_tv_rules.RULE_KEYS
     detail_retailers = rule['retailers'] if readonly else [
         retailer for retailer in active_sem_retailers(source['source_key'], source_date)
         if (not rule['rule_key'].startswith('coppel_') or retailer == SEM_COPPEL_RETAILER)
@@ -388,8 +395,8 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         targets = [row for row in target_anomalies
                    if str(row.get('account_name') or '').strip().casefold() == retailer.casefold()]
         items = sorted({str(row['item']) for row in targets if not _blank(row.get('item'))})
-        retailer_summary[retailer] = {'count': len(targets), 'items': items,
-                                      **rule.get('retailer_checks', {}).get(retailer, {})}
+        stats = rule.get('retailer_checks', {}).get(retailer, {})
+        retailer_summary[retailer] = {'count': stats.get('failed', len(targets)), 'items': items, **stats}
         if days > 1 and items:
             options = {} if retailer == SEM_RETAILER else {'retailer': retailer}
             prior = _history_rows(
@@ -416,7 +423,8 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'field2': rule['field2'],
         'validation_type': rule['validation_type'],
         'error_message': rule['error_message'],
-        'total_anomalies': len(target_anomalies),
+        'total_anomalies': rule['error_count'],
+        'total_review_needed': rule['review_count'],
         'retailer_summary': retailer_summary,
         'queries': {
             retailer: build_sem_display_query(source, source_date, [retailer], days, target_anomalies,
