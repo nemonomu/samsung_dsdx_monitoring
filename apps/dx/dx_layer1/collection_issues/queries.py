@@ -4,7 +4,8 @@ import hashlib
 from django.core.cache import cache
 from apps.common.db import dx_connection
 from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance
-from apps.dx.dx_layer1.column_statistics.dates import day_range_sql, day_sql, date_column
+from apps.common.sem_retail import sem_tv_observation_retailer
+from apps.dx.dx_layer1.column_statistics.dates import active_from, day_range_sql, day_sql, date_column
 from apps.dx.dx_layer1.column_statistics.services import select_source
 from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
@@ -30,12 +31,16 @@ def raw_counts(country, product, retailer, start, end):
         start = max(start, TV_START if new_tv_retailer(country, product, retailer) else FIRST_SOURCE_DATE)
     if country == 'SEIB' and is_eci_appliance(product, retailer):
         start = max(start, ECI_APPLIANCE_START)
+    sem_tv = sem_tv_observation_retailer(source['key'], retailer)
+    if sem_tv:
+        start = max(start, active_from(source, retailer))
     if start > end:
         return {}
     day = day_sql(source)
+    batch_scope = "AND NULLIF(BTRIM(source.batch_id), '') IS NOT NULL " if sem_tv else ''
     sql = (f"SELECT {day}, COUNT(*) FROM {source['table_name']} source "
            f"WHERE {_retailer_condition(source, account, include_unassigned=False)} "
-           f"AND {day_range_sql(source)} GROUP BY 1 ORDER BY 1")
+           f"AND {day_range_sql(source)} {batch_scope}GROUP BY 1 ORDER BY 1")
     with dx_connection() as (_, cursor):
         cursor.execute("SET LOCAL statement_timeout = '20s'")
         cursor.execute(sql, _retailer_params(account) + [str(start), str(end)])
@@ -53,6 +58,8 @@ def daily_batch_ids(country, product, retailer, start, end):
             return {str(day): list(ids or []) for day, ids in cursor.fetchall()}
     if new_tv_retailer(country, product, retailer):
         start = max(start, TV_START)
+    if sem_tv_observation_retailer(source['key'], retailer):
+        start = max(start, active_from(source, retailer))
     if country == 'SEIB' and is_eci_appliance(product, retailer):
         start = max(start, ECI_APPLIANCE_START)
     if start > end:

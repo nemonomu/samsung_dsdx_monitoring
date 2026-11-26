@@ -1,5 +1,5 @@
 """Rank monitoring uses the registered Layer 1 countries and original source dates."""
-from apps.common.sem_retail import SEM_SOURCE_CONFIG
+from apps.common.sem_retail import SEM_LAYER1_RETAILERS, sem_tv_observation_retailer
 from apps.common.seib_retail import is_eci_appliance
 from apps.dx.dx_layer1.column_statistics.services import _sources
 from apps.dx.dx_layer4.collection_status.email_registry import _retailer
@@ -13,7 +13,8 @@ PRODUCTS = ('TV', 'REF', 'LDY', 'LDY_DRYER')
 def supports_bsr(country, product, retailer):
     return ((country == 'SEIB' and is_eci_appliance(product, retailer))
             or jiomart.matches(country, product, retailer)
-            or new_tv_retailer(country, product, retailer))
+            or new_tv_retailer(country, product, retailer)
+            or (country == 'SEM' and product == 'TV' and bool(sem_tv_observation_retailer('sem_tv', retailer))))
 
 
 def _rank_sources():
@@ -24,7 +25,7 @@ def _rank_sources():
             accounts = {r['name']: r for r in source['retailers']}
             source = {**source, 'retailers': tuple(
                 accounts[name] if name in accounts else _retailer(name)
-                for name in SEM_SOURCE_CONFIG[source['key']]['retailers']
+                for name in SEM_LAYER1_RETAILERS[source['key']]
             )}
         yield source
 

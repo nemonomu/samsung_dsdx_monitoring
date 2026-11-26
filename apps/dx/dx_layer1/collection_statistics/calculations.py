@@ -9,7 +9,7 @@ from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, low
 from apps.common.seib_retail import (FIRST_SOURCE_DATE as SEIB_START_DATE, ECI_APPLIANCE_START,
                                     is_eci_appliance)
 from apps.common.seuk_retail import FIRST_SOURCE_DATE as SEUK_START_DATE
-from apps.common.sem_retail import sem_start_date
+from apps.common.sem_retail import sem_start_date, sem_tv_observation_retailer
 from apps.dx.dx_layer1.seg_retail.sources import EXPERT_START_DATE, MEDIAMARKT_DRYER_START_DATE
 from apps.dx.dx_layer1.siel_retail import jiomart
 from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
@@ -204,6 +204,8 @@ def variable_bsr(row, country):
     if country == 'SEIB' and is_eci_appliance(row['product'], row['retailer']):
         return True
     if country == 'SEA' and str(row['retailer']).strip().casefold() == 'homedepot':
+        return True
+    if country == 'SEM' and row['product'] == 'TV' and sem_tv_observation_retailer('sem_tv', row['retailer']):
         return True
     return (country == 'SEA' and str(row['retailer']).strip().casefold() == 'costco'
             and str(row['product']).upper() in ('TV', 'LDY', 'LDY_DRYER')) or tiered_bsr(row, country) or (

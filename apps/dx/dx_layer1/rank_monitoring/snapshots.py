@@ -21,6 +21,7 @@ from django.core.files import locks
 from django.utils import timezone
 
 from apps.common.monitoring_cache import monitoring_cache_generation
+from apps.common.sem_retail import sem_start_date, sem_tv_observation_retailer
 from apps.common.seib_retail import ECI_APPLIANCE_START, is_eci_appliance, is_eci_appliance_preview
 from apps.dx.dx_layer1.seuk_retail.sources import TV_START, new_tv_retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
@@ -92,6 +93,8 @@ def build(scope, generation):
         active_from, preview = jiomart.START, jiomart.preview(day)
     if new_tv_retailer(scope['country'], scope['product'], scope['retailer']):
         active_from = TV_START
+    if sem_tv_observation_retailer(source['key'], scope['retailer']):
+        active_from = sem_start_date(source['key'], scope['retailer'])
     today = timezone.localdate(timezone=tz(timedelta(hours=9)))
     results = {}
     for mode in ('all', 'samsung'):

@@ -67,8 +67,7 @@ def get_tv_observation_counts(cursor, target_date):
             SELECT id, LOWER(BTRIM(account_name)) AS retailer_key,
                    batch_id, main_rank, bsr_rank
             FROM {table}
-            WHERE country = 'SEM'
-              AND {source_date_sql('crawl_datetime')} = %s
+            WHERE {source_date_sql('crawl_datetime')} = %s
               AND LOWER(BTRIM(account_name)) = ANY(%s)
               AND NULLIF(BTRIM(batch_id), '') IS NOT NULL
         ), latest AS (
