@@ -37,19 +37,33 @@ function renderDdayCollection(data) {
         const rows = data.retailers.filter(row => row.product === product);
         if (!rows.length) return '';
         const summary = ddaySummary(rows);
-        const body = rows.map(function(row) {
+        const entries = rows.map(function(row) {
             const scheduled = String(row.scheduled_at || '').slice(0, 16).replace('T', ' ');
             const scheduledEnd = String(row.scheduled_end_at || '').slice(11, 16);
-            const batch = row.batch_id ? ' <span class="dday-batch">/ ' + esc(row.batch_id) + '</span>' : '';
-            return '<tr aria-label="' + esc(country) + ' ' + esc(row.retailer) + ' ' + product + '">' +
-                '<td class="rt-name">' + esc(row.retailer) + batch + '</td>' +
-                '<td>' + (row.main_count == null ? '-' : Number(row.main_count).toLocaleString()) + '</td>' +
-                '<td>' + (row.bsr_count == null ? '-' : Number(row.bsr_count).toLocaleString()) + '</td>' +
-                '<td>' + (scheduled ? esc(scheduled) + (scheduledEnd ? ' ~ ' + esc(scheduledEnd) : '') + ' KST' : '미정') + '</td>' +
-                '<td>' + esc(row.last_collected_at || '-') + (row.last_collected_at ? ' ' + esc(row.last_collected_timezone || 'KST') : '') + '</td>' +
-                '<td class="rt-total">' + (row.count === null ? '-' : Number(row.count).toLocaleString()) + '</td>' +
-                '<td class="rt-status ct-nc">' + ddayStatusBadge(row.status, row.status_reason) + '</td></tr>';
-        }).join('');
+            return {
+                retailer: esc(row.retailer), batch: row.batch_id ? esc(row.batch_id) : '',
+                main: row.main_count == null ? '-' : Number(row.main_count).toLocaleString(),
+                bsr: row.bsr_count == null ? '-' : Number(row.bsr_count).toLocaleString(),
+                scheduled: scheduled ? esc(scheduled) + (scheduledEnd ? ' ~ ' + esc(scheduledEnd) : '') + ' KST' : '미정',
+                last: esc(row.last_collected_at || '-') + (row.last_collected_at ? ' ' + esc(row.last_collected_timezone || 'KST') : ''),
+                count: row.count == null ? '-' : Number(row.count).toLocaleString(),
+                badge: ddayStatusBadge(row.status, row.status_reason)
+            };
+        });
+        const body = entries.map(row =>
+            '<tr aria-label="' + esc(country) + ' ' + row.retailer + ' ' + product + '">' +
+            '<td class="rt-name">' + row.retailer + (row.batch ? ' <span class="dday-batch">/ ' + row.batch + '</span>' : '') +
+            '</td><td>' + row.main + '</td><td>' + row.bsr + '</td>' +
+            '<td>' + row.scheduled + '</td><td>' + row.last + '</td><td class="rt-total">' + row.count +
+            '</td><td class="rt-status ct-nc">' + row.badge + '</td></tr>'
+        ).join('');
+        const mobile = entries.map(row =>
+            '<details class="dday-mobile-row"><summary><strong>' + row.retailer + '</strong>' +
+            row.badge + '<span>' + (row.count === '-' ? '-' : row.count + '건') + '</span></summary>' +
+            '<dl><dt>MAIN / BSR</dt><dd>' + row.main + ' / ' + row.bsr + '</dd>' +
+            '<dt>수집 예정</dt><dd>' + row.scheduled + '</dd><dt>마지막 수집</dt><dd>' + row.last +
+            '</dd><dt>배치 ID</dt><dd>' + (row.batch || '-') + '</dd></dl></details>'
+        ).join('');
         return '<details class="sentiment-category-item" open>' +
             '<summary class="sentiment-category-header"><div class="sentiment-category-info">' +
             '<span class="toggle-icon-small">▶</span><span class="sentiment-category-name">' + product + '</span>' +
@@ -67,7 +81,7 @@ function renderDdayCollection(data) {
             '<tr class="rt-sum"><td>' + (summary.status === 'error' ? '확인된 합계' : '합계') +
             '</td><td>' + summary.mainCount.toLocaleString() + '</td><td>' + summary.bsrCount.toLocaleString() +
             '</td><td></td><td></td><td>' + summary.count.toLocaleString() + '</td><td></td></tr>' +
-            '</tbody></table></div></div></div></details>';
+            '</tbody></table></div><div class="dday-mobile-list">' + mobile + '</div></div></div></details>';
     }).join('');
     return '<details class="check-item" open><summary class="check-main retail-check-main">' +
         '<div class="check-info"><div class="check-name"><span class="toggle-icon">▶</span> ' + countryLabel + '</div>' +

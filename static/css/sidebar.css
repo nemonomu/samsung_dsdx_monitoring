@@ -95,6 +95,11 @@
 
 .dx-sidebar .sidebar-item-row {
     display: flex;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
     align-items: center;
     gap: 10px;
     padding: 12px 16px;

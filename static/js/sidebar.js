@@ -8,6 +8,13 @@ function initSidebar() {
     if (!sidebar) return;
     var storageKey = sidebar.dataset.storageKey || 'dxSidebarCollapsed';
 
+    sidebar.addEventListener('keydown', function(event) {
+        if (event.target.matches('a[role="button"]') && ['Enter', ' '].includes(event.key)) {
+            event.preventDefault();
+            event.target.click();
+        }
+    });
+
     // localStorage에서 접힌 상태 복원
     if (localStorage.getItem(storageKey) === '1') {
         sidebar.classList.add('collapsed');
