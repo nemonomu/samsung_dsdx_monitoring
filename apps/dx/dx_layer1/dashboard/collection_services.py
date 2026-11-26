@@ -1,4 +1,8 @@
-from datetime import datetime, timedelta
+import logging
+from datetime import date, datetime, timedelta
+
+from django.conf import settings
+from psycopg2 import Error
 
 from apps.common.db import dx_connection
 from apps.common.sea_collection import (
@@ -7,6 +11,9 @@ from apps.common.sea_collection import (
 )
 from .collection_repositories import SOURCES, fetch_collection
 from apps.dx.dx_layer1.retail import costco, homedepot_dryer
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_collection_status(target_date, now=None, *, read=None):
@@ -37,7 +44,9 @@ def get_collection_status(target_date, now=None, *, read=None):
         if enabled:
             try:
                 if read:
-                    counts = read(fetch_collection, source, ('SEA', product, retailer))
+                    complete = (phase == 'complete' or date.fromisoformat(str(target_date)) < current.date()
+                                or (retailer == 'Costco' and costco.complete(target_date, current)))
+                    counts = read(fetch_collection, source, ('SEA', product, retailer), complete)
                 else:
                     with dx_connection() as (_conn, cursor):
                         counts = fetch_collection(cursor, source, target_date)
@@ -76,11 +85,24 @@ def get_dday_collection_status(target_date, now=None, *, reuse_normal=False):
     from .collection_revisions import CollectionReads
 
     current = now or datetime.now(KST)
-    reads = CollectionReads(target_date) if reuse_normal else None
-    options = {'read': reads.read} if reads and reads.revisions else {}
-    sea = get_collection_status(target_date, current, **options)
-    countries = [dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
-                 seda_collection.get_collection_status(target_date, current, **options)]
-    if options:
-        reads.store(countries)
-    return {**sea, 'countries': countries}
+
+    def read_panels(read=None):
+        options = {'read': read} if read else {}
+        sea = get_collection_status(target_date, current, **options)
+        countries = [dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
+                     seda_collection.get_collection_status(target_date, current, **options)]
+        return {**sea, 'countries': countries}
+
+    if reuse_normal and getattr(settings, 'DX_DDAY_COLLECTION_REVISIONS', False):
+        try:
+            with dx_connection(connect_timeout=3) as (connection, cursor):
+                connection.autocommit = True
+                cursor.execute('SET default_transaction_read_only = on')
+                cursor.execute("SET statement_timeout = '8000ms'")
+                reads = CollectionReads(target_date, cursor)
+                result = read_panels(reads.read)
+                reads.store(result['countries'])
+                return {**result, 'revision_reused': reads.reused, 'source_reads': reads.source_reads}
+        except (Error, OSError):
+            logger.warning("Shared D-DAY read unavailable; retrying per scope", exc_info=True)
+    return read_panels()

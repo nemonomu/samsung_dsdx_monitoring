@@ -147,14 +147,16 @@ def live_counts(scope, target):
                 prior_rows = [{key: value for key, value in row.items() if key != 'raw_total'}
                               for row in history['daily'][1:]]
                 data['daily'] = prior_rows + data['daily']
+                data['read_days'] = 1
             else:
                 data, totals, started = collect(_WINDOW)
+        data.setdefault('read_days', _WINDOW)
         return _window(data, target, totals, started)
 
     preview = _preview(scope, target)
     if preview:
         return read()
-    return monitoring_cached_value('column-overview-live-v2', [*scope, str(target)], read)
+    return monitoring_cached_value('column-overview-live-v3', [*scope, str(target)], read)
 
 
 def _prepared_counts(selections, *, generation=None):
@@ -179,7 +181,7 @@ def detail_counts(scope, target, days):
     result = _prepared_counts([selection]).get(selection)
     if result and datetime.fromisoformat(result['updated_at']) >= timezone.now() - timedelta(minutes=5):
         return result
-    return monitoring_cached_value('column-overview-live-v2', [*scope, str(target)])
+    return monitoring_cached_value('column-overview-live-v3', [*scope, str(target)])
 
 
 def _compare(data, target, now):

@@ -6,10 +6,16 @@ from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql
 
+from .collection_revisions import batch_revision
 
-def fetch_collection(cursor, source, target_date):
+
+def fetch_collection(cursor, source, target_date, *, revision_only=False, with_revision=False):
     day = source_date_sql('source.' + source['date_column'])
     account = "LOWER(REPLACE(BTRIM(source.account_name), ' ', ''))"
+    revision = batch_revision(source['date_column'], page_type=True) if revision_only or with_revision else ''
+    counts = (f"COUNT(*), MAX(source.{source['date_column']}), MAX(source.batch_id), "
+              "COUNT(source.main_rank), COUNT(source.bsr_rank)")
+    projection = revision if revision_only else f"{counts}, {revision}" if with_revision else counts
     cursor.execute(f"""
         WITH dated AS (
             SELECT source.* FROM {source['table_name']} source
@@ -18,12 +24,14 @@ def fetch_collection(cursor, source, target_date):
         ), latest AS (
             SELECT batch_id FROM dated ORDER BY id DESC LIMIT 1
         )
-        SELECT COUNT(*), MAX(source.{source['date_column']}), MAX(source.batch_id),
-               COUNT(source.main_rank), COUNT(source.bsr_rank)
+        SELECT {projection}
         FROM dated source JOIN latest
           ON source.batch_id IS NOT DISTINCT FROM latest.batch_id
     """, [str(target_date)])
-    return cursor.fetchone() or (0, None, None, 0, 0)
+    values = cursor.fetchone()
+    if revision_only:
+        return values[0]
+    return values or (0, None, None, 0, 0)
 
 
 def get_collection_status(target_date, now, *, read=None):
@@ -40,7 +48,7 @@ def get_collection_status(target_date, now, *, read=None):
                    last_collected_at=None, last_collected_timezone='DB 원본', batch_id=None)
         try:
             if read:
-                counts = read(fetch_collection, source, ('SEDA', row['product'], row['retailer']))
+                counts = read(fetch_collection, source, ('SEDA', row['product'], row['retailer']), phase == 'complete')
             else:
                 with dx_connection() as (_, cursor):
                     counts = fetch_collection(cursor, source, day)

@@ -4,6 +4,8 @@ from apps.common.source_dates import source_date_sql
 from apps.common.sea_collection import AFTERNOON_RETAILERS
 from apps.dx.dx_layer1.retail import costco, homedepot_dryer
 
+from .collection_revisions import batch_revision
+
 
 SOURCES = (
     ('Walmart', 'TV', 'tv_retail_com', 'crawl_datetime'),
@@ -24,7 +26,7 @@ SOURCES = (
 )
 
 
-def fetch_collection(cursor, source, target_date):
+def fetch_collection(cursor, source, target_date, *, revision_only=False, with_revision=False):
     retailer, _product, table, column = source
     home_dryer = homedepot_dryer.matches(_product, retailer)
     table = 'public.' + dx_table(table)
@@ -44,6 +46,10 @@ def fetch_collection(cursor, source, target_date):
     else:
         day = f"LEFT(TRIM(CAST(source.{column} AS TEXT)), 10)"
         stamp = f"source.{column}::timestamp AT TIME ZONE 'America/New_York'"
+    revision = batch_revision(column) if revision_only or with_revision else ''
+    counts = (f"COUNT(*), TO_CHAR(MAX({stamp}) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS'), "
+              "MAX(source.batch_id), COUNT(source.main_rank), COUNT(source.bsr_rank)")
+    projection = revision if revision_only else f"{counts}, {revision}" if with_revision else counts
     cursor.execute(f"""
         WITH latest AS (
             SELECT source.batch_id FROM {table} source
@@ -51,13 +57,13 @@ def fetch_collection(cursor, source, target_date):
               AND LOWER(TRIM(source.account_name)) = LOWER(%s)
             ORDER BY source.id DESC LIMIT 1
         )
-        SELECT COUNT(*),
-               TO_CHAR(MAX({stamp}) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI:SS'),
-               MAX(source.batch_id),
-               COUNT(source.main_rank), COUNT(source.bsr_rank)
+        SELECT {projection}
         FROM {table} source JOIN latest
           ON source.batch_id IS NOT DISTINCT FROM latest.batch_id
         WHERE ({day}) = %s
           AND LOWER(TRIM(source.account_name)) = LOWER(%s)
     """, (str(target_date), retailer, str(target_date), retailer))
-    return cursor.fetchone() or (0, None, None, 0, 0)
+    values = cursor.fetchone()
+    if revision_only:
+        return values[0]
+    return values or (0, None, None, 0, 0)

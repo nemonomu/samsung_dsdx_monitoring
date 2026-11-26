@@ -101,6 +101,7 @@ def daily(request):
         if result is None:
             read_started = timezone.now()
             result = daily_counts(country, product, retailer, target, query_days)
+            result['read_days'] = query_days
             totals = {} if eci_preview else raw_counts(country, product, retailer, target, target)
             for row in result['daily']:
                 if row['date'] == str(target):

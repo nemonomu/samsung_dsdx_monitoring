@@ -1,64 +1,55 @@
-"""Reuse verified D-DAY counts using the source database's completion revisions."""
+"""Compare only the source fields that affect the D-DAY collection counts."""
 import hashlib
 import json
-import logging
 
-from django.conf import settings
-from django.core.cache import cache
 from psycopg2 import Error
 
-from apps.common.db import dx_connection
+from apps.common.monitoring_cache import _backend, _root
 
 
-logger = logging.getLogger(__name__)
-
-
-def completed_revisions(day):
-    if not getattr(settings, 'DX_DDAY_COLLECTION_REVISIONS', False):
-        return {}
-    try:
-        with dx_connection(connect_timeout=3) as (_, cursor):
-            cursor.execute("SET LOCAL statement_timeout = '1000ms'")
-            cursor.execute("""
-                SELECT country, product, retailer, revision
-                FROM public.dx_dday_collection_revision
-                WHERE source_date = %s AND completed AND revision IS NOT NULL
-            """, [day])
-            return {(country, product, retailer): revision
-                    for country, product, retailer, revision in cursor.fetchall()}
-    except (Error, OSError):
-        logger.warning('D-DAY completion revisions unavailable; reading source counts', exc_info=True)
-        return {}
+def batch_revision(column, *, page_type=False):
+    page = ", LOWER(BTRIM(source.page_type))" if page_type else ""
+    return f"""md5(COALESCE(string_agg(json_build_array(
+        source.id, source.batch_id, CAST(source.{column} AS TEXT),
+        source.main_rank IS NOT NULL, source.bsr_rank IS NOT NULL{page}
+    )::text, ',' ORDER BY source.id), ''))"""
 
 
 class CollectionReads:
-    def __init__(self, day):
+    def __init__(self, day, cursor, cache=None):
         self.day = day
-        self.revisions = completed_revisions(day)
-        self.keys = {scope: 'dday-counts:v1:' + hashlib.sha256(
-            json.dumps([str(day), scope, str(revision)], ensure_ascii=False).encode('utf-8')
-        ).hexdigest() for scope, revision in self.revisions.items()}
-        self.cached = cache.get_many(self.keys.values()) if self.keys else {}
+        self.cursor = cursor
+        self.cache = cache if cache is not None else _backend(_root())
+        self.reused = 0
+        self.source_reads = 0
         self.fresh = {}
 
-    def read(self, fetch, source, scope):
-        key = self.keys.get(scope)
-        if key in self.cached:
-            return self.cached[key]
-        with dx_connection() as (_, cursor):
-            counts = fetch(cursor, source, self.day)
-        if key:
-            self.fresh[scope] = counts
-        return counts
+    def read(self, fetch, source, scope, complete):
+        if complete:
+            key = 'dday-counts:v2:' + hashlib.sha256(
+                json.dumps([str(self.day), scope], ensure_ascii=False).encode('utf-8')).hexdigest()
+            try:
+                saved = self.cache.get(key)
+                if saved and saved[0] == fetch(self.cursor, source, self.day, revision_only=True):
+                    self.reused += 1
+                    return saved[1]
+                values = fetch(self.cursor, source, self.day, with_revision=True)
+                self.source_reads += 1
+                self.fresh[scope] = (key, values[-1], values[:-1])
+                return values[:-1]
+            except (Error, OSError):
+                pass  # The existing source-count query can still succeed.
+
+        self.source_reads += 1
+        return fetch(self.cursor, source, self.day)
 
     def store(self, countries):
-        normal = {(panel['country'], row['product'], row['retailer'])
-                  for panel in countries for row in panel['retailers']
-                  if row['status'] == 'received' and row['count'] and row['batch_id']}
-        to_verify = self.fresh.keys() & normal
-        if to_verify:
-            latest = completed_revisions(self.day)
-            entries = {self.keys[scope]: self.fresh[scope] for scope in to_verify
-                       if latest.get(scope) == self.revisions[scope]}
-            if entries:
-                cache.set_many(entries, timeout=86400)
+        for panel in countries:
+            for row in panel['retailers']:
+                item = self.fresh.get((panel['country'], row['product'], row['retailer']))
+                if item:
+                    key, revision, counts = item
+                    if row['status'] == 'received' and row['count'] and row['batch_id']:
+                        self.cache.set(key, (revision, counts), timeout=86400)
+                    else:
+                        self.cache.delete(key)
