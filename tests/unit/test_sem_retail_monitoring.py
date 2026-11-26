@@ -108,6 +108,55 @@ class SemRetailConfigurationTests(unittest.TestCase):
             cursor.calls[0][1],
         )
 
+    def test_new_sem_tv_rules_keep_seller_formats_and_ids_separate(self):
+        walmart = {
+            'account_name': 'Walmart', 'item': '00084046404515', 'calendar_week': 'W01',
+            'product_url': 'https://www.walmart.com.mx/ip/tv/00084046404515',
+            'screen_size': '65inch', 'final_sku_price': '$9,990.00', 'original_sku_price': None,
+            'savings': '$520.00', 'star_rating': '4.25', 'count_of_reviews': '0',
+            'count_of_star_ratings': '8', 'bsr_rank': None,
+        }
+        sams = {
+            'account_name': "Sam's Club", 'item': '981052373',
+            'product_url': 'https://www.sams.com.mx/ip/981052373',
+            'screen_size': '55 inches', 'final_sku_price': '14319.95',
+            'savings': '$520.00 ', 'star_rating': '3', 'count_of_reviews': '3',
+            'count_of_star_ratings': '0', 'sku': '60PQL7656/F8',
+        }
+        self.assertEqual([], evaluate_format(walmart, 'sem_tv', 'Walmart'))
+        self.assertEqual([], evaluate_format(sams, 'sem_tv', "Sam's Club"))
+        self.assertEqual([], evaluate_format(
+            {**sams, 'final_sku_price': '9714.4', 'original_sku_price': '10532.8'}, 'sem_tv', "Sam's Club"))
+        self.assertIn('final_sku_price', evaluate_format(
+            {**sams, 'final_sku_price': '9714.444'}, 'sem_tv', "Sam's Club"))
+        for field, value in {
+            'item': '000', 'product_url': 'https://www.walmart.com.mx/ip/84046404515',
+            'final_sku_price': '9990.00', 'screen_size': '0inch',
+            'savings': '20%', 'calendar_week': 'W54', 'star_rating': '5.1',
+            'count_of_star_ratings': '-1',
+        }.items():
+            with self.subTest(field=field):
+                self.assertIn(field, evaluate_format({**walmart, field: value}, 'sem_tv', 'Walmart'))
+        self.assertIn('product_url', evaluate_format(
+            {'product_url': 'https://www.sams.com.mx.example.org/ip/981052373'}, 'sem_tv', "Sam's Club"))
+        self.assertEqual([], evaluate_format({**sams, 'item': '0981052373'}, 'sem_tv', "Sam's Club"))
+        for seller, expected_host in [('Walmart', 'www.walmart.com.mx'), ("Sam's Club", 'www.sams.com.mx')]:
+            rules = get_format_rule_details('sem_tv', seller)
+            url = next(rule for rule in rules if rule['field'] == 'product_url')
+            self.assertIn(expected_host, url['pattern'])
+            self.assertEqual([], evaluate_format({'product_url': url['pattern']}, 'sem_tv', seller))
+
+    def test_layer2_tv_retailers_start_on_november_27_and_are_readonly(self):
+        from apps.dx.dx_layer2 import sem_validation
+        self.assertEqual(('Liverpool',), sem_validation._validation_retailers('sem_tv', '2026-11-26'))
+        self.assertEqual(('Liverpool', 'Walmart', "Sam's Club"),
+                         sem_validation._validation_retailers('sem_tv', '2026-11-27'))
+        self.assertEqual(('Liverpool',), SEM_SOURCE_CONFIG['sem_tv']['retailers'])
+        self.assertTrue(sem_validation.new_tv_review_is_readonly('sem_tv_retail', "Sam's Club"))
+        self.assertFalse(sem_validation.new_tv_review_is_readonly('sem_ref_retail', "Sam's Club"))
+        self.assertEqual({'readonly': True, 'status': 'PENDING', 'validation_label': '검수 대기'},
+                         sem_validation._new_tv_card_state('sem_tv', 'Walmart', []))
+
     def test_product_specific_required_columns_are_included(self):
         self.assertIn('screen_size', get_sem_required_columns('sem_tv'))
         self.assertIn('ref_capacity', get_sem_required_columns('sem_ref'))
@@ -153,7 +202,11 @@ class SemRetailConfigurationTests(unittest.TestCase):
                 self.assertEqual(
                     expected, {rule['field'] for rule in direct_rules}
                 )
-                self.assertEqual(direct_rules, api_rules)
+                self.assertEqual(
+                    direct_rules,
+                    [{key: rule[key] for key in ('field', 'description', 'pattern')}
+                     for rule in api_rules],
+                )
                 self.assertTrue(extras.issubset(expected))
 
     def test_layer1_description_uses_korean_country_name(self):

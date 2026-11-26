@@ -3,6 +3,8 @@
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta
+from functools import cache
+from urllib.parse import urlsplit
 
 from apps.common.dryer_onboarding import config as dryer_config
 from apps.common.sem_retail import active_sem_rule_retailers
@@ -19,6 +21,8 @@ from apps.common.sem_retail import (
     SEM_SECTION_TO_PRODUCT_LINE,
     SEM_SOURCE_CONFIG,
     SEM_DRYER_FIRST_SOURCE_DATE,
+    SEM_TV_OBSERVATION_RETAILERS,
+    SEM_TV_OBSERVATION_START,
     get_sem_editable_columns,
     get_sem_required_columns,
     get_sem_table_columns,
@@ -26,6 +30,16 @@ from apps.common.sem_retail import (
     active_sem_retailers, sem_start_date, sem_batch_order,
 )
 
+
+_NEW_TV_HOSTS = dict(zip(SEM_TV_OBSERVATION_RETAILERS, ('www.walmart.com.mx', 'www.sams.com.mx')))
+_NEW_TV_REQUIRED = ('country', 'account_name', 'item', 'retailer_sku_name', 'product_url',
+                    'crawl_datetime', 'calendar_week', 'final_sku_price')
+_NEW_TV_ID = re.compile(r'[0-9]*[1-9][0-9]*')
+_NEW_TV_WEEK = re.compile(r'W(?:0[1-9]|[1-4][0-9]|5[0-3])')
+_NEW_TV_AMOUNT = r'(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]{1,3})\.[0-9]{2}'
+_NEW_TV_NUMERIC_PRICE = r'[0-9]+(?:\.[0-9]{1,2})?'
+_NEW_TV_SIZE = r'[0-9]+(?:\.[0-9]+)?'
+_NEW_TV_RATING = re.compile(r'(?:[0-4](?:\.[0-9]+)?|5(?:\.0+)?)')
 
 _MONEY_VALUE = r'\$\d{1,3}(?:,\d{3})*(?:\.\d{2})'
 _PRICE = re.compile(rf'^{_MONEY_VALUE}(?:\s*/\s*{_MONEY_VALUE})*$')
@@ -169,6 +183,41 @@ def product_line_for(value):
     return None
 
 
+def _new_tv_retailer(product_line, name):
+    if product_line == 'sem_tv':
+        key = str(name or '').strip().casefold()
+        return next((r for r in SEM_TV_OBSERVATION_RETAILERS if r.casefold() == key), None)
+    return None
+
+
+def new_tv_review_is_readonly(table, retailer):
+    return bool(_new_tv_retailer(product_line_for(table), retailer))
+
+
+def _validation_retailer(product_line, retailer):
+    return _new_tv_retailer(product_line, retailer) or normalize_sem_retailer(product_line, retailer)
+
+
+def _validation_retailers(product_line, source_day, *, format_rules=False):
+    active = active_sem_rule_retailers if format_rules else active_sem_retailers
+    retailers = active(product_line, source_day)
+    if product_line == 'sem_tv' and source_day >= str(SEM_TV_OBSERVATION_START):
+        return (*retailers, *SEM_TV_OBSERVATION_RETAILERS)
+    return retailers
+
+
+def _validation_launch(product_line, retailer):
+    if _new_tv_retailer(product_line, retailer):
+        return SEM_TV_OBSERVATION_START
+    return sem_start_date(product_line, retailer)
+
+
+def _validation_required_columns(product_line, retailer):
+    if _new_tv_retailer(product_line, retailer):
+        return _NEW_TV_REQUIRED
+    return get_sem_required_columns(product_line, retailer)
+
+
 def _mapping(target_date, source):
     return resolve_monitoring_date(target_date, SEM_COUNTRY, source['source_key'])
 
@@ -180,19 +229,21 @@ def _source_day(column, source):
 
 
 def _latest_rows(cursor, target_date, source, retailer=None):
-    retailer = normalize_sem_retailer(source['source_key'], retailer)
+    retailer = _validation_retailer(source['source_key'], retailer)
     mapping = _mapping(target_date, source)
-    launch = sem_start_date(source['source_key'], retailer)
+    launch = _validation_launch(source['source_key'], retailer)
     if launch and mapping['source_date'] < str(launch):
         return [], mapping
     day = _source_day('crawl_datetime', source)
     row_day = _source_day('source.crawl_datetime', source)
+    batch_filter = "AND NULLIF(BTRIM(batch_id), '') IS NOT NULL" if _new_tv_retailer(source['source_key'], retailer) else ''
     cursor.execute(f"""
         WITH latest_batch AS (
             SELECT batch_id, account_name
             FROM {source['table_name']}
             WHERE {day} = %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
+              {batch_filter}
             ORDER BY {sem_batch_order(source['source_key'], retailer)}
             LIMIT 1
         )
@@ -212,8 +263,8 @@ def _latest_rows(cursor, target_date, source, retailer=None):
 def _history_rows(cursor, source, start_date, end_date, items,
                   include_missing_item=False, retailer=None):
     """Load the retailer's latest batch per day for target error items."""
-    retailer = normalize_sem_retailer(source['source_key'], retailer)
-    launch = sem_start_date(source['source_key'], retailer)
+    retailer = _validation_retailer(source['source_key'], retailer)
+    launch = _validation_launch(source['source_key'], retailer)
     if launch:
         start_date = max(str(start_date), str(launch))
         if str(end_date) < start_date:
@@ -233,6 +284,7 @@ def _history_rows(cursor, source, start_date, end_date, items,
 
     date_expression = _source_day('source.crawl_datetime', source)
     day = _source_day('crawl_datetime', source)
+    batch_filter = "AND NULLIF(BTRIM(batch_id), '') IS NOT NULL" if _new_tv_retailer(source['source_key'], retailer) else ''
     cursor.execute(f"""
         WITH latest_batches AS (
             SELECT DISTINCT ON ({day})
@@ -245,6 +297,7 @@ def _history_rows(cursor, source, start_date, end_date, items,
               AND {day} <= %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
               AND UPPER(BTRIM(country)) = %s
+              {batch_filter}
             ORDER BY source_date, {sem_batch_order(source['source_key'], retailer)}
         )
         SELECT source.*
@@ -295,10 +348,63 @@ def homedepot_savings_rate(value, source_day):
     return int(match[1]) if match else None
 
 
+@cache
+def _new_tv_format_profile(retailer):
+    """The same verified stored formats drive both validation and the rule popup."""
+    walmart = retailer == 'Walmart'
+    host = _NEW_TV_HOSTS[retailer]
+    place = 'Walmart Mexico' if walmart else "Sam's Club Mexico"
+    path = re.compile(r"/ip/(?:[^/\s]+/)*[0-9]+/?")
+    def product_url(value):
+        try:
+            text = str(value).strip()
+            if any(c.isspace() for c in text):
+                return False
+            url = urlsplit(text)
+        except ValueError:
+            return False
+        tail = url.path.rstrip('/').rsplit('/', 1)[-1]
+        return (url.scheme == 'https' and url.netloc.lower() == host and bool(path.fullmatch(url.path))
+                and bool(_NEW_TV_ID.fullmatch(tail)))
+
+    amount = re.compile(rf'\${_NEW_TV_AMOUNT}')
+    price = amount if walmart else re.compile(_NEW_TV_NUMERIC_PRICE)
+    unit = 'inch' if walmart else ' inches'
+    size = re.compile(rf'({_NEW_TV_SIZE}){unit}', re.I)
+    def positive_amount(pattern, value):
+        text = str(value).strip()
+        return bool(pattern.fullmatch(text)) and any(c in '123456789' for c in text)
+    def positive_size(value):
+        match = size.fullmatch(str(value).strip())
+        return bool(match) and any(c in '123456789' for c in match[1])
+    canonical_id = '00750940184163' if walmart else '981052373'
+    price_example = '$9,990.00' if walmart else '14319.95'
+    price_label = 'MXN 단일 금액 ($ 및 소수점 두 자리)' if walmart else 'MXN 숫자 저장값 (통화 기호 없이 정수 또는 소수점 한두 자리)'
+    url_label = (f'{place}의 HTTPS 상세 주소. 끝 ID는 item과 앞자리 0까지 일치'
+                 if walmart else f'{place}의 HTTPS 상세 주소. 끝 경로는 숫자 상품 코드')
+    return {
+        'account_name': (lambda value: str(value).strip().casefold() == retailer.casefold(),
+                         'SEM 수집 리테일러명과 일치', retailer),
+        'item': (lambda value: bool(_NEW_TV_ID.fullmatch(str(value).strip())),
+                 '0보다 큰 숫자 문자열 (앞자리 0 보존)', canonical_id),
+        'calendar_week': (lambda value: bool(_NEW_TV_WEEK.fullmatch(str(value).strip())),
+                          'W01~W53 주차', 'W48'),
+        'product_url': (product_url, url_label, f'https://{host}/ip/{canonical_id}'),
+        'screen_size': (positive_size, '양수 TV 화면 크기와 저장 단위', '65inch' if walmart else '85 inches'),
+        'final_sku_price': (lambda value: positive_amount(price, value), price_label, price_example),
+        'original_sku_price': (lambda value: positive_amount(price, value),
+                               '값이 있으면 ' + price_label, price_example),
+        'savings': (lambda value: positive_amount(amount, value),
+                    '값이 있으면 MXN 할인 금액 ($ 및 소수점 두 자리)', '$520.00'),
+        'star_rating': (lambda value: bool(_NEW_TV_RATING.fullmatch(str(value).strip())),
+                        '0~5 범위의 숫자', '4.8'),
+    }
+
+
 def _format_checks(product_line, retailer=SEM_RETAILER, source_day=None):
     if dryer_config('SEM', product_line, retailer):
         return {}
-    retailer = normalize_sem_retailer(product_line, retailer)
+    retailer = _validation_retailer(product_line, retailer)
     checks = {
         'country': lambda value: str(value).strip().upper() == SEM_COUNTRY,
         'account_name': lambda value: str(value).strip().casefold() == retailer.casefold(),
@@ -354,6 +460,8 @@ def _format_checks(product_line, retailer=SEM_RETAILER, source_day=None):
             checks['ldy_capacity'] = lambda value: bool(_COPPEL_LDY_CAPACITY.fullmatch(str(value).strip()))
         elif product_line == 'sem_ldy_dryer':
             checks['capacity'] = lambda value: bool(_COPPEL_DRYER_CAPACITY.fullmatch(str(value).strip()))
+    if _new_tv_retailer(product_line, retailer):
+        checks.update({field: rule[0] for field, rule in _new_tv_format_profile(retailer).items()})
     return checks
 
 
@@ -377,8 +485,13 @@ def get_review_allowed_columns(product_line, correction_type, retailer=SEM_RETAI
 def get_format_rule_details(product_line, retailer=SEM_RETAILER,
                             source_day=HOMEDEPOT_UNSIGNED_SAVINGS_FROM):
     """Return popup metadata for the exact rules used by SEM validation."""
-    retailer = normalize_sem_retailer(product_line, retailer)
+    retailer = _validation_retailer(product_line, retailer)
     details = dict(_FORMAT_RULE_DETAILS)
+    if _new_tv_retailer(product_line, retailer):
+        details.update({
+            field: {'description': description, 'pattern': example}
+            for field, (_, description, example) in _new_tv_format_profile(retailer).items()
+        })
     if retailer == SEM_HOMEDEPOT_RETAILER:
         details.update({
             'account_name': {'description': 'SEM 수집 리테일러명과 일치', 'pattern': 'HomeDepot'},
@@ -502,6 +615,13 @@ def evaluate_format(row, product_line, retailer=SEM_RETAILER, *, source_day=None
             continue
         if not validator(value):
             errors.append(field)
+    if (_new_tv_retailer(product_line, retailer) == 'Walmart'
+            and not _missing(row.get('item')) and 'item' not in errors
+            and not _missing(row.get('product_url')) and 'product_url' not in errors):
+        item = str(row['item']).strip()
+        tail = urlsplit(str(row['product_url']).strip()).path.rstrip('/').rsplit('/', 1)[-1]
+        if tail != item:
+            errors.append('product_url')
     return errors
 
 
@@ -510,6 +630,14 @@ def _serialize(row, product_line, retailer=SEM_RETAILER):
     result['error_fields'] = evaluate_format(row, product_line, retailer)
     result['error_field'] = ', '.join(result['error_fields'])
     return result
+
+
+def _new_tv_card_state(product_line, retailer, rows):
+    if not _new_tv_retailer(product_line, retailer):
+        return {}
+    if not rows:
+        return {'readonly': True, 'status': 'PENDING', 'validation_label': '검수 대기'}
+    return {'readonly': True}
 
 
 def append_null_stats(cursor, target_date, validation, category=None, review_filter=None):
@@ -527,14 +655,14 @@ def append_null_stats(cursor, target_date, validation, category=None, review_fil
         fields = list(get_sem_required_columns(product_line, source['retailers'][0]))
         retailers = []
         mapping = _mapping(target_date, source)
-        for retailer in active_sem_retailers(product_line, mapping['source_date']):
+        for retailer in _validation_retailers(product_line, mapping['source_date']):
             if review_filter is not None and not review_filter(source['table_name'], retailer):
                 continue
-            retailer_fields = get_sem_required_columns(product_line, retailer)
+            retailer_fields = _validation_required_columns(product_line, retailer)
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             reviews = normal_reviews
             review_stats = {}
-            if uses_new_policy(target_date, SEM_COUNTRY):
+            if not _new_tv_retailer(product_line, retailer) and uses_new_policy(target_date, SEM_COUNTRY):
                 reviews, review_stats, auto_logs = review_state(
                     cursor, target_date, rows, retailer_fields, normal_reviews,
                     table_name=source['table_name'], country=SEM_COUNTRY,
@@ -557,6 +685,7 @@ def append_null_stats(cursor, target_date, validation, category=None, review_fil
                 'total_null_count': issue_count,
                 'fields_detail': field_counts,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
+                **_new_tv_card_state(product_line, retailer, rows),
                 **review_stats,
             })
         issue_count = sum(r['total_null_count'] for r in retailers)
@@ -581,15 +710,15 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
     source = SEM_SOURCE_CONFIG.get(product_line)
     if source and retailer is None:
         retailer = source['retailers'][0]
-    if not source or column not in get_sem_required_columns(product_line, retailer):
+    if not source or column not in _validation_required_columns(product_line, retailer):
         return {'results': [], 'display_config': {}, 'query_config': {}}
-    retailer = normalize_sem_retailer(product_line, retailer)
+    retailer = _validation_retailer(product_line, retailer)
     rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
     normal_reviews = _load_normal_reviews(
         cursor, target_date, product_line, 'null_check', column
     )
     review_stats = {}
-    if uses_new_policy(target_date, SEM_COUNTRY):
+    if not _new_tv_retailer(product_line, retailer) and uses_new_policy(target_date, SEM_COUNTRY):
         normal_reviews, review_stats, _auto_logs = review_state(
             cursor, target_date, rows, [column], normal_reviews,
             table_name=source['table_name'], country=SEM_COUNTRY,
@@ -599,7 +728,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
     target_results = []
     for row in rows:
         null_fields = [
-            field for field in get_sem_required_columns(product_line, retailer)
+            field for field in _validation_required_columns(product_line, retailer)
             if _missing(row.get(field))
         ]
         if column in null_fields:
@@ -631,14 +760,14 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
             results = []
             for row in history_rows:
                 null_fields = [
-                    field for field in get_sem_required_columns(product_line, retailer)
+                    field for field in _validation_required_columns(product_line, retailer)
                     if _missing(row.get(field))
                 ]
                 results.append({**row, 'null_fields': null_fields})
 
     display = _null_detail_columns(column)
     all_columns = list(get_sem_table_columns(product_line))
-    editable = list(get_sem_editable_columns(product_line, retailer))
+    editable = [] if _new_tv_retailer(product_line, retailer) else list(get_sem_editable_columns(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'results': results,
@@ -653,7 +782,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
-        'readonly': False,
+        'readonly': bool(_new_tv_retailer(product_line, retailer)),
         **mapping,
     }
 
@@ -670,7 +799,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
         )
         retailers = []
         mapping = _mapping(target_date, source)
-        for retailer in active_sem_rule_retailers(product_line, mapping['source_date']):
+        for retailer in _validation_retailers(product_line, mapping['source_date'], format_rules=True):
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             issue_count = sum(
                 1 for row in rows
@@ -682,6 +811,7 @@ def append_format_stats(cursor, target_date, validation, category=None):
                 'total': len(rows),
                 'issue_count': issue_count,
                 'status': 'OK' if issue_count == 0 else 'CRITICAL',
+                **_new_tv_card_state(product_line, retailer, rows),
             })
         issue_count = sum(r['issue_count'] for r in retailers)
         validation['tables'].append({
@@ -702,7 +832,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
     source = SEM_SOURCE_CONFIG.get(product_line)
     if not source or dryer_config('SEM', product_line, retailer) or (source.get('null_only') and product_line != 'sem_ldy_dryer'):
         return {'results': [], 'column_names': [], 'actual_table': ''}
-    retailer = normalize_sem_retailer(product_line, retailer)
+    retailer = _validation_retailer(product_line, retailer)
     rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
     normal_reviews = _load_normal_reviews(
         cursor, target_date, product_line, 'format_check'
@@ -741,9 +871,9 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
         'original_sku_price', 'star_rating', 'count_of_star_ratings',
         'count_of_reviews', 'calendar_week', 'product_url',
     )))
-    if retailer in (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER):
+    if retailer in (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER, *SEM_TV_OBSERVATION_RETAILERS):
         columns.insert(columns.index('original_sku_price') + 1, 'savings')
-    editable = list(get_sem_editable_columns(product_line, retailer))
+    editable = [] if _new_tv_retailer(product_line, retailer) else list(get_sem_editable_columns(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
@@ -752,7 +882,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
         'select_cols': list(get_sem_table_columns(product_line)),
         'editable_cols': editable,
         'actual_table': source['table_name'],
-        'validation_fields': [r['field'] for r in get_format_rule_details(product_line, retailer)],
+        'validation_fields': [r['field'] for r in get_format_rule_details(product_line, retailer, mapping['source_date'])],
         'target_ids': [r['id'] for r in target_records],
         'batch_id': rows[0].get('batch_id') if rows else None,
         'normal_reviews': normal_reviews,
@@ -762,7 +892,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
-        'readonly': False,
+        'readonly': bool(_new_tv_retailer(product_line, retailer)),
         **mapping,
     }
 
@@ -794,13 +924,14 @@ def append_duplicate_stats(cursor, target_date, validation, category=None):
             continue
         retailers = []
         mapping = _mapping(target_date, source)
-        for retailer in active_sem_retailers(_product_line, mapping['source_date']):
+        for retailer in _validation_retailers(_product_line, mapping['source_date']):
             rows, mapping = _latest_rows(cursor, target_date, source, retailer)
             groups = _duplicate_groups(rows)
             retailers.append({
                 'retailer': retailer, 'total': len(rows),
                 'duplicate_groups': len(groups), 'duplicate_keys': ['item'],
                 'status': 'OK' if not groups else 'CRITICAL', **mapping,
+                **_new_tv_card_state(_product_line, retailer, rows),
             })
         issues = sum(row['duplicate_groups'] for row in retailers)
         validation['tables'].append({
@@ -823,13 +954,13 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50, retailer=
     source = SEM_SOURCE_CONFIG.get(product_line)
     if not source:
         return {'results': {'duplicates': [], 'total_groups': 0}}
-    retailer = normalize_sem_retailer(product_line, retailer)
+    retailer = _validation_retailer(product_line, retailer)
     page, page_size = max(1, int(page)), min(200, max(1, int(page_size)))
     rows, mapping = _latest_rows(cursor, target_date, source, retailer)
     groups = _duplicate_groups(rows)
     start = (page - 1) * page_size
     total_pages = (len(groups) + page_size - 1) // page_size if groups else 0
-    editable = ['sku']
+    readonly = bool(_new_tv_retailer(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
@@ -838,9 +969,10 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50, retailer=
             'group': ['duplicate_type', 'item', 'retailer_sku_name', 'dup_count', 'reason'],
             'record': ['id', 'sku', 'retailer_sku_name', 'final_sku_price', 'crawl_datetime', 'product_url'],
         },
-        'editable_cols': editable,
+        'editable_cols': [] if readonly else ['sku'],
         'actual_table': source['table_name'],
-        'readonly': False,
+        'readonly': readonly,
+        'sku_editable': not readonly,
         'allow_cleanup': False,
         'results': {
             'duplicates': groups[start:start + page_size],
