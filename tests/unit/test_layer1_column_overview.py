@@ -85,6 +85,34 @@ class ColumnOverviewTests(unittest.TestCase):
         refreshed = {**result, 'updated_at': NOW.isoformat()}
         self.assertEqual('abnormal', overview._compare(refreshed, target, NOW)['comparisons'][0]['status'])
 
+    @override_settings(DX_COLUMN_HISTORY_REUSE_SCOPES={'SIEL:TV:Amazon'})
+    def test_prepared_history_created_after_full_read_is_used_on_next_request(self):
+        target = DAY + timedelta(days=1)
+        available = {}
+        responses = {}
+
+        def cached(namespace, identity, load):
+            key = (namespace, tuple(identity))
+            if key not in responses:
+                responses[key] = load()
+            return responses[key]
+
+        with patch.object(overview, 'monitoring_cached_value', side_effect=cached), \
+                patch.object(overview, 'prepared_generation', return_value='g1'), \
+                patch.object(overview, '_prepared_counts', side_effect=lambda *args, **kwargs: available), \
+                patch.object(overview, 'daily_counts',
+                             side_effect=lambda *args: raw_window(end=target, days=args[-1])) as reads, \
+                patch.object(overview, 'raw_counts', return_value={str(target): 100}):
+            full = overview.live_counts(SCOPE, target)
+            previous = raw_window(last_value=100)
+            available[(SCOPE, DAY)] = overview._window(previous, DAY, {str(DAY): 100}, NOW)
+            incremental = overview.live_counts(SCOPE, target)
+            self.assertEqual(overview.live_counts(SCOPE, target), incremental)
+
+        self.assertEqual([call.args[-1] for call in reads.call_args_list], [29, 1])
+        self.assertEqual((full['read_days'], incremental['read_days']), (29, 1))
+        self.assertEqual(full['daily'], incremental['daily'])
+
     def test_history_reuse_requires_enabled_scope_and_stable_generation(self):
         target = DAY + timedelta(days=1)
         for enabled, generation, expected in [

@@ -119,17 +119,29 @@ def history_reuse_enabled(scope):
     return ':'.join(scope) in getattr(settings, 'DX_COLUMN_HISTORY_REUSE_SCOPES', ())
 
 
+def _prior_window(scope, target):
+    generation = prepared_generation() if history_reuse_enabled(scope) else None
+    if not generation:
+        return None, None
+    selection = (scope, target - timedelta(days=1))
+    history = _prepared_counts([selection], generation=generation).get(selection)
+    if history:
+        expected = [str(target - timedelta(days=offset)) for offset in range(_WINDOW, 0, -1)]
+        if history['dates'] == expected and [row['date'] for row in history['daily']] == expected:
+            return generation, history
+    return None, None
+
+
+def _live_identity(scope, target, history):
+    return [*scope, str(target), history['updated_at'] if history else None]
+
+
 def live_counts(scope, target):
+    preview = _preview(scope, target)
+    generation, history = (None, None) if preview else _prior_window(scope, target)
+
     def read():
         country, product, retailer = scope
-        prior = target - timedelta(days=1)
-        selection = (scope, prior)
-        generation = prepared_generation() if not preview and history_reuse_enabled(scope) else None
-        history = _prepared_counts([selection], generation=generation).get(selection) if generation else None
-        if history:
-            expected_dates = [str(target - timedelta(days=offset)) for offset in range(_WINDOW, 0, -1)]
-            if history['dates'] != expected_dates or [row['date'] for row in history['daily']] != expected_dates:
-                history = None
 
         def collect(days):
             started = timezone.now()
@@ -153,10 +165,9 @@ def live_counts(scope, target):
         data.setdefault('read_days', _WINDOW)
         return _window(data, target, totals, started)
 
-    preview = _preview(scope, target)
     if preview:
         return read()
-    return monitoring_cached_value('column-overview-live-v3', [*scope, str(target)], read)
+    return monitoring_cached_value('column-overview-live-v4', _live_identity(scope, target, history), read)
 
 
 def _prepared_counts(selections, *, generation=None):
@@ -181,7 +192,8 @@ def detail_counts(scope, target, days):
     result = _prepared_counts([selection]).get(selection)
     if result and datetime.fromisoformat(result['updated_at']) >= timezone.now() - timedelta(minutes=5):
         return result
-    return monitoring_cached_value('column-overview-live-v3', [*scope, str(target)])
+    _, history = _prior_window(scope, target)
+    return monitoring_cached_value('column-overview-live-v4', _live_identity(scope, target, history))
 
 
 def _compare(data, target, now):
