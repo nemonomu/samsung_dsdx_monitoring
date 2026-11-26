@@ -682,14 +682,14 @@
             createReportTable(section, [
                 { key: 'retailer', label: '리테일러' },
                 { key: 'received', label: '수집' },
-                { key: 'checked', label: '비교 가능' },
+                { key: 'checked', label: '검사한 레코드' },
                 { key: 'failed', label: '이상' },
                 { key: 'review_count', label: '확인 필요' },
                 { key: 'status', label: '상태' }
             ], observation.retailers, function(row) {
                 var status = !row.received ? '검수 대기'
                     : !row.checked ? '비교 대상 없음' : row.failed ? '이상 있음'
-                        : row.review_count ? '확인 필요' : '이상 없음';
+                        : row.review_count ? '확인 필요' : '검사 항목 이상 없음';
                 return '<tr><td>' + L4.escapeHtml(row.retailer)
                     + '</td><td>' + Number(row.received) + '</td><td>' + Number(row.checked)
                     + '</td><td>' + Number(row.failed) + '</td><td>' + Number(row.review_count || 0)

@@ -168,7 +168,9 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         self.assertEqual('2026-11-27', snapshot['source_date'])
         self.assertEqual([1, 1, 1, 1, None], [check['pending'] for check in walmart['checks']])
         self.assertEqual(2, latest.call_count)
+        self.assertEqual({'failed': 0, 'review_count': 1}, walmart['checks'][3]['findings'])
         self.assertTrue(all(check['pending'] is None for check in sams['checks']))
+        self.assertNotIn('findings', sams['checks'][3])
         cursor.execute.assert_not_called()
 
 

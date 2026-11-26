@@ -51,6 +51,9 @@ def review_snapshot(cursor, mapping):
         payload['retailers'].append({
             'name': retailer, 'collected': collected,
             'checks': [{'type': key, 'label': title, 'pending': pending,
-                        'normal': None, 'corrected': None} for key, title, pending in checks],
+                        'normal': None, 'corrected': None,
+                        **({'findings': {'failed': cross_check['failed'], 'review_count': cross_check['review_count']}}
+                           if key == 'cross_field' and pending is not None else {})}
+                       for key, title, pending in checks],
         })
     return payload

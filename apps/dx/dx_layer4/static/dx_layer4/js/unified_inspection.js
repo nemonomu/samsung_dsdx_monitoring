@@ -203,10 +203,13 @@
                 return retailer.checks.map(function(check) {
                     var href = tvReviewUrl(country, check.type, data.inspection_date);
                     var label = escapeHtml(check.label);
+                    var breakdown = check.findings && check.pending > 0
+                        ? '<br><small>이상 ' + escapeHtml(formatCount(check.findings.failed)) +
+                          ' · 확인 필요 ' + escapeHtml(formatCount(check.findings.review_count)) + '</small>' : '';
                     return '<tr><td>' + escapeHtml(retailer.name) + '</td><td>' +
                         (href ? '<a href="' + escapeHtml(href) + '">' + label + '</a>' : label) +
                         '</td><td>' + escapeHtml(formatCount(retailer.collected)) + '</td><td>' +
-                        escapeHtml(formatCount(retailer.collected ? check.pending : null)) + '</td><td>' +
+                        escapeHtml(formatCount(retailer.collected ? check.pending : null)) + breakdown + '</td><td>' +
                         escapeHtml(formatCount(check.normal)) + '</td><td>' +
                         escapeHtml(formatCount(check.corrected)) + '</td></tr>';
                 }).join('');

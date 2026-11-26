@@ -6,8 +6,9 @@ from decimal import Decimal
 RULES = (
     ('mx_tv_savings_amount_match', '할인금액 일치', 'savings', 'original_sku_price',
      '같은 상품의 유효한 MXN 원가·최종가·절감액이 있을 때 원가 − 최종가와 절감액을 비교합니다.'),
-    ('mx_tv_price_order', '할인 전 가격과 최종가 순서', 'final_sku_price', 'original_sku_price',
-     '할인 전 가격과 최종가가 모두 유효하면 최종가가 더 낮아야 합니다.'),
+    ('mx_tv_price_order', '가격 순서·할인율 확인', 'final_sku_price', 'original_sku_price',
+     '최종가가 할인 전 가격을 초과하거나 양수 절감액이 있는데 두 가격이 같으면 이상입니다. '
+     '절감액이 비어 있는 동일가와 계산 할인율 90% 이상은 원문 확인이 필요합니다.'),
     ('mx_tv_final_missing', '할인 정보가 있는데 최종가 누락', 'final_sku_price', 'original_sku_price',
      '유효한 할인 전 가격 또는 절감액이 있는데 최종가가 비어 있으면 이상입니다.'),
     ('mx_tv_original_missing', '절감액이 있는데 할인 전 가격 누락', 'original_sku_price', 'savings',
@@ -55,14 +56,20 @@ def evaluate(row, retailer, checks):
             verdicts['mx_tv_original_missing'] = 'ok'
 
     if final is not None and original is not None:
-        ordered = final < original
-        verdicts['mx_tv_price_order'] = 'ok' if ordered else 'anomaly'
-        if ordered:
+        difference = original - final
+        if difference < 0 or (difference == 0 and savings is not None):
+            verdicts['mx_tv_price_order'] = 'anomaly'
+        elif ((difference == 0 and _blank(row.get('savings')))
+              or difference * 10 >= original * 9):
+            verdicts['mx_tv_price_order'] = 'review_needed'
+        elif difference > 0:
+            verdicts['mx_tv_price_order'] = 'ok'
+        if difference > 0:
             if _blank(row.get('savings')):
                 verdicts['mx_tv_savings_missing'] = 'review_needed'
             elif savings is not None:
                 verdicts['mx_tv_savings_missing'] = 'ok'
-                verdicts['mx_tv_savings_amount_match'] = 'ok' if original - final == savings else 'anomaly'
+                verdicts['mx_tv_savings_amount_match'] = 'ok' if difference == savings else 'anomaly'
 
     if retailer == 'Walmart':
         rating = amount('star_rating')

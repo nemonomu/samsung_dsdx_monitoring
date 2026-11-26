@@ -181,6 +181,10 @@ function _cfColumnDefinition(key) {
     return { key, label: definition.label, width: definition.width };
 }
 
+function _cfIsSemReadOnly() {
+    return window.crossfieldReadonly === true && String(window.crossfieldProductLine).toUpperCase() === 'SEM_TV';
+}
+
 function showRetailerDetail(retailer) {
     const inline = isCrossFieldInline();
     const retailerData = window.crossfieldRetailerData;
@@ -229,7 +233,8 @@ function showRetailerDetail(retailer) {
         ? `이상 ${anomalyCount.toLocaleString()}건 · 확인 필요 ${reviewCount.toLocaleString()}건`
         : `${anomalyCount.toLocaleString()}건`;
     const titleText = `${ruleNameDisplay} (${findingCountText})`;
-    const subtitleText = `${productLineDisplay} Retail | ${retailer}${window.crossfieldReadonly ? ' · 테스트 조회' : ''}`;
+    const accessLabel = _cfIsSemReadOnly() ? ' · 조회 전용' : window.crossfieldReadonly ? ' · 테스트 조회' : '';
+    const subtitleText = `${productLineDisplay} Retail | ${retailer}${accessLabel}`;
 
     const editableCols = inline ? _cfEditableColumns(retailer) : new Set();
     const normalReviews = inline ? (window.crossfieldNormalReviews || {}) : {};
@@ -716,7 +721,8 @@ function _cfRenderPage(page) {
                 );
                 var dateBadge = '';
                 if (isTargetDate) {
-                    dateBadge = '<span class="cf-date-badge target">수정 대상</span>';
+                    dateBadge = '<span class="cf-date-badge target">' +
+                        (_cfIsSemReadOnly() ? '검수 대상' : '수정 대상') + '</span>';
                 } else if (rowRole === 'comparison_history') {
                     dateBadge = '<span class="cf-date-badge history">비교 이력</span>';
                 }

@@ -53,6 +53,35 @@ class SemTvCrossfieldTests(unittest.TestCase):
         self.assertNotIn('mx_tv_written_review_count', sams)
         self.assertNotIn('mx_tv_rank_presence', sams)
 
+    def test_same_price_and_extreme_discount_are_reviewed_without_cascading(self):
+        for retailer, row, price in [
+            ('Walmart', self.walmart, lambda value: '$' + value),
+            ("Sam's Club", self.sams, str),
+        ]:
+            checks = services._format_checks('sem_tv', retailer)
+            def evaluate(final, original, savings):
+                return services.sem_tv_rules.evaluate({
+                    **row, 'final_sku_price': price(final),
+                    'original_sku_price': price(original), 'savings': savings,
+                }, retailer, checks)
+
+            with self.subTest(retailer=retailer):
+                same = evaluate('100.00', '100.00', None)
+                self.assertEqual('review_needed', same['mx_tv_price_order'])
+                self.assertNotIn('mx_tv_savings_missing', same)
+                self.assertNotIn('mx_tv_savings_amount_match', same)
+                confirmed = evaluate('100.00', '100.00', '$0.01')
+                self.assertEqual('anomaly', confirmed['mx_tv_price_order'])
+                self.assertNotIn('mx_tv_savings_amount_match', confirmed)
+                self.assertNotIn('mx_tv_price_order', evaluate('100.00', '100.00', '20%'))
+                self.assertEqual('anomaly', evaluate('100.01', '100.00', None)['mx_tv_price_order'])
+                limit = evaluate('10.00', '100.00', '$90.00')
+                self.assertEqual('review_needed', limit['mx_tv_price_order'])
+                self.assertEqual('ok', limit['mx_tv_savings_amount_match'])
+                self.assertEqual('ok', evaluate('10.01', '100.00', '$89.99')['mx_tv_price_order'])
+                tiny = evaluate('99.99', '100.00', None)
+                self.assertEqual('review_needed', tiny['mx_tv_savings_missing'])
+
     def test_date_scope_summary_and_readonly_history(self):
         def latest(_cursor, day, source, retailer='Liverpool'):
             rows = {
