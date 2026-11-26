@@ -80,17 +80,20 @@
     background: #fef2f2;
 }
 
-.dx-overview-markets section {
+.dx-overview-markets {
     display: grid;
-    grid-template-columns: 9rem minmax(0, 1fr);
-    align-items: baseline;
-    gap: 4px 16px;
-    padding: 12px 20px;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.dx-overview-markets section {
+    min-width: 0;
+    padding: 16px 20px 12px;
     border-top: 1px solid var(--border-color);
 }
 
 .dx-overview-markets h3 {
-    font-size: 15px;
+    margin-bottom: 8px;
+    font-size: 16px;
     line-height: 1.4;
 }
 
@@ -103,22 +106,19 @@
 }
 
 .dx-overview-date {
-    grid-column: 1;
-    grid-row: 2;
+    margin-block: -4px 6px;
 }
 
 .dx-overview-issues {
-    grid-column: 2;
-    grid-row: 1 / span 2;
     list-style: none;
 }
 
 .dx-overview-issues li {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 32%) minmax(0, 1fr) minmax(5.5rem, auto);
     align-items: center;
-    gap: 3px 8px;
-    padding-block: 4px;
+    gap: 3px 12px;
+    padding-block: 6px;
     color: #334155;
     font-size: 14px;
     overflow-wrap: anywhere;
@@ -129,6 +129,7 @@
 }
 
 .dx-overview-issues p {
+    grid-column: 1 / -1;
     color: #475569;
     font-size: 13px;
 }
@@ -147,6 +148,7 @@
 }
 
 .dx-overview-issue-state {
+    justify-self: end;
     padding: 2px 7px;
     border-radius: 6px;
     background: #fef2f2;
@@ -158,6 +160,20 @@
 .dx-overview-issue-state:is([data-status="partial"], [data-status="unknown"]) {
     background: #fffbeb;
     color: #854d0e;
+}
+
+@media (min-width: 900px) {
+    .dx-overview-markets {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dx-overview-markets section:only-child {
+        grid-column: 1 / -1;
+    }
+
+    .dx-overview-markets section:nth-child(even) {
+        border-inline-start: 1px solid var(--border-color);
+    }
 }
 
 @media (max-width: 600px) {
@@ -174,15 +190,9 @@
         font-size: 17px;
     }
 
-    .dx-overview-markets section {
-        grid-template-columns: minmax(0, 1fr);
-        row-gap: 4px;
-    }
-
-    .dx-overview-issues,
-    .dx-overview-date {
-        grid-column: 1;
-        grid-row: auto;
+    .dx-overview-issues li {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 4.75rem) minmax(0, 5.25rem);
+        column-gap: 8px;
     }
 
     .dx-overview-footer {
