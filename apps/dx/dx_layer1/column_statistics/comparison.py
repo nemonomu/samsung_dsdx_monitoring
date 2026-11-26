@@ -139,9 +139,15 @@ def minimum_days(data):
 
 
 def attach_comparisons(data, target, now=None):
+    scope = (data['country'], data['product'], data['retailer'])
+    now = now or datetime.now(KST)
     completed = {day['date']: collection_complete(
-        data['country'], data['product'], data['retailer'], date.fromisoformat(day['date']), now)
+        *scope, date.fromisoformat(day['date']), now)
         for day in data['daily']}
+    target_key = str(target)
+    if completed.get(target_key) and data.get('updated_at'):
+        read_at = datetime.fromisoformat(data['updated_at'])
+        completed[target_key] = collection_complete(*scope, target, read_at)
     return {**data, 'comparison_date': str(target), 'baseline_days': BASELINE_DAYS,
             'minimum_history_days': minimum_days(data),
             'comparisons': compare_columns(data, target, completed),

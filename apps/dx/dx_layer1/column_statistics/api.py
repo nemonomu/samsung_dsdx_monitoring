@@ -85,18 +85,26 @@ def daily(request):
         eci_preview = country == 'SEIB' and is_eci_appliance_preview(product, retailer, target)
         preview = eci_preview or (jiomart.matches(country, product, retailer) and jiomart.preview(target)) \
             or is_preview(country, product, retailer, target)
-        result = None if preview else cache.get(key)
+        scope = (country, product, retailer)
+        result = None
+        if not preview and query_days == 29 and request.GET.get('reuse_history') == '1':
+            from .overview import history_reuse_enabled, live_counts
+            if history_reuse_enabled(scope):
+                result = live_counts(scope, target)
+        if result is None and not preview:
+            result = cache.get(key)
         if result is None and not preview and request.GET.get('prepared') == '1':
             from .overview import detail_counts
 
             result = detail_counts((country, product, retailer), target, query_days)
         if result is None:
+            read_started = timezone.now()
             result = daily_counts(country, product, retailer, target, query_days)
             totals = {} if eci_preview else raw_counts(country, product, retailer, target, target)
             for row in result['daily']:
                 if row['date'] == str(target):
                     row['raw_total'] = row['total'] if eci_preview else totals.get(str(target), 0)
-            result['updated_at'] = timezone.now().isoformat()
+            result['updated_at'] = read_started.isoformat()
             if not preview:
                 cache.set(key, result, 300)
         # Recheck completion on each request, even across a cached window boundary.

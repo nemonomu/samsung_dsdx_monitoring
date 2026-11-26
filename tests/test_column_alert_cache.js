@@ -5,10 +5,10 @@ const source = fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/column-ale
 const storage = new Map();
 let now = 100000;
 class TestDate extends Date { static now() { return now; } }
-function page(username = 'reviewer', blockedStorage = false) {
+function page(username = 'reviewer', blockedStorage = false, section = '') {
     const requests = [];
     const sandbox = {
-        LAYER1: {username}, Date: TestDate, structuredClone, URLSearchParams,
+        LAYER1: {username, section}, Date: TestDate, structuredClone, URLSearchParams,
         sessionStorage: {
             getItem(key) { if (blockedStorage) throw Error('blocked'); return storage.get(key); },
             setItem(key, value) { if (blockedStorage) throw Error('blocked'); storage.set(key, value); },
@@ -26,6 +26,16 @@ const result = {comparison_date:date, comparisons:[{column:'sku', status:'abnorm
     baseline:100, ratio:0, delta:-100, history_days:28}], daily:[{raw:'not for storage'}]};
 const reply = (req, ok = true) => req.resolve({ok, json:async () => structuredClone(result)});
 (async () => {
+    const dashboard = page('dashboard-reviewer', false, 'dashboard');
+    const initialDashboardRead = dashboard.cache.load(jobs[0], date);
+    assert.equal(new URL(dashboard.requests[0].url, 'https://dashboard.test').searchParams.get('reuse_history'), '1');
+    reply(dashboard.requests[0]);
+    await initialDashboardRead;
+    const manualDashboardRead = dashboard.cache.load(jobs[0], date, {force:true});
+    assert.equal(new URL(dashboard.requests[1].url, 'https://dashboard.test').searchParams.has('reuse_history'), false);
+    reply(dashboard.requests[1]);
+    await manualDashboardRead;
+
     const first = page();
     const cold = jobs.map(job => first.cache.load(job, date));
     assert.equal(first.requests.length, 37);
