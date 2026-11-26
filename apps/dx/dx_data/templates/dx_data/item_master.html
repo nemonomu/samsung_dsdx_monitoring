@@ -75,9 +75,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/filter-bar.js' %}"></script>
-<script src="{% static 'js/table.js' %}"></script>
-<script src="{% static 'js/pagination.js' %}"></script>
     <script>
         const currentUserId = '{{ user.username|escapejs }}';
     </script>
