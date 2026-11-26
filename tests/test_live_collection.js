@@ -105,6 +105,7 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     const explicit=dashboardRequests.filter(request=>request.url.includes('/api/stats/')).at(-1);
     assert.equal(new URL(explicit.url, 'http://test').searchParams.get('refresh'), '1');
     assert.equal(explicit.options.cache, 'no-store');
+    assert.equal(new URL(explicit.url, 'http://test').searchParams.get('dashboard'), '1');
     assert.equal(ddayRequests.at(-1).options.refresh,true);
     resolveSaved(response(oldSnapshot));
     await manual;

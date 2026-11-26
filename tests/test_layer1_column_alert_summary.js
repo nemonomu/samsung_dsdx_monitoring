@@ -19,7 +19,7 @@ class Element {
     addEventListener(k, fn) {this.listeners[k] = fn;}
     reportValidity() {return true;}
 }
-function setup(section = 'dashboard') {
+function setup(section = 'retail') {
     const nodes = new Map();
     for (const id of ['l1-column-alert-catalog','l1-column-alert-link','l1-column-alert-total','l1-column-alert-breakdown','l1-column-alert-history','l1-column-alert-history-detail']) nodes.set(id, new Element());
     nodes.get('l1-column-alert-catalog').textContent = JSON.stringify([{country:'SEA',product:'TV',retailers:['Amazon','Bestbuy','Walmart']}]);
@@ -119,5 +119,20 @@ function setup(section = 'dashboard') {
     reviewed.respond(reviewed.pending[2], []); await reviewedRun;
     assert.equal(reviewed.nodes.get('l1-column-alert-total').textContent,'1');
     assert.equal(reviewed.badge().textContent,'1','confirmed columns no longer count as alerts');
+    const grouped = setup('dashboard');
+    const groupedRun = grouped.sandbox.ColumnAlertSummary.load('2026-09-23', true, true);
+    assert.equal(grouped.pending.length, 1, 'one request for all products in the country');
+    const query = new URL(grouped.pending[0].url, 'http://test');
+    assert.equal(query.pathname, '/dx/layer1/api/column-statistics/overview/');
+    assert.equal(query.searchParams.get('dashboard'), '1');
+    assert.equal(query.searchParams.get('refresh'), '1');
+    grouped.respond(grouped.pending[0], [], true, {country:'SEA', inspection_date:'2026-09-23', rows:[
+        {product:'TV', retailer:'Amazon', comparisons:[{status:'review', review:{active:true}}]},
+        {product:'TV', retailer:'Bestbuy', error:true},
+        {product:'TV', retailer:'Walmart', comparisons:[{status:'abnormal'}]},
+    ]});
+    await groupedRun;
+    assert.equal(grouped.nodes.get('l1-column-alert-total').textContent, '일부 조회 실패');
+    assert.match(grouped.nodes.get('l1-column-alert-breakdown').textContent, /2\/3개 대상 조회 완료 · 조회된 이상 1건 · 확인 필요 0건/);
     console.log('Layer1 column alert summary: global badge, totals, links, loading, retries, failures, stale dates and statistics pages passed.');
 })().catch(error => {console.error(error); process.exitCode = 1;});
