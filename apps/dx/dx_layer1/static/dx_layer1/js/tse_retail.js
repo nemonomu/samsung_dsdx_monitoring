@@ -24,7 +24,8 @@ function renderTseRetailerRow(retailer) {
         '<td>' + mainCount.toLocaleString() + '</td>' +
         (L1.retailStatus.bsrCell ? L1.retailStatus.bsrCell(retailer, bsrDisplay) : '<td>' + bsrDisplay + '</td>') +
         '<td class="rt-total">' + actual.toLocaleString() + '</td>' +
-        '<td class="rt-status ct-nc">' + L1.retailStatus.rowBadge(retailer) + '</td>' +
+        '<td class="rt-status ct-nc' + (retailer.observation_start ? ' rt-observation-status' : '') + '">' +
+            L1.retailStatus.rowBadge(retailer) + '</td>' +
     '</tr>';
 }
 
@@ -112,8 +113,11 @@ function renderTseRetailCheck(check, checkIdx) {
             check.country || (check.check_type === 'sem_retail' ? 'SEM' : 'TSE'));
     }).join('');
 
+    var observationClass = check.check_type === 'sem_retail' && categories.some(function(cat) {
+        return (cat.retailers || []).some(function(retailer) { return retailer.observation_start; });
+    }) ? ' sem-observation-check' : '';
     return '<div class="check-item">' +
-        '<div class="check-main retail-check-main" onclick="L1.retailStatus.toggle(this, ' + checkIdx + ')">' +
+        '<div class="check-main retail-check-main' + observationClass + '" onclick="L1.retailStatus.toggle(this, ' + checkIdx + ')">' +
             '<div class="check-info">' +
                 '<div class="check-name"><span class="toggle-icon">▶</span>' + renderCountryFlagLabel(check.name || 'TSE Retail') + '</div>' +
                 '<div class="check-description">' + esc(check.description || '') + '</div>' +

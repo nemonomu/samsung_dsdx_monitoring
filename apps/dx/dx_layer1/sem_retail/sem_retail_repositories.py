@@ -2,7 +2,9 @@
 
 from collections.abc import Mapping
 
-from apps.common.sem_retail import get_sem_source, sem_batch_order, sem_start_date
+from apps.common.sem_retail import (
+    SEM_TV_OBSERVATION_RETAILERS, get_sem_source, sem_batch_order, sem_start_date,
+)
 from apps.common.dryer_onboarding import config as dryer_config, OPERATIONAL_FROM
 from apps.common.source_dates import source_date_sql
 
@@ -56,6 +58,30 @@ def get_latest_batch_counts(cursor, product_line, retailer, target_date):
         'main_count': int(row.get('main_count') or 0),
         'bsr_count': int(row.get('bsr_count') or 0),
     }
+
+
+def get_tv_observation_counts(cursor, target_date):
+    table = get_sem_source('sem_tv')['table_name']
+    cursor.execute(f'''
+        WITH scoped AS (
+            SELECT id, LOWER(BTRIM(account_name)) AS retailer_key,
+                   batch_id, main_rank, bsr_rank
+            FROM {table}
+            WHERE country = 'SEM'
+              AND {source_date_sql('crawl_datetime')} = %s
+              AND LOWER(BTRIM(account_name)) = ANY(%s)
+              AND NULLIF(BTRIM(batch_id), '') IS NOT NULL
+        ), latest AS (
+            SELECT DISTINCT ON (retailer_key) retailer_key, batch_id
+            FROM scoped ORDER BY retailer_key, id DESC
+        )
+        SELECT retailer_key, batch_id, COUNT(*) AS raw_count,
+               COUNT(main_rank) AS main_count, COUNT(bsr_rank) AS bsr_count
+        FROM scoped
+        JOIN latest USING (retailer_key, batch_id)
+        GROUP BY retailer_key, batch_id
+    ''', (str(target_date), [retailer.lower() for retailer in SEM_TV_OBSERVATION_RETAILERS]))
+    return {row.pop('retailer_key'): row for row in _rows(cursor)}
 
 
 def get_previous_main_counts(
