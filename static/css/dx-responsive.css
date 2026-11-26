@@ -74,7 +74,7 @@
     .dx-responsive :is(.l1-layout, .l2-layout, .l3-layout, .l4-layout) {
         flex-direction: column;
         align-items: stretch;
-        margin-inline: 0;
+        margin: 0;
     }
 
     .dx-responsive .dx-sidebar,
@@ -191,6 +191,21 @@
 @media (max-width: 768px) {
     .dx-responsive .main-content {
         padding: 16px 12px 24px;
+    }
+
+    .dx-responsive #field-missing-section .category-header {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .dx-responsive #field-missing-section .category-title {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .dx-responsive #field-missing-section .category-summary {
+        flex-wrap: wrap;
+        gap: 12px;
     }
 
     .dx-responsive :is(.data-layout, .documents-layout) {
