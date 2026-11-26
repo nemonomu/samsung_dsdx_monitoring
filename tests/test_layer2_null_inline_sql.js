@@ -123,4 +123,14 @@ assert(idQuery.includes('id IN (9)'));
 assert(idQuery.includes("batch_id = 'b''2'"));
 assert(!idQuery.includes('item IN'));
 
+const semTv = setup('sem_tv_retail', 'SEM', 'dx_sem.dx_sem_tv_retail_com', 'crawl_datetime', "Sam's Club");
+Object.assign(semTv.data, {active_from: '2026-11-27', source_date: '2026-11-28', query_retailer: "Sam's Club"});
+const semTvSql = semTv.sandbox._buildNullRetailDisplayQuery(
+    'screen_size', semTv.data, [{id: 9, item: '000123'}], '2026-11-28', 5, "Sam's Club", false, true
+);
+assert(semTvSql.includes("BETWEEN '2026-11-27' AND '2026-11-28'"));
+assert(semTvSql.includes("LOWER('Sam''s Club')"));
+assert(semTvSql.includes("NULLIF(BTRIM(latest.batch_id), '') IS NOT NULL"));
+assert(semTvSql.includes("item IN ('000123')"));
+
 console.log('Layer2 NULL detail SQL appears beside the item list for every retail country.');

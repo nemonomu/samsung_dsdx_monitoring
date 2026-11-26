@@ -41,8 +41,8 @@ def active_from(source, retailer):
         return TV_START if new_tv_retailer(country, product, retailer) else SEUK_START
     if country == 'SEIB':
         return seib_retailer_start_date(get_seib_source(source['key']), retailer)
-    if country == 'SEM' and product == 'LDY_DRYER':
-        return sem_start_date('sem_ldy_dryer', retailer)
+    if country == 'SEM':
+        return sem_start_date(source['key'], retailer)
     if country == 'SEG':
         return retailer_start_date(get_seg_source(source['key']), retailer)
     if country == 'SEA':

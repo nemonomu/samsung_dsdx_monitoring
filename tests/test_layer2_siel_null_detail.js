@@ -17,6 +17,7 @@ const nullTemplateSource = fs.readFileSync(
 
 const dashboardSandbox = {
     console,
+    esc: value => String(value),
     renderCountryFlagLabel: value => String(value),
     renderNullFieldsDetail(fields) {
         return Object.keys(fields || {}).join(',');
@@ -86,7 +87,8 @@ assert.ok(summaryHtml.includes('검수일 2026-08-31'));
 assert.ok(summaryHtml.includes('데이터일 2026-08-31'));
 assert.ok(summaryHtml.includes('· D'));
 assert.ok(!summaryHtml.includes('batch_id:'));
-assert.ok(summaryHtml.includes("this.dataset.fields, 'siel_ref_retail'"));
+assert.ok(summaryHtml.includes('data-code="siel_ref_retail"'));
+assert.ok(summaryHtml.includes('this.dataset.fields, this.dataset.code'));
 
 let detailBody = { innerHTML: '' };
 let itemQueryHtml = '';

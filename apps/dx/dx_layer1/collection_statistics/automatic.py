@@ -6,7 +6,10 @@ from apps.dx.dx_layer1.models import CollectionDailySnapshot as Daily
 from .calculations import COUNTRIES, OFFSETS, SOURCE_START_DATES
 from .collector import refresh_country
 from apps.common.seib_retail import FIRST_SOURCE_DATE as SEIB_START_DATE, ECI_APPLIANCE_START
-from apps.common.sem_retail import SEM_DRYER_FIRST_SOURCE_DATE, SEM_COPPEL_DRYER_FIRST_SOURCE_DATE
+from apps.common.sem_retail import (
+    SEM_DRYER_FIRST_SOURCE_DATE, SEM_COPPEL_DRYER_FIRST_SOURCE_DATE,
+    SEM_TV_OBSERVATION_RETAILERS, SEM_TV_OBSERVATION_START,
+)
 from apps.dx.dx_layer1.siel_retail import jiomart
 from apps.dx.dx_layer1.seuk_retail.sources import TV_START, TV_RETAILERS
 from apps.dx.dx_layer1.retail import costco, bestbuy_dryer, homedepot_dryer, lowes_dryer
@@ -56,6 +59,10 @@ def history_range(country, last_due):
              or {r['product'] for r in rows if r['retailer'] == jiomart.RETAILER
                  and r.get('active_from') == str(jiomart.START)
                  and r.get('source_date_basis') == jiomart.DATE_BASIS} == set(jiomart.PRODUCT_COLUMNS))
+        and (country != 'SEM' or day < SEM_TV_OBSERVATION_START or set(SEM_TV_OBSERVATION_RETAILERS) <= {
+             r['retailer'] for r in rows if r['product'] == 'TV'
+             and r.get('active_from') == str(SEM_TV_OBSERVATION_START)
+             and r.get('source_date_basis') == 'db_original'})
         and (country != 'SEM' or day < SEM_DRYER_FIRST_SOURCE_DATE
              or any(r['product'] == 'LDY_DRYER' and r['retailer'] == 'HomeDepot'
                     and r.get('source_date_basis') == 'db_original' for r in rows))

@@ -21,9 +21,10 @@ def collection_complete(country, product, retailer, source_day, now=None):
         return jiomart.phase(source_day, now) == 'complete'
     if dryer_config(country, product, retailer) and source_day < OPERATIONAL_FROM:
         return False
-    if country == 'SEM' and product == 'LDY_DRYER':
+    if country == 'SEM':
         from apps.common.sem_retail import sem_start_date
-        if source_day < sem_start_date('sem_ldy_dryer', retailer):
+        launch = sem_start_date('sem_' + product.lower(), retailer)
+        if launch and source_day < launch:
             return False
     if country == 'SEG':
         from apps.dx.dx_layer1.seg_retail.sources import retailer_start_date, get_seg_source

@@ -88,6 +88,37 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertEqual((350, 300, 100), tuple(completed[1][key] for key in ('raw_count', 'main_count', 'bsr_count')))
         self.assertEqual('CRITICAL', completed[2]['status'])
 
+    def test_new_sem_tv_retailers_observe_five_dates_then_use_two_medians(self):
+        from apps.dx.dx_layer1.collection_statistics.calculations import compare_rows, comparison_rules
+
+        walmart = dict(product='TV', retailer='Walmart', slot='daily', main=100, bsr=40,
+                       total=100, complete=True, baseline_eligible=True, base_status='OK')
+        sams = {**walmart, 'retailer': "Sam's Club", 'main': 160, 'bsr': 70}
+        start = date(2026, 11, 27)
+        history = [{**row, 'source_date': str(start + timedelta(days=i))}
+                   for i in range(5) for row in (walmart, sams)]
+        day_five = compare_rows([walmart, sams], history[:-2], 'SEM')
+        self.assertTrue(all(r['observation_days'] == 5 and not r['alerts'] and not r['baselines']
+                            for r in day_five))
+        low = {**walmart, 'main': 65, 'bsr': 25}
+        first, second = compare_rows([low, sams], history, 'SEM')
+        self.assertEqual({'value': 100, 'days': 5}, first['baselines']['main'])
+        self.assertEqual({'value': 40, 'days': 5, 'rule': 'median_28d'}, first['baselines']['bsr'])
+        self.assertEqual({'main', 'bsr'}, {alert['metric'] for alert in first['alerts']})
+        self.assertEqual(70, comparison_rules(second, 'SEM')['bsr']['baseline'])
+        self.assertFalse(second['alerts'])
+
+    def test_new_sem_tv_layer2_history_keeps_invalid_country_in_scope(self):
+        from apps.dx.dx_layer2.sem_validation import _history_rows
+
+        cursor = ScriptedCursor([{'description': [('item',), ('country',)], 'fetchall': [('0001', None)]}])
+        rows = _history_rows(cursor, SEM_SOURCE_CONFIG['sem_tv'], date(2026, 11, 20),
+                             date(2026, 11, 28), ['0001'], retailer="Sam's Club")
+        sql, params = cursor.calls[0]
+        self.assertEqual(('2026-11-27', '2026-11-28', "Sam's Club", '0001'), params)
+        self.assertNotIn('UPPER(BTRIM(country))', sql)
+        self.assertEqual([{'item': '0001', 'country': None}], rows)
+
     def test_layer1_repository_filters_requested_retailer(self):
         cursor = ScriptedCursor([{
             'description': [

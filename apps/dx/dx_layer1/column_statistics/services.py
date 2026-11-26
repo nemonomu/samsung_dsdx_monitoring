@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from apps.common.db import dx_connection
 from apps.common.dryer_onboarding import config as dryer_config
-from apps.common.sem_retail import SEM_SOURCE_CONFIG
+from apps.common.sem_retail import SEM_SOURCE_CONFIG, SEM_TV_OBSERVATION_RETAILERS, sem_tv_observation_retailer
 from apps.common.seib_retail import ECI_APPLIANCE_PREVIEW_FROM, SEIB_SOURCE_CONFIG, is_eci_appliance_preview
 from apps.dx.dx_layer1.seuk_retail.sources import SEUK_SOURCE_CONFIG, new_tv_retailer
 from apps.common.sem_retail import get_sem_table_columns, sem_batch_order
@@ -54,6 +54,8 @@ def _sources():
     for source in EMAIL_REPORT_SOURCES:
         if source['country'] == 'SIEL':
             yield {**source, 'retailers': (*source['retailers'], _retailer(jiomart.RETAILER))}
+        elif source['key'] == 'sem_tv':
+            yield {**source, 'retailers': (*source['retailers'], *map(_retailer, SEM_TV_OBSERVATION_RETAILERS))}
         elif source['country'] == 'SEA':
             yield {**source, 'retailers': (*source['retailers'], _retailer('Costco'))}
             if source['product'] == 'LDY':
@@ -100,6 +102,8 @@ def query_spec(source, retailer, columns, start, end):
     day = day_sql(source)
     clauses = [_retailer_condition(source, retailer), day_range_sql(source)]
     params = _retailer_params(retailer) + [str(start), str(end)]
+    if sem_tv_observation_retailer(source['key'], retailer['name']):
+        clauses.append("NULLIF(BTRIM(source.batch_id), '') IS NOT NULL")
     if retailer.get('exclude_redirect'):
         clauses.append('COALESCE(source.redirect, FALSE) IS NOT TRUE')
     if home_depot:
@@ -156,8 +160,9 @@ def daily_counts(country, product, retailer_name, end, days):
                      if country == 'SEIB' else
                      [{**selected['retailers'][0], 'columns': SEUK_SOURCE_CONFIG[source['key']]['columns']}]
                      if country == 'SEUK' else
-                     [{**selected['retailers'][0], 'columns': get_sem_table_columns('sem_ldy_dryer')}]
-                     if country == 'SEM' and product == 'LDY_DRYER' and retailer_name in ('Coppel', 'Liverpool') else
+                     [{**selected['retailers'][0], 'columns': get_sem_table_columns(source['key'])}]
+                     if (sem_tv_observation_retailer(source['key'], retailer_name) or
+                         (country == 'SEM' and product == 'LDY_DRYER' and retailer_name in ('Coppel', 'Liverpool'))) else
                      [{**selected['retailers'][0], 'columns': DRYER_COLUMNS}]
                      if country == 'SEG' and product == 'LDY_DRYER' else
                      [{**selected['retailers'][0], 'columns': EXPERT_COLUMNS[product]}]

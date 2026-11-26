@@ -108,14 +108,20 @@ class QueryTests(TestCase):
 
     def test_sem_rank_catalog_matches_collection_without_changing_shared_sources(self):
         from copy import deepcopy
-        from apps.common.sem_retail import SEM_SOURCE_CONFIG
+        from apps.common.sem_retail import SEM_LAYER1_RETAILERS, SEM_SOURCE_CONFIG
         from apps.dx.dx_layer1.column_statistics.services import _sources
         from apps.dx.dx_layer4.collection_status.email_registry import EMAIL_REPORT_SOURCES
         shared = deepcopy(list(_sources()))
         email = deepcopy(EMAIL_REPORT_SOURCES)
         actual = {s['product']:s['retailers'] for s in catalog('SEM')}
-        for config in SEM_SOURCE_CONFIG.values():
-            self.assertEqual(list(config['retailers']), actual[config['category']])
+        for key, config in SEM_SOURCE_CONFIG.items():
+            self.assertEqual(list(SEM_LAYER1_RETAILERS[key]), actual[config['category']])
+        source, retailer = select_source('SEM', 'TV', "Sam's Club")
+        columns = {**self.columns(source), 'bsr_rank': 'text'}
+        sql, params, _ = query_spec(source, retailer, columns, date(2026, 11, 27), 'bsr')
+        self.assertEqual(["sam's club", '2026-11-27', '2026-11-28'], params)
+        self.assertIn("NULLIF(BTRIM(source.batch_id), '') IS NOT NULL", sql)
+        self.assertIn('source.bsr_rank AS product_rank', sql)
         for product in ('REF', 'LDY'):
             source, retailer = select_source('SEM', product, 'Coppel')
             sql, params, basis = query_spec(source, retailer, self.columns(source), DAY)

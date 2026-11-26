@@ -30,6 +30,16 @@ class ColumnStatisticsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 services.select_source(country, product, retailer)
 
+    def test_new_sem_tv_columns_use_latest_batch_and_launch_date(self):
+        for name in ('Walmart', "Sam's Club"):
+            source = services.select_source('SEM', 'TV', name)
+            retailer = next(r for r in source['retailers'] if r['name'] == name)
+            sql, params = services.query_spec(
+                source, retailer, ['item', 'screen_size'], date(2026, 11, 20), date(2026, 11, 27))
+            self.assertEqual([name.lower(), '2026-11-27', '2026-11-27', name.lower()], params)
+            self.assertIn("NULLIF(BTRIM(source.batch_id), '') IS NOT NULL", sql)
+            self.assertIn('latest AS', sql)
+
     def test_home_depot_types_are_required_even_when_config_skips_them(self):
         from apps.dx.dx_layer4.collection_status.email_services import _configured_retailers
         for product, field in [('REF', 'ref_refrigerator_type'), ('LDY', 'ldy_loading_type')]:

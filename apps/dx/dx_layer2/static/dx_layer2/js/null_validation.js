@@ -213,6 +213,28 @@ function _buildTseNullQueryHtml(fieldName, data, records, queryColumns, date, da
     return html;
 }
 
+function _buildSemTvBatchQuery(data, date, days, recordFilter) {
+    if (data.actual_table !== 'dx_sem.dx_sem_tv_retail_com' || !data.active_from || !recordFilter) return '';
+    const sourceDate = data.source_date || date;
+    const historyStart = _tseHistoryStartDate(sourceDate, days);
+    const start = historyStart < data.active_from ? data.active_from : historyStart;
+    const account = data.query_retailer || data.retailer;
+    const day = alias => `LEFT(BTRIM(CAST(${alias}.crawl_datetime AS TEXT)), 10)`;
+    return `SELECT *
+FROM ${data.actual_table} source
+WHERE ${day('source')} BETWEEN ${_tseSqlLiteral(start)} AND ${_tseSqlLiteral(sourceDate)}
+  AND LOWER(BTRIM(source.account_name)) = LOWER(${_tseSqlLiteral(account)})
+  AND source.batch_id = (
+      SELECT latest.batch_id FROM ${data.actual_table} latest
+      WHERE ${day('latest')} = ${day('source')}
+        AND LOWER(BTRIM(latest.account_name)) = LOWER(BTRIM(source.account_name))
+        AND NULLIF(BTRIM(latest.batch_id), '') IS NOT NULL
+      ORDER BY latest.id DESC LIMIT 1
+  )
+  AND (${recordFilter})
+ORDER BY item, crawl_datetime;`;
+}
+
 function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, retailer, isTseRetail, reviewCopy = false) {
     if (data.query_sql) return data.query_sql;
     if (isTseRetail) {
@@ -252,6 +274,8 @@ function _buildNullRetailDisplayQuery(fieldName, data, records, date, days, reta
     if (items.length) recordScope.push(`item IN (${items.map(_tseSqlLiteral).join(', ')})`);
     if (ids.length) recordScope.push(`id IN (${ids.join(', ')})`);
     const recordFilter = recordScope.length > 1 ? `(${recordScope.join(' OR ')})` : recordScope[0];
+    const semTvBatchQuery = _buildSemTvBatchQuery(data, date, days, recordFilter);
+    if (semTvBatchQuery) return semTvBatchQuery;
     if (reviewCopy) {
         const zone = isSiel ? ' 00:00:00+09:00' : '';
         const kstDay = `(${dateColumn} AT TIME ZONE 'Asia/Seoul')::date`;

@@ -23,6 +23,7 @@ from apps.common.sem_retail import (
     SEM_DRYER_FIRST_SOURCE_DATE,
     SEM_TV_OBSERVATION_RETAILERS,
     SEM_TV_OBSERVATION_START,
+    sem_tv_observation_retailer as _new_tv_retailer,
     get_sem_editable_columns,
     get_sem_required_columns,
     get_sem_table_columns,
@@ -183,13 +184,6 @@ def product_line_for(value):
     return None
 
 
-def _new_tv_retailer(product_line, name):
-    if product_line == 'sem_tv':
-        key = str(name or '').strip().casefold()
-        return next((r for r in SEM_TV_OBSERVATION_RETAILERS if r.casefold() == key), None)
-    return None
-
-
 def new_tv_review_is_readonly(table, retailer):
     return bool(_new_tv_retailer(product_line_for(table), retailer))
 
@@ -204,12 +198,6 @@ def _validation_retailers(product_line, source_day, *, format_rules=False):
     if product_line == 'sem_tv' and source_day >= str(SEM_TV_OBSERVATION_START):
         return (*retailers, *SEM_TV_OBSERVATION_RETAILERS)
     return retailers
-
-
-def _validation_launch(product_line, retailer):
-    if _new_tv_retailer(product_line, retailer):
-        return SEM_TV_OBSERVATION_START
-    return sem_start_date(product_line, retailer)
 
 
 def _validation_required_columns(product_line, retailer):
@@ -231,7 +219,7 @@ def _source_day(column, source):
 def _latest_rows(cursor, target_date, source, retailer=None):
     retailer = _validation_retailer(source['source_key'], retailer)
     mapping = _mapping(target_date, source)
-    launch = _validation_launch(source['source_key'], retailer)
+    launch = sem_start_date(source['source_key'], retailer)
     if launch and mapping['source_date'] < str(launch):
         return [], mapping
     day = _source_day('crawl_datetime', source)
@@ -264,13 +252,18 @@ def _history_rows(cursor, source, start_date, end_date, items,
                   include_missing_item=False, retailer=None):
     """Load the retailer's latest batch per day for target error items."""
     retailer = _validation_retailer(source['source_key'], retailer)
-    launch = _validation_launch(source['source_key'], retailer)
+    launch = sem_start_date(source['source_key'], retailer)
     if launch:
         start_date = max(str(start_date), str(launch))
         if str(end_date) < start_date:
             return []
     conditions = []
-    params = [str(start_date), str(end_date), retailer, SEM_COUNTRY]
+    new_tv = _new_tv_retailer(source['source_key'], retailer)
+    params = [str(start_date), str(end_date), retailer]
+    country_scope = '' if new_tv else 'AND UPPER(BTRIM(country)) = %s'
+    country_join = '' if new_tv else 'AND UPPER(BTRIM(source.country)) = UPPER(BTRIM(latest.country))'
+    if not new_tv:
+        params.append(SEM_COUNTRY)
     if items:
         placeholders = ', '.join(['%s'] * len(items))
         conditions.append(f'source.item IN ({placeholders})')
@@ -296,7 +289,7 @@ def _history_rows(cursor, source, start_date, end_date, items,
             WHERE {day} >= %s
               AND {day} <= %s
               AND LOWER(BTRIM(account_name)) = LOWER(%s)
-              AND UPPER(BTRIM(country)) = %s
+              {country_scope}
               {batch_filter}
             ORDER BY source_date, {sem_batch_order(source['source_key'], retailer)}
         )
@@ -306,10 +299,10 @@ def _history_rows(cursor, source, start_date, end_date, items,
           ON {date_expression} = latest.source_date
          AND source.batch_id IS NOT DISTINCT FROM latest.batch_id
          AND LOWER(BTRIM(source.account_name)) = LOWER(BTRIM(latest.account_name))
-         AND UPPER(BTRIM(source.country)) = UPPER(BTRIM(latest.country))
+         {country_join}
         WHERE ({' OR '.join(conditions)})
         ORDER BY source.item, {date_expression}, source.id
-    """, (*params[:4], *params[4:]))
+    """, tuple(params))
     columns = [description[0] for description in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
@@ -777,6 +770,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
         'display_config': {column: {'select_columns': display}},
         'query_config': {column: display},
         'query_retailer': retailer,
+        'active_from': str(SEM_TV_OBSERVATION_START) if _new_tv_retailer(product_line, retailer) else None,
         'normal_reviews': normal_reviews,
         **review_stats,
         'supports_day_history': True,
@@ -888,6 +882,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
         'normal_reviews': normal_reviews,
         'results': records,
         'field_counts': dict(field_counts),
+        'active_from': str(SEM_TV_OBSERVATION_START) if _new_tv_retailer(product_line, retailer) else None,
         'total_format_count': sum(field_counts.values()),
         'supports_day_history': True,
         'history_days': history_days,

@@ -297,11 +297,12 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
             const inClause = items.map(_tseSqlLiteral).join(', ');
             const sourceDate = data.source_date || date;
             const startDate = _tseHistoryStartDate(sourceDate, currentDays);
-            const query3Days = `SELECT *\nFROM ${tblName}\nWHERE ${dateCol} >= '${startDate}'\n  AND ${dateCol} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(retailerName)}\n  AND item IN (${inClause})\nORDER BY item, ${dateCol};`;
+            const query3Days = _buildSemTvBatchQuery(data, date, currentDays, `item IN (${inClause})`)
+                || `SELECT *\nFROM ${tblName}\nWHERE ${dateCol} >= '${startDate}'\n  AND ${dateCol} < '${_tseNextDate(sourceDate)}'\n  AND account_name = ${_tseSqlLiteral(retailerName)}\n  AND item IN (${inClause})\nORDER BY item, ${dateCol};`;
             itemQueryHtml += `<div class="item-query-section">
                 <div class="item-list-box">
                     <div class="item-copy-header"><span class="item-copy-title">Item 목록 (${items.length}개)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>
-                    <div class="item-copy-content">${items.join(', ')}</div>
+                    <div class="item-copy-content">${_escapeTseSqlHtml(items.join(', '))}</div>
                 </div>
                 <div class="query-box">
                     <div class="item-copy-header"><span class="item-copy-title">${currentDays}일치 조회 쿼리 (${sourceDate} 기준)</span><button class="btn-copy" onclick="copyToClipboard(this.parentElement.nextElementSibling)">복사</button></div>

@@ -52,7 +52,14 @@
         if (country === 'SEDA' && accountName === 'Casas Bahia') {
             accountName = 'CasasBahia';
         }
+        var newSemTv = country === 'SEM' && product === 'TV' && ['Walmart', "Sam's Club"].includes(retailer);
         var dateFilter = config.dateColumn + ' >= ' + literal(day);
+        var accountFilter = 'account_name = ' + literal(accountName);
+        if (newSemTv) {
+            dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
+            accountFilter = 'LOWER(BTRIM(account_name)) = LOWER(' + literal(accountName) + ')';
+            batchFilter = '= ' + literal(batch);
+        }
         if (country === 'SEUK' && product === 'TV') {
             var next = new Date(day + 'T00:00:00Z');
             if (!Number.isFinite(next.getTime())) return '';
@@ -66,7 +73,7 @@
             dateFilter = 'LEFT(BTRIM(CAST(' + config.dateColumn + ' AS TEXT)), 10) = ' + literal(day);
         }
         return 'SELECT *\nFROM ' + config.table + '\nWHERE ' + dateFilter +
-            '\n  AND account_name = ' + literal(accountName) +
+            '\n  AND ' + accountFilter +
             '\n  AND batch_id ' + batchFilter + '\nORDER BY item, ' + config.dateColumn + ';';
     }
 

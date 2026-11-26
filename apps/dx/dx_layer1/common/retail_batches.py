@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from datetime import date, timedelta
 
 from apps.common.source_dates import source_date_sql
+from apps.common.sem_retail import sem_start_date, sem_tv_observation_retailer
 from apps.dx.dx_layer1.siel_retail import jiomart
 
 
@@ -174,6 +175,10 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if new_tv_retailer('SEUK', source['category'], retailer) and str(source_date) < str(TV_START):
             return {'retailer': retailer, 'source_date': str(source_date), 'batches': [],
                     'time_basis': '원본 기록 시각', 'aggregation_basis': '운영 시작 전'}
+    sem_tv = check_type == 'sem_retail' and sem_tv_observation_retailer(product_line, retailer)
+    if sem_tv and str(source_date) < str(sem_start_date(product_line, retailer)):
+        return {'retailer': retailer, 'source_date': str(source_date), 'batches': [],
+                'time_basis': '원본 기록 시각', 'aggregation_basis': '운영 시작 전'}
     column = source.get('date_column', 'crawl_datetime')
     is_costco = check_type == 'retail' and key == 'costco'
     all_batches = check_type == 'retail' and source['product_key'] == 'tv' and not is_costco
@@ -208,6 +213,8 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         time_basis = '미국 뉴욕 시각'
 
     normalized_batch = "NULLIF(BTRIM(CAST(batch_id AS TEXT)), '')"
+    if sem_tv:
+        anchor += f' AND {normalized_batch} IS NOT NULL'
     latest_order = 'id DESC'
     if check_type == 'sem_retail':
         from apps.common.sem_retail import sem_batch_order
@@ -249,10 +256,15 @@ def fetch_batch_details(cursor, check_type, product_line, source_date, retailer)
         if check_type == 'retail' and (key in ('costco', 'homedepot') or source['product_key'] == 'ldy_dryer'):
             # Reproduce the displayed batch's monitoring date in its copy SQL.
             copy_date_scope = f'{source_date_sql(column)} = %s'
+        copy_account_scope = 'account_name = %s'
+        if sem_tv:
+            copy_date_scope = f'{source_date_sql(column)} = %s'
+            copy_account_scope = f'{account} = LOWER(%s)'
+            batch_filter = f'{normalized_batch} IS NULL' if row['batch_id'] is None else f'{normalized_batch} = %s'
         query = f"""SELECT *
 FROM {source['table_name']}
 WHERE {copy_date_scope}
-  AND account_name = %s
+  AND {copy_account_scope}
   AND {batch_filter}
 ORDER BY item, {column};"""
         row['sql'] = cursor.mogrify(query, tuple(query_params)).decode('utf-8')

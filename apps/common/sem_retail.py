@@ -159,7 +159,16 @@ def is_coppel_dryer(product_line, retailer):
     return product_line == 'sem_ldy_dryer' and str(retailer or '').strip().casefold() == 'coppel'
 
 
+def sem_tv_observation_retailer(product_line, retailer):
+    if product_line == 'sem_tv':
+        name = str(retailer or '').strip().casefold()
+        return next((r for r in SEM_TV_OBSERVATION_RETAILERS if r.casefold() == name), None)
+    return None
+
+
 def sem_start_date(product_line, retailer):
+    if sem_tv_observation_retailer(product_line, retailer):
+        return SEM_TV_OBSERVATION_START
     onboarding = dryer_config('SEM', product_line, retailer)
     if onboarding:
         return onboarding['preview_from']

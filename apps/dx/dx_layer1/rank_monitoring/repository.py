@@ -4,7 +4,7 @@ from datetime import timedelta
 from apps.common.db import dx_connection
 from apps.common.seib_retail import (ECI_APPLIANCE_PREVIEW_FROM, ECI_APPLIANCE_START,
                                     is_eci_appliance, is_eci_appliance_preview)
-from apps.common.sem_retail import sem_batch_order
+from apps.common.sem_retail import sem_batch_order, sem_start_date, sem_tv_observation_retailer
 from apps.dx.dx_layer1.column_statistics.dates import day_sql, date_column
 from apps.dx.dx_layer4.collection_status.email_services import _retailer_condition, _retailer_params
 from apps.dx.dx_layer1.siel_retail import jiomart
@@ -20,6 +20,7 @@ def query_spec(source, retailer, columns, day, rank_type='main'):
     eci = source['country'] == 'SEIB' and is_eci_appliance(source['product'], retailer['name'])
     is_jiomart = jiomart.matches(source['country'], source.get('product'), retailer['name'])
     seuk_tv = new_tv_retailer(source['country'], source.get('product'), retailer['name'])
+    sem_tv = sem_tv_observation_retailer(source['key'], retailer['name'])
     if rank_type not in ('main', 'bsr') or (rank_type == 'bsr' and not supports_bsr(
             source['country'], source.get('product'), retailer['name'])):
         raise ValueError('Unsupported rank type')
@@ -48,6 +49,8 @@ def query_spec(source, retailer, columns, day, rank_type='main'):
                  retailer['name'].casefold() not in ('costco', 'expert', 'homedepot'))
     clauses = [_retailer_condition(source, retailer, include_unassigned=False),
                f'({day_sql(source)}) BETWEEN %s AND %s']
+    if sem_tv:
+        clauses.append("NULLIF(BTRIM(source.batch_id), '') IS NOT NULL")
     if main_page:
         clauses.append("LOWER(BTRIM(CAST(source.page_type AS TEXT))) = 'main'")
     if retailer.get('exclude_redirect') and 'redirect' in columns:
@@ -73,12 +76,17 @@ def query_spec(source, retailer, columns, day, rank_type='main'):
                source.batch_id, source.collected_at
         FROM scoped source JOIN latest chosen ON chosen.source_day = source.source_day
              AND chosen.batch_id IS NOT DISTINCT FROM source.batch_id
-        {"WHERE NULLIF(BTRIM(CAST(source.product_rank AS TEXT)), '') IS NOT NULL" if eci or seuk_tv else ''}
+        {"WHERE NULLIF(BTRIM(CAST(source.product_rank AS TEXT)), '') IS NOT NULL" if eci or seuk_tv or sem_tv else ''}
         ORDER BY source.source_day, source.id DESC LIMIT {MAX_ROWS + 1}
     """
     start, end = day - timedelta(days=1), day + timedelta(days=1)
     if seuk_tv:
         start = max(start, TV_START)
+    if sem_tv:
+        launch = sem_start_date(source['key'], retailer['name'])
+        start = max(start, launch)
+        if day < launch:
+            end = day
     if eci:
         if is_eci_appliance_preview(source['product'], retailer['name'], day):
             start = max(start, ECI_APPLIANCE_PREVIEW_FROM)
