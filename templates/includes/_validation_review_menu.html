@@ -3,11 +3,11 @@
 {% if sidebar_base_url == '/dx/layer2/' or sidebar_base_url == '/dx/layer3/' %}
 <div class="sidebar-group expanded" data-sidebar-group="admin_review"
      onclick="var a=event.target.closest('a[data-review-kind]');var d=typeof getSelectedDate==='function'?getSelectedDate():'';if(a&amp;&amp;d){var u=new window.URL(a.href);u.searchParams.set('date',d);a.href=u.toString();}">
-    <div class="sidebar-item-row {% if admin_review %}active{% endif %}" onclick="toggleSidebarGroup(this)">
+    <button type="button" class="sidebar-item-row {% if admin_review %}active{% endif %}" aria-expanded="true" onclick="toggleSidebarGroup(this)">
         <span class="sidebar-icon">📋</span>
         <span class="sidebar-text">검수</span>
         <span class="sidebar-arrow">▶</span>
-    </div>
+    </button>
     <div class="sidebar-subitems">
         {% if sidebar_base_url == '/dx/layer2/' %}
         {% include 'includes/_validation_review_menu_link.html' with kind='null_check' label='NULL 검수' %}

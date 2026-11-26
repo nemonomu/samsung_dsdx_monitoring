@@ -1,5 +1,90 @@
 /* DX Dashboard */
 
+.dx-overview {
+    margin-bottom: 28px;
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-secondary);
+}
+
+.dx-overview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+}
+
+.dx-overview-header h2 {
+    font-size: 21px;
+}
+
+.dx-overview :is(a, time, .dx-overview-stored) {
+    font-weight: 600;
+}
+
+.dx-overview a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: #115e59;
+    text-underline-offset: 0.2em;
+}
+
+.dx-overview :is(.dx-overview-message, .dx-overview-date, .dx-overview-header p) {
+    font-size: 14px;
+    color: #475569;
+}
+
+.dx-overview-message {
+    margin-block: 10px;
+}
+
+.dx-overview-markets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr));
+    gap: 12px;
+}
+
+.dx-overview-markets section {
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--bg-primary);
+}
+
+.dx-overview-status {
+    margin-block: 8px 2px;
+}
+
+@media (max-width: 600px) {
+    .dx-responsive .dashboard-header {
+        padding: 18px;
+        margin-bottom: 16px;
+    }
+
+    .dx-responsive .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .dx-responsive .header-info {
+        gap: 12px;
+    }
+
+    .dx-responsive .header-icon {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 44px;
+    }
+
+    .dx-responsive .header-icon svg {
+        width: 28px;
+        height: 28px;
+    }
+}
+
 /* Dashboard Header */
 .dashboard-header {
     background: linear-gradient(135deg, var(--ds-color, #0d9488) 0%, #0a7c71 100%);

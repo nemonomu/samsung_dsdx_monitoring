@@ -5,7 +5,12 @@
             <span class="toggle-arrow">«</span>
         </button>
     </div>
-    <nav class="sidebar-menu">
+    <button type="button" class="sidebar-mobile-toggle" aria-expanded="false" aria-controls="layer-navigation" hidden>{{ sidebar_title }} 메뉴</button>
+    <nav class="sidebar-menu" id="layer-navigation" aria-label="{{ sidebar_title }}">
+        <div class="sidebar-search" hidden>
+            <input type="search" placeholder="메뉴 검색" aria-label="레이어 메뉴 검색">
+            <p class="sidebar-no-results" role="status" hidden>일치하는 메뉴가 없습니다.</p>
+        </div>
         <a href="{{ sidebar_base_url }}" class="sidebar-item {% if section == 'dashboard' %}active{% endif %}">
             <span class="sidebar-icon">📊</span>
             <span class="sidebar-text">대시보드</span>
@@ -21,11 +26,11 @@
         {% else %}
         <div class="sidebar-group {% if group.expanded %}expanded{% endif %}"
              data-sidebar-group="{{ group.key|escape }}">
-            <div class="sidebar-item-row {% if group.active and not admin_review %}active{% endif %}" onclick="toggleSidebarGroup(this)">
+            <button type="button" class="sidebar-item-row {% if group.active and not admin_review %}active{% endif %}" aria-expanded="{% if group.expanded %}true{% else %}false{% endif %}" onclick="toggleSidebarGroup(this)">
                 <span class="sidebar-icon">{{ group.icon }}</span>
                 <span class="sidebar-text">{{ group.label }}</span>
                 <span class="sidebar-arrow">▶</span>
-            </div>
+            </button>
             <div class="sidebar-subitems">
                 {% for item in group.items %}
                 {% if item.children %}
@@ -42,7 +47,7 @@
                     <div class="sidebar-subgroup-children"
                          id="sidebar-subgroup-{{ group.key }}-{{ item.name|slugify }}"{% if not item.active %} hidden{% endif %}>
                         {% for child in item.children %}
-                        <a class="sidebar-subitem sidebar-subgroup-child {% if child.active %}active{% endif %}"
+                        <a class="sidebar-subitem sidebar-subgroup-child {% if child.active %}active{% endif %}" role="button" tabindex="0"
                            data-item-name="{{ child.name }}"
                            data-detail-code="{{ child.detail_code|default:"" }}"
                            data-sidebar-item-name="{{ child.name|escape }}"
@@ -58,7 +63,7 @@
                    data-sidebar-item-name="{{ item.name|escape }}"
                    data-sidebar-detail-code="{{ item.detail_code|default:""|escape }}"
                    {% if item.href %}href="{{ item.href }}{% if target_date and not item.ignore_target_date %}?date={{ target_date|urlencode }}{% endif %}"
-                   {% else %}onclick="onSubitemClick('{{ group.key }}', '{{ item.name|escapejs }}', '{{ item.detail_code|default:""|escapejs }}')"{% endif %}>
+                   {% else %}role="button" tabindex="0" onclick="onSubitemClick('{{ group.key }}', '{{ item.name|escapejs }}', '{{ item.detail_code|default:""|escapejs }}')"{% endif %}>
                     <span class="country-flag-label">{% if item.name == 'SEA Retail' %}<img class="country-flag-icon" src="/static/img/flags/us.svg" alt="" aria-hidden="true">{% elif item.name == 'SEDA Retail' %}<img class="country-flag-icon" src="/static/img/flags/br.svg" alt="" aria-hidden="true">{% elif item.name == 'SEG Retail' %}<img class="country-flag-icon" src="/static/img/flags/de.svg" alt="" aria-hidden="true">{% elif item.name == 'SIEL Retail' %}<img class="country-flag-icon" src="/static/img/flags/in.svg" alt="" aria-hidden="true">{% elif item.name == 'SEM Retail' %}<img class="country-flag-icon" src="/static/img/flags/mx.svg" alt="" aria-hidden="true">{% elif item.name == 'SEIB Retail' %}<img class="country-flag-icon" src="/static/img/flags/es.svg" alt="" aria-hidden="true">{% elif item.name == 'SEUK Retail' %}<img class="country-flag-icon" src="/static/img/flags/gb.svg" alt="" aria-hidden="true">{% elif item.name == 'TSE Retail' %}<img class="country-flag-icon" src="/static/img/flags/th.svg" alt="" aria-hidden="true">{% endif %}<span>{{ item.name }}</span></span>
                 </a>
                 {% endif %}

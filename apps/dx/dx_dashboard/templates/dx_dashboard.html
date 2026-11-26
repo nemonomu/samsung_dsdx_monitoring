@@ -4,14 +4,33 @@
 {% block title %}DX - 데이터 품질 모니터링{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'dx_dashboard/css/dx_dashboard.css' %}?v=1">
+<link rel="stylesheet" href="{% static 'dx_dashboard/css/dx_dashboard.css' %}?v=2">
 {% endblock %}
 
 {% block content %}
 <!-- Dashboard Header -->
 {% include 'dx_dashboard/partials/_header.html' %}
 
+{% now "Y-m-d" as dashboard_date %}
+<section class="dx-overview" aria-labelledby="dx-overview-title"
+         data-status-url="{% url 'dx_layer1:api_collection_status' %}?date={{ dashboard_date }}">
+    <div class="dx-overview-header">
+        <div>
+            <h2 id="dx-overview-title">당일 수집·적재 현황</h2>
+            <p>조회 기준일 <time datetime="{{ dashboard_date }}">{{ dashboard_date }}</time> (KST)</p>
+        </div>
+        <a href="{% url 'dx_layer1:collection_statistics' %}?date={{ dashboard_date }}">국가별 수집 통계</a>
+    </div>
+    <p class="dx-overview-message" role="status">수집 현황을 불러오는 중입니다.</p>
+    <div class="dx-overview-markets"></div>
+    <a class="dx-overview-detail" href="/dx/layer1/?date={{ dashboard_date }}#dday-collection-section">리테일러별 당일 수집 현황</a>
+</section>
+
 <!-- Layer Grid -->
 {% include 'dx_dashboard/partials/_layer_grid.html' %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'dx_dashboard/js/collection-overview.js' %}?v=1"></script>
 {% endblock %}
 

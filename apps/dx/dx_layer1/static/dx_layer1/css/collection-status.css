@@ -13,6 +13,70 @@
 #dday-collection-section .sentiment-category-header { gap: 12px; flex-wrap: wrap; }
 #dday-collection-section .sentiment-category-info { flex-wrap: wrap; }
 
+.dday-mobile-list {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    #dday-collection-section .retail-rank-wrap {
+        display: none;
+    }
+
+    .dday-mobile-list {
+        display: block;
+    }
+
+    .dday-mobile-row + .dday-mobile-row {
+        border-top: 1px solid var(--border-color);
+    }
+
+    .dday-mobile-row > summary {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        min-height: 44px;
+        padding: 8px;
+        cursor: pointer;
+    }
+
+    .dday-mobile-row > summary strong {
+        flex: 1 1 75px;
+        overflow-wrap: anywhere;
+    }
+
+    .dday-mobile-row > summary::after {
+        content: "";
+        width: 7px;
+        height: 7px;
+        margin-inline: 4px;
+        border: solid currentColor;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+    }
+
+    .dday-mobile-row[open] > summary::after {
+        transform: rotate(225deg);
+    }
+
+    .dday-mobile-row dl {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 4px 10px;
+        padding: 8px;
+        font-size: 14px;
+        background: var(--bg-primary);
+    }
+
+    .dday-mobile-row dt {
+        color: var(--text-secondary);
+    }
+
+    .dday-mobile-row dd {
+        overflow-wrap: anywhere;
+    }
+}
+
 #confirmOverlay .backup-confirm-dialog {
     box-sizing: border-box;
     width: min(920px, calc(100vw - 32px));

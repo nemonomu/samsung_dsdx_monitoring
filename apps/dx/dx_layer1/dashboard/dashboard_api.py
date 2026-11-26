@@ -18,6 +18,7 @@ def layer_stats(request):
     return JsonResponse(results)
 
 
+@cached_monitoring_stats
 def collection_status(request):
     target_date = parse_date(request.GET.get('date'))
     return JsonResponse(get_dday_collection_status(target_date))

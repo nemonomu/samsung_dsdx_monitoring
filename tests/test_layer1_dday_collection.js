@@ -36,7 +36,8 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert(!html.includes('Amazon'));
     assert(sandbox.renderDdayCollection(data('2026-09-21', ['error', 'waiting', 'waiting'])).includes('조회 실패'));
     assert(!html.includes('수집 완료'));
-    assert.strictEqual((html.match(/<details /g) || []).length, 4);
+    assert.strictEqual((html.match(/<details class="(?:check-item|sentiment-category-item)"/g) || []).length, 4);
+    assert.strictEqual((html.match(/<details class="dday-mobile-row"/g) || []).length, 3);
     assert.strictEqual((html.match(/<table class="ct ct-grid"/g) || []).length, 3);
     assert(html.includes('sentiment-category-header'));
     assert(html.includes('rt-sum'));
@@ -68,7 +69,11 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert(!costcoRow.includes('수집 확인'));
     assert.strictEqual(sandbox.ddaySummary(mismatch.retailers).status, 'rank_mismatch');
     assert.strictEqual(sandbox.ddaySummary(mismatch.retailers).count, 390);
-    assert.strictEqual((mismatchHtml.match(/>이상<\/span>/g) || []).length, 4, 'row, slot, category and country show the anomaly');
+    assert.strictEqual((mismatchHtml.match(/>이상<\/span>/g) || []).length, 5, 'desktop and mobile rows, slot, category and country show the anomaly');
+    const mobileCostcoRow = mismatchHtml.match(/<details class="dday-mobile-row"><summary><strong>Costco<\/strong>(.*?)<\/details>/s)[1];
+    assert(mobileCostcoRow.includes('>이상</span>'));
+    assert(mobileCostcoRow.includes('<dt>MAIN / BSR</dt><dd>80 / 100</dd>'));
+    assert(mobileCostcoRow.includes('<dt>배치 ID</dt><dd>c20261028_001821</dd>'));
     assert.strictEqual(sandbox.ddaySummary([...mismatch.retailers, {status:'error'}]).status, 'error');
     mismatch.retailers[1] = {...mismatch.retailers[1], main_count:100, status:'received', status_reason:undefined};
     assert.strictEqual(sandbox.ddaySummary(mismatch.retailers).status, 'received');

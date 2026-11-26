@@ -156,7 +156,7 @@ function renderDocuments(categoryId) {
                         <tr ondblclick="goToEdit('${escapeHtml(doc.document_id)}')">
                             <td style="text-align:center;">${idx + 1}</td>
                             <td>${escapeHtml(doc.document_id)}</td>
-                            <td><span class="doc-title">${escapeHtml(doc.title)}</span></td>
+                            <td><a class="doc-title" href="${escapeHtml(documentEditUrl(doc.document_id))}">${escapeHtml(doc.title)}</a></td>
                             <td>${escapeHtml(doc.created_id || '-')}</td>
                             <td>${doc.created_at || '-'}</td>
                         </tr>
@@ -176,7 +176,7 @@ function renderDocuments(categoryId) {
                         <td><input type="checkbox" class="doc-checkbox" value="${escapeHtml(doc.document_id)}" onclick="event.stopPropagation();selectSingle(this);" data-title="${escapeHtml(doc.title)}"></td>
                         <td>${idx + 1}</td>
                         <td>${escapeHtml(doc.document_id)}</td>
-                        <td>${escapeHtml(doc.title)}</td>
+                        <td><a class="doc-title" href="${escapeHtml(documentEditUrl(doc.document_id))}">${escapeHtml(doc.title)}</a></td>
                         <td>${escapeHtml(doc.created_id || '-')}</td>
                         <td>${doc.created_at || '-'}</td>
                     </tr>
@@ -289,8 +289,12 @@ function escapeHtml(str) {
 
 window.esc = window.esc || escapeHtml;
 
+function documentEditUrl(documentId) {
+    return (CONFIG.urls?.edit_base || '/dx/documents/') + encodeURIComponent(documentId) + '/edit/';
+}
+
 function goToEdit(documentId) {
-    window.location.href = (CONFIG.urls?.edit_base || '/dx/documents/') + encodeURIComponent(documentId) + '/edit/';
+    window.location.href = documentEditUrl(documentId);
 }
 
 // === 보고서 출력 팝업 ===
