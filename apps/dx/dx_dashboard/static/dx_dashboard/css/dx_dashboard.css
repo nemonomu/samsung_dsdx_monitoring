@@ -65,7 +65,7 @@
     outline-offset: 3px;
 }
 
-.dx-overview :is(.dx-overview-message, .dx-overview-date, .dx-overview-header p, .dx-overview-footer p, dt) {
+.dx-overview :is(.dx-overview-message, .dx-overview-date, .dx-overview-header p, .dx-overview-footer p) {
     color: #475569;
     font-size: 13px;
 }
@@ -82,10 +82,9 @@
 
 .dx-overview-markets section {
     display: grid;
-    grid-template-columns: minmax(8rem, 20%) minmax(0, 1fr) minmax(7rem, auto);
-    align-items: center;
-    gap: 8px 16px;
-    min-height: 72px;
+    grid-template-columns: 9rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: 4px 16px;
     padding: 12px 20px;
     border-top: 1px solid var(--border-color);
 }
@@ -103,54 +102,15 @@
     white-space: nowrap;
 }
 
-.dx-overview-status {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    list-style: none;
-}
-
-.dx-overview-status li {
-    padding: 3px 9px;
-    border-radius: 8px;
-    background: #f1f5f9;
-    color: #334155;
-    font-size: 13px;
-    font-weight: 650;
-}
-
-.dx-overview-status li[data-status="received"] {
-    background: #ecfdf5;
-    color: #065f46;
-}
-
-.dx-overview :is(.dx-overview-status li, .dx-overview-issue-state):is([data-status="uncollected"], [data-status="abnormal"], [data-status="rank_mismatch"], [data-status="error"]) {
-    background: #fef2f2;
-    color: #991b1b;
-}
-
-.dx-overview :is(.dx-overview-status li, .dx-overview-issue-state):is([data-status="waiting"], [data-status="partial"]) {
-    background: #fffbeb;
-    color: #854d0e;
-}
-
-.dx-overview-stored {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.dx-overview-stored dd:not(.dx-overview-date) {
-    color: #475569;
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.35;
+.dx-overview-date {
+    grid-column: 1;
+    grid-row: 2;
 }
 
 .dx-overview-issues {
-    grid-column: 2 / -1;
+    grid-column: 2;
+    grid-row: 1 / span 2;
     list-style: none;
-    border-top: 1px solid var(--border-color);
-    padding-top: 4px;
 }
 
 .dx-overview-issues li {
@@ -158,14 +118,19 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 3px 8px;
-    padding-block: 3px;
+    padding-block: 4px;
     color: #334155;
-    font-size: 13px;
+    font-size: 14px;
     overflow-wrap: anywhere;
+}
+
+.dx-overview-issues li + li {
+    border-top: 1px solid var(--border-color);
 }
 
 .dx-overview-issues p {
     color: #475569;
+    font-size: 13px;
 }
 
 .dx-overview-category {
@@ -176,11 +141,23 @@
     font-weight: 600;
 }
 
+.dx-overview-category img {
+    display: block;
+    flex: 0 0 24px;
+}
+
 .dx-overview-issue-state {
-    padding: 1px 6px;
-    border-radius: 5px;
-    font-size: 12px;
+    padding: 2px 7px;
+    border-radius: 6px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: 13px;
     font-weight: 650;
+}
+
+.dx-overview-issue-state:is([data-status="partial"], [data-status="unknown"]) {
+    background: #fffbeb;
+    color: #854d0e;
 }
 
 @media (max-width: 600px) {
@@ -198,17 +175,14 @@
     }
 
     .dx-overview-markets section {
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 8px 10px;
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 4px;
     }
 
-    .dx-overview-status {
-        grid-column: 1 / -1;
-        grid-row: 2;
-    }
-
-    .dx-overview-issues {
-        grid-column: 1 / -1;
+    .dx-overview-issues,
+    .dx-overview-date {
+        grid-column: 1;
+        grid-row: auto;
     }
 
     .dx-overview-footer {

@@ -4,7 +4,7 @@
 {% block title %}DX - 데이터 품질 모니터링{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'dx_dashboard/css/dx_dashboard.css' %}?v=3">
+<link rel="stylesheet" href="{% static 'dx_dashboard/css/dx_dashboard.css' %}?v=4">
 {% endblock %}
 
 {% block content %}
@@ -13,10 +13,11 @@
 
 {% now "Y-m-d" as dashboard_date %}
 <section class="dx-overview" aria-labelledby="dx-overview-title"
-         data-status-url="{% url 'dx_layer1:api_collection_status' %}?date={{ dashboard_date }}">
+         data-status-url="{% url 'dx_layer1:api_collection_status' %}?date={{ dashboard_date }}"
+         data-product-icon-url="{% static 'dx_dashboard/img/' %}">
     <div class="dx-overview-header">
         <div>
-            <h2 id="dx-overview-title">당일 수집·적재 현황</h2>
+            <h2 id="dx-overview-title">확인이 필요한 크롤러</h2>
             <p>조회 기준일 <time datetime="{{ dashboard_date }}">{{ dashboard_date }}</time> KST</p>
         </div>
         <a class="dx-overview-detail" href="/dx/layer1/?date={{ dashboard_date }}#dday-collection-section">
@@ -39,6 +40,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'dx_dashboard/js/collection-overview.js' %}?v=2"></script>
+<script src="{% static 'dx_dashboard/js/collection-overview.js' %}?v=3"></script>
 {% endblock %}
 
