@@ -350,6 +350,7 @@ function showFormatFieldDetail(fieldName, pushStack = true) {
         type: 'format',
         formatReviewField: fieldName,
         editableCols: data.editable_cols || [],
+        readonly: data.readonly === true,
         actualTable: data.actual_table || '',
         crawlDate: date,
         normalReviews: data.normal_reviews || {},

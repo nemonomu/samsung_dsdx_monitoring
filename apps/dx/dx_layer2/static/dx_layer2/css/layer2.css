@@ -9,6 +9,10 @@
     margin: -32px -24px;
 }
 
+@media (max-width: 768px) {
+    .l2-layout { flex-direction: column; }
+}
+
 .l2-content {
     flex: 1;
     min-width: 0;
@@ -306,16 +310,19 @@
 /* 리테일러 그리드 */
 .retailer-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
 }
 
+.retailer-grid[data-columns="1"] { grid-template-columns: minmax(0, 1fr); }
+.retailer-grid[data-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
 @media (max-width: 1024px) {
-    .retailer-grid { grid-template-columns: repeat(2, 1fr); }
+    .retailer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
-    .retailer-grid { grid-template-columns: 1fr; }
+    .retailer-grid, .retailer-grid[data-columns="2"] { grid-template-columns: minmax(0, 1fr); }
 }
 
 .retailer-card {

@@ -2030,7 +2030,7 @@ async function openRuleModal(tableName, retailer) {
 
     try {
         let url = `/dx/layer2/api/format-rules/?table=${encodeURIComponent(dbTableName)}&retailer=${encodeURIComponent(retailer)}`;
-        if (dbTableName.startsWith('sem_') && retailer === 'HomeDepot') {
+        if (dbTableName.startsWith('sem_')) {
             url += `&date=${encodeURIComponent(getSelectedDate())}`;
         }
         const response = await fetch(url);

@@ -747,6 +747,12 @@ function renderDashboardNullGroups(vType, vIdx) {
     }).join('');
 }
 
+function retailerCardAttributes(table, retailer, count = 0, code = '') {
+    const attribute = value => esc(value).replace(/"/g, '&quot;');
+    return 'data-table="' + attribute(table) + '" data-retailer="' + attribute(retailer) +
+        '" data-count="' + attribute(count) + '" data-code="' + attribute(code) + '"';
+}
+
 function renderDXTableDetail(vType, table) {
     let html = '';
     const tableName = table.table_name;
@@ -765,12 +771,12 @@ function renderDXTableDetail(vType, table) {
         }
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
-        html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
+        html += `<div class="retailer-grid" data-columns="${gridCols}">`;
         table.retailers.forEach(retailer => {
             const hasIssue = (retailer.total_null_count || 0) > 0;
             const totalCount = retailer.total || 0;
             const nullCount = retailer.total_null_count || 0;
-            const supportsReview = !retailer.preview_mode && (retailer.supports_null_auto_review === true
+            const supportsReview = !retailer.preview_mode && !retailer.readonly && (retailer.supports_null_auto_review === true
                 || table.supports_null_auto_review === true);
             const reviewedCount = Number(retailer.reviewed_null_count || 0);
             const automaticCount = Number(retailer.auto_reviewed_count || 0);
@@ -802,10 +808,11 @@ function renderDXTableDetail(vType, table) {
                 <div class="retailer-card ${cardClass}">
                     <div class="retailer-card-main"
                          data-fields='${fieldsJson}'
-                         onclick="openDetailModal('null', '${tableName}', '${retailer.retailer}', ${queryCount}, 1, this.dataset.fields, '${tableCode}')"
+                         ${retailerCardAttributes(tableName, retailer.retailer, queryCount, tableCode)}
+                         onclick="openDetailModal('null', this.dataset.table, this.dataset.retailer, Number(this.dataset.count), 1, this.dataset.fields, this.dataset.code)"
                          ${!(hasIssue || queryCount > 0) ? 'style="cursor: default;"' : 'style="cursor: pointer;"'}>
                         <div class="retailer-header">
-                            <span class="retailer-name">${retailer.retailer}</span>
+                            <span class="retailer-name">${esc(retailer.retailer)}</span>
                             <span class="retailer-issue-count ${cardClass}">${retailer.validation_label || (supportsReview ? countLabel : nullCount + '건')}</span>
                         </div>
                         <div class="retailer-detail">
@@ -826,7 +833,7 @@ function renderDXTableDetail(vType, table) {
     if (vType.type === 'format' && table.retailers) {
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
-        html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
+        html += `<div class="retailer-grid" data-columns="${gridCols}">`;
         table.retailers.forEach(retailer => {
             const hasIssue = (retailer.issue_count || 0) > 0;
             const totalCount = retailer.total || 0;
@@ -834,16 +841,16 @@ function renderDXTableDetail(vType, table) {
             html += `
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}">
                     <div class="retailer-header">
-                        <span class="retailer-name">${retailer.retailer}</span>
+                        <span class="retailer-name">${esc(retailer.retailer)}</span>
                         <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${retailer.validation_label || issueCount + '건'}</span>
                     </div>
                     <div class="retailer-detail">
                         총 ${totalCount.toLocaleString()}건 중 형식 오류 레코드
                     </div>
                     <div class="retailer-actions">
-                        <button class="btn-rule" onclick="event.stopPropagation(); openRuleModal('${tableCode}', '${retailer.retailer}')">검증규칙</button>
-                        ${typeof window !== 'undefined' && window.FormatReview && FormatReview.supports(table.table) ? FormatReview.button(table.table, retailer.retailer) : ''}
-                        ${hasIssue ? `<button class="btn-detail" onclick="event.stopPropagation(); openDetailModal('format', '${tableName}', '${retailer.retailer}', ${issueCount})">상세보기</button>` : ''}
+                        <button class="btn-rule" ${retailerCardAttributes(tableCode, retailer.retailer)} onclick="event.stopPropagation(); openRuleModal(this.dataset.table, this.dataset.retailer)">검증규칙</button>
+                        ${typeof window !== 'undefined' && window.FormatReview && !retailer.readonly && FormatReview.supports(table.table) ? FormatReview.button(table.table, retailer.retailer) : ''}
+                        ${hasIssue ? `<button class="btn-detail" ${retailerCardAttributes(tableName, retailer.retailer, issueCount)} onclick="event.stopPropagation(); openDetailModal('format', this.dataset.table, this.dataset.retailer, Number(this.dataset.count))">상세보기</button>` : ''}
                     </div>
                 </div>
             `;
@@ -863,7 +870,7 @@ function renderDXTableDetail(vType, table) {
         const isItemRetail = /^(sem|seib|seuk)_(tv|ref|ldy|ldy_dryer)_retail$/.test(table.table || '');
         const retailerCount = table.retailers.length;
         const gridCols = retailerCount <= 2 ? retailerCount : 3;
-        html += `<div class="retailer-grid" style="grid-template-columns: repeat(${gridCols}, 1fr)">`;
+        html += `<div class="retailer-grid" data-columns="${gridCols}">`;
         table.retailers.forEach(retailer => {
             const dupGroups = retailer.duplicate_groups || 0;
             const mappingGroups = retailer.mapping_groups || 0;
@@ -902,10 +909,11 @@ function renderDXTableDetail(vType, table) {
             }
             html += `
                 <div class="retailer-card ${(retailer.status || 'ok').toLowerCase()}"
-                     onclick="openDetailModal('duplicate', '${detailTableName}', '${retailer.retailer}', ${reviewGroups})"
+                     ${retailerCardAttributes(detailTableName, retailer.retailer, reviewGroups)}
+                     onclick="openDetailModal('duplicate', this.dataset.table, this.dataset.retailer, Number(this.dataset.count))"
                      ${!reviewGroups ? 'style="cursor: default;"' : ''}>
                     <div class="retailer-header">
-                        <span class="retailer-name">${retailer.retailer}</span>
+                        <span class="retailer-name">${esc(retailer.retailer)}</span>
                         <span class="retailer-issue-count ${(retailer.status || 'ok').toLowerCase()}">${retailer.validation_label || dupGroups + '건'}</span>
                     </div>
                     <div class="retailer-detail">${detailText}</div>
