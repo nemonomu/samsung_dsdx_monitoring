@@ -12,6 +12,7 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DX_DDAY_COLLECTION_REVISIONS = os.getenv('DX_DDAY_COLLECTION_REVISIONS') == '1'
+DX_DDAY_RECEIPTS_DIR = os.getenv('DX_DDAY_RECEIPTS_DIR')
 # Enable only where every correction to the retained history invalidates the cache.
 DX_COLUMN_HISTORY_REUSE_SCOPES = frozenset(
     scope.strip() for scope in os.getenv('DX_COLUMN_HISTORY_REUSE_SCOPES', '').split(',') if scope.strip()

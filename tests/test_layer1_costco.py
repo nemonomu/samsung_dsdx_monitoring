@@ -65,20 +65,23 @@ class CostcoTests(SimpleTestCase):
         daily[-1]['total'] = 0
         self.assertEqual(['uncollected']*3, [r['status'] for r in comparison.compare_columns(data,target,completed)])
 
-    def test_dday_main_below_bsr_is_abnormal_on_receipt(self):
+    def test_dday_main_below_bsr_is_abnormal_after_window(self):
         day = date(2026, 10, 28)
+        sources = [source for source in dday.SOURCES if source[0] == 'Costco']
         for hour in (13, 16, 18):
             for main, expected in ((0, 'rank_mismatch'), (80, 'rank_mismatch'),
                                    (99, 'rank_mismatch'), (100, 'received'), (101, 'received')):
-                with patch.object(dday, 'dx_connection', connection), patch.object(
+                with patch.object(dday, 'SOURCES', sources), patch.object(dday, 'dx_connection', connection), \
+                        patch.object(dday, 'receipt_state', return_value='committed' if hour >= 15 else None), patch.object(
                         dday, 'fetch_collection', return_value=(124, '2026-10-28 13:18:21', 'c20261028_001821', main, 100)):
                     rows = dday.get_collection_status(day, datetime(2026, 10, 28, hour, 20, tzinfo=KST))['retailers']
                 self.assertTrue(rows)
                 self.assertEqual(4, len([row for row in rows if row['retailer'] == 'Costco']))
                 for row in rows:
-                    self.assertEqual(expected, row['status'], (row['retailer'], row['product'], hour, main))
+                    row_expected = 'collecting' if hour < 15 else expected
+                    self.assertEqual(row_expected, row['status'], (row['retailer'], row['product'], hour, main))
                     self.assertEqual((main, 100, 124), (row['main_count'], row['bsr_count'], row['count']))
-                    if expected == 'rank_mismatch':
+                    if row_expected == 'rank_mismatch':
                         self.assertEqual(f'MAIN {main}건 / BSR 100건 / MAIN이 BSR보다 적음', row['status_reason'])
                     else:
                         self.assertNotIn('status_reason', row)
@@ -108,7 +111,8 @@ class CostcoTests(SimpleTestCase):
         for hour, minute, count, expected in [(12, 59, 0, 'scheduled'), (13, 0, 0, 'waiting'),
                                               (14, 59, 0, 'waiting'), (15, 0, 0, 'uncollected'),
                                               (15, 1, 91, 'abnormal'), (15, 1, 100, 'received')]:
-            with patch.object(dday, 'dx_connection', connection), patch.object(
+            with patch.object(dday, 'dx_connection', connection), \
+                    patch.object(dday, 'receipt_state', return_value='committed' if hour >= 15 else None), patch.object(
                     dday, 'fetch_collection', return_value=(count, '2026-10-06 13:03:13', 'c6', count, count)):
                 result = dday.get_collection_status(date(2026, 10, 6), datetime(2026, 10, 6, hour, minute, tzinfo=KST))
             rows = [r for r in result['retailers'] if r['retailer'] == 'Costco']

@@ -75,15 +75,22 @@ def _scope(check_type, product_line, source_date):
     return source, account, condition, params
 
 
-def fetch_batch_counts(cursor, check_type, product_line, source_date):
+def _batch_count_query(check_type, product_line, source_date, *, scope_id=None):
     source, account, condition, params = _scope(check_type, product_line, source_date)
-    cursor.execute(f"""
-        SELECT {account} AS retailer_key,
+    scope_column = '%s AS scope_id, ' if scope_id is not None else ''
+    sql = f"""
+        SELECT {scope_column}{account} AS retailer_key,
                COUNT(DISTINCT NULLIF(BTRIM(CAST(batch_id AS TEXT)), '')) AS batch_count
         FROM {source['table_name']}
         WHERE {condition}
         GROUP BY {account}
-    """, params)
+    """
+    return sql, (scope_id, *params) if scope_id is not None else params
+
+
+def fetch_batch_counts(cursor, check_type, product_line, source_date):
+    sql, params = _batch_count_query(check_type, product_line, source_date)
+    cursor.execute(sql, params)
     result = {}
     for row in cursor.fetchall():
         key, count = ((row['retailer_key'], row['batch_count'])
@@ -93,12 +100,29 @@ def fetch_batch_counts(cursor, check_type, product_line, source_date):
         result.pop('jiomart', None)
         day = date.fromisoformat(str(source_date))
         if day >= jiomart.START or jiomart.preview(day):
+            source = _source(check_type, product_line)
             ctes, p = jiomart.scope_sql(source['table_name'], day, day,
                                         include_preview=jiomart.preview(day))
             cursor.execute(f"WITH {ctes} SELECT COUNT(DISTINCT NULLIF(BTRIM(batch_id), '')) AS batch_count FROM scoped", p)
             row = cursor.fetchone()
             result['jiomart'] = int(row['batch_count'] if isinstance(row, Mapping) else row[0])
     return result
+
+
+def _fetch_batch_counts_for_scopes(cursor, check_type, scopes):
+    if len(scopes) < 2 or check_type == 'siel_retail':
+        return [fetch_batch_counts(cursor, check_type, *scope) for scope in scopes]
+
+    statements = [_batch_count_query(check_type, *scope, scope_id=index)
+                  for index, scope in enumerate(scopes)]
+    cursor.execute(' UNION ALL '.join(sql for sql, _ in statements),
+                   tuple(value for _, params in statements for value in params))
+    counts = [{} for _ in scopes]
+    for row in cursor.fetchall():
+        index, key, count = ((row['scope_id'], row['retailer_key'], row['batch_count'])
+                             if isinstance(row, Mapping) else row)
+        counts[index][key] = int(count or 0)
+    return counts
 
 
 def add_batch_counts(cursor, check, target_date):
@@ -109,22 +133,24 @@ def add_batch_counts(cursor, check, target_date):
     updates = []
     cursor.execute('SAVEPOINT layer1_retail_batch_counts')
     try:
+        scopes = []
+        category_retailers = []
         for category in check['categories']:
             retailers = list(category.get('retailers', []))
             for slot in category.get('time_slots', []):
                 retailers.extend(slot.get('retailers', []))
-            if not retailers:
-                continue
-            counts = fetch_batch_counts(
-                cursor, check_type, category['product_line'],
-                category.get('source_date') or check.get('source_date') or target_date,
-            )
+            if retailers:
+                scopes.append((category['product_line'],
+                               category.get('source_date') or check.get('source_date') or target_date))
+                category_retailers.append(retailers)
+        all_counts = _fetch_batch_counts_for_scopes(cursor, check_type, scopes)
+        for (product_line, source_date), retailers, counts in zip(scopes, category_retailers, all_counts):
             for retailer in retailers:
                 key = _retailer_key(retailer.get('retailer'), check_type)
                 context = {
                     'check_type': check_type,
-                    'product_line': category['product_line'],
-                    'source_date': str(category.get('source_date') or check.get('source_date') or target_date),
+                    'product_line': product_line,
+                    'source_date': str(source_date),
                     'retailer': retailer.get('retailer'),
                 }
                 updates.append((retailer, counts.get(key, 0), context))

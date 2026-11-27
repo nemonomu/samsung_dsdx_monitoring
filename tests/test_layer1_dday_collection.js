@@ -4,8 +4,8 @@ const vm = require('vm');
 const elements = {};
 const requests = [];
 const sandbox = {
-    URLSearchParams,
-    document: { getElementById(id) { return elements[id] ||= { innerHTML: '', textContent: '' }; } },
+    URLSearchParams, AbortController, AbortSignal,
+    document: { getElementById(id) { return elements[id] ||= { innerHTML: '', textContent: '', querySelectorAll: () => [], querySelector: () => null }; } },
     esc(value) { return String(value).replaceAll('<', '&lt;').replaceAll('>', '&gt;'); },
     fetch(url, options) { return new Promise(resolve => requests.push({ url, options, resolve })); }
 };
@@ -26,6 +26,8 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
 (async function() {
     const old = sandbox.loadDdayCollection('2026-09-20');
     const next = sandbox.loadDdayCollection('2026-09-21');
+    assert.strictEqual(sandbox.loadDdayCollection('2026-09-21', true), next);
+    assert.strictEqual(requests.length, 2);
     respond(1, data('2026-09-21', ['received', 'waiting', 'scheduled']));
     assert.equal(await next, true, 'waiting or scheduled scopes keep checking');
     let html = elements['dday-collection-list'].innerHTML;
@@ -37,6 +39,8 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert(!html.includes('Amazon'));
     assert(sandbox.renderDdayCollection(data('2026-09-21', ['error', 'waiting', 'waiting'])).includes('조회 실패'));
     assert(!html.includes('수집 완료'));
+    assert(sandbox.renderDdayCollection(data('2026-09-21', ['collecting'])).includes('수집 중'));
+    assert(sandbox.renderDdayCollection(data('2026-09-21', ['unconfirmed'])).includes('완료 미확인'));
     assert.strictEqual((html.match(/<details class="(?:check-item|sentiment-category-item)"/g) || []).length, 4);
     assert.strictEqual((html.match(/<details class="dday-mobile-row"/g) || []).length, 3);
     assert.strictEqual((html.match(/<table class="ct ct-grid"/g) || []).length, 3);
@@ -138,7 +142,7 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     assert.equal(params(1).get('reuse_normal'), '1');
     const background = sandbox.loadDdayCollection('2026-09-21', {background:true});
     assert.equal(elements['dday-collection-list'].innerHTML, html);
-    await sandbox.loadDdayCollection('2026-09-21', {background:true});
+    assert.equal(sandbox.loadDdayCollection('2026-09-21', {background:true}), background);
     assert.equal(requests.length, 3);
     assert.equal(params(2).get('reuse_normal'), '1');
     const manual = sandbox.loadDdayCollection('2026-09-22', {refresh:true});

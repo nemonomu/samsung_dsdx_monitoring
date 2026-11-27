@@ -1,10 +1,11 @@
 var ddayCollectionRequestId = 0;
-var ddayCollectionPending = false;
+var ddayCollectionPending = null;
 var ddayCollectionMarkup = '';
 
 function resetDdayCollection() {
     ++ddayCollectionRequestId;
-    ddayCollectionPending = false;
+    ddayCollectionPending?.controller.abort();
+    ddayCollectionPending = null;
     ddayCollectionMarkup = '';
     const container = document.getElementById('dday-collection-list');
     if (container) container.textContent = '수집 현황을 불러오는 중입니다.';
@@ -14,6 +15,7 @@ function ddayStatusBadge(status, reason) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
         collecting: ['collecting', '수집 중'],
+        unconfirmed: ['pending', '완료 미확인'],
         received: ['ok', '수집 확인'], partial: ['collecting', '일부 수집'],
         error: ['warning', '조회 실패'], uncollected: ['critical', '미수집'],
         abnormal: ['critical', 'BSR 이상'], rank_mismatch: ['critical', '이상']
@@ -30,10 +32,11 @@ function ddaySummary(rows) {
     const status = rows.some(row => row.status === 'error') ? 'error'
         : rows.some(row => row.status === 'rank_mismatch') ? 'rank_mismatch'
         : rows.some(row => row.status === 'abnormal') ? 'abnormal'
+        : rows.some(row => row.status === 'collecting') ? 'collecting'
+        : rows.some(row => row.status === 'unconfirmed') ? 'unconfirmed'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received' || row.status === 'partial') ? 'partial'
         : rows.some(row => row.status === 'uncollected') ? 'uncollected'
-        : rows.some(row => row.status === 'collecting') ? 'collecting'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';
     return { count, mainCount, bsrCount, status };
 }
@@ -105,37 +108,56 @@ function renderDdayCollection(data) {
         '<div class="sentiment-categories">' + categories + '</div></div></details>';
 }
 
-async function loadDdayCollection(selectedDate, {refresh = false, background = false} = {}) {
+function loadDdayCollection(selectedDate, {refresh = false, background = false} = {}) {
+    if (!refresh && ddayCollectionPending?.date === selectedDate) return ddayCollectionPending.request;
+    ddayCollectionPending?.controller.abort();
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]);
+    const request = readDdayCollection(selectedDate, {refresh, background, signal}).finally(() => {
+        if (ddayCollectionPending?.request === request) ddayCollectionPending = null;
+    });
+    ddayCollectionPending = {date:selectedDate, request, controller};
+    return request;
+}
+
+async function readDdayCollection(selectedDate, {refresh, background, signal}) {
     const container = document.getElementById('dday-collection-list');
     if (!container) return false;
-    if (background && ddayCollectionPending) return;
     const requestId = ++ddayCollectionRequestId;
-    ddayCollectionPending = true;
     if (!background) {
         ddayCollectionMarkup = '';
         container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황을 불러오는 중...</div></div>';
     }
     try {
         const query = new URLSearchParams({date:selectedDate});
-        if (refresh) query.set('refresh', '1');
-        if (!refresh) query.set('reuse_normal', '1');
+        query.set(refresh ? 'refresh' : 'reuse_normal', '1');
         const response = await fetch('/dx/layer1/api/collection-status/?' + query,
-            refresh || background ? {cache:'no-store'} : undefined);
+            {signal, ...(refresh || background ? {cache:'no-store'} : {})});
         if (!response.ok) throw new Error('collection status unavailable');
         const data = await response.json();
         if (data.source_date !== selectedDate) throw new Error('collection status date mismatch');
         if (requestId !== ddayCollectionRequestId) return;
         const markup = renderDdayCollection(data);
-        if (markup !== ddayCollectionMarkup) container.innerHTML = markup;
+        if (markup !== ddayCollectionMarkup) {
+            const open = background ? [...container.querySelectorAll('details')].map(detail => detail.open) : [];
+            container.innerHTML = markup;
+            container.querySelectorAll('details').forEach((detail, index) => {
+                if (index < open.length) detail.open = open[index];
+            });
+        }
         ddayCollectionMarkup = markup;
         const panels = data.countries || [data];
         return !panels.length || panels.some(country => !country.retailers.length
             || ddaySummary(country.retailers).status !== 'received');
-    } catch (error) {
+    } catch (_) {
         if (requestId !== ddayCollectionRequestId) return;
         ddayCollectionMarkup = '';
+        if (background && container.querySelector('details')) {
+            if (!container.querySelector('.dday-refresh-error')) {
+                container.insertAdjacentHTML('afterbegin', '<p class="dday-refresh-error" role="status">자동 갱신에 실패했습니다. 이전 조회 결과입니다.</p>');
+            }
+            return;
+        }
         container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황 조회 실패 · 다시 조회해 주세요.</div></div>';
-    } finally {
-        if (requestId === ddayCollectionRequestId) ddayCollectionPending = false;
     }
 }

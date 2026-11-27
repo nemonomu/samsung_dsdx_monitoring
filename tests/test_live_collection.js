@@ -73,10 +73,14 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
         return Promise.resolve(response({...snapshot(199,100,204,p.get('date')),country:p.get('country')}));
     });
     const seen=[];
-    const racePoll=race.context.L1.liveCollection.poll(()=>({date:selected,countries:['SEA']}),item=>seen.push(item.inspection_date));
-    const old=racePoll.refresh();await flush();selected='2026-10-22';await racePoll.refresh(true);
+    let completedSweeps=0;
+    const racePoll=race.context.L1.liveCollection.poll(()=>({date:selected,countries:['SEA']}),
+        item=>seen.push(item.inspection_date),()=>{completedSweeps++;});
+    const old=racePoll.refresh(true);await flush();selected='2026-10-22';await racePoll.refresh(true);
     resolveOld(response(snapshot()));await old;
-    assert.deepEqual(seen,['2026-10-22']);racePoll.stop();
+    assert.deepEqual(seen,['2026-10-22']);
+    assert.equal(completedSweeps,1);
+    racePoll.stop();
 
     // Exercise the actual dashboard loader: late saved statistics cannot undo live recovery.
     let resolveSaved;

@@ -87,24 +87,25 @@ def daily(request):
     except (ValueError, TypeError, OverflowError):
         return JsonResponse({'error': '국가·제품군·리테일러·기간·날짜를 확인해주세요.'}, status=400)
     query_days = max(days, 29)
-    refresh = request.GET.get('refresh') == '1'
-    key = f'column-statistics:v5-source-day:{country}:{product}:{retailer}:{target}:{query_days}'
     try:
+        from .overview import detail_counts, history_reuse_enabled, live_counts, prepared_generation
+
         eci_preview = country == 'SEIB' and is_eci_appliance_preview(product, retailer, target)
         preview = eci_preview or (jiomart.matches(country, product, retailer) and jiomart.preview(target)) \
             or is_preview(country, product, retailer, target)
+        refresh = request.GET.get('refresh') == '1'
+        generation = None if preview else prepared_generation()
+        key = (f'column-statistics:v6:{generation}:{country}:{product}:{retailer}:{target}:{query_days}'
+               if generation else None)
         scope = (country, product, retailer)
         result = None
         if not refresh and not preview and query_days == 29 and request.GET.get('reuse_history') == '1':
-            from .overview import history_reuse_enabled, live_counts
             if history_reuse_enabled(scope):
                 result = live_counts(scope, target)
-        if result is None and not refresh and not preview:
+        if result is None and not refresh and key:
             result = cache.get(key)
         if result is None and not refresh and not preview and request.GET.get('prepared') == '1':
-            from .overview import detail_counts
-
-            result = detail_counts((country, product, retailer), target, query_days)
+            result = detail_counts(scope, target, query_days)
         if result is None:
             read_started = timezone.now()
             result = daily_counts(country, product, retailer, target, query_days)
@@ -114,8 +115,12 @@ def daily(request):
                 if row['date'] == str(target):
                     row['raw_total'] = row['total'] if eci_preview else totals.get(str(target), 0)
             result['updated_at'] = read_started.isoformat()
-            if not preview:
-                cache.set(key, result, 300)
+            if key:
+                if refresh:
+                    cache.set(key, result, 300)
+                else:
+                    # An earlier cache miss can finish after a forced refresh.
+                    cache.add(key, result, 300)
         # Recheck completion on each request, even across a cached window boundary.
         result = attach_comparisons(result, target)
         result.update(mapping)

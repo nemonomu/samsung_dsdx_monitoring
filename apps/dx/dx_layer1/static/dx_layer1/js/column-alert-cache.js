@@ -32,7 +32,7 @@
     }
     async function load(job, date, {signal, force = false, refresh = false} = {}) {
         const key = keyFor(job, date);
-        if (!force && !refresh && fresh(entries[key])) return structuredClone(entries[key].data);
+        if (!force && !refresh && fresh(entries[key])) return {...structuredClone(entries[key].data), fromCache:true};
         // A failed manual refresh must not leave an earlier successful value behind.
         delete entries[key];
         persist();

@@ -63,21 +63,12 @@ def _retailer(cursor, product_line, retailer_name, source_date, phase):
         cursor, product_line, retailer_name, source_date, SEM_HISTORY_DAYS
     )
     history = [row['main_count'] for row in history_rows]
-    # Assess received batches independently of other retailers' collection window.
-    row_phase = (
-        'complete' if phase == 'collecting' and current['actual_count'] > 0
-        else phase
-    )
     if phase == 'pending':
         status, baseline = 'PENDING', None
     else:
         state, baseline = get_sem_count_status(current['main_count'], history)
-        if state == 'ok':
-            status = 'OK'
-        elif phase == 'collecting':
-            status = 'COLLECTING'
-        else:
-            status = 'REVIEW' if current['actual_count'] > 0 else 'CRITICAL'
+        status = ('COLLECTING' if phase == 'collecting' else 'OK' if state == 'ok'
+                  else 'REVIEW' if current['actual_count'] > 0 else 'CRITICAL')
     expected = int(baseline) if baseline is not None else None
     main_count = current['main_count']
     return {
@@ -93,7 +84,7 @@ def _retailer(cursor, product_line, retailer_name, source_date, phase):
             if baseline and baseline > 0 else None
         ),
         'status': status,
-        'collection_phase': row_phase,
+        'collection_phase': phase,
         'status_basis': 'previous_main_average',
         'history_day_count': len(history),
         'allowed_deviation': SEM_REVIEW_DEVIATION,
@@ -109,14 +100,13 @@ def _tv_observation_rows(cursor, source_day, phase):
         current = counts.get(retailer.lower(), {})
         raw = current.get('raw_count', 0)
         main = current.get('main_count', 0)
-        row_phase = 'complete' if phase == 'collecting' and raw else phase
-        status = ('PENDING' if row_phase == 'pending' else 'COLLECTING' if row_phase == 'collecting'
+        status = ('PENDING' if phase == 'pending' else 'COLLECTING' if phase == 'collecting'
                   else 'OK' if raw else 'CRITICAL')
         rows.append(dict(
             retailer=retailer, batch_id=current.get('batch_id'),
             raw_count=raw, main_count=main, bsr_count=current.get('bsr_count', 0),
             actual=main, count=main, expected=None, expected_precise=None, rate=None,
-            status=status, collection_phase=row_phase, status_basis='historical_volume',
+            status=status, collection_phase=phase, status_basis='historical_volume',
             observation_start=str(SEM_TV_OBSERVATION_START), missing_by_raw_count=True,
         ))
     return rows

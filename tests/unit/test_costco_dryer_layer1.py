@@ -28,7 +28,7 @@ class DryerTests(unittest.TestCase):
             result = calc.compare_rows([row], [], 'SEA')[0]
             self.assertFalse(any(a['metric'] == 'bsr' for a in result['alerts']))
             self.assertNotEqual('fixed_100', calc.comparison_rules(result, 'SEA').get('bsr', {}).get('rule'))
-            with patch.object(dday, 'dx_connection', connection), patch.object(
+            with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'receipt_state', return_value='committed'), patch.object(
                     dday, 'fetch_collection', return_value=(300, None, 'batch', 300, count)):
                 rows = dday.get_collection_status(date(2026, 10, 11), datetime(2026, 10, 11, 16, tzinfo=KST))['retailers']
             tv = next(r for r in rows if r['product'] == 'TV' and r['retailer'] == 'Costco')
@@ -61,7 +61,8 @@ class DryerTests(unittest.TestCase):
 
     def test_dday_dryer_order_schedule_and_bsr(self):
         for count, expected in [(99, 'received'), (100, 'received'), (101, 'received')]:
-            with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection', return_value=(300, None, 'c11', 300, count)):
+            with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'receipt_state', return_value='committed'), \
+                    patch.object(dday, 'fetch_collection', return_value=(300, None, 'c11', 300, count)):
                 rows = dday.get_collection_status(date(2026, 10, 11), datetime(2026, 10, 11, 16, tzinfo=KST))['retailers']
             self.assertEqual('LDY_DRYER', rows[-1]['product'])
             self.assertEqual(expected, rows[-1]['status'])

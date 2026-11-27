@@ -93,8 +93,12 @@ for (const count of [0, 1, undefined, null, 'unknown']) {
 }
 for (const count of [2, 3, 10]) {
     assert.strictEqual(status.rowBadge({ status: 'OK', batch_count: count }),
-        '<span class="status-badge critical">배치 ' + count + '개</span>');
+        '<status>OK</status> <span class="status-badge critical">배치 ' + count + '개</span>');
 }
+const collecting = {retailer: 'Bestbuy', status: 'COLLECTING', collection_phase: 'collecting', batch_count: 2};
+assert.strictEqual(status.render({categories: [{name: 'TV', retailers: [collecting]}]}, 0, 'retail'), '');
+assert.strictEqual(status.rowBadge(collecting),
+    '<status>COLLECTING</status> <span class="status-badge">배치 2개</span>');
 assert(status.render({ categories: [], batch_count_error: true }, 0, 'retail').includes('배치 조회 실패'));
 const combined = status.render({ categories: [{ name: 'TV', retailers: [
     missing('Amazon'), { retailer: 'Walmart', count: 300, status: 'OK', batch_count: 3 },

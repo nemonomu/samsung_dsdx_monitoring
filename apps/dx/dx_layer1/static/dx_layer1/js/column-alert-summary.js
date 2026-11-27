@@ -37,7 +37,7 @@
         if (historyNotice) historyNotice.hidden = true;
         if (historyDetail) historyDetail.textContent = '';
     }
-    function load(date, force = false, refresh = false) {
+    function load(date, force = false, refresh = false, ready) {
         if (window.CollectionIssues) window.CollectionIssues.load({date}, countries.size > 0 && refresh);
         if (!force && selectedDate === date) return pending;
         if (controller) controller.abort();
@@ -57,6 +57,7 @@
         }
         spinner.hidden = false;
         let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0, missing = 0;
+        let usedNetwork = false;
         const historyFailures = [];
         function consume(job, data) {
             if (!data || data.error || !Array.isArray(data.comparisons)) {
@@ -96,6 +97,7 @@
                     } else {
                         const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force, refresh});
                         if (current.signal.aborted) return;
+                        if (!data.fromCache) usedNetwork = true;
                         consume(job, data);
                     }
                 } catch (_) {
@@ -107,11 +109,17 @@
                 if (breakdown) breakdown.textContent = `전체 ${jobs.length}개 대상 중 ${completed}개 조회 중`;
             }
         }
-        pending = Promise.all([worker(), worker()]).then(() => {
+        const sweep = () => Promise.all([worker(), worker()]);
+        const run = ready ? Promise.resolve(ready).catch(() => {}).then(result => result === false ? false : sweep()) : sweep();
+        pending = run.then(result => {
             if (current.signal.aborted) return;
             // Dashboard overviews reconcile the current source day, which the past list excludes.
-            if (!countries.size && window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
+            if (result === false) {
+                selectedDate = undefined;
+                return;
+            }
+            if (!countries.size && usedNetwork && window.CollectionIssues) window.CollectionIssues.load({date}, true);
             if (historyFailures.length && historyNotice && historyDetail) {
                 historyNotice.hidden = false;
                 historyDetail.textContent = `${historyFailures.length}개 대상 · 조회된 통계는 표시됩니다. ${historyFailures.join(' / ')}`;
@@ -145,12 +153,10 @@
         if (selectedDate && window.LAYER1?.section !== 'dashboard') load(selectedDate, true);
     });
     document.addEventListener('DOMContentLoaded', () => {
-        for (const prefix of ['cs', 'ccs']) {
-            const form = document.getElementById(prefix + '-filters');
-            const date = document.getElementById(prefix + '-date');
-            if (!form || !date) continue;
-            load(date.value || today());
-            form.addEventListener('submit', () => { if (form.reportValidity()) load(date.value, true); });
-        }
+        const form = document.getElementById('cs-filters');
+        const date = document.getElementById('cs-date');
+        if (!form || !date) return;
+        load(date.value || today());
+        form.addEventListener('submit', () => { if (form.reportValidity()) load(date.value, true); });
     });
 })();

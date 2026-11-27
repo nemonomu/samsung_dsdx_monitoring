@@ -290,7 +290,7 @@ def _observe(counts, day, now):
 
 def country_overview(country, selections, *, include_reviews, now=None, record_issues=False, refresh=False):
     now = now or timezone.now()
-    prepared = {} if record_issues else _prepared_counts(selections)
+    prepared = {} if record_issues or refresh else _prepared_counts(selections)
     compare = _observe if record_issues else _compare
     read_options = {'refresh': True} if refresh else {}
     futures = {selection: _POOL.submit(live_counts, *selection, **read_options)

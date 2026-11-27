@@ -1,10 +1,13 @@
 """Casas Bahia D-DAY receipt only; SEDA D-1 inspection stays independent."""
 from datetime import date, datetime, time
 
+from django.conf import settings
+
 from apps.common.db import dx_connection
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql
+from .collection_receipts import receipt_state
 
 from .collection_revisions import batch_revision
 
@@ -44,7 +47,7 @@ def get_collection_status(target_date, now, *, read=None):
     for source in SEDA_SOURCE_CONFIG.values():
         row = dict(country='SEDA', retailer='Casas Bahia', product=source['category'],
                    source_date=str(day), scheduled_at=start.isoformat(), scheduled_end_at=end.isoformat(),
-                   collection_phase=phase, count=0, main_count=0, bsr_count=0,
+                   schedule_phase=phase, count=0, main_count=0, bsr_count=0,
                    last_collected_at=None, last_collected_timezone='DB 원본', batch_id=None)
         try:
             if read:
@@ -55,8 +58,18 @@ def get_collection_status(target_date, now, *, read=None):
             count, stamp, batch, main, bsr = counts
             row.update(count=int(count or 0), main_count=int(main or 0), bsr_count=int(bsr or 0),
                        last_collected_at=stamp, batch_id=batch)
-            row['status'] = ('received' if row['count'] else 'uncollected' if phase == 'complete'
-                             else 'scheduled' if phase == 'pending' else 'waiting')
+            receipt = receipt_state('SEDA', row['product'], row['retailer'], day, current, counts)
+            if not receipt and not getattr(settings, 'DX_DDAY_RECEIPTS_DIR', None):
+                row['status'] = ('received' if row['count'] else 'uncollected' if phase == 'complete'
+                                 else 'scheduled' if phase == 'pending' else 'waiting')
+                row['collection_phase'] = phase
+            elif receipt == 'committed':
+                row['status'] = 'received' if row['count'] else 'uncollected'
+                row['collection_phase'] = 'complete'
+            else:
+                row['status'] = ('collecting' if receipt == 'running' else 'unconfirmed' if current >= end else 'collecting' if row['count']
+                                 else 'scheduled' if phase == 'pending' else 'waiting')
+                row['collection_phase'] = row['status']
         except Exception:
             row.update(status='error', count=None, main_count=None, bsr_count=None)
         rows.append(row)

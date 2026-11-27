@@ -72,14 +72,16 @@
             var observationBadge = '<span class="status-badge">' + esc(observation) + '</span>';
             statusBadge = statusBadge + ' ' + observationBadge;
         }
-        var volumeBadge = observation || missing || retailer.status !== 'OK' || (retailer.volume_alerts || []).length ? statusBadge + ' ' : '';
+        var volumeBadge = statusBadge + ' ';
+        var batchBadge = retailer.collection_phase && retailer.collection_phase !== 'complete'
+            ? 'status-badge' : 'status-badge critical';
         if (count >= 2 && retailer.batch_context) {
-            return volumeBadge + '<button type="button" class="status-badge critical l1-batch-toggle" aria-expanded="false" ' +
+            return volumeBadge + '<button type="button" class="' + batchBadge + ' l1-batch-toggle" aria-expanded="false" ' +
                 'data-batch-count="' + count + '" data-batch-context="' + esc(JSON.stringify(retailer.batch_context)).replace(/"/g, '&quot;') + '" ' +
                 'onclick="event.stopPropagation();L1.retailBatches.toggle(this)">배치 ' + count + '개 ▾</button>';
         }
         return count >= 2
-            ? volumeBadge + '<span class="status-badge critical">배치 ' + count + '개</span>'
+            ? volumeBadge + '<span class="' + batchBadge + '">배치 ' + count + '개</span>'
             : statusBadge;
     }
 
@@ -98,7 +100,8 @@
                 if (retailer.exclude_from_total) return;
                 var name = String(retailer.retailer || '').trim();
                 var missing = isMissing(retailer);
-                var multiple = batchCount(retailer) >= 2;
+                var multiple = batchCount(retailer) >= 2 &&
+                    (!retailer.collection_phase || retailer.collection_phase === 'complete');
                 var observing = retailer.observation_state === 'observing';
                 var failed = retailer.status === 'ERROR';
                 var unresolvedAlerts = (retailer.volume_alerts || []).filter(function(a) {

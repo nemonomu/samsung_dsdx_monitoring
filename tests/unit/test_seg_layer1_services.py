@@ -74,7 +74,7 @@ class SegLayer1ServiceTests(unittest.TestCase):
         result, _, _ = self.result(now=datetime(2026, 9, 9, 3, tzinfo=timezone.utc))
         self.assertEqual('complete', result['check']['phase'])
 
-    def test_all_collected_is_ok_before_noon(self):
+    def test_received_counts_are_visible_but_unverified_before_noon(self):
         rows = [
             {'retailer': name, 'main_count': 290, 'actual_count': 300}
             for name in ('Mediamarkt', 'OTTO', 'Amazon')
@@ -84,15 +84,16 @@ class SegLayer1ServiceTests(unittest.TestCase):
                 result, _, _ = self.result(
                     rows, now=datetime(2026, 9, 9, hour),
                 )
-                self.assertEqual('OK', result['check']['status'])
+                status = 'COLLECTING' if hour < 12 else 'OK'
+                self.assertEqual(status, result['check']['status'])
                 self.assertEqual([], result['failed_items'])
                 for category in result['check']['categories']:
-                    self.assertEqual('OK', category['status'])
+                    self.assertEqual(status, category['status'])
                     self.assertTrue(all(
-                        row['status'] == 'OK' for row in category['retailers']
+                        row['status'] == status for row in category['retailers']
                     ))
 
-    def test_only_missing_retailer_keeps_category_and_seg_collecting(self):
+    def test_partial_batch_cannot_complete_or_enter_the_baseline(self):
         def counts(_cursor, product_line, _source_date):
             return [
                 {'retailer': name, 'main_count': 300, 'actual_count': 300}
@@ -108,22 +109,23 @@ class SegLayer1ServiceTests(unittest.TestCase):
         check = result['check']
         self.assertEqual('COLLECTING', check['status'])
         self.assertEqual([], result['failed_items'])
-        self.assertEqual(['OK', 'COLLECTING', 'OK'], [
+        self.assertEqual(['COLLECTING'] * 3, [
             category['status'] for category in check['categories']
         ])
-        self.assertEqual(['OK', 'OK', 'COLLECTING'], [
+        self.assertEqual(['COLLECTING'] * 3, [
             row['status'] for row in check['categories'][1]['retailers']
         ])
         apply_verification_status(check)
         for category in check['categories']:
             for row in category['retailers']:
                 missing = category['product_line'] == 'seg_ref' and row['retailer'] == 'Amazon'
-                self.assertEqual('collecting' if missing else 'complete', row['collection_phase'])
-                self.assertEqual('collecting' if missing else 'ready', row['verification_state'])
+                self.assertEqual('collecting', row['collection_phase'])
+                self.assertEqual('collecting' if missing else 'waiting', row['verification_state'])
+                self.assertEqual(0 if missing else 300, row['main_count'])
         normalized = normalize_check(check, 'SEG', date(2026, 9, 9))
         for row in normalized:
-            missing = row['product'] == 'REF' and row['retailer'] == 'Amazon'
-            self.assertEqual(not missing, row['complete'])
+            self.assertFalse(row['complete'])
+            self.assertFalse(row['baseline_eligible'])
 
     def test_before_start_remains_pending(self):
         result, _, _ = self.result(

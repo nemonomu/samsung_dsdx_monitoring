@@ -12,7 +12,7 @@ from apps.common.response import log_error
 from apps.common.sea_retail import SEA_RETAIL_SOURCES, get_sea_retail_source
 from apps.common.sea_collection import (
     homedepot_inspection_label, afternoon_collection_phase, afternoon_schedule_enabled,
-    AFTERNOON_COLLECTION_WINDOW,
+    AFTERNOON_COLLECTION_WINDOW, WALMART_TV_START,
 )
 from apps.dx.dx_layer1.common.context import SECTION_TITLES
 
@@ -509,7 +509,7 @@ def get_layer1_stats(cursor, target_date, now=None):
             'kst': f'{pm_kst_date} {pm_kst["hour"]:02d}:00',
             'is_dst': pm_kst['is_dst'],
             'collection_completion_kst': '21:00',
-            'retailer_start_times': (('Walmart', '16:55'),),
+            'retailer_start_times': (('Walmart', WALMART_TV_START.strftime('%H:%M')),),
         },
         'is_dst': am_kst['is_dst'],
         'homedepot': dict(HOMEDEPOT_COLLECTION_WINDOW),
