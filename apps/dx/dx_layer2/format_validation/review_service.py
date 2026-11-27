@@ -380,39 +380,71 @@ def merge_report(cursor, day, type_summary, reason_summary, table_summary, detai
     scopes = load_scopes()
     if not scopes:
         return
-    from .services import _get_format_stats_raw
-    stats, _ = _get_format_stats_raw(cursor, day)
-    destinations = {(table['table'], retailer['retailer'])
-                    for table in stats['tables'] for retailer in table.get('retailers', [])
-                    if has_scope(scopes, table['table'], retailer['retailer'], day)}
+    from .services import VALID_TABLES_FORMAT, _get_format_detail_raw, sem_validation
+
+    retailers = {scope.context['retailer_name'] for scope in scopes.values()}
+    destinations = sorted((table, retailer) for table in VALID_TABLES_FORMAT
+                          for retailer in retailers if has_scope(scopes, table, retailer, day))
     additions = []
-    for table, retailer in sorted(destinations):
-        data = inventory(cursor, day, table, retailer, scopes=scopes)
-        context = data['context']
-        policies = effective_policies(context, scopes, day)
-        for group in data['groups']:
-            policy = policies.get(group['key'])
-            if not policy or policy.get('is_del'):
+    for table, retailer in destinations:
+        product_line = sem_validation.product_line_for(table)
+        if product_line:
+            source = sem_validation.SEM_SOURCE_CONFIG[product_line]
+            source_day = sem_validation._mapping(day, source)['source_date']
+            if not any(retailer_key(r) == retailer_key(retailer) for r in
+                       sem_validation._validation_retailers(product_line, source_day, format_rules=True)):
                 continue
-            for row in group['records']:
-                if row['state'] not in ('registered_normal', 'error'):
+        data = _get_format_detail_raw(cursor, day, table, retailer, 1, include_normal=True)
+        if (not data.get('actual_table') or data['table'] != table
+                or retailer_key(data['retailer']) != retailer_key(retailer)):
+            continue
+        context = context_for(data)
+        policies = effective_policies(context, scopes, day)
+        fields = set(data['validation_fields'])
+        by_field = {}
+        for policy in policies.values():
+            field = policy['field']
+            if policy.get('is_del') or field not in fields:
+                continue
+            if policy['action'] == 'normal':
+                record_ids = None
+            elif policy['action'] == 'error' and policy['date'] == str(day):
+                record_ids = {str(record_id) for record_id in policy['record_ids']}
+            else:
+                continue
+            by_field.setdefault(field, {})[policy['value']] = (policy, record_ids)
+        if not by_field:
+            continue
+        targets = {str(record_id) for record_id in data['target_ids']}
+        for row in data['results']:
+            if str(row['id']) not in targets:
+                continue
+            for field, values in by_field.items():
+                value = row.get(field)
+                if value is None or not str(value).strip():
+                    continue
+                entry = values.get(str(value))
+                if not entry:
+                    continue
+                policy, record_ids = entry
+                if record_ids is not None and str(row['id']) not in record_ids:
                     continue
                 additions.append({
                     'correction_type': 'format_check', 'table_name': context['source_table'],
-                    'column_name': group['field'], 'record_id': row['id'],
-                    'old_value': group['value'], 'new_value': group['value'],
-                    'status': 'normal' if row['state'] == 'registered_normal' else 'error',
+                    'column_name': field, 'record_id': row['id'],
+                    'old_value': str(value), 'new_value': str(value),
+                    'status': policy['action'],
                     'memo': '값별 일괄 검토 · 원본 변경 없음', 'reason': policy['reason'],
-                    'created_id': policy['actor'], 'retailer': data['retailer'], 'item': row['item'],
+                    'created_id': policy['actor'], 'retailer': data['retailer'], 'item': str(row.get('item') or ''),
                     'rule_id': None, 'rule_name': '형식검증 운영 기준', 'detail_code': '',
                 })
     if not additions:
         return
     def cell(row):
         return (row['table_name'].removeprefix('public.'), str(row['record_id']), row['column_name'])
-    cells = {cell(row) for row in additions}
-    details[:] = [row for row in details if row['correction_type'] != 'format_check' or cell(row) not in cells]
-    details.extend(additions)
+    additions = {cell(row): row for row in additions}
+    details[:] = [row for row in details if row['correction_type'] != 'format_check' or cell(row) not in additions]
+    details.extend(additions.values())
     format_details = [row for row in details if row['correction_type'] == 'format_check']
     type_summary['format_check'] = dict(Counter(row['status'] for row in format_details))
     for table in table_summary.values():
