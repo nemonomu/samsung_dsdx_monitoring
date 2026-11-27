@@ -113,8 +113,12 @@ def get_dday_collection_status(target_date, now=None, *, reuse_normal=False):
         connection.autocommit = True
         cursor.execute('SET default_transaction_read_only = on')
         cursor.execute("SET statement_timeout = '1500ms'")
-        revisions = (CollectionReads(target_date, cursor)
-                     if reuse_normal and getattr(settings, 'DX_DDAY_COLLECTION_REVISIONS', False) else None)
+        revisions = None
+        if reuse_normal and getattr(settings, 'DX_DDAY_COLLECTION_REVISIONS', False):
+            try:
+                revisions = CollectionReads(target_date, cursor)
+            except (OSError, ValueError):
+                logger.warning("D-DAY count cache unavailable; reading live counts", exc_info=True)
 
         def read(fetch, source, scope, complete):
             if monotonic() >= deadline:

@@ -13,7 +13,7 @@ if not settings.configured:
                        USE_TZ=True, TIME_ZONE='Asia/Seoul', SECRET_KEY='costco-tests')
 import django
 django.setup()
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.test.runner import DiscoverRunner
 from apps.common.sea_collection import KST
 from apps.dx.dx_layer1.retail import costco, retail_repositories as repo, retail_services as retail
@@ -65,6 +65,7 @@ class CostcoTests(SimpleTestCase):
         daily[-1]['total'] = 0
         self.assertEqual(['uncollected']*3, [r['status'] for r in comparison.compare_columns(data,target,completed)])
 
+    @override_settings(DX_DDAY_RECEIPTS_DIR='fixture-receipts')
     def test_dday_main_below_bsr_is_abnormal_after_window(self):
         day = date(2026, 10, 28)
         sources = [source for source in dday.SOURCES if source[0] == 'Costco']
