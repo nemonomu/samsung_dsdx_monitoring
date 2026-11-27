@@ -171,30 +171,65 @@ class Layer4ReportAutoNullTests(unittest.TestCase):
         legacy_loader.assert_called_once_with(cursor, date(2026, 9, 11))
         new_loader.assert_called_once_with(cursor, date(2026, 9, 12), review_only=True, strict=True)
 
-    def test_full_report_loads_and_counts_auto_reviews_once(self):
-        cursor = ScriptedCursor([{'fetchall': []} for _ in range(8)])
+    def test_full_report_keeps_existing_sections_with_auto_reviews(self):
+        day = '2026-11-27'
+        table = 'dx_sem.dx_sem_tv_retail_com'
+        cursor = ScriptedCursor([
+            {'fetchall': [('sem_retail', 100, 98, 98, 'OK', '수집 마감 메모')]},
+            {'fetchall': [(7, 'sem_retail', '수집 지연', day, '지연', '원인', '조치', 'resolved', '완료')]},
+            {'fetchall': [('cross_field', 'corrected', 1), ('format_check', 'normal', 1),
+                          ('duplicate_check', 'corrected', 1)]},
+            {'fetchall': [('기존 확인', 'format_check', 1)]},
+            {'fetchall': [(table, 'cross_field', 'corrected', 1), (table, 'format_check', 'normal', 1),
+                          (table, 'duplicate_check', 'corrected', 1)]},
+            {'fetchall': [
+                ('cross_field', table, 'savings', 11, '20', '10', 'corrected', '원문 확인',
+                 None, 'reviewer', 'Walmart', '11', 592, '할인금액 일치', 'sem_tv_mx_tv_savings_amount_match'),
+                ('format_check', table, 'screen_size', 12, '55inch', '55inch', 'normal', '',
+                 '기존 확인', 'reviewer', 'Walmart', '12', None, None, None),
+                ('duplicate_check', table, 'sku', 13, 'old', 'new', 'corrected', '중복 SKU 확인',
+                 None, 'reviewer', 'Walmart', '13', None, None, None),
+            ]},
+            {'fetchall': [('tv_item_mst', 20, 'Amazon', 'excluded-20')]},
+            {'fetchall': [('행사', 'TV', '대상 키워드', day)]},
+        ])
 
         @contextmanager
         def connection():
             yield object(), cursor
 
         review = {
-            'table_name': 'dx_sem.dx_sem_ref_retail_com',
-            'record_id': 10, 'column_name': 'ref_capacity',
-            'reason': '상품페이지 내 항목 부재',
+            'table_name': table, 'record_id': 10, 'column_name': 'sku',
+            'retailer': 'Walmart', 'item': '10', 'reason': '상품페이지 내 항목 부재',
+            'original_crawl_date': '2026-11-26',
         }
+        sem_summary = {'source_date': day, 'rule_count': 8, 'retailers': [
+            {'retailer': 'Walmart', 'received': 352}, {'retailer': "Sam's Club", 'received': 0},
+        ]}
         with patch.object(self.service, 'dx_connection', connection), \
                 patch.object(self.service, '_load_auto_null_reviews',
-                             return_value=[review]) as loader:
-            result = self.service.get_report_data('2026-09-13')
+                             return_value=[review]) as loader, \
+                patch.object(self.service, '_sem_tv_observation_summary', return_value=sem_summary):
+            result = self.service.get_report_data(day)
 
-        loader.assert_called_once_with(cursor, '2026-09-13')
-        self.assertEqual(1, result['type_summary']['null_check']['normal'])
-        self.assertEqual(1, len(result['details']))
-        self.assertEqual(
-            result['details'],
-            result['grouped_details']['null_check'][review['table_name']],
-        )
+        loader.assert_called_once_with(cursor, day)
+        self.assertEqual('수집 마감 메모', result['collection_status'][0]['memo'])
+        self.assertEqual('완료', result['collection_issues'][0]['resolution_memo'])
+        self.assertEqual('대상 키워드', result['missing_keywords'][0]['product_name'])
+        self.assertEqual('excluded-20', result['excluded_items'][0]['item'])
+        self.assertEqual(sem_summary, result['sem_tv_observation'])
+        self.assertEqual({
+            'cross_field': {'corrected': 1}, 'duplicate_check': {'corrected': 1},
+            'format_check': {'normal': 1}, 'null_check': {'normal': 1},
+        }, result['type_summary'])
+        by_type = result['grouped_details']
+        self.assertEqual('할인금액 일치', by_type['cross_field'][table][0]['rule_name'])
+        self.assertEqual('기존 확인', by_type['format_check'][table][0]['reason'])
+        self.assertEqual('중복 SKU 확인', by_type['duplicate_check'][table][0]['memo'])
+        auto, = by_type['null_check'][table]
+        self.assertTrue(auto['auto_applied'])
+        self.assertEqual(('Walmart', '2026-11-26'), (auto['retailer'], auto['original_crawl_date']))
+        self.assertEqual(4, len(result['details']))
 
     def test_report_cache_accepts_confirmed_error_counts_and_preserves_forced_refresh(self):
         from tempfile import TemporaryDirectory

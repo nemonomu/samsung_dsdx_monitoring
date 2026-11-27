@@ -270,8 +270,8 @@ class FormatReviewTests(TestCase):
                   'column_name':'pick_up_availability','status':'normal','reason':'과거 확인'}]
         types,reasons,tables={},{},{}
         reasons=[]
-        stats = {'tables': [{'table': 'sea_ref_retail', 'retailers': [{'retailer': 'Lowes'}]}]}
-        with patch.object(services, '_get_format_stats_raw', return_value=(stats, 0)):
+        with patch.object(services, '_get_format_stats_raw', side_effect=AssertionError('full format scan')), \
+             patch.object(service, 'inventory', side_effect=AssertionError('interactive inventory')):
             service.merge_report(None,DAY,types,reasons,tables,details)
         self.assertEqual({'normal':3,'error':1},types['format_check'])
         self.assertEqual(4,len(details))
@@ -393,15 +393,15 @@ class FormatReviewTests(TestCase):
 
     def test_shared_report_uses_destination_table_and_deduplicates(self):
         self.apply()
-        stats = {'tables': [{'table': f'sea_{product}_retail', 'retailers': [{'retailer': 'Lowes'}]}
-                            for product in ('ref', 'ldy')]}
         def load(_cursor, _day, table, *_args, **_kwargs):
+            if table not in ('sea_ref_retail', 'sea_ldy_retail'):
+                return {}
             raw = copy.deepcopy(self.raw)
             raw['table'] = table
             raw['actual_table'] = 'public.ldy_retail_com' if table == 'sea_ldy_retail' else 'public.ref_retail_com'
             return raw
         types, reasons, tables, details = {}, [], {}, []
-        with patch.object(services, '_get_format_stats_raw', return_value=(stats, 0)), \
+        with patch.object(services, '_get_format_stats_raw', side_effect=AssertionError('full format scan')), \
              patch.object(services, '_get_format_detail_raw', side_effect=load):
             service.merge_report(None, DAY, types, reasons, tables, details)
             service.merge_report(None, DAY, types, reasons, tables, details)
