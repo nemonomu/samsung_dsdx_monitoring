@@ -33,8 +33,8 @@ from apps.common.sem_retail import (
 
 
 _NEW_TV_HOSTS = dict(zip(SEM_TV_OBSERVATION_RETAILERS, ('www.walmart.com.mx', 'www.sams.com.mx')))
-_NEW_TV_REQUIRED = ('country', 'account_name', 'item', 'retailer_sku_name', 'product_url',
-                    'crawl_datetime', 'calendar_week', 'final_sku_price')
+_NEW_TV_REQUIRED = ('country', 'account_name', 'item', 'sku', 'retailer_sku_name', 'product_url',
+                    'crawl_datetime', 'calendar_week', 'final_sku_price', 'screen_size')
 _NEW_TV_ID = re.compile(r'[0-9]*[1-9][0-9]*')
 _NEW_TV_WEEK = re.compile(r'W(?:0[1-9]|[1-4][0-9]|5[0-3])')
 _NEW_TV_AMOUNT = r'(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]{1,3})\.[0-9]{2}'
