@@ -6,7 +6,7 @@ from apps.dx.dx_layer1.seuk_retail.sources import TV_RETAILERS, TV_START
 from apps.dx.dx_layer2 import seuk_duplicate_validation, seuk_null_validation
 from apps.dx.dx_layer2.format_validation.services import get_format_stats
 from apps.dx.dx_layer3.cross_field.seuk_services import get_seuk_cross_field_summary
-from apps.dx.dx_layer4.corrections.services import _CURRENT_CORRECTIONS_SQL
+from apps.dx.dx_layer4.corrections.services import saved_review_counts
 
 
 PRODUCT_LINE = 'seuk_tv'
@@ -23,19 +23,6 @@ CHECK_LABELS = (
 def _by_retailer(tables):
     return {row['retailer']: row for table in tables if table['table'] == SECTION
             for row in table['retailers']}
-
-
-def _saved_counts(cursor, inspection_date):
-    cursor.execute(f"""
-        SELECT LOWER(BTRIM(retailer)), correction_type, status,
-               CASE WHEN correction_type = 'cross_field' AND status = 'normal'
-                    THEN COUNT(DISTINCT (record_id, rule_id)) ELSE COUNT(*) END
-        FROM ({_CURRENT_CORRECTIONS_SQL}) AS latest
-        WHERE table_name = %s AND LOWER(BTRIM(retailer)) = ANY(%s)
-          AND status IN ('normal', 'corrected')
-        GROUP BY 1, 2, 3
-    """, (inspection_date, SOURCE_TABLE, [name.lower() for name in TV_RETAILERS]))
-    return {(retailer, check, status): count for retailer, check, status, count in cursor.fetchall()}
 
 
 def review_snapshot(cursor, mapping):
@@ -56,7 +43,7 @@ def review_snapshot(cursor, mapping):
     duplicates = _by_retailer(duplicate_stats['tables'])
     cross = get_seuk_cross_field_summary(cursor, inspection_day, PRODUCT_LINE)
     crossfields = {row['retailer']: row for row in cross['retailers']}
-    saved_counts = _saved_counts(cursor, inspection_date)
+    saved_counts = saved_review_counts(cursor, inspection_date, SOURCE_TABLE, TV_RETAILERS)
 
     for retailer in TV_RETAILERS:
         null = nulls.get(retailer, {})

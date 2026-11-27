@@ -198,6 +198,48 @@ def _coppel_price_rules(row, checks):
     return failed
 
 
+def _registered_tv_rules(cursor, source):
+    from apps.common.db import dx_table
+
+    cursor.execute(f"""
+        SELECT validation_type, id
+        FROM public.{dx_table('monitoring_validation_rules')}
+        WHERE rule_type = 'crossfield' AND is_active IS TRUE
+          AND section_code = %s AND table_name = %s
+          AND detail_code = 'sem_tv_' || validation_type
+    """, (source['section_code'], source['table_name']))
+    return {key: rule_id for key, rule_id in cursor.fetchall() if key in sem_tv_rules.RULE_KEYS}
+
+
+def _tv_corrections(cursor, inspection_date, source, registered_rules):
+    if not registered_rules:
+        return {}
+    cursor.execute("""
+        SELECT record_id, rule_id, column_name, memo, reason, created_id, created_at
+        FROM public.monitoring_corrections
+        WHERE layer = 3 AND correction_type = 'cross_field' AND status = 'normal'
+          AND table_name = %s AND crawl_date = %s AND rule_id = ANY(%s)
+    """, (source['table_name'], str(inspection_date), list(registered_rules.values())))
+    return {
+        (str(record_id), rule_id): {
+            'column_name': column_name, 'memo': memo or '', 'reason': reason or '',
+            'created_id': created_id or '', 'created_at': str(created_at or ''),
+        }
+        for record_id, rule_id, column_name, memo, reason, created_id, created_at in cursor.fetchall()
+    }
+
+
+def can_review_tv_rule(cursor, source, retailer, rule_id, column_name):
+    registered = _registered_tv_rules(cursor, source)
+    return any(
+        str(registered.get(key)) == str(rule_id)
+        and key in registered
+        and (retailer == 'Walmart' or key not in sem_tv_rules.WALMART_ONLY)
+        and column_name in _rule_select_fields(field1, field2, key).split('|')
+        for key, _, field1, field2, _ in sem_tv_rules.RULES
+    )
+
+
 def _result(cursor, target_date, product_line):
     key = product_line_for(product_line)
     source = SEM_SOURCE_CONFIG.get(key)
@@ -209,6 +251,8 @@ def _result(cursor, target_date, product_line):
         retailer for retailer in _validation_retailers(key, mapping['source_date'])
         if sem_tv_observation_retailer(key, retailer)
     )
+    registered_rules = _registered_tv_rules(cursor, source) if new_tv_retailers else {}
+    corrections = _tv_corrections(cursor, target_date, source, registered_rules)
     definitions = _RULES + (
         _HOMEDEPOT_RULES if SEM_HOMEDEPOT_RETAILER in active_retailers else ()
     ) + (
@@ -248,7 +292,7 @@ def _result(cursor, target_date, product_line):
                 for rule_key, verdict in verdicts.items():
                     stats = rule_stats[rule_key][retailer]
                     stats['checked'] += 1
-                    if verdict == 'ok':
+                    if verdict == 'ok' or (str(row['id']), registered_rules.get(rule_key)) in corrections:
                         continue
                     failures[rule_key].append({**row, 'account_name': retailer, 'finding_level': verdict})
                     if verdict == 'review_needed':
@@ -279,7 +323,7 @@ def _result(cursor, target_date, product_line):
                   or not any(field in _REVIEW_COLUMNS for field in (field1, field2))]
         )
         summaries.append({
-            'rule_id': f'{key}:{rule_key}',
+            'rule_id': registered_rules.get(rule_key, f'{key}:{rule_key}'),
             'detail_code': f'{key}_{rule_key}',
             'rule_key': rule_key,
             'detail_name': name,
@@ -295,7 +339,7 @@ def _result(cursor, target_date, product_line):
             **({'retailer_checks': rule_stats[rule_key]} if rule_key in sem_tv_rules.RULE_KEYS else {}),
         })
     mapping = {**mapping, 'page_exclusions': page_exclusions}
-    return source, rows, failures, failed_ids, summaries, mapping, new_tv_stats, review_ids - failed_ids
+    return source, rows, failures, failed_ids, summaries, mapping, new_tv_stats, review_ids - failed_ids, corrections
 
 
 def build_sem_display_query(source, source_date, retailers, days=3, rows=None, fields=''):
@@ -345,7 +389,7 @@ def build_sem_display_query(source, source_date, retailers, days=3, rows=None, f
 
 
 def get_sem_cross_field_summary(cursor, target_date, product_line):
-    source, rows, failures, failed_ids, rules, mapping, new_tv_stats, review_ids = _result(
+    source, rows, failures, failed_ids, rules, mapping, new_tv_stats, review_ids, _ = _result(
         cursor, target_date, product_line
     )
     for rule in rules:
@@ -374,10 +418,12 @@ def get_sem_cross_field_summary(cursor, target_date, product_line):
 
 
 def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, days=1):
-    source, _, failures, _, rules, mapping, _, _ = _result(
+    source, _, failures, _, rules, mapping, _, _, corrections = _result(
         cursor, target_date, product_line
     )
-    rule = next((item for item in rules if str(item['rule_id']) == str(rule_id)), None)
+    rule = next((item for item in rules if str(rule_id) in (
+        str(item['rule_id']), f"{source['source_key']}:{item['rule_key']}",
+    )), None)
     if rule is None:
         return {'found': False}
     target_anomalies = failures[rule['rule_key']]
@@ -385,8 +431,10 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
     source_date = date.fromisoformat(mapping['source_date'])
     history = []
     retailer_summary = {}
-    readonly = rule['rule_key'] in sem_tv_rules.RULE_KEYS
-    detail_retailers = rule['retailers'] if readonly else [
+    new_tv_rule = rule['rule_key'] in sem_tv_rules.RULE_KEYS
+    readonly = new_tv_rule and not isinstance(rule['rule_id'], int)
+    review_columns = rule['select_fields'].split('|') if new_tv_rule else None
+    detail_retailers = rule['retailers'] if new_tv_rule else [
         retailer for retailer in active_sem_retailers(source['source_key'], source_date)
         if (not rule['rule_key'].startswith('coppel_') or retailer == SEM_COPPEL_RETAILER)
         and (retailer != SEM_COPPEL_RETAILER or retailer in rule['retailers'])
@@ -403,14 +451,21 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
                 cursor, source, source_date - timedelta(days=days - 1),
                 source_date - timedelta(days=1), items, **options,
             )
-            if readonly:
+            if new_tv_rule:
                 history.extend({**row, 'account_name': retailer} for row in prior)
             else:
                 history.extend(row for row in prior if str(row.get('country') or '').strip().upper() == SEM_COUNTRY)
     anomalies = build_detail_history(
         history, target_anomalies, source_date, source['date_column'], days,
     )
-    editable_columns = [] if readonly else list(get_sem_editable_columns(source['source_key'], None))
+    editable_by_retailer = {} if readonly else {
+        retailer: [column for column in get_sem_editable_columns(source['source_key'], retailer)
+                   if review_columns is None or column in review_columns]
+        for retailer in detail_retailers
+    }
+    editable_columns = list(dict.fromkeys(
+        column for columns in editable_by_retailer.values() for column in columns
+    ))
     table_columns = list(get_sem_table_columns(source['source_key']))
     return {
         'found': True,
@@ -436,12 +491,14 @@ def get_sem_cross_field_rule_detail(cursor, target_date, product_line, rule_id, 
         'table_name': source['table_name'],
         'date_col': source['date_column'],
         'readonly': readonly,
+        'review_columns': [] if readonly else review_columns,
         'editable_columns': editable_columns,
-        'retailer_editable_columns': {} if readonly else {
-            retailer: list(get_sem_editable_columns(source['source_key'], retailer))
-            for retailer in source['retailers']
+        'retailer_editable_columns': editable_by_retailer,
+        'normal_reviews': {
+            f"{record_id}_{review['column_name']}": review
+            for (record_id, reviewed_rule), review in corrections.items()
+            if reviewed_rule == rule['rule_id']
         },
-        'normal_reviews': {},
         'retailer_columns': {retailer: table_columns for retailer in detail_retailers},
         **mapping,
     }

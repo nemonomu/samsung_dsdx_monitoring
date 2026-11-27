@@ -6,6 +6,7 @@ import re
 from itertools import chain
 from pathlib import Path
 from django.db import connections, DatabaseError, transaction
+from apps.common.sem_retail import get_sem_table_columns
 
 COUNTRIES = {'SEA': '미국', 'SEG': '독일', 'SEIB': '스페인', 'SEM': '멕시코',
              'TSE': '태국', 'SEDA': '브라질', 'SIEL': '인도'}
@@ -17,8 +18,7 @@ COMMON = {'sku', 'retailer_sku_name', 'item', 'final_sku_price', 'original_sku_p
           'sku_status', 'sku_popularity', 'discount_type', 'delivery_availability',
           'pick_up_availability', 'available_quantity_for_purchase'}
 CATALOG_PATH = Path(__file__).with_name('manual_data') / 'collection_catalog.json'
-SEM_TV_MANUAL_FIELDS = ('item', 'product_url', 'retailer_sku_name', 'screen_size',
-                        'final_sku_price', 'original_sku_price', 'savings')
+SEM_TV_MANUAL_FIELDS = tuple(column for column in get_sem_table_columns('sem_tv') if column != 'id')
 SEM_TV_MANUAL_SITES = {
     'Walmart': 'https://www.walmart.com.mx/',
     "Sam's Club": 'https://www.sams.com.mx/',

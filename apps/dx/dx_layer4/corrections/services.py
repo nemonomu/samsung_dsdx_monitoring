@@ -102,6 +102,20 @@ _CURRENT_CORRECTIONS_SQL = """
 """
 
 
+def saved_review_counts(cursor, inspection_date, table_name, retailers):
+    """Count the current saved review outcomes for one source and day."""
+    cursor.execute(f"""
+        SELECT LOWER(BTRIM(retailer)), correction_type, status,
+               CASE WHEN correction_type = 'cross_field' AND status = 'normal'
+                    THEN COUNT(DISTINCT (record_id, rule_id)) ELSE COUNT(*) END
+        FROM ({_CURRENT_CORRECTIONS_SQL}) AS latest
+        WHERE table_name = %s AND LOWER(BTRIM(retailer)) = ANY(%s)
+          AND status IN ('normal', 'corrected')
+        GROUP BY 1, 2, 3
+    """, (inspection_date, table_name, [name.lower() for name in retailers]))
+    return {(retailer, check, status): count for retailer, check, status, count in cursor.fetchall()}
+
+
 _AUDIT_FIELDS = {
     'id': 'bigint', 'layer': 'integer', 'correction_type': 'text', 'table_name': 'text',
     'record_id': 'bigint', 'column_name': 'text', 'old_value': 'text', 'new_value': 'text',

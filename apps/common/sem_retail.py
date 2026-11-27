@@ -231,7 +231,8 @@ def get_sem_product_line_for_table(table_name):
 
 
 def normalize_sem_retailer(product_line, retailer=None):
-    candidates = get_sem_source(product_line)['retailers']
+    product_line = normalize_sem_product_line(product_line)
+    candidates = SEM_LAYER1_RETAILERS[product_line]
     key = str(retailer or candidates[0]).strip().casefold()
     for candidate in candidates:
         if candidate.casefold() == key:
@@ -240,15 +241,16 @@ def normalize_sem_retailer(product_line, retailer=None):
 
 
 def get_sem_editable_columns(product_line, retailer=SEM_RETAILER):
-    source = get_sem_source(product_line)
+    product_line = normalize_sem_product_line(product_line)
+    source = SEM_SOURCE_CONFIG[product_line]
     # None is the union used to validate column names before loading a row.
-    retailers = source['retailers'] if retailer is None else (
+    retailers = SEM_LAYER1_RETAILERS[product_line] if retailer is None else (
         normalize_sem_retailer(product_line, retailer),
     )
     return tuple(dict.fromkeys(
         SEM_COMMON_EDITABLE_COLUMNS + source['extra_format_columns']
         + (('savings',) if any(account in retailers for account in (
-            SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER,
+            SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER, *SEM_TV_OBSERVATION_RETAILERS,
         )) else ())
     ))
 

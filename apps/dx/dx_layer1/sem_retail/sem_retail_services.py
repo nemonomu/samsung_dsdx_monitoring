@@ -122,6 +122,15 @@ def _tv_observation_rows(cursor, source_day, phase):
     return rows
 
 
+def get_new_tv_receipts(cursor, target_date, now=None):
+    """Reuse Layer 1 collection-day and latest receipt rules for the home view."""
+    mapping = resolve_monitoring_date(target_date, SEM_COUNTRY, 'sem_tv')
+    current = now or datetime.now(_KST)
+    current = current.replace(tzinfo=_KST) if current.tzinfo is None else current.astimezone(_KST)
+    phase = _phase(mapping['source_date'], current)
+    return mapping['source_date'], _tv_observation_rows(cursor, mapping['source_date'], phase)
+
+
 def _category(cursor, product_line, source, target_date, phase):
     mapping = resolve_monitoring_date(
         _as_date(target_date), SEM_COUNTRY, source['source_key']

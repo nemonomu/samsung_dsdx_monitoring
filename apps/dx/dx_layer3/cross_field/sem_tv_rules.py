@@ -24,7 +24,7 @@ RULES = (
 )
 RULE_KEYS = frozenset(rule[0] for rule in RULES)
 PRICE_RULE_KEYS = frozenset(rule[0] for rule in RULES[:5])
-WALMART_ONLY = frozenset(rule[0] for rule in RULES[5:])
+WALMART_ONLY = frozenset(('mx_tv_rating_count', 'mx_tv_written_review_count'))
 
 
 def _blank(value):
@@ -82,10 +82,10 @@ def evaluate(row, retailer, checks):
             verdicts['mx_tv_rating_count'] = 'review_needed'
         if written is not None and evaluations is not None:
             verdicts['mx_tv_written_review_count'] = 'ok' if written <= evaluations else 'review_needed'
-        ranks = [row.get('main_rank'), row.get('bsr_rank')]
-        if all(_blank(value) for value in ranks):
-            verdicts['mx_tv_rank_presence'] = 'anomaly'
-        elif any(not _blank(value) and checks[field](value)
-                 for field, value in zip(('main_rank', 'bsr_rank'), ranks)):
-            verdicts['mx_tv_rank_presence'] = 'ok'
+    ranks = [row.get('main_rank'), row.get('bsr_rank')]
+    if all(_blank(value) for value in ranks):
+        verdicts['mx_tv_rank_presence'] = 'anomaly'
+    elif any(not _blank(value) and checks[field](value)
+             for field, value in zip(('main_rank', 'bsr_rank'), ranks)):
+        verdicts['mx_tv_rank_presence'] = 'ok'
     return verdicts
