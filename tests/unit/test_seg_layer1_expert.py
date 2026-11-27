@@ -38,13 +38,13 @@ class ExpertLayer1Tests(unittest.TestCase):
         self.assertNotIn('crawl_strdatetime', sql)
 
     def test_dryer_history_and_batch_details_use_actual_schema(self):
-        cursor = ScriptedCursor([{'fetchall': []}])
+        cursor = ScriptedCursor([{'fetchall': []}, {'fetchall': []}])
         repo.get_previous_main_counts(cursor, 'seg_ldy_dryer', '2026-10-12')
         sql, params = cursor.calls[0]
         self.assertNotIn('page_type', sql)
         self.assertNotIn('crawl_strdatetime', sql)
         self.assertIn("'2026-10-11'", sql)
-        self.assertEqual(params, ['2026-10-12', 'expert', 7])
+        self.assertEqual(params, ['2026-10-12', '2026-09-14', 'expert', 7])
         cursor = MagicMock()
         cursor.fetchall.return_value = []
         result = retail_batches.fetch_batch_details(cursor, 'seg_retail', 'seg_ldy_dryer', '2026-10-11', 'Expert')

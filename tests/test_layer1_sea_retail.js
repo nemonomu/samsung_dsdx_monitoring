@@ -275,7 +275,7 @@ function categoryFromSummary(key) {
     assert.ok(!fallbackHtml.includes('LDY Lowes · 정상:'));
     assert.ok(fallbackHtml.includes('수집 항목 정보'));
 
-    assert.ok(dashboardSource.includes('loadSeaRetailSummaries(selectedDate).then(render)'));
+    assert.ok(dashboardSource.includes('loadSeaRetailSummaries(selectedDate, refresh)'));
     assert.ok(!dashboardSource.includes("summary/?type=tv"));
 
     assert.ok(source.includes("switchColumnsTab(\\'tv\\')"));
@@ -285,6 +285,7 @@ function categoryFromSummary(key) {
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/retail.js' %}?v="));
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/dashboard.js' %}?v="));
     assert.ok(!dashboardTemplate.includes('installSeaRetailDashboardLoader();'));
+
     assert.ok(dashboardTemplate.includes("{% static 'dx_layer1/js/tse_retail.js' %}?v="));
     assert.ok(youtubeSource.includes("'검수일 ' + esc(check.inspection_date || '-')"));
     assert.ok(youtubeSource.includes("' · 데이터일 ' + esc(check.source_date || '-')"));
@@ -352,6 +353,16 @@ function categoryFromSummary(key) {
         assert(query.includes("batch_id = 'c-batch'"));
     }
     assert(fallbackHtml.includes('KST 13:00 시작 / 14:00 완료 예정'));
+
+    let respondOld;
+    const pendingOld = new Promise(resolve => { respondOld = resolve; });
+    context.fetch = () => pendingOld;
+    const oldSummary = context.loadSeaRetailSummaries(selectedDate);
+    context.resetSeaRetailSummaries();
+    respondOld({ok:true, json:async () => summaries.tv});
+    await oldSummary;
+    assert.equal(context.getRetailSummaryData('TV'), null, 'a previous date or refresh cannot supply the first render');
+    assert.equal(context.currentNullData, null);
     console.log('Layer1 SEA retail and HomeDepot frontend tests passed');
 })().catch(function(error) {
     console.error(error);

@@ -276,7 +276,10 @@ def _select_siel_edit_record(
 
 def _select_sem_edit_record(
         cursor, context, select_columns, row_id, inspection_date):
-    from apps.common.sem_retail import active_sem_retailers, sem_batch_order
+    from apps.common.sem_retail import sem_batch_order
+    from apps.dx.dx_layer2.sem_validation import (
+        _validation_retailers, new_tv_account_sql, review_batch_filter,
+    )
     source = context['source']
     mapping = resolve_monitoring_date(
         inspection_date, SEM_COUNTRY, source['source_key']
@@ -287,23 +290,30 @@ def _select_sem_edit_record(
                   else 'LEFT(BTRIM(source.crawl_datetime), 10)')
     anchor_day = (raw_source_date_sql('anchor.crawl_datetime') if source['source_key'] == 'sem_ldy_dryer'
                   else 'LEFT(BTRIM(anchor.crawl_datetime), 10)')
-    retailers = active_sem_retailers(source['source_key'], source_date)
+    product_line = source['source_key']
+    retailers = _validation_retailers(product_line, source_date)
     placeholders = ', '.join(['%s'] * len(retailers)) or 'NULL'
+    country_scope = 'UPPER(BTRIM(source.country)) = %s'
+    if product_line == 'sem_tv':
+        country_scope += ' OR ' + new_tv_account_sql('source.account_name')
     cursor.execute(f"""
         SELECT {select_columns}
         FROM {table_name} source
         WHERE source.id = %s
           AND {source_day} = %s
-          AND UPPER(BTRIM(source.country)) = %s
+          AND ({country_scope})
           AND LOWER(BTRIM(source.account_name)) IN ({placeholders})
+          {review_batch_filter(product_line, 'source')}
           AND source.batch_id IS NOT DISTINCT FROM (
               SELECT anchor.batch_id
               FROM {table_name} anchor
               WHERE {anchor_day} = %s
                 AND LOWER(BTRIM(anchor.account_name)) = LOWER(BTRIM(source.account_name))
+                {review_batch_filter(product_line, 'anchor')}
               ORDER BY {sem_batch_order(source['source_key'], alias='anchor')}
               LIMIT 1
           )
+        FOR UPDATE OF source
     """, (
         row_id, source_date, SEM_COUNTRY,
         *(r.lower() for r in retailers), source_date,
@@ -615,7 +625,12 @@ def update_cell_value(cursor, conn, table_name, row_id, column_name, new_value,
     elif seda_product_line:
         editable_cols = seda_columns(product_line, retailer)
     elif sem_context:
+        from apps.common.sem_retail import sem_tv_observation_retailer
+
         editable_cols = get_sem_editable_columns(product_line, retailer)
+        seller = sem_tv_observation_retailer(product_line, retailer)
+        if seller and column_name == 'account_name' and new_value != seller:
+            return {'error': f'판매처명은 {seller}(으)로만 정정할 수 있습니다', 'status': 400}
     elif seg_context:
         editable_cols = {'sku'} if correction_type_value == 'duplicate_check' else set(
             get_seg_format_columns(product_line, editable_retailer)

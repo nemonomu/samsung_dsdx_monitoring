@@ -33,8 +33,8 @@ from apps.common.sem_retail import (
 
 
 _NEW_TV_HOSTS = dict(zip(SEM_TV_OBSERVATION_RETAILERS, ('www.walmart.com.mx', 'www.sams.com.mx')))
-_NEW_TV_REQUIRED = ('country', 'account_name', 'item', 'retailer_sku_name', 'product_url',
-                    'crawl_datetime', 'calendar_week', 'final_sku_price')
+_NEW_TV_REQUIRED = ('country', 'account_name', 'item', 'sku', 'retailer_sku_name', 'product_url',
+                    'crawl_datetime', 'calendar_week', 'final_sku_price', 'screen_size')
 _NEW_TV_ID = re.compile(r'[0-9]*[1-9][0-9]*')
 _NEW_TV_WEEK = re.compile(r'W(?:0[1-9]|[1-4][0-9]|5[0-3])')
 _NEW_TV_AMOUNT = r'(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]{1,3})\.[0-9]{2}'
@@ -184,10 +184,6 @@ def product_line_for(value):
     return None
 
 
-def new_tv_review_is_readonly(table, retailer):
-    return bool(_new_tv_retailer(product_line_for(table), retailer))
-
-
 def _validation_retailer(product_line, retailer):
     return _new_tv_retailer(product_line, retailer) or normalize_sem_retailer(product_line, retailer)
 
@@ -214,6 +210,20 @@ def _source_day(column, source):
     if source['source_key'] == 'sem_ldy_dryer':
         return source_date_sql(column)
     return f'LEFT(BTRIM({column}), 10)'
+
+
+def new_tv_account_sql(account_column):
+    accounts = ', '.join("'" + name.lower().replace("'", "''") + "'"
+                         for name in SEM_TV_OBSERVATION_RETAILERS)
+    return f'LOWER(BTRIM({account_column})) IN ({accounts})'
+
+
+def review_batch_filter(product_line, alias=''):
+    if product_line != 'sem_tv':
+        return ''
+    prefix = f'{alias}.' if alias else ''
+    new_tv_account = new_tv_account_sql(f'{prefix}account_name')
+    return f"AND (NOT ({new_tv_account}) OR NULLIF(BTRIM({prefix}batch_id), '') IS NOT NULL)"
 
 
 def _latest_rows(cursor, target_date, source, retailer=None):
@@ -463,13 +473,16 @@ def get_review_allowed_columns(product_line, correction_type, retailer=SEM_RETAI
     if product_line not in SEM_SOURCE_CONFIG:
         return ()
     if retailer is None:
+        accounts = SEM_SOURCE_CONFIG[product_line]['retailers']
+        if product_line == 'sem_tv':
+            accounts = (*accounts, *SEM_TV_OBSERVATION_RETAILERS)
         return tuple(dict.fromkeys(
-            column for account in SEM_SOURCE_CONFIG[product_line]['retailers']
+            column for account in accounts
             for column in get_review_allowed_columns(product_line, correction_type, account)
         ))
-    normalize_sem_retailer(product_line, retailer)
+    retailer = _validation_retailer(product_line, retailer)
     if correction_type == 'null_check':
-        return tuple(get_sem_required_columns(product_line, retailer))
+        return _validation_required_columns(product_line, retailer)
     if correction_type == 'format_check':
         return tuple(_format_checks(product_line, retailer))
     return ()
@@ -536,7 +549,7 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column):
     if column not in allowed:
         raise ValueError('허용되지 않는 컬럼')
     mapping = _mapping(target_date, source)
-    retailers = active_sem_retailers(product_line, mapping['source_date'])
+    retailers = _validation_retailers(product_line, mapping['source_date'])
     placeholders = ', '.join(['%s'] * len(retailers)) or 'NULL'
     cursor.execute(f"""
         WITH latest_batch AS (
@@ -544,6 +557,7 @@ def fetch_review_record(cursor, target_date, product_line, record_id, column):
             FROM {source['table_name']}
             WHERE {_source_day('crawl_datetime', source)} = %s
               AND LOWER(BTRIM(account_name)) IN ({placeholders})
+              {review_batch_filter(product_line)}
             ORDER BY LOWER(BTRIM(account_name)), {sem_batch_order(product_line)}
         )
         SELECT source.{column}, source.account_name, source.item
@@ -626,11 +640,9 @@ def _serialize(row, product_line, retailer=SEM_RETAILER):
 
 
 def _new_tv_card_state(product_line, retailer, rows):
-    if not _new_tv_retailer(product_line, retailer):
-        return {}
-    if not rows:
-        return {'readonly': True, 'status': 'PENDING', 'validation_label': '검수 대기'}
-    return {'readonly': True}
+    if _new_tv_retailer(product_line, retailer) and not rows:
+        return {'status': 'PENDING', 'validation_label': '검수 대기'}
+    return {}
 
 
 def append_null_stats(cursor, target_date, validation, category=None, review_filter=None):
@@ -655,7 +667,7 @@ def append_null_stats(cursor, target_date, validation, category=None, review_fil
             rows, mapping = _latest_rows(cursor, target_date, source, retailer=retailer)
             reviews = normal_reviews
             review_stats = {}
-            if not _new_tv_retailer(product_line, retailer) and uses_new_policy(target_date, SEM_COUNTRY):
+            if uses_new_policy(target_date, SEM_COUNTRY):
                 reviews, review_stats, auto_logs = review_state(
                     cursor, target_date, rows, retailer_fields, normal_reviews,
                     table_name=source['table_name'], country=SEM_COUNTRY,
@@ -711,7 +723,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
         cursor, target_date, product_line, 'null_check', column
     )
     review_stats = {}
-    if not _new_tv_retailer(product_line, retailer) and uses_new_policy(target_date, SEM_COUNTRY):
+    if uses_new_policy(target_date, SEM_COUNTRY):
         normal_reviews, review_stats, _auto_logs = review_state(
             cursor, target_date, rows, [column], normal_reviews,
             table_name=source['table_name'], country=SEM_COUNTRY,
@@ -760,7 +772,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
 
     display = _null_detail_columns(column)
     all_columns = list(get_sem_table_columns(product_line))
-    editable = [] if _new_tv_retailer(product_line, retailer) else list(get_sem_editable_columns(product_line, retailer))
+    editable = list(get_sem_editable_columns(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'results': results,
@@ -776,7 +788,7 @@ def null_detail(cursor, target_date, table, column, days=1, retailer=None):
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
-        'readonly': bool(_new_tv_retailer(product_line, retailer)),
+        'readonly': False,
         **mapping,
     }
 
@@ -867,7 +879,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
     )))
     if retailer in (SEM_HOMEDEPOT_RETAILER, SEM_COPPEL_RETAILER, *SEM_TV_OBSERVATION_RETAILERS):
         columns.insert(columns.index('original_sku_price') + 1, 'savings')
-    editable = [] if _new_tv_retailer(product_line, retailer) else list(get_sem_editable_columns(product_line, retailer))
+    editable = list(get_sem_editable_columns(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
@@ -887,7 +899,7 @@ def format_detail(cursor, target_date, table, days=1, retailer=SEM_RETAILER, inc
         'supports_day_history': True,
         'history_days': history_days,
         'date_column': source['date_column'],
-        'readonly': bool(_new_tv_retailer(product_line, retailer)),
+        'readonly': False,
         **mapping,
     }
 
@@ -955,7 +967,6 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50, retailer=
     groups = _duplicate_groups(rows)
     start = (page - 1) * page_size
     total_pages = (len(groups) + page_size - 1) // page_size if groups else 0
-    readonly = bool(_new_tv_retailer(product_line, retailer))
     return {
         'date': mapping['inspection_date'],
         'table': source['section_code'],
@@ -964,10 +975,10 @@ def duplicate_detail(cursor, target_date, table, page=1, page_size=50, retailer=
             'group': ['duplicate_type', 'item', 'retailer_sku_name', 'dup_count', 'reason'],
             'record': ['id', 'sku', 'retailer_sku_name', 'final_sku_price', 'crawl_datetime', 'product_url'],
         },
-        'editable_cols': [] if readonly else ['sku'],
+        'editable_cols': ['sku'],
         'actual_table': source['table_name'],
-        'readonly': readonly,
-        'sku_editable': not readonly,
+        'readonly': False,
+        'sku_editable': True,
         'allow_cleanup': False,
         'results': {
             'duplicates': groups[start:start + page_size],

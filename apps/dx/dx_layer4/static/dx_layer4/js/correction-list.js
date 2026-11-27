@@ -4,7 +4,8 @@
     var page = 1, sequence = 0, initialized = false, lastDate = null;
     var types = {all:'전체',null_check:'NULL',format_check:'형식',duplicate_check:'중복',cross_field:'크로스필드',field_missing:'누락필드'};
     var focusTypes = {'NULL 검수':'null_check','형식 검수':'format_check','중복 검수':'duplicate_check','크로스필드 검수':'cross_field','누락필드 검수':'field_missing'};
-    var selectedType = focusTypes[new URLSearchParams(window.location.search).get('focus')] || 'all';
+    var initialParams = new URLSearchParams(window.location.search);
+    var selectedType = focusTypes[initialParams.get('focus')] || 'all';
     var hiddenColumns = new Set();
     var cols = [['no','No'],['category','국가 · 제품군'],['product','Item · 상품명'],['date','수집일'],['field','검수 항목'],['old','수정 전'],['new','수정 후 · 확인값'],['status','처리 결과'],['reviewer','검수자 · 처리 시각'],['url','상품 URL'],['reason','확인 사유'],['detail','상세']];
     var statusNames = {corrected:'수정',normal:'정상 확인',error:'이상 확인',reverted:'취소'};
@@ -24,6 +25,13 @@
         initialized = true;
         el('corrections-filter-bar').innerHTML = '<div class="audit-list-filters">' + select('corr-country','국가') + select('corr-product','제품군') + select('corr-retailer','리테일러') + select('corr-reviewer','검수자')
             + '<input id="corr-search" placeholder="Item · 컬럼 검색" aria-label="Item 또는 컬럼 검색"><button id="corr-search-btn" class="app-btn">조회</button><button id="corr-reset-btn" class="app-btn app-btn-outline">해제</button></div>';
+        ['country','product','retailer'].forEach(function (key) {
+            var value = initialParams.get(key);
+            if (!value || value === 'all') return;
+            var control = el('corr-' + key);
+            control.add(new Option(value, value));
+            control.value = value;
+        });
         ['country','product','retailer','reviewer'].forEach(function (key) { el('corr-' + key).onchange = function () { load(1); }; });
         el('corr-search-btn').onclick = function () { load(1); };
         el('corr-search').onkeydown = function (e) { if (e.key === 'Enter') load(1); };
@@ -38,6 +46,7 @@
     }
     function options(id, values, label) {
         var select = el(id), saved = select.value;
+        if (saved && saved !== 'all' && !values.includes(saved)) values = values.concat(saved);
         select.innerHTML = '<option value="all">전체 ' + label + '</option>' + values.map(function (v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join('');
         if (values.includes(saved)) select.value = saved;
     }

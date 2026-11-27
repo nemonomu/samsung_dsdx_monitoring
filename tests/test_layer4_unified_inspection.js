@@ -297,6 +297,7 @@ async function main() {
     assert.strictEqual(requests.length, callsBeforeSlowRequest + 1);
 
     const seuk = elements['ui-seuk-body'] = {innerHTML: ''};
+    const sem = elements['ui-sem-body'] = {innerHTML: ''};
     sandbox.fetch = url => {
         requests.push(url);
         if (url.includes('/date-mapping/')) {
@@ -305,10 +306,21 @@ async function main() {
                 ...country('SEUK', selectedDate, selectedDate, 0),
                 sources: [{source_key: 'seuk_tv', product: 'TV'}]
             });
+            mapping.countries.push(country('SEM', selectedDate, selectedDate, 0));
             return Promise.resolve(jsonResponse(mapping));
         }
         if (url.includes('/dx/layer1/api/stats/')) {
             return Promise.resolve(jsonResponse(layer1Data(selectedDate)));
+        }
+        if (url.includes('/sem-tv/')) {
+            return Promise.resolve(jsonResponse({
+                success: true, inspection_date: selectedDate, source_date: selectedDate,
+                active_from: '2026-11-27', retailers: selectedDate < '2026-11-27' ? [] : [
+                    {name: "Sam's Club", collected: 300, checks: [
+                        {type: 'field_missing', label: '필드 누락', pending: 0, normal: 7, corrected: 8}
+                    ]}
+                ]
+            }));
         }
         const reviewers = selectedDate === '2026-11-21' ? [] : [
             {name: 'Amazon', collected: 338, checks: [
@@ -336,6 +348,45 @@ async function main() {
     await loadMapping();
     assert.ok(seuk.innerHTML.includes('2026-11-22부터'));
     assert.ok(!seuk.innerHTML.includes('Amazon'));
+
+    selectedDate = '2026-11-27';
+    await loadMapping();
+    assert.ok(sem.innerHTML.includes('/dx/layer3/field-missing/?date=2026-11-27'));
+    assert.ok(sem.innerHTML.includes('/dx/layer4/corrections/?date=2026-11-27&amp;country=SEM&amp;product=TV&amp;retailer=Sam&#039;s%20Club'));
+    assert.ok(sem.innerHTML.includes('>7</td><td>8</td>'));
+
+    const correctionsSource = fs.readFileSync(path.join(__dirname, '..', 'apps', 'dx',
+        'dx_layer4', 'static', 'dx_layer4', 'js', 'correction-list.js'), 'utf8');
+    const correctionControls = new Map();
+    const correctionRequests = [];
+    const correctionSearch = "?date=2026-11-27&country=SEM&product=TV&retailer=Sam%27s%20Club";
+    const correctionPage = {
+        URLSearchParams,
+        Option: class {},
+        window: {location: {search: correctionSearch}},
+        getSelectedDate: () => selectedDate,
+        document: {
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            getElementById: id => {
+                if (!correctionControls.has(id)) {
+                    correctionControls.set(id, {value: 'all', add() {}});
+                }
+                return correctionControls.get(id);
+            }
+        },
+        fetch: url => {
+            correctionRequests.push(new URL(url, 'http://localhost').searchParams);
+            return new Promise(() => {});
+        }
+    };
+    vm.runInNewContext(correctionsSource, correctionPage);
+    correctionPage.window.CorrectionList.load();
+    const query = correctionRequests[0];
+    assert.strictEqual(query.get('date'), '2026-11-27');
+    assert.strictEqual(query.get('country'), 'SEM');
+    assert.strictEqual(query.get('product'), 'TV');
+    assert.strictEqual(query.get('retailer'), "Sam's Club");
 }
 
 main().catch(error => {

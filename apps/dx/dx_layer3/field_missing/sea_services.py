@@ -65,7 +65,7 @@ def is_batch_product_line(product_line):
 
 def get_validation_columns(product_line, retailer=None):
     if is_sem_tv(product_line):
-        return ['retailer_sku_name', 'final_sku_price']
+        return ['retailer_sku_name', 'sku', 'screen_size', 'final_sku_price']
     if not is_sea_product_line(product_line):
         return []
     columns = list(SEA_FIELD_MISSING_COLUMNS[normalize_product_line(product_line)])
@@ -335,6 +335,7 @@ def field_missing_detection(
     )
     total_missing = 0
     sem_tv = is_sem_tv(key)
+    normal_reviews = None
     comparable = False
 
     for current_retailer in retailers:
@@ -350,7 +351,18 @@ def field_missing_detection(
         )
         comparable = comparable or any(stat['prev_count'] for stat in field_stats.values())
 
-        if not sem_tv:
+        if sem_tv and any(stats['findings'] for stats in field_stats.values()):
+            if normal_reviews is None:
+                normal_reviews = _normal_reviews(cursor, inspection_date or target_date, source['table_name'])
+            for column, stats in field_stats.items():
+                for finding in stats['findings']:
+                    count = sum(f"{row['id']}_{column}" in normal_reviews
+                                for row in finding['target_rows'])
+                    stats['today_null_rows'] -= count
+                    if count == len(finding['target_rows']):
+                        stats['missing_count'] -= 1
+                        stats['existing_count'] -= 1
+        elif not sem_tv:
             try:
                 cursor.execute("""
                     SELECT column_name, COUNT(DISTINCT item)
@@ -658,9 +670,8 @@ def field_missing_detail_by_field(
         'data': data,
         'table_name': source['table_name'],
         'date_column': date_column,
-        'editable_columns': [] if is_sem_tv(key) else editable_cols,
-        'readonly': is_sem_tv(key),
-        'normal_reviews': {} if is_sem_tv(key) else _normal_reviews(
+        'editable_columns': editable_cols,
+        'normal_reviews': _normal_reviews(
             cursor, inspection_date or target_date, source['table_name']
         ),
         'default_columns': (

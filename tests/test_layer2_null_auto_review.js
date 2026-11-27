@@ -313,6 +313,7 @@ function testAcceptedOnlyResultsRemainReachable() {
     const body = { innerHTML: '' };
     const sandbox = {
         console, URLSearchParams, renderCountryFlagLabel: value => value,
+        esc: escape,
         renderNullFieldsDetail: fields => Object.keys(fields || {}).join(','),
         getDetailBody: () => body, getSelectedDate: () => '2026-09-13',
         isInlineMode: () => true, ViewStack: { push() {} },
@@ -329,7 +330,7 @@ function testAcceptedOnlyResultsRemainReachable() {
                 fields_detail: { ref_capacity: 0 }, raw_fields_detail: { ref_capacity: 3 },
                 reviewed_fields_detail: { ref_capacity: 3 }, status: 'OK' }]
         });
-        assert.ok(html.includes("'Retailer', 3, 1"));
+        assert.ok(html.includes('data-retailer="Retailer" data-count="3"'));
         assert.ok(html.includes('class="null-review-status manual">수동확인 1건'));
         assert.ok(html.includes('class="null-review-status automatic">자동확인 2건'));
         const payload = JSON.parse(html.match(/data-fields='([^']+)'/)[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&'));

@@ -88,7 +88,7 @@ def _value_digest(namespace, identity):
                                     sort_keys=True).encode()).hexdigest()
 
 
-def monitoring_cached_value(namespace, identity, loader=None, *, cacheable=None):
+def monitoring_cached_value(namespace, identity, loader=None, *, cacheable=None, refresh=False):
     """Read a shared snapshot; optionally compute it once on a cache miss.
 
     A lookup without a loader returns None on a miss. Callers may reuse a
@@ -110,7 +110,7 @@ def monitoring_cached_value(namespace, identity, loader=None, *, cacheable=None)
                 generation = _generation(root)
                 key = generation + ':' + digest
                 entry = cache.get(key)
-                if entry is not None:
+                if entry is not None and not refresh:
                     return entry['value']
                 if loader is None:
                     return None
@@ -122,6 +122,8 @@ def monitoring_cached_value(namespace, identity, loader=None, *, cacheable=None)
                 if (remaining > 0 and generation == _generation(root)
                         and (cacheable(result) if cacheable else not _has_error(result))):
                     cache.set(key, {'value': result}, timeout=remaining)
+                elif refresh:
+                    cache.delete(key)
             finally:
                 locks.unlock(lock)
     except (OSError, ValueError):

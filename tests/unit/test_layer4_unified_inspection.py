@@ -145,12 +145,23 @@ class UnifiedInspectionApiTests(unittest.TestCase):
         before = resolve_monitoring_date('2026-11-26', 'SEM', 'sem_tv')
         self.assertEqual([], sem.review_snapshot(cursor, before)['retailers'])
 
-        row = {'id': 1, 'country': 'SEM', 'account_name': 'Walmart',
-               'item': '0001', 'retailer_sku_name': 'TV',
-               'product_url': 'https://www.walmart.com.mx/ip/0001',
-               'crawl_datetime': '2026-11-27T10:00:00-06:00',
-               'calendar_week': 'W48', 'final_sku_price': None}
-        latest_batches = [([row, {**row, 'id': 2, 'final_sku_price': 'bad'}], {}), ([], {})]
+        def table(retailers):
+            return {'table': 'sem_tv_retail', 'retailers': retailers}
+
+        def append_nulls(_cursor, _day, stats, *_args, **_kwargs):
+            stats['tables'].append(table([
+                {'retailer': 'Walmart', 'total': 2, 'total_null_count': 1,
+                 'reviewed_null_count': 3},
+                {'retailer': "Sam's Club", 'total': 0, 'total_null_count': 0},
+            ]))
+
+        def append_duplicates(_cursor, _day, stats, _section):
+            stats['tables'].append(table([{'retailer': 'Walmart', 'duplicate_groups': 1}]))
+
+        formats = {'tables': [table([
+            {'retailer': 'Walmart', 'issue_count': 2,
+             'format_review_counts': {'error': 1, 'registered_normal': 2, 'legacy_normal': 1}},
+        ])]}
 
         mapping = resolve_monitoring_date('2026-11-27', 'SEM', 'sem_tv')
         cross = {'retailer_checks': {
@@ -158,20 +169,32 @@ class UnifiedInspectionApiTests(unittest.TestCase):
             "Sam's Club": {'received': 0, 'checked': 0, 'failed': 0, 'review_count': 0},
         }}
         missing = {'summary': {'status': 'PENDING', 'total_missing_cases': 0}}
-        with patch.object(sem.sem_validation, '_latest_rows', side_effect=latest_batches) as latest, \
-             patch.object(sem.sem_validation, '_load_normal_reviews', return_value={}), \
+        cursor.fetchall.return_value = [
+            ('walmart', 'cross_field', 'normal', 2),
+            ('walmart', 'cross_field', 'corrected', 1),
+            ('walmart', 'field_missing', 'corrected', 3),
+        ]
+        with patch.object(sem.sem_validation, 'append_null_stats', side_effect=append_nulls), \
+             patch.object(sem.sem_validation, 'append_duplicate_stats', side_effect=append_duplicates), \
+             patch.object(sem, 'get_format_stats', create=True, return_value=(formats, 2)), \
              patch.object(sem, 'get_sem_cross_field_summary', return_value=cross), \
              patch.object(sem, 'field_missing_detection', return_value=missing):
             snapshot = sem.review_snapshot(cursor, mapping)
         walmart, sams = snapshot['retailers']
         self.assertTrue(snapshot['read_only'])
         self.assertEqual('2026-11-27', snapshot['source_date'])
-        self.assertEqual([1, 1, 1, 1, None], [check['pending'] for check in walmart['checks']])
-        self.assertEqual(2, latest.call_count)
+        self.assertEqual(
+            [(1, 3, 0), (1, 3, 0), (1, 0, 0), (1, 2, 1), (None, 0, 3)],
+            [(check['pending'], check['normal'], check['corrected']) for check in walmart['checks']],
+        )
         self.assertEqual({'failed': 0, 'review_count': 1}, walmart['checks'][3]['findings'])
         self.assertTrue(all(check['pending'] is None for check in sams['checks']))
         self.assertNotIn('findings', sams['checks'][3])
-        cursor.execute.assert_not_called()
+        cursor.execute.assert_called_once()
+        sql, params = cursor.execute.call_args.args
+        self.assertIn('COUNT(DISTINCT (record_id, rule_id))', sql)
+        self.assertEqual(('2026-11-27', 'dx_sem.dx_sem_tv_retail_com', ['walmart', "sam's club"]),
+                         params)
 
 
 class UnifiedInspectionPageWiringTests(unittest.TestCase):

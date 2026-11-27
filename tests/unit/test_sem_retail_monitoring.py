@@ -1,6 +1,7 @@
 import unittest
+from contextlib import nullcontext
 from datetime import date, datetime, time, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from apps.common.sem_retail import (
     SEM_LAYER1_RETAILERS,
@@ -177,15 +178,13 @@ class SemRetailConfigurationTests(unittest.TestCase):
             self.assertIn(expected_host, url['pattern'])
             self.assertEqual([], evaluate_format({'product_url': url['pattern']}, 'sem_tv', seller))
 
-    def test_layer2_tv_retailers_start_on_november_27_and_are_readonly(self):
+    def test_layer2_tv_retailers_start_on_november_27(self):
         from apps.dx.dx_layer2 import sem_validation
         self.assertEqual(('Liverpool',), sem_validation._validation_retailers('sem_tv', '2026-11-26'))
         self.assertEqual(('Liverpool', 'Walmart', "Sam's Club"),
                          sem_validation._validation_retailers('sem_tv', '2026-11-27'))
         self.assertEqual(('Liverpool',), SEM_SOURCE_CONFIG['sem_tv']['retailers'])
-        self.assertTrue(sem_validation.new_tv_review_is_readonly('sem_tv_retail', "Sam's Club"))
-        self.assertFalse(sem_validation.new_tv_review_is_readonly('sem_ref_retail', "Sam's Club"))
-        self.assertEqual({'readonly': True, 'status': 'PENDING', 'validation_label': '검수 대기'},
+        self.assertEqual({'status': 'PENDING', 'validation_label': '검수 대기'},
                          sem_validation._new_tv_card_state('sem_tv', 'Walmart', []))
 
     def test_product_specific_required_columns_are_included(self):
@@ -774,6 +773,129 @@ class SemRetailValidationTests(unittest.TestCase):
         self.assertIn('star_rating', rating_columns)
         self.assertIn('count_of_star_ratings', rating_columns)
         self.assertIn('count_of_reviews', rating_columns)
+
+    @patch('apps.dx.dx_layer2.sem_validation._load_normal_reviews', return_value={})
+    @patch('apps.dx.dx_layer2.sem_validation._latest_rows')
+    def test_new_sem_tv_null_stats_and_detail_include_sku_and_screen_size(
+            self, latest_rows, _normal_reviews):
+        day = date(2026, 11, 27)
+        mapping = {'inspection_date': str(day), 'source_date': str(day), 'offset_days': 0}
+        retailers = ('Walmart', "Sam's Club")
+        row = {**self.row, 'id': 3, 'retailer_sku_name': 'TV', 'sku': ' ', 'screen_size': None,
+               'crawl_datetime': f'{day} 10:00:00', 'calendar_week': 'W48'}
+        latest_rows.side_effect = lambda cursor, day, source, retailer: (
+            [{**row, 'account_name': retailer}], mapping
+        )
+        cursor = Mock()
+        cursor.fetchall.return_value = []
+        validation = {'tables': []}
+        append_null_stats(
+            cursor, day, validation, category='sem_tv_retail',
+            review_filter=lambda table, retailer=None: retailer is None or retailer in retailers,
+        )
+        cards = validation['tables'][0]['retailers']
+        self.assertEqual(list(retailers), [card['retailer'] for card in cards])
+        for card in cards:
+            retailer = card['retailer']
+            self.assertEqual(2, card['total_null_count'])
+            for field in ('sku', 'screen_size'):
+                with self.subTest(retailer=retailer, field=field):
+                    self.assertEqual(1, card['fields_detail'][field])
+                    detail = null_detail(cursor, day, 'sem_tv', field, retailer=retailer)
+                    self.assertEqual([3], [record['id'] for record in detail['results']])
+                    self.assertIn(field, detail['query_config'][field])
+                    self.assertEqual(retailer, detail['query_retailer'])
+                    self.assertIn(field, detail['editable_cols'])
+                    self.assertTrue(detail['supports_null_auto_review'])
+                    self.assertFalse(detail.get('readonly'))
+
+        latest_rows.side_effect = None
+        latest_rows.return_value = ([], mapping)
+        validation = {'tables': []}
+        append_null_stats(
+            cursor, day, validation, category='sem_tv_retail',
+            review_filter=lambda table, retailer=None: retailer in (None, "Sam's Club"),
+        )
+        pending = validation['tables'][0]['retailers'][0]
+        self.assertEqual('PENDING', pending['status'])
+        self.assertEqual(0, pending['reviewed_null_count'])
+        self.assertEqual(0, pending['fields_detail']['sku'])
+
+    def test_new_sem_tv_layer2_writes_follow_latest_production_scope(self):
+        from apps.dx.dx_layer2.data_edit import services as edits
+        from apps.dx.dx_layer2.null_validation import services as nulls
+        from apps.dx.dx_layer2.retail_duplicate_edit import update_sku, source_for_table
+
+        day = '2026-11-27'
+        table = SEM_SOURCE_CONFIG['sem_tv']['table_name']
+        context = source_for_table(table)
+        for retailer in ('Walmart', "Sam's Club"):
+            with self.subTest(retailer=retailer):
+                for field, value, kind in (('screen_size', '55inch', 'null'), ('savings', '$100.00', 'format')):
+                    cursor = ScriptedCursor([{'fetchone': (None, retailer, '001', 'latest')}, {}, {}])
+                    result = edits.update_cell_value(cursor, Mock(), table, 42, field, value,
+                                                     day, kind, 'tester', '')
+                    self.assertTrue(result['success'], result)
+                    sql, params = cursor.calls[0]
+                    self.assertIn(retailer.lower(), params)
+                    self.assertIn("NULLIF(BTRIM(source.batch_id), '') IS NOT NULL", sql)
+                    self.assertIn("NULLIF(BTRIM(anchor.batch_id), '') IS NOT NULL", sql)
+                    self.assertIn('FOR UPDATE OF source', sql)
+                    self.assertIn(f'UPDATE {table} SET {field} = %s', cursor.calls[1][0])
+                    self.assertIn(retailer, cursor.calls[2][1])
+
+                cursor = ScriptedCursor([{'fetchone': (retailer, retailer, '001', 'latest')}])
+                result = edits.update_cell_value(cursor, Mock(), table, 42, 'account_name', 'Liverpool',
+                                                 day, 'format', 'tester', '')
+                self.assertEqual(400, result['status'])
+                self.assertEqual(1, len(cursor.calls))
+
+                cursor = ScriptedCursor([
+                    {'fetchone': (None, retailer, '001')},
+                    {'fetchone': (42, '001', 'TV', None, retailer)},
+                    {'fetchone': None}, {'fetchone': (51,)}, {'fetchone': (101,)},
+                ])
+                conn = Mock()
+                with patch.object(nulls, 'datetime', wraps=datetime) as clock:
+                    clock.now.return_value = datetime(2026, 11, 27, 16, tzinfo=timezone.utc)
+                    result = nulls.save_null_review(cursor, conn, table, 42, 'sku', 'normal', '',
+                                                    '해당값 정상 확인', day, 'null', 'tester')
+                self.assertTrue(result['success'], result)
+                self.assertIn(retailer.lower(), cursor.calls[0][1])
+                self.assertIn("NULLIF(BTRIM(batch_id), '') IS NOT NULL", cursor.calls[0][0])
+                conn.commit.assert_called_once()
+
+                cursor = ScriptedCursor([{'fetchone': (None, retailer, '001')}, {}, {}])
+                with patch('apps.dx.dx_layer2.retail_duplicate_edit.scoped_rows',
+                           return_value=[{'id': 42}]) as scoped_rows:
+                    result = update_sku(cursor, Mock(), context, 42, 'sku', 'MODEL', day, 'tester', '')
+                self.assertTrue(result['success'], result)
+                self.assertEqual(retailer, scoped_rows.call_args.args[-1])
+
+    def test_new_sem_tv_format_review_post_delegates_to_normal_review_service(self):
+        from apps.dx.dx_layer2.format_validation import review_api
+        from types import SimpleNamespace
+        import json
+
+        day = date(2026, 11, 27)
+        for retailer in ('Walmart', "Sam's Club"):
+            with self.subTest(retailer=retailer):
+                request = SimpleNamespace(
+                    method='POST', user=SimpleNamespace(is_authenticated=True, get_username=lambda: 'tester'),
+                    body=json.dumps({'date': str(day), 'table': 'sem_tv_retail', 'retailer': retailer,
+                                     'action': 'review', 'keys': ['key'], 'decision': 'normal',
+                                     'reason': 'reference verified'}),
+                )
+                cursor = Mock()
+                with patch.object(review_api, 'dx_connection', return_value=nullcontext((Mock(), cursor))), \
+                     patch.object(review_api.timezone, 'localdate', return_value=day), \
+                     patch.object(review_api.service, 'inventory', return_value={'retailer': retailer}) as inventory, \
+                     patch.object(review_api.service, 'apply_direct', return_value=51) as approve:
+                    response = review_api.reviews(request)
+                self.assertEqual(200, response.status_code)
+                self.assertEqual({'success': True, 'event_id': 51}, json.loads(response.content))
+                inventory.assert_called_once_with(cursor, day, 'sem_tv_retail', retailer)
+                approve.assert_called_once()
 
     @patch('apps.dx.dx_layer2.sem_validation._load_normal_reviews', return_value={})
     @patch('apps.dx.dx_layer2.sem_validation._history_rows')

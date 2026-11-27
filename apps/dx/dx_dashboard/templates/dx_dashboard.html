@@ -14,6 +14,7 @@
 {% now "Y-m-d" as dashboard_date %}
 <section class="dx-overview" aria-labelledby="dx-overview-title"
          data-status-url="{% url 'dx_layer1:api_collection_status' %}?date={{ dashboard_date }}"
+         data-sem-tv-status-url="{% url 'dx_dashboard:sem_tv_status' %}?date={{ dashboard_date }}"
          data-product-icon-url="{% static 'dx_dashboard/img/' %}">
     <div class="dx-overview-header">
         <div>
@@ -30,7 +31,7 @@
     <p class="dx-overview-message" role="status">수집 현황을 불러오는 중입니다.</p>
     <div class="dx-overview-markets"></div>
     <div class="dx-overview-footer">
-        <p>당일 조회 범위 · SEA, SEDA의 Casas Bahia</p>
+        <p>당일 조회 범위 · SEA, SEDA의 Casas Bahia, SEM의 Walmart·Sam’s Club TV</p>
         <a href="{% url 'dx_layer1:collection_statistics' %}?date={{ dashboard_date }}">국가별 수집 통계</a>
     </div>
 </section>
@@ -40,6 +41,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'dx_dashboard/js/collection-overview.js' %}?v=3"></script>
+<script src="{% static 'dx_dashboard/js/collection-overview.js' %}?v=20261127-sem-tv"></script>
 {% endblock %}
 

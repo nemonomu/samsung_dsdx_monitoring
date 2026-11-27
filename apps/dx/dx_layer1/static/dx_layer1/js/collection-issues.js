@@ -30,6 +30,10 @@
         if (values.retailer) params.set('retailer',values.retailer);
         return params;
     }
+    function showLoading() {
+        host.hidden = false;
+        host.innerHTML='<section class="ci-panel ci-clear"><p class="ci-note" role="status">과거 미해결 이력을 확인하고 있습니다.</p></section>';
+    }
     function render(data) {
         if (data.policy_version !== 1) {
             throw new Error('새 수집량·배치 점검의 완료 여부를 확인할 수 없습니다. 서버 업데이트와 재점검이 필요합니다.');
@@ -81,8 +85,7 @@
         if (controller) controller.abort();
         controller = new AbortController();
         const current = controller;
-        host.hidden = false;
-        host.innerHTML='<section class="ci-panel ci-clear"><p class="ci-note" role="status">과거 미해결 이력을 확인하고 있습니다.</p></section>';
+        showLoading();
         try {
             const data = await request('/dx/layer1/api/collection-issues/?'+params,{signal:current.signal});
             if (current.signal.aborted) return;
@@ -155,5 +158,9 @@
             try { showDetail(await request('/dx/layer1/api/collection-issues/'+selectedIssue.id+'/')); } catch (_) {}
         }
     });
-    window.CollectionIssues={load,sql};
+    window.CollectionIssues={load,sql,reset() {
+        controller?.abort();
+        lastKey = null;
+        showLoading();
+    }};
 })();

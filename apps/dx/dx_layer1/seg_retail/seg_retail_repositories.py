@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from datetime import date
 from apps.common.source_dates import source_date_sql
+from apps.dx.dx_layer1.common.retail_history import latest_positive_history
 
 from .sources import active_retailers, get_seg_source, retailer_start_date
 
@@ -74,10 +75,17 @@ def get_latest_main_batch_counts(cursor, product_line, source_date):
 
 def get_previous_main_counts(cursor, product_line, source_date, limit=7):
     source = get_seg_source(product_line)
-    day = date.fromisoformat(str(source_date)).isoformat()
+    day = date.fromisoformat(str(source_date))
     retailers = [name.lower() for name in active_retailers(source, day)]
     if not retailers:
         return []
+    return latest_positive_history(
+        day, retailers, int(limit),
+        lambda keys, start, end: _read_previous_main_counts(cursor, source, day, keys, start, end, int(limit)),
+    )
+
+
+def _read_previous_main_counts(cursor, source, day, retailers, start, end, limit):
     placeholders = ', '.join(['%s'] * len(retailers))
     date_column = source['date_column']
     has_page = source.get('has_page_type', True)
@@ -89,6 +97,7 @@ def get_previous_main_counts(cursor, product_line, source_date, limit=7):
             anchor += " OR retailer = 'expert'"
             scope += " OR retailer = 'expert'"
     source_day = source_date_sql(date_column)
+    from_date = f'AND {source_day} >= %s' if start else ''
     start_scopes = ' '.join(
         f"AND (LOWER(BTRIM(account_name)) <> '{name.lower()}' OR "
         f"{source_day} >= '{retailer_start_date(source, name).isoformat()}')"
@@ -101,6 +110,7 @@ def get_previous_main_counts(cursor, product_line, source_date, limit=7):
                    {source_day} AS source_date
             FROM {source['table_name']}
             WHERE {source_day} < %s
+              {from_date}
               AND {source_day}
                   ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
               AND LOWER(BTRIM(account_name)) IN ({placeholders})
@@ -130,7 +140,7 @@ def get_previous_main_counts(cursor, product_line, source_date, limit=7):
         FROM ranked_days
         WHERE day_rank <= %s
         ORDER BY retailer, source_date DESC
-    """, [day, *retailers, int(limit)])
+    """, [end, *([start] if start else []), *retailers, limit])
     fields = ('retailer', 'source_date', 'main_count')
     return [dict(row) if isinstance(row, Mapping) else dict(zip(fields, row))
             for row in cursor.fetchall()]

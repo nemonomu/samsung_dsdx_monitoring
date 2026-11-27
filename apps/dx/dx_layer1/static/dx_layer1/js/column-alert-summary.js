@@ -38,7 +38,7 @@
         if (historyDetail) historyDetail.textContent = '';
     }
     function load(date, force = false, refresh = false) {
-        if (window.CollectionIssues) window.CollectionIssues.load({date});
+        if (window.CollectionIssues) window.CollectionIssues.load({date}, countries.size > 0 && refresh);
         if (!force && selectedDate === date) return pending;
         if (controller) controller.abort();
         const current = new AbortController();
@@ -109,7 +109,8 @@
         }
         pending = Promise.all([worker(), worker()]).then(() => {
             if (current.signal.aborted) return;
-            if (window.CollectionIssues) window.CollectionIssues.load({date}, true);
+            // Dashboard overviews reconcile the current source day, which the past list excludes.
+            if (!countries.size && window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
             if (historyFailures.length && historyNotice && historyDetail) {
                 historyNotice.hidden = false;
@@ -132,9 +133,17 @@
         });
         return pending;
     }
-    window.ColumnAlertSummary = {load};
+    window.ColumnAlertSummary = {load, reset() {
+        controller?.abort();
+        selectedDate = null;
+        clear();
+        spinner.hidden = true;
+        window.CollectionIssues?.reset();
+    }};
     // Statistics pages have their own date form instead of the common FilterBar.
-    document.addEventListener('column-review-saved', () => {if (selectedDate) load(selectedDate, true);});
+    document.addEventListener('column-review-saved', () => {
+        if (selectedDate && window.LAYER1?.section !== 'dashboard') load(selectedDate, true);
+    });
     document.addEventListener('DOMContentLoaded', () => {
         for (const prefix of ['cs', 'ccs']) {
             const form = document.getElementById(prefix + '-filters');

@@ -200,13 +200,19 @@
                 return;
             }
             body.innerHTML = data.retailers.map(function(retailer) {
+                var name = escapeHtml(retailer.name);
+                if (country === 'SEM') {
+                    var journal = '/dx/layer4/corrections/?date=' + encodeURIComponent(data.inspection_date) +
+                        '&country=SEM&product=TV&retailer=' + encodeURIComponent(retailer.name);
+                    name = '<a href="' + escapeHtml(journal) + '" title="판매처 검수기록">' + name + '</a>';
+                }
                 return retailer.checks.map(function(check) {
                     var href = tvReviewUrl(country, check.type, data.inspection_date);
                     var label = escapeHtml(check.label);
                     var breakdown = check.findings && check.pending > 0
                         ? '<br><small>이상 ' + escapeHtml(formatCount(check.findings.failed)) +
                           ' · 확인 필요 ' + escapeHtml(formatCount(check.findings.review_count)) + '</small>' : '';
-                    return '<tr><td>' + escapeHtml(retailer.name) + '</td><td>' +
+                    return '<tr><td>' + name + '</td><td>' +
                         (href ? '<a href="' + escapeHtml(href) + '">' + label + '</a>' : label) +
                         '</td><td>' + escapeHtml(formatCount(retailer.collected)) + '</td><td>' +
                         escapeHtml(formatCount(retailer.collected ? check.pending : null)) + breakdown + '</td><td>' +

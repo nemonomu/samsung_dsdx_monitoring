@@ -122,7 +122,7 @@ class SemFieldMissingTests(unittest.TestCase):
                 (2, "Sam's Club", '0001', '2026-11-28T01:00:00-06:00', 'TV', None),
                 (3, "Sam's Club", '0002', '2026-11-28T01:00:00-06:00', 'TV', None),
             ],
-        }])
+        }, {'fetchall': []}])
         result = sea_services.field_missing_detection(cursor, date(2026, 11, 28), 'sem_tv', "Sam's Club")
         self.assertEqual(1, result['summary']['total_missing_cases'])
         self.assertEqual('final_sku_price', result['missing_fields'][0]['column'])
@@ -132,6 +132,22 @@ class SemFieldMissingTests(unittest.TestCase):
         self.assertIn('dx_sem.dx_sem_tv_retail_com', sql)
         self.assertIn("NULLIF(TRIM(batch_id), '') IS NOT NULL", sql)
         self.assertNotIn('page_type', sql)
+
+    def test_commit_confirmation_counts_unresolved_duplicate_rows(self):
+        cols = ['id', 'account_name', 'item', 'crawl_datetime', 'sku', 'screen_size']
+        rows = [(1, 'Walmart', '100', '2026-11-27', 'model', '65inch'),
+                (2, 'Walmart', '100', '2026-11-28', None, None),
+                (3, 'Walmart', '100', '2026-11-28', None, None)]
+        cursor = ScriptedCursor([
+            {'description': [(name,) for name in cols], 'fetchall': rows},
+            {'fetchall': [(2, 'sku', 'reason', '', 'reviewer'),
+                          (2, 'screen_size', 'reason', '', 'reviewer'),
+                          (3, 'screen_size', 'reason', '', 'reviewer')]},
+        ])
+        result = sea_services.field_missing_detection(cursor, date(2026, 11, 28), 'sem_tv', 'Walmart')
+        self.assertEqual(1, result['summary']['total_missing_cases'])
+        self.assertEqual('sku', result['missing_fields'][0]['column'])
+        self.assertEqual(1, result['missing_fields'][0]['today_null_rows'])
 
     def test_previous_rows_for_a_different_item_cannot_make_checks_ready(self):
         cols = ['id', 'account_name', 'item', 'crawl_datetime', 'retailer_sku_name', 'final_sku_price']

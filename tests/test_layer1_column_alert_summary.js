@@ -120,6 +120,8 @@ function setup(section = 'retail') {
     assert.equal(reviewed.nodes.get('l1-column-alert-total').textContent,'1');
     assert.equal(reviewed.badge().textContent,'1','confirmed columns no longer count as alerts');
     const grouped = setup('dashboard');
+    const pastIssueReads = [];
+    grouped.sandbox.CollectionIssues = {load: (selection, force) => pastIssueReads.push([selection.date, force])};
     const groupedRun = grouped.sandbox.ColumnAlertSummary.load('2026-09-23', true, true);
     assert.equal(grouped.pending.length, 1, 'one request for all products in the country');
     const query = new URL(grouped.pending[0].url, 'http://test');
@@ -132,6 +134,7 @@ function setup(section = 'retail') {
         {product:'TV', retailer:'Walmart', comparisons:[{status:'abnormal'}]},
     ]});
     await groupedRun;
+    assert.deepEqual(pastIssueReads, [['2026-09-23', true]], 'manual load refreshes the past list once');
     assert.equal(grouped.nodes.get('l1-column-alert-total').textContent, '일부 조회 실패');
     assert.match(grouped.nodes.get('l1-column-alert-breakdown').textContent, /2\/3개 대상 조회 완료 · 조회된 이상 1건 · 확인 필요 0건/);
     console.log('Layer1 column alert summary: global badge, totals, links, loading, retries, failures, stale dates and statistics pages passed.');

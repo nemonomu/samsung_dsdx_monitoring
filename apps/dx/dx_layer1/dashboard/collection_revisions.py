@@ -7,11 +7,12 @@ from psycopg2 import Error
 from apps.common.monitoring_cache import _backend, _root
 
 
-def batch_revision(column, *, page_type=False):
+def batch_revision(column, *, page_type=False, extra_fields=()):
     page = ", LOWER(BTRIM(source.page_type))" if page_type else ""
+    extra = ''.join(', ' + field for field in extra_fields)
     return f"""md5(COALESCE(string_agg(json_build_array(
         source.id, source.batch_id, CAST(source.{column} AS TEXT),
-        source.main_rank IS NOT NULL, source.bsr_rank IS NOT NULL{page}
+        source.main_rank IS NOT NULL, source.bsr_rank IS NOT NULL{page}{extra}
     )::text, ',' ORDER BY source.id), ''))"""
 
 

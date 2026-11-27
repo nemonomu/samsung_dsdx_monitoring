@@ -6,7 +6,6 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from apps.common.db import dx_connection
 from apps.common.response import safe_error
-from apps.dx.dx_layer2.sem_validation import new_tv_review_is_readonly
 from . import review_service as service, review_repository as repository
 
 
@@ -24,8 +23,6 @@ def reviews(request):
         table, retailer = body.get('table', ''), body.get('retailer', '')
         if not isinstance(table, str) or not isinstance(retailer, str):
             raise ValueError('검토 범위가 올바르지 않습니다.')
-        if request.method == 'POST' and new_tv_review_is_readonly(table, retailer):
-            return JsonResponse({'error': '이 리테일러는 현재 조회 전용입니다.'}, status=403)
         with dx_connection() as (_conn, cursor):
             data = service.inventory(cursor, day, table, retailer)
         if request.method == 'GET':

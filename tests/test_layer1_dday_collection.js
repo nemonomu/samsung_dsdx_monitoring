@@ -27,7 +27,7 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     const old = sandbox.loadDdayCollection('2026-09-20');
     const next = sandbox.loadDdayCollection('2026-09-21');
     respond(1, data('2026-09-21', ['received', 'waiting', 'scheduled']));
-    await next;
+    assert.equal(await next, true, 'waiting or scheduled scopes keep checking');
     let html = elements['dday-collection-list'].innerHTML;
     for (const text of ['SEA Walmart TV', 'SEA HomeDepot REF', 'SEA HomeDepot LDY',
                         '수집 확인', '수집 대기', '수집 예정', '300건', '13:10:00 KST']) {
@@ -155,6 +155,9 @@ function respond(index, value) { requests[index].resolve({ ok: true, json: async
     await failed;
     assert(elements['dday-collection-list'].innerHTML.includes('조회 실패'));
     assert(!elements['dday-collection-list'].innerHTML.includes('수집 대기'));
+    const completed = sandbox.loadDdayCollection('2026-09-22');
+    respond(5, data('2026-09-22', ['received', 'received', 'received']));
+    assert.equal(await completed, false, 'all completed D-DAY scopes stop polling');
     const template = fs.readFileSync('apps/dx/dx_layer1/templates/dx_layer1_dashboard.html', 'utf8');
     assert(template.indexOf('id="dday-collection-section"') > template.indexOf('id="period-checks-list"'));
     assert(template.includes('D-DAY 수집 현황'));

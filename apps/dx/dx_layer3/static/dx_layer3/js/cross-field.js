@@ -848,6 +848,7 @@ async function reloadCfDays() {
         window.crossfieldRetailerSummary = data.retailer_summary || {};
         window.crossfieldAnomalies = anomalies;
         window.crossfieldReadonly = data.readonly === true;
+        window.crossfieldReviewColumns = Array.isArray(data.review_columns) ? data.review_columns : null;
         window.crossfieldEditableCols = new Set(data.editable_columns || []);
         window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
         window.crossfieldNormalReviews = data.normal_reviews || {};
@@ -1396,7 +1397,10 @@ function _cfGetReviewRangeCells(tableEl, anchorCell, targetCell) {
 function _cfShowReviewBar(cells, mode) {
     _cfHideReviewBar();
     cells = Array.isArray(cells) ? cells : [cells];
-    cells = cells.filter(Boolean);
+    cells = cells.filter(function(cell) {
+        return cell && (!window.crossfieldReviewColumns
+            || window.crossfieldReviewColumns.includes(cell.dataset.col));
+    });
     if (cells.length === 0) return;
     var bar = document.createElement('div');
     bar.id = 'cf-review-bar';
@@ -1548,7 +1552,7 @@ function _cfUpdateRuleCardCount() {
     var activeAnomalies = 0;
     var activeReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
-        var editableCols = _cfEditableColumns(retailer);
+        var reviewCols = window.crossfieldReviewColumns || _cfEditableColumns(retailer);
         retailerData[retailer].rows.forEach(function(row) {
             if (row.row_role && row.row_role !== 'target') return;
             var rowId = row.id;
@@ -1558,7 +1562,7 @@ function _cfUpdateRuleCardCount() {
                 return;
             }
             var hasNormal = false;
-            editableCols.forEach(function(col) {
+            reviewCols.forEach(function(col) {
                 if (normalReviews[rowId + '_' + col]) hasNormal = true;
             });
             if (!hasNormal) {
@@ -1607,14 +1611,14 @@ function _cfUpdateRetailerCounts() {
     var totalAnomalies = 0;
     var totalReviews = 0;
     Object.keys(retailerData).forEach(function(retailer) {
-        var editableCols = _cfEditableColumns(retailer);
+        var reviewCols = window.crossfieldReviewColumns || _cfEditableColumns(retailer);
         var rows = retailerData[retailer].rows;
         var activeRows = rows.filter(function(row) {
             if (row.row_role && row.row_role !== 'target') return false;
             var rowId = row.id;
             if (!rowId) return true;
             var hasNormal = false;
-            editableCols.forEach(function(col) {
+            reviewCols.forEach(function(col) {
                 if (normalReviews[rowId + '_' + col]) hasNormal = true;
             });
             return !hasNormal;

@@ -11,95 +11,248 @@ var CHECK_TYPE_URL = {
 
 var layer1StatsRequestId = 0;
 var liveCollectionPoll = null;
+var ddayCollectionTimer = null;
+const dailyPreviewKey = 'dx-layer1-normal-preview-v1';
+const dailyPreviewLifetime = 5 * 60 * 1000;
 
-async function loadStats(refresh = false) {
+function takeDailyPreview(date, display) {
+    try {
+        const saved = sessionStorage.getItem(dailyPreviewKey);
+        sessionStorage.removeItem(dailyPreviewKey);
+        if (!display || !saved) return '';
+        const {user, day, confirmedAt, cards} = JSON.parse(saved);
+        const age = Date.now() - confirmedAt;
+        if (!user || user !== window.LAYER1?.userId || day !== date
+            || !Number.isFinite(confirmedAt) || age < 0 || age >= dailyPreviewLifetime
+            || !Array.isArray(cards) || cards.length > 20) return '';
+        const time = new Intl.DateTimeFormat('ko-KR', {
+            timeZone:'Asia/Seoul', hour:'2-digit', minute:'2-digit', hourCycle:'h23'
+        }).format(confirmedAt);
+        return cards.filter(card => card && typeof card.name === 'string' && card.name.length <= 100)
+            .map(card => '<div class="check-item" data-confirmed-preview><div class="check-main">'
+                + '<div class="check-info"><div class="check-name">' + esc(card.name) + '</div>'
+                + '<div class="check-description">마지막 정상 확인 · ' + time + ' KST · 재조회 중</div></div>'
+                + (Number.isSafeInteger(card.count) && card.count >= 0 ? '<div class="check-stats"><div class="check-stat">'
+                    + '<div class="value">' + card.count.toLocaleString('ko-KR') + '</div><div class="label">이전 확인 수집량</div></div></div>' : '')
+                + '</div></div>').join('');
+    } catch (_) {
+        return '';
+    }
+}
+
+function saveDailyPreview(data, day, volume, reviewsReady) {
+    const user = window.LAYER1?.userId;
+    if (!user || data.error || data._dailyError) return;
+    const countries = L1.liveCollection?.countries || {};
+    const cards = data.checks.filter(check => check.display_group === 'daily' && check.is_target_date
+        && check.status === 'OK' && !needsDailyRead(check))
+        .filter(check => {
+            const country = countries[check.check_type];
+            if (!country) return true;
+            if (!reviewsReady || volume?.inspection_date !== day || volume.policy_version !== 4
+                || !volume.snapshots?.some(snapshot => snapshot.country === country && snapshot.available)) return false;
+            return check.check_type !== 'retail' || check.categories.every(category => currentRetailSummary?.[category.product_line]);
+        }).map(check => ({name:check.name, count:Number.isSafeInteger(check.actual) ? check.actual : null}));
+    if (!cards.length) return;
+    try {
+        sessionStorage.setItem(dailyPreviewKey, JSON.stringify({user, day, confirmedAt:Date.now(), cards}));
+    } catch (_) {}
+}
+
+function needsDailyRead(check) {
+    if (check.display_group !== 'daily') return false;
+    if (check.status === 'ERROR' || check.error || check.batch_count_error) return true;
+    const rows = check._reviewRows || [];
+    if (!rows.length) return check.status !== 'OK';
+    const operating = L1.collectionVolume.operatingRows(rows);
+    return operating.some(row => row.refresh_error || Number(row.batch_count || 0) >= 2
+        || (row.status !== 'OK' && !L1.retailReview.reviewed(row)) || L1.retailReview.rejected(row));
+}
+
+async function loadStats(refresh = false, reentry = false) {
     liveCollectionPoll?.stop();
+    clearTimeout(ddayCollectionTimer);
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
-    const params = ['dashboard=1'];
-    if (selectedDate) params.push('date=' + encodeURIComponent(selectedDate));
-    if (refresh) params.push('refresh=1');
-    const statsRequest = fetch('/dx/layer1/api/stats/?' + params.join('&'),
-        refresh ? {cache:'no-store'} : undefined);
-    const ddayRequest = loadDdayCollection(selectedDate, {refresh});
+    const preview = takeDailyPreview(selectedDate, reentry && !refresh);
+    for (const id of ['total-checked', 'total-passed', 'total-failed', 'total-confirmed']) {
+        const counter = document.getElementById(id);
+        if (counter) counter.textContent = '—';
+    }
+    for (const id of ['daily-checks-list', 'period-checks-list']) {
+        const list = document.getElementById(id);
+        if (list) list.innerHTML = (id === 'daily-checks-list' ? preview : '')
+            + '<div class="check-item"><div class="check-main" role="status">검증 데이터를 조회 중입니다.</div></div>';
+    }
+    const periodSection = document.getElementById('period-checks-section');
+    if (periodSection) periodSection.hidden = false;
+    resetDdayCollection();
+    if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.reset();
+    function readScope(scope) {
+        const params = new URLSearchParams({dashboard:'1', dashboard_scope:scope, date:selectedDate});
+        if (refresh) params.set('refresh', '1');
+        return fetch('/dx/layer1/api/stats/?' + params, {cache:'no-store'});
+    }
+    const initial = window.layer1InitialStats;
+    delete window.layer1InitialStats;
+    const statsRequest = !refresh && initial?.date === selectedDate ? initial.response
+        : readScope('daily');
+    const active = () => requestId === layer1StatsRequestId && getSelectedDate() === selectedDate;
+    function scheduleDday() {
+        if (!active() || selectedDate !== getLayer1SeoulDate(0)) return;
+        ddayCollectionTimer = setTimeout(() => {
+            if (!active() || selectedDate !== getLayer1SeoulDate(0)) return;
+            if (document.hidden || L1.liveCollection?.isInspecting()) return scheduleDday();
+            updateDday(true);
+        }, 60000);
+    }
+    async function updateDday(background) {
+        const needsRead = await loadDdayCollection(selectedDate, {refresh: refresh && !background, background});
+        if (needsRead !== false) scheduleDday();
+    }
     let data = null;
     let volume = null;
+    let capturePreview = false;
+    let reviewsReady = false;
     const liveSnapshots = new Map();
     currentCheckStatus = null;
-    currentRetailSummary = null;
-    currentNullData = null;
+    resetSeaRetailSummaries();
+    currentStatsData = null;
     const render = function() {
-        if (requestId === layer1StatsRequestId && data) {
-            liveSnapshots.forEach(snapshot => L1.liveCollection.applyDashboard(data, snapshot));
+        if (active() && data) {
             const latestVolume = liveSnapshots.size ? {inspection_date:selectedDate, policy_version:4,
                 snapshots:[...(volume?.snapshots || []).filter(snapshot => !liveSnapshots.has(snapshot.country)),
                     ...liveSnapshots.values()]} : volume;
-            if (L1.collectionVolume) L1.collectionVolume.decorate(data, latestVolume, selectedDate, currentRetailSummary);
+            if (L1.collectionVolume) L1.collectionVolume.decorate(
+                data, latestVolume, selectedDate, currentRetailSummary, !data._retailPending);
             renderLayer1Stats(data);
+            if (capturePreview) {
+                capturePreview = false;
+                saveDailyPreview(data, selectedDate, volume, reviewsReady);
+            }
         }
     };
-    if (L1.collectionVolume) L1.collectionVolume.load(selectedDate).then(function(result) {
-        if (requestId !== layer1StatsRequestId) return;
-        volume = result;
-        render();
-    });
-    const statusRequest = loadCheckStatus(selectedDate, refresh).then(function(status) {
-        if (requestId !== layer1StatsRequestId) return;
-        currentCheckStatus = status;
-        render();
-    }).catch(function() {});
-    if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
-
-    try {
-        const response = await statsRequest;
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        data = await response.json();
-        if (requestId !== layer1StatsRequestId) return;
-        currentStatsData = data;
-        render();
-        if (L1.liveCollection) {
-            liveCollectionPoll = L1.liveCollection.poll(() => getSelectedDate() !== selectedDate ? null : ({date:selectedDate, countries:
-                data.checks.map(check => L1.liveCollection.countries[check.check_type]).filter(Boolean)}), snapshot => {
-                if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
-                liveSnapshots.set(snapshot.country, snapshot);
-            }, () => {
-                if (requestId === layer1StatsRequestId && getSelectedDate() === selectedDate
-                    && !L1.liveCollection.isInspecting()) {
-                    L1.liveCollection.preserveView(render);
-                    loadDdayCollection(selectedDate, {background:true});
-                }
-            });
-            // The initial response already contains current counts; wait for the next sweep.
-        }
-    } catch (error) {
-        if (requestId !== layer1StatsRequestId) return;
-        data = null;
-        console.error('Stats load failed:', error);
-        const errorHtml = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 로드 실패</div><div class="check-description">' + esc(error.message) + '</div></div></div></div>';
-        document.getElementById('daily-checks-list').innerHTML = errorHtml;
-        document.getElementById('period-checks-list').innerHTML = errorHtml;
+    let renderQueued = false;
+    function scheduleRender() {
+        if (!active() || !data || renderQueued) return;
+        if (typeof requestAnimationFrame !== 'function') return render();
+        renderQueued = true;
+        requestAnimationFrame(() => {
+            renderQueued = false;
+            if (!active() || !data) return;
+            if (L1.liveCollection) L1.liveCollection.preserveView(render);
+            else render();
+        });
     }
-    if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
-    const summaryRequest = loadSeaRetailSummaries(selectedDate, refresh).then(render).catch(function() {});
+    async function checkedPayload(request) {
+        const response = await request;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (payload.target_date !== selectedDate) throw new Error('검증 데이터의 날짜가 일치하지 않습니다.');
+        if (!Array.isArray(payload.checks) || !payload.summary || (payload.error && !payload.checks.length)) {
+            throw new Error('검증 데이터를 조회하지 못했습니다.');
+        }
+        return payload;
+    }
+    try {
+        data = await checkedPayload(statsRequest);
+    } catch (error) {
+        console.error('Daily stats load failed:', error);
+        data = {summary:{}, checks:[], _dailyError:error.message};
+    }
+    if (!active()) return;
+    data._periodicPending = true;
+    data._retailPending = true;
+    data._checkStatusPending = true;
+    currentStatsData = data;
+    render();
+    if (!document.hidden && typeof requestAnimationFrame === 'function') {
+        // The task between these frames gives the daily cards a chance to paint.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+    if (!active()) return;
+
+    const periodicRequest = checkedPayload(readScope('periodic')).then(payload => {
+        if (!active()) return;
+        data.checks.push(...payload.checks);
+        const {summary} = data;
+        for (const name of ['total_checked', 'total_completed', 'passed', 'failed']) {
+            summary[name] = (summary[name] || 0) + (payload.summary[name] || 0);
+        }
+        const statuses = [summary.status, payload.summary.status];
+        summary.status = ['ERROR','CRITICAL','REVIEW'].find(status => statuses.includes(status)) || 'OK';
+        summary.pass_rate = summary.total_checked ? Math.round(summary.passed * 1000 / summary.total_checked) / 10 : 0;
+        if (payload.error) data._periodicError = '일부 검증 데이터를 조회하지 못했습니다.';
+    }).catch(error => {
+        if (active()) data._periodicError = error.message;
+    }).finally(() => {
+        data._periodicPending = false;
+        scheduleRender();
+    });
+
+    const ddayRequest = updateDday(false);
+    const statusRequest = loadCheckStatus(selectedDate, refresh).then(status => {
+        if (!active() || !status || status.success === false) return;
+        currentCheckStatus = status;
+        data._checkStatusPending = false;
+        if (!data._periodicPending && !data._dailyError && !data._periodicError && !data.error) updateConfirmedCount();
+        addCheckBadges();
+    }).catch(function() {});
+    const retailRequest = Promise.allSettled([
+        L1.collectionVolume?.load(selectedDate),
+        L1.retailReview?.load(selectedDate),
+        loadSeaRetailSummaries(selectedDate, refresh)
+    ]).then(([result, review]) => {
+        if (!active()) return;
+        if (result.status === 'fulfilled') volume = result.value;
+        reviewsReady = review.status === 'fulfilled' && review.value === true;
+        capturePreview = true;
+        data._retailPending = false;
+        scheduleRender();
+    });
     const columnRequest = typeof ColumnAlertSummary !== 'undefined'
         ? ColumnAlertSummary.load(selectedDate, true, refresh) : null;
-    await Promise.allSettled([statusRequest, summaryRequest, ddayRequest, columnRequest]);
+    if (!data._dailyError) {
+        if (L1.liveCollection) {
+            liveCollectionPoll = L1.liveCollection.poll(() => {
+                if (!active()) return null;
+                const types = data.checks.filter(needsDailyRead).map(check => check.check_type);
+                return {date:selectedDate,
+                    countries:types.map(type => L1.liveCollection.countries[type]).filter(Boolean),
+                    checkTypes:types.filter(type => !L1.liveCollection.countries[type])};
+            }, snapshot => {
+                if (!active()) return;
+                if (snapshot.country) {
+                    liveSnapshots.set(snapshot.country, snapshot);
+                    L1.liveCollection.applyDashboard(data, snapshot);
+                } else {
+                    const index = data.checks.findIndex(check => check.check_type === snapshot.checkType);
+                    if (index >= 0) data.checks[index] = snapshot.check || {...data.checks[index], status:'ERROR'};
+                }
+            }, () => {
+                scheduleRender();
+            });
+        }
+    }
+    await Promise.allSettled([statusRequest, periodicRequest, retailRequest, ddayRequest, columnRequest]);
 }
 
 function renderLayer1Stats(data) {
-    if (L1.retailReview) L1.retailReview.decorate(data, getSelectedDate());
+    if (L1.retailReview && !data._retailPending) L1.retailReview.decorate(data, getSelectedDate());
     // Summary stats
-    document.getElementById('total-checked').textContent = data.summary.total_checked;
-    document.getElementById('total-passed').textContent = data.summary.passed;
-    document.getElementById('total-failed').textContent = data.summary.failed;
-    updateConfirmedCount();
+    const complete = !data._periodicPending && !data._dailyError && !data._periodicError && !data.error;
+    document.getElementById('total-checked').textContent = complete ? data.summary.total_checked : '—';
+    document.getElementById('total-passed').textContent = complete && !data._retailPending ? data.summary.passed : '—';
+    document.getElementById('total-failed').textContent = complete && !data._retailPending ? data.summary.failed : '—';
+    if (complete && !data._checkStatusPending) updateConfirmedCount();
+    else document.getElementById('total-confirmed').textContent = '—';
 
 
     // 데일리 / 분석대상일별 분류 (API 응답의 display_group 기반)
     const dailyChecks = data.checks.filter(c => c.display_group === 'daily');
     const periodChecks = data.checks.filter(c => c.display_group === 'periodic');
     const periodSection = document.getElementById('period-checks-section');
-    if (periodSection) periodSection.hidden = periodChecks.length === 0;
+    if (periodSection) periodSection.hidden = !data._periodicPending && !data._periodicError && !periodChecks.length;
 
     // 체크 렌더링 함수 — L1.renderers에서 check_type별 렌더러 참조
     function renderCheck(check, checkIdx) {
@@ -138,8 +291,10 @@ function renderLayer1Stats(data) {
             const checkIdx = data.checks.indexOf(check);
             return wrapWithCheckBadge(renderCheck(check, checkIdx), check.check_type);
         }).join('');
-    } else {
+    } else if (!data._dailyError) {
         dailyChecksList.innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 없음</div></div></div></div>';
+    } else {
+        dailyChecksList.innerHTML = '';
     }
 
     // 분석대상일별 체크 리스트
@@ -149,17 +304,26 @@ function renderLayer1Stats(data) {
             const checkIdx = data.checks.indexOf(check);
             return wrapWithCheckBadge(renderCheck(check, checkIdx), check.check_type);
         }).join('');
+    } else if (data._periodicPending) {
+        periodChecksList.innerHTML = '<div class="check-item"><div class="check-main">데이터를 불러오는 중입니다.</div></div>';
+    } else if (data._periodicError) {
+        periodChecksList.innerHTML = '';
     } else {
         periodChecksList.innerHTML = '<div class="check-item"><div class="check-main"><div class="check-info"><div class="check-name">데이터 없음</div></div></div></div>';
     }
+
+    if (data._dailyError || data.error) dailyChecksList.insertAdjacentHTML('afterbegin',
+        '<div role="alert" class="check-description">' + esc(data._dailyError || '일부 검증 데이터를 조회하지 못했습니다.') + '</div>');
+    if (data._periodicError) periodChecksList.insertAdjacentHTML('afterbegin',
+        '<div role="alert" class="check-description">분석대상일별 조회 실패 · ' + esc(data._periodicError) + '</div>');
 
     // 체크 배지 삽입 (DOM API)
     addCheckBadges();
 }
 
 
-function loadAllData(refresh = false) {
-    return loadStats(refresh);
+function loadAllData(refresh = false, reentry = false) {
+    return loadStats(refresh, reentry);
 }
 
 // 수요증감율 부족 키워드 모달
@@ -742,6 +906,7 @@ function renderEventMissingTable(summary) {
 }
 
 L1.initLayer1Page({
+    loadOnDomReady: true,
     modals: [
         { name: 'demandMissing', style: 'extra-wide' },
         { name: 'compMissing', style: 'extra-wide' },

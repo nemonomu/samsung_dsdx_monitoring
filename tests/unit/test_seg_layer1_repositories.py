@@ -8,10 +8,13 @@ from tests.unit.support import ScriptedCursor
 
 class SegLayer1RepositoryTests(unittest.TestCase):
     def test_history_uses_seven_positive_days_per_retailer_excluding_today(self):
-        cursor = ScriptedCursor([{'fetchall': [('otto', '2026-09-08', 301)]}])
+        cursor = ScriptedCursor([
+            {'fetchall': [('otto', '2026-09-08', 301)]},
+            {'fetchall': [('mediamarkt', '2026-08-01', 225), ('otto', '2026-07-01', 288)]},
+        ])
         result = repo.get_previous_main_counts(cursor, 'seg_ldy', '2026-09-09')
         sql, params = cursor.calls[0]
-        self.assertEqual(['2026-09-09', 'mediamarkt', 'otto', 7], params)
+        self.assertEqual(['2026-09-09', '2026-08-12', 'mediamarkt', 'otto', 7], params)
         self.assertIn('LEFT(BTRIM(CAST(crawl_strdatetime AS TEXT)), 10) < %s', sql)
         self.assertIn('WHERE main_count > 0', sql)
         self.assertIn('PARTITION BY retailer ORDER BY source_date DESC', sql)
@@ -19,7 +22,8 @@ class SegLayer1RepositoryTests(unittest.TestCase):
         self.assertIn('GROUP BY retailer, source_date, batch_id', sql)
         self.assertIn("MAX(id) FILTER (WHERE page_type = 'main')", sql)
         self.assertNotIn('INTERVAL', sql)
-        self.assertEqual(301, result[0]['main_count'])
+        self.assertEqual(['2026-08-12', 'mediamarkt', 'otto', 7], cursor.calls[1][1])
+        self.assertEqual([225, 301, 288], [row['main_count'] for row in result])
 
     def test_dated_latest_main_anchor_and_rank_coverage(self):
         sql, params = repo.latest_main_counts_query('seg_tv', '2026-08-11')

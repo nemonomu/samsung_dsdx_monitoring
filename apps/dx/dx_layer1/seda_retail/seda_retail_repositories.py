@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from datetime import date
 
 from apps.common.seda_retail import get_seda_source
+from apps.common.source_dates import source_date_sql
+from apps.dx.dx_layer1.common.retail_history import latest_positive_history
 
 
 def latest_main_counts_query(product_line, source_date):
@@ -60,18 +62,27 @@ def get_latest_main_batch_counts(cursor, product_line, source_date):
 
 def get_previous_main_counts(cursor, product_line, source_date, limit=7):
     source = get_seda_source(product_line)
-    day = date.fromisoformat(str(source_date)).isoformat()
-    retailer_keys = list(source['retailer_keys'])
+    day = date.fromisoformat(str(source_date))
+    return latest_positive_history(
+        day, source['retailer_keys'], int(limit),
+        lambda keys, start, end: _read_previous_main_counts(cursor, source, keys, start, end, int(limit)),
+    )
+
+
+def _read_previous_main_counts(cursor, source, retailer_keys, start, end, limit):
     placeholders = ', '.join(['%s'] * len(retailer_keys))
+    day_expr = source_date_sql(source['date_column'])
+    from_date = f'AND {day_expr} >= %s' if start else ''
     cursor.execute(f"""
         WITH dated_rows AS (
             SELECT id, batch_id,
                    LOWER(REPLACE(BTRIM(account_name), ' ', '')) AS retailer,
                    LOWER(BTRIM(page_type)) AS page_type, main_rank,
-                   LEFT(BTRIM({source['date_column']}), 10) AS source_date
+                   {day_expr} AS source_date
             FROM {source['table_name']}
-            WHERE LEFT(BTRIM({source['date_column']}), 10) < %s
-              AND LEFT(BTRIM({source['date_column']}), 10)
+            WHERE {day_expr} < %s
+              {from_date}
+              AND {day_expr}
                   ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
               AND LOWER(REPLACE(BTRIM(account_name), ' ', ''))
                   IN ({placeholders})
@@ -100,7 +111,7 @@ def get_previous_main_counts(cursor, product_line, source_date, limit=7):
         FROM ranked_days
         WHERE day_rank <= %s
         ORDER BY retailer, source_date DESC
-    """, [day, *retailer_keys, int(limit)])
+    """, [end, *([start] if start else []), *retailer_keys, limit])
     fields = ('retailer', 'source_date', 'main_count')
     return [
         dict(row) if isinstance(row, Mapping) else dict(zip(fields, row))

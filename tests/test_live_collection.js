@@ -17,6 +17,7 @@ function setup(fetch) {
     const timers=new Map(), events={}, documentEvents={};
     class TestDate extends Date { static now() { return now; } constructor(...args) { super(...(args.length ? args : [day + 'T12:00:00'])); } }
     const context={Date:TestDate,L1:{}, URLSearchParams, AbortController, console, fetch,
+        getLayer1SeoulDate:()=>day,
         document:{hidden:false, querySelector:()=>modal,
             addEventListener:(name,fn)=>{documentEvents[name]=fn;}, removeEventListener:name=>delete documentEvents[name]},
         window:{addEventListener:(name,fn)=>{events[name]=fn;}, removeEventListener:name=>delete events[name]},
@@ -53,8 +54,10 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     current=snapshot();current.rows[0].rules={}; await env.tick(60000);assert.equal(row().status,'INSUFFICIENT');
     env.context.fetch=async()=>{calls++;throw Error('offline');};
     await env.tick(60000);assert.equal(row().status,'ERROR');assert.equal(row().count,204);
+    assert.equal(data.checks[0].status,'ERROR');
     env.context.fetch=async()=>{calls++;return response(snapshot());};
     await env.tick(60000);assert.equal(row().status,'OK');
+    assert(!data.checks[0].refresh_error,'successful refresh clears the source failure flag');
     env.context.document.hidden=true; env.documentEvents.visibilitychange();
     const before=calls;await env.tick(60000);assert.equal(calls,before);
     env.context.document.hidden=false;env.documentEvents.visibilitychange();await flush();assert.equal(calls,before+1);
@@ -82,24 +85,40 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
         dashboardRequests.push({url,options});
         if(url.includes('collection-current')) return response(snapshot());
         if(url.includes('collection-volume')) return new Promise(resolve=>{resolveSaved=resolve;});
-        return {ok:true,json:async()=>({summary:{},checks:[{...snapshot(0,0,0).check,is_target_date:true}]})};
+        if (url.includes('check_type=youtube')) return {ok:true,json:async()=>({target_date:day,
+            checks:[{check_type:'youtube', display_group:'daily', status:'OK', is_target_date:true}]})};
+        if (url.includes('dashboard_scope=periodic')) return {ok:true,json:async()=>({target_date:day,summary:{},checks:[]})};
+        return {ok:true,json:async()=>({target_date:day,summary:{},checks:[
+            {...snapshot(0,0,0).check,is_target_date:true,display_group:'daily'},
+            {check_type:'seg_retail', display_group:'daily', status:'OK', is_target_date:true,
+                categories:[{name:'TV', status:'OK', retailers:[{retailer:'Retailer', status:'OK',
+                    observation_start:day, main_count:100, bsr_count:50}]}]},
+            {check_type:'youtube', display_group:'daily', status:'COLLECTING', is_target_date:true},
+        ]})};
     });
     const renders=[];
     Object.assign(dashboard.context,{getSelectedDate:()=>day,loadDdayCollection(date, options){ddayRequests.push({date,options})},
-        loadCheckStatus:async()=>({}),loadSeaRetailSummaries:async()=>({}),
+        resetDdayCollection(){},
+        loadCheckStatus:async()=>({}),loadSeaRetailSummaries:async()=>({}),resetSeaRetailSummaries(){},currentRetailSummary:null,
         recordRender(value){const r=value.checks[0].categories[0].time_slots[0].retailers[0];renders.push([r.status,r.count]);}});
+    dashboard.context.document.getElementById = () => null;
     dashboard.context.L1.initLayer1Page=()=>{};
     dashboard.context.L1.liveCollection.preserveView=render=>render();
     vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/dashboard.js','utf8'),dashboard.context);
     vm.runInContext('renderLayer1Stats=recordRender;',dashboard.context);
-    await dashboard.context.loadStats();await flush();
+    const firstLoad=dashboard.context.loadStats();await flush();
     assert.notDeepEqual(renders.at(-1),['OK',204], 'no immediate duplicate country read');
+    const oldSnapshot=snapshot(0,0,0);oldSnapshot.rows[0].rules={};oldSnapshot.live=false;
+    resolveSaved(response(oldSnapshot));await firstLoad;
     await dashboard.tick(60000);
     assert.deepEqual(renders.at(-1),['OK',204]);
-    const oldSnapshot=snapshot(0,0,0);oldSnapshot.rows[0].rules={};oldSnapshot.live=false;
-    resolveSaved(response(oldSnapshot));await flush();
-    assert.deepEqual(renders.at(-1),['OK',204]);
+    assert.equal(dashboard.context.currentStatsData.checks[2].status,'OK');
+    assert(!dashboardRequests.some(request=>request.url.includes('country=SEG')),'already normal country is excluded');
     assert.equal(ddayRequests[1].options.background,true);
+    const readsAfterRecovery = dashboardRequests.length;
+    await dashboard.tick(60000);
+    assert.equal(dashboardRequests.length,readsAfterRecovery,'newly normal cards stop their periodic source reads');
+    assert.equal(ddayRequests.length,3,'D-DAY still polls after daily source reads stop');
     const manual=dashboard.context.loadAllData(true);
     await flush();
     const explicit=dashboardRequests.filter(request=>request.url.includes('/api/stats/')).at(-1);

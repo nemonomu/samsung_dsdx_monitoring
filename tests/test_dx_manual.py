@@ -148,14 +148,18 @@ class ManualTests(TestCase):
             key = 'SEM/' + token
             self.assertEqual(url, data['profiles'][key]['homepage'])
             row = next(row for row in data['datasets'] if row['key'] == key + '/tv')
-            self.assertEqual({'item', 'product_url', 'retailer_sku_name', 'screen_size',
-                              'final_sku_price', 'original_sku_price', 'savings'},
+            self.assertEqual({'batch_id', 'country', 'account_name', 'item', 'sku',
+                              'retailer_sku_name', 'product_url', 'count_of_reviews',
+                              'star_rating', 'count_of_star_ratings', 'final_sku_price',
+                              'original_sku_price', 'savings', 'main_rank', 'bsr_rank',
+                              'crawl_datetime', 'calendar_week', 'screen_size'},
                              {field['field'] for field in row['fields']})
             self.assertTrue(all(field['original'] == '' and not field['images'] for field in row['fields']))
             target, error = requested_target(data, dict(country='SEM', product='TV', retailer=name, column='savings'))
             self.assertEqual(key, target['retailer'])
             self.assertEqual('', error)
             self.assertIn('SEM|TV|' + token + '|savings', guide_urls(data))
+            self.assertIn('SEM|TV|' + token + '|sku', guide_urls(data))
             row['fields'][0]['note'] = '기존 검수 메모'
         self.assertEqual(original, self.data)
         self.assertEqual(original['photos'], data['photos'])

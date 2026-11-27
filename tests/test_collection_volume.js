@@ -248,9 +248,11 @@ async function verifyIndependentLoading() {
         return new Promise(resolve => requests.push({kind, resolve}));
     }
     const page = {
-        console, getSelectedDate: () => selectedDate, loadDdayCollection() {},
+        console, clearTimeout, URLSearchParams, window:{}, getSelectedDate: () => selectedDate,
+        loadDdayCollection() {return false;}, resetDdayCollection() {},
         loadCheckStatus: () => pending('status'), loadSeaRetailSummaries: () => pending('summary'),
-        fetch: () => pending('stats'), esc: String,
+        resetSeaRetailSummaries() {}, currentRetailSummary:null,
+        fetch: url => pending(new URL(url, 'http://test').searchParams.get('dashboard_scope')), esc: String,
         document: {getElementById: () => ({innerHTML: ''})},
         L1: {initLayer1Page() {}, collectionVolume: {
             load: () => pending('volume'), decorate(data, payload) {data.volume = payload;},
@@ -261,18 +263,19 @@ async function verifyIndependentLoading() {
     vm.runInContext('renderLayer1Stats = recordRender;', page);
     const first = page.loadStats();
     assert(!requests.some(r => r.kind === 'summary'), 'start with primary daily stats');
-    requests.find(r => r.kind === 'stats').resolve({ok: true, json: async () => ({date: day})});
-    requests.find(r => r.kind === 'status').resolve({});
+    const payload = {ok:true, json:async () => ({target_date:day, checks:[], summary:{}})};
+    requests.find(r => r.kind === 'daily').resolve(payload);
     await new Promise(resolve => setImmediate(resolve));
-    assert.strictEqual(rendered.at(-1).date, day, 'daily stats render before supplementary SEA counts');
-    requests.find(r => r.kind === 'summary').resolve({});
-    await first;
-    assert.strictEqual(rendered.at(-1).date, day);
+    assert.strictEqual(rendered.at(-1).target_date, day, 'daily stats render before supplementary SEA counts');
     assert.strictEqual(rendered.at(-1).volume, null);
     selectedDate = '2026-09-22';
     page.loadStats();
     const before = rendered.length;
-    requests[0].resolve({old: true});
+    requests.find(r => r.kind === 'volume').resolve({old:true});
+    requests.find(r => r.kind === 'periodic').resolve(payload);
+    requests.find(r => r.kind === 'status').resolve({});
+    requests.find(r => r.kind === 'summary').resolve({});
+    await first;
     await new Promise(resolve => setImmediate(resolve));
     assert.strictEqual(rendered.length, before, 'late volume response must not repaint another date');
     console.log('Collection volume: nonblocking requests and late-date response checks passed.');

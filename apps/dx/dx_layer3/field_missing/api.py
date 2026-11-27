@@ -7,6 +7,7 @@ from datetime import datetime
 from apps.common.db import dx_connection
 from apps.common.retail_columns import get_editable_columns
 from apps.common.sea_retail import get_sea_field_missing_editable_columns
+from apps.common.sem_retail import get_sem_editable_columns
 from apps.common.response import safe_error, log_error
 from . import services
 from .services import get_field_missing_excluded_columns
@@ -254,8 +255,12 @@ def field_missing_detail_by_field(request):
     if field not in display_fields:
         return JsonResponse({'status': 'error', 'message': '허용되지 않은 필드'})
 
-    editable_cols = []
-    if product_line != 'sem_tv':
+    if product_line == 'sem_tv':
+        try:
+            editable_cols = list(get_sem_editable_columns(product_line, retailer))
+        except ValueError:
+            return JsonResponse({'status': 'error', 'message': '지원하지 않는 리테일러입니다.'}, status=400)
+    else:
         editable_cols = list(dict.fromkeys(
             get_editable_columns(product_line, retailer)
             + get_sea_field_missing_editable_columns(product_line, retailer)

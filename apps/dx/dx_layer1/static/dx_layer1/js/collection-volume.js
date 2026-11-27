@@ -73,7 +73,7 @@
             percent: Math.round(change / baseline * 10) / 10, status, rule: rule.rule, reason,
             ...(metric === 'bsr' && status === 'VOLUME_LOW' && change > 0 && !fixed ? {direction:'increase'} : {})} : null};
     }
-    function decorate(data, payload, selectedDate, seaSummaries) {
+    function decorate(data, payload, selectedDate, seaSummaries, comparisonReady = true) {
         const snapshots = payload && payload.policy_version === 4 && payload.inspection_date === selectedDate ? payload.snapshots || [] : [];
         (data.checks || []).forEach(check => {
             const country = countries[check.check_type];
@@ -127,6 +127,11 @@
                             row.status = check.phase === 'pending' || row.collection_phase === 'pending' ? 'PENDING' : 'COLLECTING';
                             return;
                         }
+                        if (!comparisonReady) {
+                            row.status = 'VERIFYING';
+                            row.verification_reason = '수집량 판정을 불러오는 중입니다.';
+                            return;
+                        }
                         const rankMismatch = datesMatch && row.bsr_applicable !== false
                             && Number.isInteger(counts.main) && counts.main >= 0
                             && Number.isInteger(counts.bsr) && counts.main < counts.bsr
@@ -172,13 +177,15 @@
                 });
                 cat.status = worst(slots, cat.status === 'ERROR' ? 'ERROR' : 'VERIFYING');
             });
-            check.status = worst(check.categories || [], check.status === 'ERROR' ? 'ERROR' : 'VERIFYING');
+            if (check.status !== 'ERROR') check.status = worst(check.categories || [], 'VERIFYING');
         });
         if (data.summary && !data.error) {
             const targets = (data.checks || []).filter(check => check.is_target_date);
             data.summary.passed = targets.filter(check => check.status === 'OK').length;
-            data.summary.failed = targets.filter(check => ['CRITICAL', 'VOLUME_LOW'].includes(check.status)).length;
+            data.summary.failed = targets.filter(check => ['CRITICAL', 'VOLUME_LOW', 'ERROR'].includes(check.status)).length;
             data.summary.total_completed = targets.filter(check => !pending.includes(check.status)).length;
+            data.summary.status = targets.some(check => check.status === 'ERROR') ? 'ERROR'
+                : data.summary.failed ? 'CRITICAL' : targets.some(check => check.status === 'REVIEW') ? 'REVIEW' : 'OK';
             data.summary.pass_rate = targets.length ? Math.round(data.summary.passed * 1000 / targets.length) / 10 : 0;
         }
         return data;

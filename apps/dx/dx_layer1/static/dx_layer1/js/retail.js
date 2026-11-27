@@ -8,8 +8,6 @@ var SEA_RETAIL_PRODUCTS = [
     { key: 'ldy', category: 'LDY', retailers: ['Bestbuy', 'Lowes', 'HomeDepot', 'Costco'] },
     { key: 'ldy_dryer', category: 'LDY_DRYER', retailers: ['Bestbuy', 'Lowes', 'Costco', 'HomeDepot'] }
 ];
-var seaRetailSummaryCache = {};
-var seaRetailSummaryDate = '';
 var seaRetailSummaryLoadId = 0;
 
 function getSeaRetailProduct(categoryName) {
@@ -24,9 +22,6 @@ function getRetailSummaryData(categoryName) {
     if (typeof currentStatsData !== 'undefined' && (currentStatsData?.checks || [])
         .some(check => check.check_type === 'retail' && check._liveCollection)) return null;
     var key = String(categoryName || '').toLowerCase();
-    if (seaRetailSummaryCache && seaRetailSummaryCache[key]) {
-        return seaRetailSummaryCache[key];
-    }
     if (typeof currentRetailSummary !== 'undefined' && currentRetailSummary) {
         return currentRetailSummary[key] || null;
     }
@@ -609,13 +604,16 @@ function syncSeaRetailSummaryGlobals(summaryCache) {
     currentNullData = nullColumns;
 }
 
-async function loadSeaRetailSummaries(inspectionDate, refresh = false) {
-    var selectedInspectionDate = inspectionDate || getSelectedDate();
-    var loadId = ++seaRetailSummaryLoadId;
-    seaRetailSummaryDate = selectedInspectionDate;
-    seaRetailSummaryCache = {};
+function resetSeaRetailSummaries() {
+    seaRetailSummaryLoadId++;
     currentRetailSummary = null;
     currentNullData = null;
+}
+
+async function loadSeaRetailSummaries(inspectionDate, refresh = false) {
+    var selectedInspectionDate = inspectionDate || getSelectedDate();
+    resetSeaRetailSummaries();
+    var loadId = seaRetailSummaryLoadId;
 
     var results = await Promise.all(SEA_RETAIL_PRODUCTS.filter(product =>
         product.key !== 'ldy_dryer' || selectedInspectionDate >= '2026-10-10'
@@ -635,13 +633,12 @@ async function loadSeaRetailSummaries(inspectionDate, refresh = false) {
     }));
 
     // 날짜 변경 중 먼저 시작한 응답이 최신 화면을 덮어쓰지 않도록 한다.
-    if (loadId !== seaRetailSummaryLoadId) return seaRetailSummaryCache;
+    if (loadId !== seaRetailSummaryLoadId) return currentRetailSummary;
 
     var nextCache = {};
     results.forEach(function(result) {
         if (result.data) nextCache[result.key] = result.data;
     });
-    seaRetailSummaryCache = nextCache;
     syncSeaRetailSummaryGlobals(nextCache);
     return nextCache;
 }

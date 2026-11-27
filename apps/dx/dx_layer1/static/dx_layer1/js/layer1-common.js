@@ -94,7 +94,7 @@ var L1 = (function() {
     }
 
     /**
-     * window.onload 공통 초기화
+     * Layer 1 공통 초기화
      * @param {Object} options
      * @param {Array} [options.modals] - 생성할 모달 목록 [{name, style}]
      * @param {Object} [options.filterBarOptions] - initFilterBar에 전달할 옵션
@@ -103,7 +103,7 @@ var L1 = (function() {
     function initLayer1Page(options) {
         options = options || {};
 
-        window.onload = function() {
+        const initialize = function() {
             // 모달 생성
             if (options.modals && options.modals.length > 0) {
                 options.modals.forEach(function(modal) {
@@ -120,7 +120,7 @@ var L1 = (function() {
 
             // 데이터 로딩
             if (typeof loadAllData === 'function') {
-                loadAllData();
+                loadAllData(false, options.loadOnDomReady === true);
             }
 
             // 추가 초기화 콜백
@@ -128,6 +128,16 @@ var L1 = (function() {
                 options.onLoad();
             }
         };
+        if (options.loadOnDomReady) {
+            // The dashboard replaces the onload handlers registered by its section scripts.
+            window.onload = null;
+            document.addEventListener('DOMContentLoaded', initialize, {once:true});
+            window.addEventListener('pageshow', event => {
+                if (event.persisted) loadAllData(false, true);
+            });
+        } else {
+            window.onload = initialize;
+        }
     }
 
     var renderers = {};
@@ -621,10 +631,13 @@ function addCheckBadges() {
             var check = currentStatsData.checks.find(function(c) { return c.check_type === type; });
             if (check && check.is_target_date === false) return;
         }
-        var badge = document.createElement('span');
-        badge.className = 'check-badge-inline';
+        var badge = statsDiv.querySelector(':scope > .check-badge-inline');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'check-badge-inline';
+            statsDiv.appendChild(badge);
+        }
         badge.innerHTML = getCheckBadgeHtml(type);
-        statsDiv.appendChild(badge);
     });
 }
 

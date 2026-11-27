@@ -61,20 +61,25 @@ function setup(fetch) {
     let volumeRequests = 0;
     const page = setup(async url => {
         if (url.includes('collection-volume')) return ++volumeRequests === 1 ? {ok: false} : response(good());
-        return response({date: day, summary: {}, checks: [{check_type: 'siel_retail', phase: 'complete',
+        if (url.includes('dashboard_scope=periodic')) return response({target_date:day, summary:{}, checks:[]});
+        return response({target_date: day, summary: {}, checks: [{check_type: 'siel_retail', phase: 'complete',
             status: 'OK', inspection_date: day, is_target_date: true, categories: [{name: 'TV', source_date: day,
                 status: 'OK', retailers: [{retailer: 'Amazon', status: 'OK', main_count: 300, bsr_count: 100, actual: 345}]}]}]});
     });
-    Object.assign(page.context, {getSelectedDate: () => day, loadDdayCollection() {},
-        loadCheckStatus: async () => ({}), loadSeaRetailSummaries: async () => ({}), esc: String,
+    Object.assign(page.context, {URLSearchParams, window:{}, getSelectedDate: () => day,
+        loadDdayCollection() {return false;}, resetDdayCollection() {},
+        loadCheckStatus: async () => ({}), loadSeaRetailSummaries: async () => ({}),
+        resetSeaRetailSummaries() {}, currentRetailSummary:null, esc: String,
         document: {getElementById: () => ({innerHTML: ''})},
         recordRender(data) {renders.push(data.checks[0].categories[0].retailers[0].status);},
     });
     vm.runInContext(dashboardSource, page.context);
     vm.runInContext('renderLayer1Stats = recordRender;', page.context);
-    await page.context.loadStats();
+    const loading = page.context.loadStats();
+    await flush();
     assert.equal(renders.at(-1), 'VERIFYING');
     await page.tick(500);
+    await loading;
     assert.equal(renders.at(-1), 'OK');
     assert.equal(volumeRequests, 2);
 

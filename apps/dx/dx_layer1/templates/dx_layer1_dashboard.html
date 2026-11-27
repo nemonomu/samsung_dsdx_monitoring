@@ -8,6 +8,18 @@
 {% endblock %}
 
 {% block layer1_content %}
+<script>
+    (() => {
+        const now = Date.now();
+        const day = offset => new Date(now + (9 + 24 * offset) * 3600000).toISOString().slice(0, 10);
+        const saved = new URLSearchParams(location.search).get('date') || sessionStorage.getItem('monitoringSelectedDate');
+        const date = saved && saved <= day(1) ? saved : day(0);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date))) return;
+        const response = fetch('{% url "dx_layer1:api_stats" %}?dashboard=1&dashboard_scope=daily&date=' + encodeURIComponent(date));
+        response.catch(() => {});
+        window.layer1InitialStats = {date, response};
+    })();
+</script>
 <!-- Stats Grid -->
 <div class="stats-grid stats-grid-with-column-alerts" id="stats-grid">
     <div class="stat-card">
@@ -79,7 +91,7 @@
 {% endblock %}
 
 {% block layer1_js %}
-<script src="{% static 'dx_layer1/js/retail.js' %}?v=20261126-dday-refresh"></script>
+<script src="{% static 'dx_layer1/js/retail.js' %}?v=20261127-first-card"></script>
 <script src="{% static 'dx_layer1/js/sentiment.js' %}?v=2"></script>
 <script src="{% static 'dx_layer1/js/youtube.js' %}?v=20260901-1"></script>
 <script src="{% static 'dx_layer1/js/event-master.js' %}?v=20261008-next-date"></script>
@@ -98,6 +110,6 @@
 <script src="{% static 'dx_layer1/js/market_promotion.js' %}?v=2"></script>
 -->
 <script src="{% static 'dx_layer1/js/macro.js' %}?v=2"></script>
-<script src="{% static 'dx_layer1/js/collection-status.js' %}?v=20261126-dday-refresh"></script>
-<script src="{% static 'dx_layer1/js/dashboard.js' %}?v=20261126-layer1-speed"></script>
+<script src="{% static 'dx_layer1/js/collection-status.js' %}?v=20261127-daily-first"></script>
+<script src="{% static 'dx_layer1/js/dashboard.js' %}?v=20261127-normal-preview"></script>
 {% endblock %}

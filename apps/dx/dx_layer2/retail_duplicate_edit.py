@@ -86,10 +86,6 @@ def update_sku(cursor, conn, context, row_id, column, value,
     if not record:
         return {'error': '해당 레코드가 없습니다', 'status': 404}
     old_value, account, item = record
-    if country == 'SEM':
-        from .sem_validation import new_tv_review_is_readonly
-        if new_tv_review_is_readonly(table, account):
-            return {'error': '이 리테일러는 현재 조회 전용입니다.', 'status': 403}
     # Unassigned accounts are only accepted when the existing source scope
     # explicitly includes them. Never infer their country/date from a batch ID.
     retailers = [account] if account and str(account).strip() else source.get('retailers', ())

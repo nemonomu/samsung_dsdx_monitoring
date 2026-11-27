@@ -183,13 +183,13 @@
                 checkRows.push(...catRows);
             });
             check._reviewRows = checkRows;
-            check.status = aggregate(checkRows, check.status);
+            check.status = check._volumeBaseStatus === 'ERROR' ? 'ERROR' : aggregate(checkRows, check.status);
         });
         if (data.summary && !data.error) {
             const checked = (data.checks || []).filter(c=>c.is_target_date);
-            data.summary.failed = checked.filter(c=> (c._reviewRows || []).length
+            data.summary.failed = checked.filter(c=> c.status === 'ERROR' || ((c._reviewRows || []).length
                 ? c._reviewRows.some(row => rejected(row) || outstandingLow(row) || ['CRITICAL','ERROR'].includes(row.status))
-                : ['CRITICAL','VOLUME_LOW','ERROR'].includes(c.status)).length;
+                : ['CRITICAL','VOLUME_LOW'].includes(c.status))).length;
         }
     }
 
@@ -244,6 +244,7 @@
             if (current !== generation) return;
             if (payload.date !== day || !Array.isArray(payload.reviews)) throw new Error('검토 기록의 날짜가 일치하지 않습니다.');
             records = payload.reviews; previousRecords = payload.previous_reviews || []; loadedDate = day;
+            return true;
         } catch (error) {
             if (current === generation) loadError = '검토 기록을 불러오지 못했습니다. 새로고침 후 다시 시도하세요.';
         } finally { clearTimeout(timer); }

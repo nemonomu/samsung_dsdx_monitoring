@@ -6,6 +6,8 @@ const scriptRoot = 'apps/dx/dx_layer2/static/dx_layer2/';
 const body = { innerHTML: '' };
 const sandbox = {
     console, URLSearchParams,
+    esc: value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'),
     renderCountryFlagLabel: value => value,
     getDetailBody: () => body,
     getSelectedDate: () => '2026-09-13',
@@ -41,7 +43,7 @@ assert.ok(mixed.includes('class="field-badge has-issue">ref_capacity: 확인 필
 assert.ok(mixed.includes('class="field-badge automatic">ref_capacity: 자동확인 17건'));
 assert.ok(mixed.includes('class="field-badge manual">ref_capacity: 수동확인 2건'));
 assert.ok(mixed.includes('class="field-badge ok">sku: 0'));
-assert.ok(mixed.includes("'Lowes', 22, 1"), 'query must include accepted findings');
+assert.ok(mixed.includes('data-retailer="Lowes" data-count="22"'), 'query must include accepted findings');
 const payload = JSON.parse(mixed.match(/data-fields='([^']+)'/)[1].replace(/&#39;/g, "'").replace(/&amp;/g, '&'));
 assert.strictEqual(payload.auto_reviewed_fields_detail.ref_capacity, 17);
 assert.strictEqual(payload.manual_reviewed_fields_detail.ref_capacity, 2);
@@ -59,7 +61,21 @@ assert.ok(automaticHtml.includes('class="field-badge automatic">ref_capacity: �
 assert.ok(!automaticHtml.includes('has-issue'));
 assert.ok(!automaticHtml.includes('unreviewed'), 'zero pending findings must not receive red styling');
 assert.ok(!automaticHtml.includes('ref_capacity: 0'), 'automatic NULL must not look like an absent NULL');
-assert.ok(automaticHtml.includes("'Lowes', 17, 1"));
+assert.ok(automaticHtml.includes('data-retailer="Lowes" data-count="17"'));
+
+const semHtml = sandbox.renderDXTableDetail({ type: 'null' }, {
+    table: 'sem_tv_retail', table_name: 'SEM TV',
+    retailers: ['Walmart', "Sam's Club"].map(name => retailer({
+        retailer: name, total_null_count: 2, raw_null_count: 2,
+        auto_reviewed_count: 0, manual_reviewed_count: 0, reviewed_null_count: 0,
+        fields_detail: { sku: 1, screen_size: 1 }, raw_fields_detail: { sku: 1, screen_size: 1 },
+        reviewed_fields_detail: {}, auto_reviewed_fields_detail: {}, manual_reviewed_fields_detail: {}
+    }))
+});
+assert.ok(semHtml.includes('data-retailer="Walmart" data-count="2"'));
+assert.ok(semHtml.includes('data-retailer="Sam&#39;s Club" data-count="2"'));
+assert.ok(semHtml.includes('sku: 확인 필요 1건'));
+assert.ok(semHtml.includes('screen_size: 확인 필요 1건'));
 
 const manualOnly = retailer({
     status: 'OK', total_null_count: 0, raw_null_count: 2,

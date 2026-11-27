@@ -21,6 +21,7 @@ class Layer4SemTvObservationTests(unittest.TestCase):
             {'description': description, 'fetchall': [(1, 'Walmart', '001', '', None)]},
             {'description': description, 'fetchall': [(2, "Sam's Club", '002', None, None)]},
             {'description': description, 'fetchall': [(2, "Sam's Club", '002', None, None)]},
+            {'description': description, 'fetchall': [(1, 'Walmart', '001', '', None)]},
         ])
 
         @contextmanager
@@ -31,19 +32,20 @@ class Layer4SemTvObservationTests(unittest.TestCase):
             status = services.get_collection_status(START, 'sem_tv')
             detail = services.get_null_detail(START, 'sem_tv', "sAM's club", 'final_sku_price')
             before = services.get_null_detail(BEFORE_START, 'sem_tv', "Sam's Club", 'final_sku_price')
-            with self.assertRaises(ValueError):
-                services.get_null_detail(START, 'sem_tv', 'Walmart', 'sku')
+            sku_detail = services.get_null_detail(START, 'sem_tv', 'Walmart', 'sku')
 
         self.assertEqual(['Liverpool', 'Walmart', "Sam's Club"], [row['retailer'] for row in status['retailers']])
         self.assertEqual('2026-11-27', status['source_date'])
         seller = status['retailers'][2]
         self.assertEqual(1, next(field['null_count'] for field in seller['columns']
                                  if field['column'] == 'final_sku_price'))
-        self.assertNotIn('sku', [field['column'] for field in seller['columns']])
+        self.assertEqual(1, next(field['null_count'] for field in seller['columns']
+                                 if field['column'] == 'sku'))
+        self.assertEqual([1], [row['id'] for row in sku_detail['rows']])
         self.assertEqual([2], [row['id'] for row in detail['rows']])
         self.assertTrue(detail['read_only'])
         self.assertFalse(before['rows'])
-        self.assertEqual(4, len(cursor.calls))
+        self.assertEqual(5, len(cursor.calls))
         self.assertIn("NULLIF(BTRIM(batch_id), '') IS NOT NULL", cursor.calls[3][0])
         self.assertEqual(('2026-11-27', "Sam's Club", '2026-11-27'), cursor.calls[3][1])
 

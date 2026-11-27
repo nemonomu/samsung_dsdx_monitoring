@@ -26,9 +26,10 @@ class SedaLayer1RepositoryTests(unittest.TestCase):
         self.assertNotIn('::timestamp', sql)
 
     def test_history_uses_seven_positive_days_before_source_date(self):
-        cursor = ScriptedCursor([{
-            'fetchall': [('casasbahia', '2026-08-09', 300)],
-        }])
+        cursor = ScriptedCursor([
+            {'fetchall': [('casasbahia', f'2026-08-0{day}', 300) for day in range(9, 2, -1)]},
+            {'fetchall': [('magalu', '2026-06-01', 250)]},
+        ])
 
         result = repo.get_previous_main_counts(
             cursor, 'seda_ref', '2026-08-10'
@@ -36,12 +37,14 @@ class SedaLayer1RepositoryTests(unittest.TestCase):
 
         sql, params = cursor.calls[0]
         self.assertEqual(
-            ['2026-08-10', 'magalu', 'casasbahia', 7],
+            ['2026-08-10', '2026-07-13', 'magalu', 'casasbahia', 7],
             params,
         )
         self.assertIn('WHERE main_count > 0', sql)
         self.assertIn('WHERE day_rank <= %s', sql)
         self.assertEqual(300, result[0]['main_count'])
+        self.assertEqual(['2026-07-13', 'magalu', 7], cursor.calls[1][1])
+        self.assertEqual(250, result[-1]['main_count'])
 
     def test_registry_and_retailer_aliases_match_reference_files(self):
         self.assertEqual('Casas Bahia', display_seda_retailer('CasasBahia'))

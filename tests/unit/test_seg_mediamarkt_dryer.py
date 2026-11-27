@@ -33,7 +33,7 @@ class MediamarktDryerTests(unittest.TestCase):
         self.assertNotIn('page_type', sql)
         self.assertNotIn('AT TIME ZONE', sql)
         self.assertEqual(str(DAY), source_date_value('2026-10-25T23:59:59-04:00'))
-        cursor = ScriptedCursor([{'fetchall': []}])
+        cursor = ScriptedCursor([{'fetchall': []}, {'fetchall': []}])
         repo.get_previous_main_counts(cursor, KEY, DAY)
         self.assertIn("<> 'mediamarkt' OR", cursor.calls[0][0])
         self.assertIn("'2026-10-25'", cursor.calls[0][0])

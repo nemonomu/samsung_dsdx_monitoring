@@ -432,6 +432,8 @@ class FormatReviewTests(TestCase):
             ('seg_ldy_dryer_retail','Expert',services.seg_validation,'_latest_rows','_load_normal_reviews','capacity','8 kg'),
             ('seg_ldy_dryer_retail','Mediamarkt',services.seg_validation,'_latest_rows','_load_normal_reviews','capacity','8 kg'),
             ('sem_tv_retail','Liverpool',services.sem_validation,'_latest_rows','_load_normal_reviews','star_rating','4.5'),
+            ('sem_tv_retail','Walmart',services.sem_validation,'_latest_rows','_load_normal_reviews','screen_size','65inch'),
+            ('sem_tv_retail',"Sam's Club",services.sem_validation,'_latest_rows','_load_normal_reviews','screen_size','65 inches'),
         ]
         for table,retailer,module,fetch,reviews,field,value in cases:
             row={'id':1,field:value,'product_url':'https://example.test/product/1'}
@@ -441,7 +443,12 @@ class FormatReviewTests(TestCase):
                 stack.enter_context(patch.object(module,reviews,return_value={}))
                 if table.startswith('sea_'):
                     stack.enter_context(patch.object(services,'validate_field',return_value=None))
-                inventory_day = date(2026, 10, 25) if table == 'seg_ldy_dryer_retail' and retailer == 'Mediamarkt' else DAY
+                if table == 'seg_ldy_dryer_retail' and retailer == 'Mediamarkt':
+                    inventory_day = date(2026, 10, 25)
+                elif table == 'sem_tv_retail' and retailer != 'Liverpool':
+                    inventory_day = date(2026, 11, 27)
+                else:
+                    inventory_day = DAY
                 data=service.inventory(None,inventory_day,table,retailer)
                 group=next(g for g in data['groups'] if g['field']==field)
                 self.assertEqual({'baseline_normal':1},group['states'])

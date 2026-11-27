@@ -1490,13 +1490,14 @@ async function loadCrossfieldRuleDetail(productLine, ruleId, date, ruleName) {
             window.crossfieldSourceDate = data.source_date || date;
             window.crossfieldOffsetDays = Number(data.offset_days || 0);
             window.crossfieldRuleName = ruleName;
-            window.crossfieldRuleId = ruleId;
+            window.crossfieldRuleId = data.rule_id || ruleId;
             window.crossfieldSelectFields = data.select_fields || '';
             window.crossfieldRuleFields = [data.field1, data.field2];
             window.crossfieldValidationType = data.validation_type || '';
             window.crossfieldTableName = data.table_name || '';
             window.crossfieldDateCol = data.date_col || 'crawl_datetime';
             window.crossfieldReadonly = data.readonly === true;
+            window.crossfieldReviewColumns = Array.isArray(data.review_columns) ? data.review_columns : null;
             window.crossfieldEditableCols = new Set(data.editable_columns || []);
             window.crossfieldRetailerEditableColumns = data.retailer_editable_columns || {};
             window.crossfieldNormalReviews = data.normal_reviews || {};

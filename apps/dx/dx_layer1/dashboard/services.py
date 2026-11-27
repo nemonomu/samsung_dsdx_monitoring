@@ -2,14 +2,18 @@
 Layer 1 Dashboard Services: 통계 오케스트레이션 비즈니스 로직
 """
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from django.conf import settings
 from apps.common.db import dx_connection
 from apps.common.response import log_error
 from apps.common.dx_schedules import load_collection_schedules, is_target_date as check_target_date
+from apps.common.monitoring_cache import monitoring_cached_value
 from apps.common.monitoring_exclusions import DISABLED_CHECK_TYPES
-from apps.dx.dx_layer1.common.retail_batches import add_batch_counts
+from apps.dx.dx_layer1.common.retail_batches import add_batch_counts, RETAIL_CHECK_TYPES
 from apps.dx.dx_layer1.common.retail_verification import apply_verification_status
+from apps.dx.dx_layer1.dashboard.country_revisions import CountryRevisions
 
 from apps.dx.dx_layer1.retail import retail_services as retail_svc
 from apps.dx.dx_layer1.sentiment import sentiment_services as sentiment_svc
@@ -36,6 +40,7 @@ from apps.dx.dx_layer1.macro.macro_services import (
 
 EXPECTED_PER_RETAILER = 300
 OK_THRESHOLD = 200
+logger = logging.getLogger(__name__)
 
 _SERVICE_MAP = {
     'retail': retail_svc,
@@ -211,13 +216,13 @@ def _get_sem_retail_stats_isolated(cursor, svc, target_date, now):
     return svc_result
 
 
-def _get_seg_retail_stats_isolated(cursor, svc, target_date, now):
-    savepoint = 'layer1_seg_retail_monitoring'
+def _get_retail_stats_isolated(cursor, svc, target_date, now, country):
+    savepoint = f'layer1_{country.lower()}_retail_monitoring'
     cursor.execute(f'SAVEPOINT {savepoint}')
     try:
         result = svc.get_layer1_stats(cursor, target_date, now)
         if not isinstance(result, dict) or not isinstance(result.get('check'), dict):
-            raise ValueError('Invalid SEG Layer1 response')
+            raise ValueError(f'Invalid {country} Layer1 response')
     except Exception as exc:
         cursor.execute(f'ROLLBACK TO SAVEPOINT {savepoint}')
         cursor.execute(f'RELEASE SAVEPOINT {savepoint}')
@@ -282,17 +287,42 @@ _DASHBOARD_GROUPS = (
 )
 
 
-def get_dashboard_stats(target_date, check_type_filter=None, *, parallel=False):
-    if not parallel or check_type_filter:
+def _read_periodic_dashboard_stats(target_date, services, refresh):
+    order, _, targets = services
+    identity = [str(target_date), [check_type for check_type, _ in order], sorted(targets)]
+    return monitoring_cached_value(
+        'layer1-periodic-dashboard', identity,
+        lambda: _read_dashboard_stats(target_date, services=services), refresh=refresh,
+    )
+
+
+def get_dashboard_stats(target_date, check_type_filter=None, *, parallel=False,
+                        reuse_normal=False, refresh=False, dashboard_scope=None):
+    if dashboard_scope is None and (not parallel or check_type_filter):
         return _read_dashboard_stats(target_date, check_type_filter)
     order, daily, targets = _get_active_services(target_date)
+    if dashboard_scope:
+        order = [check for check in order if (check[0] in daily) == (dashboard_scope == 'daily')]
+        if check_type_filter:
+            order = [check for check in order if check[0] == check_type_filter]
+    if not parallel or check_type_filter:
+        return _read_dashboard_stats(target_date, services=(order, daily, targets))
     groups = [[], [], []]
+    periodic = []
     first, second = _DASHBOARD_GROUPS
     for check in order:
         check_type = check[0]
-        groups[0 if check_type in first else 1 if check_type in second else 2].append(check)
-    pending = [_DASHBOARD_POOL.submit(_read_dashboard_stats, target_date, services=(group, daily, targets))
+        if reuse_normal and check_type not in daily and check_type not in RETAIL_CHECK_TYPES and check_type not in first:
+            periodic.append(check)
+        else:
+            groups[0 if check_type in first else 1 if check_type in second else 2].append(check)
+    pending = [_DASHBOARD_POOL.submit(_read_dashboard_stats, target_date, services=(group, daily, targets),
+                                      reuse_normal=reuse_normal, refresh=refresh)
                for group in groups if group]
+    if periodic:
+        pending.append(_DASHBOARD_POOL.submit(
+            _read_periodic_dashboard_stats, target_date, (periodic, daily, targets), refresh,
+        ))
     if not pending:
         return _read_dashboard_stats(target_date, services=(order, daily, targets))
     parts = [task.result() for task in pending]
@@ -314,14 +344,23 @@ def _dashboard_summary(checks):
     targets = [check['status'] for check in checks if check.get('is_target_date', False)]
     completed = [status for status in targets if status not in ('PENDING', 'COLLECTING', 'ANALYZING', 'VERIFYING')]
     passed = completed.count('OK')
-    failed = completed.count('CRITICAL')
+    failed = completed.count('CRITICAL') + completed.count('ERROR')
     return {'total_checked': len(targets), 'total_completed': len(completed),
             'passed': passed, 'failed': failed,
             'pass_rate': round(passed / len(targets) * 100, 1) if targets else 0,
-            'status': 'CRITICAL' if failed else 'REVIEW' if 'REVIEW' in completed else 'OK'}
+            'status': 'ERROR' if 'ERROR' in completed else 'CRITICAL' if failed else 'REVIEW' if 'REVIEW' in completed else 'OK'}
 
 
-def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None):
+def _failed_check(check_type, name, expected, target_date):
+    return {
+        'check': {'name': name, 'check_type': check_type, 'status': 'ERROR', 'categories': []},
+        'failed_items': [{'source': name, 'error_type': '조회 오류', 'expected': expected,
+                          'actual': 0, 'timestamp': str(target_date)}],
+    }
+
+
+def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None,
+                          reuse_normal=False, refresh=False):
     """Layer 1 statistics orchestration for active configured services."""
     now = datetime.now()
     siel_now = _get_siel_kst_now()
@@ -352,89 +391,76 @@ def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None)
         }
     }
 
+    if services is not None and not services[0]:
+        results['summary'] = _dashboard_summary([])
+        return results
+
     try:
         with dx_connection() as (conn, cursor):
             service_order, daily_types, target_date_types = services or _get_active_services(target_date)
+            revisions = None
+            if (target_date and reuse_normal and getattr(settings, 'MONITORING_CACHE_ENABLED', True)
+                    and any(check_type in RETAIL_CHECK_TYPES for check_type, _ in service_order)):
+                try:
+                    revisions = CountryRevisions(cursor, target_date, tse_now, refresh)
+                except OSError:
+                    logger.warning('Layer 1 country cache unavailable', exc_info=True)
+                if revisions:
+                    cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
             comp_batch_id = None
 
             for check_type, svc in service_order:
                 if check_type_filter and check_type_filter != check_type:
                     continue
+                check_revisions = revisions if check_type in RETAIL_CHECK_TYPES else None
+                if check_revisions:
+                    saved = check_revisions.get(check_type)
+                    if saved is not None:
+                        saved['display_group'] = 'daily' if check_type in daily_types else 'periodic'
+                        saved['is_target_date'] = check_type in target_date_types
+                        results['checks'].append(saved)
+                        continue
 
-                if check_type == 'youtube':
+                if check_type == 'retail':
+                    svc_result = _get_retail_stats_isolated(cursor, svc, target_date, now, 'SEA')
+                    if svc_result is None:
+                        svc_result = _failed_check(check_type, 'SEA Retail', 'SEA 국가 수집 데이터', target_date)
+                elif check_type == 'youtube':
                     svc_result = _get_youtube_stats_isolated(
                         cursor, svc, target_date, now
                     )
                     if svc_result is None:
-                        results['failed_items'].append({
-                            'source': 'Consumer (YouTube)',
-                            'error_type': '조회 오류',
-                            'expected': '국가 수집 데이터',
-                            'actual': 0,
-                            'timestamp': str(target_date),
-                        })
-                        continue
+                        svc_result = _failed_check(check_type, 'Consumer (YouTube)', '국가 수집 데이터', target_date)
                 elif check_type == 'siel_retail':
                     svc_result = _get_siel_retail_stats_isolated(
                         cursor, svc, target_date, siel_now
                     )
                     if svc_result is None:
-                        results['failed_items'].append({
-                            'source': 'SIEL Retail',
-                            'error_type': '조회 오류',
-                            'expected': 'SIEL 국가 수집 데이터',
-                            'actual': 0,
-                            'timestamp': str(target_date),
-                        })
-                        continue
+                        svc_result = _failed_check(check_type, 'SIEL Retail', 'SIEL 국가 수집 데이터', target_date)
                 elif check_type == 'tse_retail':
                     svc_result = _get_tse_retail_stats_isolated(
                         cursor, svc, target_date, tse_now
                     )
                     if svc_result is None:
-                        results['failed_items'].append({
-                            'source': 'TSE Retail',
-                            'error_type': '조회 오류',
-                            'expected': 'TSE 국가 수집 데이터',
-                            'actual': 0,
-                            'timestamp': str(target_date),
-                        })
-                        continue
+                        svc_result = _failed_check(check_type, 'TSE Retail', 'TSE 국가 수집 데이터', target_date)
                 elif check_type == 'sem_retail':
                     svc_result = _get_sem_retail_stats_isolated(
                         cursor, svc, target_date, sem_now
                     )
                     if svc_result is None:
-                        results['failed_items'].append({
-                            'source': 'SEM Retail',
-                            'error_type': '조회 오류',
-                            'expected': 'SEM 멕시코 Liverpool 수집 데이터',
-                            'actual': 0,
-                            'timestamp': str(target_date),
-                        })
-                        continue
+                        svc_result = _failed_check(check_type, 'SEM Retail', 'SEM 멕시코 Liverpool 수집 데이터', target_date)
                 elif check_type == 'seg_retail':
-                    svc_result = _get_seg_retail_stats_isolated(
-                        cursor, svc, target_date, datetime.now(_TSE_KST),
+                    svc_result = _get_retail_stats_isolated(
+                        cursor, svc, target_date, datetime.now(_TSE_KST), 'SEG',
                     )
                     if svc_result is None:
-                        results['failed_items'].append({
-                            'source': 'SEG Retail', 'error_type': '조회 오류',
-                            'expected': 'SEG 국가 수집 데이터', 'actual': 0,
-                            'timestamp': str(target_date),
-                        })
-                        continue
+                        svc_result = _failed_check(check_type, 'SEG Retail', 'SEG 국가 수집 데이터', target_date)
                 elif check_type == 'seda_retail':
                     svc_result = _get_seda_retail_stats_isolated(
                         cursor, svc, target_date, seda_now,
                     )
                     if svc_result is None:
-                        results['failed_items'].append({
-                            'source': 'SEDA Retail', 'error_type': '조회 오류',
-                            'expected': 'SEDA 브라질 수집 데이터', 'actual': 0,
-                            'timestamp': str(target_date),
-                        })
-                        continue
+                        svc_result = _failed_check(check_type, 'SEDA Retail', 'SEDA 브라질 수집 데이터', target_date)
                 elif check_type == 'seib_retail':
                     cursor.execute('SAVEPOINT layer1_seib')
                     try:
@@ -477,11 +503,14 @@ def _read_dashboard_stats(target_date, check_type_filter=None, *, services=None)
                 check_data['display_group'] = 'daily' if check_type in daily_types else 'periodic'
                 check_data['is_target_date'] = check_type in target_date_types
                 results['checks'].append(check_data)
-                results['failed_items'].extend(svc_result.get('failed_items', []))
+                failed_items = svc_result.get('failed_items', [])
+                results['failed_items'].extend(failed_items)
+                if check_revisions:
+                    check_revisions.store(check_data, failed_items)
 
         results['checks'] = _sort_checks_for_display(results['checks'])
 
-        if not check_type_filter:
+        if not check_type_filter or any(check['status'] == 'ERROR' for check in results['checks']):
             results['summary'] = _dashboard_summary(results['checks'])
 
     except Exception as e:

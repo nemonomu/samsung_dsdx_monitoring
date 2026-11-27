@@ -1,8 +1,15 @@
+import json
 import unittest
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
-from unittest.mock import patch
+from tempfile import TemporaryDirectory
+from unittest.mock import Mock, patch
+from django.core.cache import cache
+from django.test import RequestFactory, override_settings
+from psycopg2 import OperationalError
 from apps.dx.dx_layer1.common import retail_batches
+from apps.dx.dx_layer1.dashboard import country_revisions, dashboard_api
 from apps.dx.dx_layer1.event_master import services as event_master_services
 
 from tests.unit.support import load_module, module_stub, package_stub
@@ -14,6 +21,9 @@ class RecordingCursor:
 
     def execute(self, sql, params=None):
         self.calls.append((' '.join(sql.split()), params))
+
+    def fetchone(self):
+        return None
 
 
 class StatsService:
@@ -37,6 +47,7 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'apps.dx.dx_layer1.event_master': package_stub('apps.dx.dx_layer1.event_master'),
             'apps.dx.dx_layer1.event_master.services': event_master_services,
             'apps.dx.dx_layer1.common.retail_batches': retail_batches,
+            'apps.dx.dx_layer1.dashboard.country_revisions': country_revisions,
             'apps': package_stub('apps'),
             'apps.common': package_stub('apps.common'),
             'apps.common.db': module_stub(
@@ -71,6 +82,8 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             'siel_retail': 'siel_retail_services',
             'sem_retail': 'sem_retail_services',
             'seg_retail': 'seg_retail_services',
+            'seuk_retail': 'seuk_retail_services',
+            'seib_retail': 'seib_retail_services',
             'seda_retail': 'seda_retail_services',
             'tse_retail': 'tse_retail_services',
             'market_trend': 'market_trend_services',
@@ -106,8 +119,6 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         )
 
     def test_parallel_dashboard_matches_serial_and_keeps_competitor_batch(self):
-        from copy import deepcopy
-
         @contextmanager
         def connection():
             yield object(), RecordingCursor()
@@ -135,11 +146,219 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         self.assertEqual([call[1]['comp_batch_id'] for call in
                           services['market_competitor_event'].calls], ['batch-7', 'batch-7'])
 
+    @override_settings(MONITORING_CACHE_ENABLED=False)
+    def test_dashboard_scopes_read_only_their_schedule_group(self):
+        @contextmanager
+        def connection():
+            yield object(), RecordingCursor()
+
+        def check(check_type):
+            return StatsService({'check': {'check_type': check_type, 'status': 'OK'}})
+
+        event, youtube, seg = map(check, ('event_master', 'youtube', 'seg_retail'))
+        order = [('event_master', event), ('youtube', youtube), ('seg_retail', seg)]
+        daily = {'youtube', 'seg_retail'}
+        target = {'event_master', 'youtube'}
+        factory = RequestFactory()
+
+        def request(scope, **options):
+            return dashboard_api.layer_stats(factory.get('/layer1/api/stats/', {
+                'dashboard': '1', 'dashboard_scope': scope, 'date': '2026-11-26', **options,
+            }))
+
+        with patch.object(self.service, 'dx_connection', connection), \
+                patch.object(self.service, '_get_active_services', return_value=(order, daily, target)), \
+                patch.object(dashboard_api, 'get_dashboard_stats', self.service.get_dashboard_stats):
+            self.assertEqual(400, request('unsupported').status_code)
+            normal = json.loads(request('daily').content)
+            self.assertEqual(['seg_retail', 'youtube'], [row['check_type'] for row in normal['checks']])
+            self.assertEqual([False, True], [row['is_target_date'] for row in normal['checks']])
+            self.assertEqual((1, 1), (normal['summary']['total_checked'], normal['summary']['passed']))
+            self.assertFalse(event.calls)
+            self.assertEqual((1, 1), (len(youtube.calls), len(seg.calls)))
+            delayed = json.loads(request('periodic', refresh='1').content)
+            self.assertEqual(['event_master'], [row['check_type'] for row in delayed['checks']])
+            self.assertEqual((1, 1), (delayed['summary']['total_checked'], delayed['summary']['passed']))
+            self.assertEqual((1, 1, 1), (len(event.calls), len(youtube.calls), len(seg.calls)))
+            out_of_scope = json.loads(request('daily', check_type='event_master').content)
+            self.assertEqual([], out_of_scope['checks'])
+            self.assertEqual(0, out_of_scope['summary']['total_checked'])
+            self.assertEqual(1, len(event.calls))
+
+    def test_daily_api_reuses_only_unchanged_normal_and_manual_rereads_every_country(self):
+        def result(check_type, status, count):
+            return {'check': {'check_type': check_type, 'status': status, 'phase': 'complete',
+                              'categories': [{'retailers': [{'status': status, 'count': count}]}]}}
+
+        cursors = []
+
+        @contextmanager
+        def connection():
+            cursor = RecordingCursor()
+            cursors.append(cursor)
+            yield object(), cursor
+
+        seg = StatsService(result('seg_retail', 'OK', 300))
+        seda = StatsService(result('seda_retail', 'CRITICAL', 0))
+        periodic = StatsService(result('event_master', 'OK', 10))
+        states = {'seg_retail': ('first',)}
+        services = [('seg_retail', seg), ('seda_retail', seda), ('event_master', periodic)]
+        daily = {'seg_retail', 'seda_retail'}
+        target = {*daily, 'event_master'}
+        cache.clear()
+        self.addCleanup(cache.clear)
+        factory = RequestFactory()
+
+        def request(**query):
+            return dashboard_api.layer_stats(factory.get('/layer1/api/stats/', {
+                'dashboard': '1', 'date': '2026-11-26', **query,
+            }))
+
+        with TemporaryDirectory() as cache_dir, override_settings(MONITORING_CACHE_DIR=cache_dir), \
+                patch.object(self.service, 'dx_connection', connection), \
+                patch.object(self.service, '_get_active_services', return_value=(services, daily, target)), \
+                patch.object(self.service, 'add_batch_counts'), \
+                patch.object(dashboard_api, 'get_dashboard_stats', self.service.get_dashboard_stats), \
+                patch.object(country_revisions, '_root'), \
+                patch.object(country_revisions, '_backend', return_value=cache), \
+                patch.object(country_revisions, 'source_revision',
+                             side_effect=lambda _, check, day: states[check['check_type']]) as revision:
+            request()
+            request()
+            self.assertEqual((len(seg.calls), len(seda.calls), len(periodic.calls)), (1, 2, 1))
+            states['seg_retail'] = ('recollected',)
+            request()
+            self.assertEqual((len(seg.calls), len(seda.calls)), (2, 3))
+            self.assertEqual(revision.call_count, 3)
+            seg.error = OperationalError('manual refresh failed')
+            self.assertIn(b'"status": "ERROR"', request(refresh='1').content)
+            request()
+            self.assertEqual((len(seg.calls), len(seda.calls), len(periodic.calls)), (4, 5, 2))
+            request(check_type='seg_retail')
+            self.assertEqual((len(seg.calls), len(seda.calls), len(periodic.calls)), (5, 5, 2))
+        transactions = [cursor.calls[0][0] for cursor in cursors if cursor.calls]
+        self.assertEqual(transactions.count('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY'), 5)
+
+    def test_duplicate_batches_and_preview_query_errors_prevent_reuse(self):
+        row = {'status': 'OK', 'count': 300, 'verification_state': 'ready', 'batch_count': 1}
+        preview = {'status': 'OK', 'exclude_from_total': True}
+        check = {'status': 'OK', 'categories': [{'retailers': [row, preview]}]}
+        self.assertTrue(country_revisions.reusable(check, []))
+        row['batch_count'] = 2
+        self.assertFalse(country_revisions.reusable(check, []))
+        row['batch_count'] = 1
+        preview['status'] = 'ERROR'
+        self.assertFalse(country_revisions.reusable(check, []))
+        preview['status'] = 'OK'
+        row.update(main_count=50, bsr_count=100)
+        self.assertFalse(country_revisions.reusable(check, []))
+
+    def test_seuk_raw_receipt_never_hides_known_fixed_bsr_or_zero_main_issue(self):
+        row = {'retailer': 'Currys', 'status': 'OK', 'count': 300,
+               'main_count': 300, 'bsr_count': 99, 'verification_state': 'ready'}
+        check = {'check_type': 'seuk_retail', 'status': 'OK', 'categories': [{'retailers': [row]}]}
+        self.assertFalse(country_revisions.reusable(check, []))
+        row['bsr_count'] = 100
+        self.assertTrue(country_revisions.reusable(check, []))
+        row.update(retailer='Amazon', main_count=0, bsr_count=0)
+        self.assertFalse(country_revisions.reusable(check, []))
+        row['missing_by_raw_count'] = True
+        self.assertTrue(country_revisions.reusable(check, []))
+
+    def test_sea_unassessed_only_reuses_completed_non_anomalous_receipt(self):
+        row = {'retailer': 'HomeDepot', 'status': 'UNASSESSED', 'count': 300,
+               'verification_state': 'ready', 'batch_count': 1, 'batch_id': 'hd',
+               'collection_phase': 'complete',
+               'items': [{'name': 'Main Rank', 'count': 300}, {'name': 'BSR Rank', 'count': 100}]}
+        check = {'check_type': 'retail', 'status': 'OK', 'categories': [{'retailers': [row]}]}
+        self.assertFalse(country_revisions.reusable(check, []))
+        self.assertTrue(country_revisions.reusable(check, [], sea_source_complete=True))
+        self.assertEqual('UNASSESSED', row['status'])
+        for changes in ({
+            'collection_phase': 'collecting',
+        }, {'batch_count': 2}, {'count': 0}, {
+            'items': [{'name': 'Main Rank', 'count': 50}, {'name': 'BSR Rank', 'count': 100}],
+        }):
+            check['categories'][0]['retailers'] = [{**row, **changes}]
+            self.assertFalse(country_revisions.reusable(check, [], sea_source_complete=True))
+
+    def test_tse_revision_falls_back_to_the_selected_day_only(self):
+        cursor = Mock()
+        cursor.fetchone.return_value = ('tse',)
+        check = {'check_type': 'tse_retail', 'categories': [{'product_line': 'tse_tv'}]}
+        self.assertEqual(('tse',), country_revisions.source_revision(cursor, check, date(2026, 11, 26)))
+        sql, params = cursor.execute.call_args_list[1].args
+        self.assertIn('FROM dx_tse.dx_tse_tv_retail_com source', sql)
+        self.assertEqual(['2026-11-26'], params)
+        self.assertNotIn('source_date', check['categories'][0])
+
+    def test_same_database_snapshot_bypasses_source_scans_and_changes_are_rechecked(self):
+        day = date(2026, 11, 26)
+        now = datetime(2026, 11, 27)
+        row = {'status': 'OK', 'count': 300, 'verification_state': 'ready', 'batch_count': 1}
+        check = {'check_type': 'seg_retail', 'status': 'OK',
+                 'categories': [{'product_line': 'seg_tv', 'source_date': str(day), 'retailers': [row]}]}
+        backing = {}
+        backend = Mock()
+        backend.get.side_effect = backing.get
+        backend.set.side_effect = lambda key, entry, timeout: backing.update({key: entry})
+        states = [('db', 'startup', '1:1:'), ('db', 'startup', '1:1:'), ('db', 'startup', '2:2:'),
+                  ('db', 'startup', '2:2:'), ('db', 'startup', '3:3:')]
+        with patch.object(country_revisions, '_root'), \
+                patch.object(country_revisions, '_backend', return_value=backend), \
+                patch.object(country_revisions, 'database_snapshot', side_effect=states), \
+                patch.object(country_revisions, 'source_revision',
+                             side_effect=[('first',), ('first',), ('recollected',)]) as revision:
+            prime, unchanged, unrelated, unchanged_again, recollected = [
+                country_revisions.CountryRevisions(Mock(), day, now, False) for _ in states
+            ]
+            prime.store(check, [])
+            self.assertEqual(1, revision.call_count)
+            self.assertEqual(check, unchanged.get('seg_retail'))
+            self.assertEqual(1, revision.call_count)
+            self.assertEqual(check, unrelated.get('seg_retail'))
+            self.assertEqual(2, revision.call_count)
+            self.assertEqual(check, unchanged_again.get('seg_retail'))
+            self.assertEqual(2, revision.call_count)
+            self.assertIsNone(recollected.get('seg_retail'))
+            self.assertEqual(3, revision.call_count)
+
+    def test_country_revision_uses_recorded_day_and_ignores_unrelated_fields(self):
+        cursor = Mock()
+        cursor.fetchone.return_value = ('segment', 'dryer')
+        check = {'check_type': 'seg_retail', 'categories': [
+            {'product_line': 'seg_tv', 'source_date': '2026-11-25'},
+            {'product_line': 'seg_ldy_dryer', 'source_date': '2026-11-25'},
+        ]}
+        self.assertEqual(country_revisions.source_revision(cursor, check), ('segment', 'dryer'))
+        sql, params = cursor.execute.call_args_list[1].args
+        self.assertIn('source.batch_id', sql)
+        self.assertIn('source.account_name', sql)
+        self.assertIn('source.main_rank IS NOT NULL', sql)
+        self.assertNotIn('xmin', sql)
+        self.assertNotIn('final_sku_price', sql)
+        self.assertEqual(params, ['2026-11-25', '2026-11-25'])
+
+    def test_country_revision_query_failure_releases_savepoint_for_fresh_read(self):
+        cursor = Mock()
+        cursor.execute.side_effect = [None, OperationalError('marker failed'), None, None]
+        check = {'check_type': 'siel_retail', 'categories': [
+            {'product_line': 'siel_tv', 'source_date': '2026-11-25'},
+        ]}
+        with self.assertLogs(country_revisions.logger, 'WARNING'):
+            self.assertIsNone(country_revisions.source_revision(cursor, check))
+        sql, params = cursor.execute.call_args_list[1].args
+        self.assertIn('AT TIME ZONE', sql)
+        self.assertEqual(params, ['2026-11-25', 'Asia/Seoul', '2026-11-25', 'Asia/Seoul'])
+        self.assertEqual([call.args[0] for call in cursor.execute.call_args_list[2:]], [
+            'ROLLBACK TO SAVEPOINT layer1_country_revision', 'RELEASE SAVEPOINT layer1_country_revision',
+        ])
+
     def test_seg_query_failure_is_rolled_back_locally(self):
         cursor = RecordingCursor()
-        result = self.service._get_seg_retail_stats_isolated(
+        result = self.service._get_retail_stats_isolated(
             cursor, StatsService(error=RuntimeError('SEG failed')),
-            date(2026, 9, 9), datetime(2026, 9, 9, 12),
+            date(2026, 9, 9), datetime(2026, 9, 9, 12), 'SEG',
         )
         self.assertIsNone(result)
         self.assertEqual([
@@ -194,12 +413,16 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         }))
 
         self.assertNotIn('error', result)
-        self.assertEqual(['retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual(['retail', 'youtube'], [c['check_type'] for c in result['checks']])
+        self.assertEqual('ERROR', result['checks'][1]['status'])
+        self.assertEqual(('ERROR', 1), (result['summary']['status'], result['summary']['failed']))
         self.assertEqual('Consumer (YouTube)', result['failed_items'][0]['source'])
         self.assertEqual([
             'SAVEPOINT layer1_youtube_monitoring',
             'ROLLBACK TO SAVEPOINT layer1_youtube_monitoring',
             'RELEASE SAVEPOINT layer1_youtube_monitoring',
+            'SAVEPOINT layer1_sea_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_sea_retail_monitoring',
         ], [sql for sql, _params in cursor.calls])
 
     def test_collected_sem_review_is_not_a_collection_failure(self):
@@ -263,7 +486,9 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         ))
 
         self.assertNotIn('error', result)
-        self.assertEqual(['retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual(['retail', 'youtube'], [c['check_type'] for c in result['checks']])
+        self.assertEqual('ERROR', result['checks'][1]['status'])
+        self.assertEqual(('ERROR', 1), (result['summary']['status'], result['summary']['failed']))
         self.assertIn(
             'ROLLBACK TO SAVEPOINT layer1_youtube_monitoring',
             [sql for sql, _params in cursor.calls],
@@ -297,12 +522,16 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
         result = self.service.get_dashboard_stats(date(2026, 8, 10))
 
         self.assertNotIn('error', result)
-        self.assertEqual(['retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual(['retail', 'tse_retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual('ERROR', result['checks'][1]['status'])
+        self.assertEqual(('ERROR', 1), (result['summary']['status'], result['summary']['failed']))
         self.assertEqual('TSE Retail', result['failed_items'][0]['source'])
         self.assertEqual([
             'SAVEPOINT layer1_tse_retail_monitoring',
             'ROLLBACK TO SAVEPOINT layer1_tse_retail_monitoring',
             'RELEASE SAVEPOINT layer1_tse_retail_monitoring',
+            'SAVEPOINT layer1_sea_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_sea_retail_monitoring',
         ], [sql for sql, _params in cursor.calls])
 
     def test_siel_exception_rolls_back_and_preserves_tv(self):
@@ -339,12 +568,16 @@ class Layer1DashboardIsolationTests(unittest.TestCase):
             self.service._get_active_services = original_services
 
         self.assertNotIn('error', result)
-        self.assertEqual(['retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual(['retail', 'siel_retail'], [c['check_type'] for c in result['checks']])
+        self.assertEqual('ERROR', result['checks'][1]['status'])
+        self.assertEqual(('ERROR', 1), (result['summary']['status'], result['summary']['failed']))
         self.assertEqual('SIEL Retail', result['failed_items'][0]['source'])
         self.assertEqual([
             'SAVEPOINT layer1_siel_retail_monitoring',
             'ROLLBACK TO SAVEPOINT layer1_siel_retail_monitoring',
             'RELEASE SAVEPOINT layer1_siel_retail_monitoring',
+            'SAVEPOINT layer1_sea_retail_monitoring',
+            'RELEASE SAVEPOINT layer1_sea_retail_monitoring',
         ], [sql for sql, _params in cursor.calls])
 
     def test_siel_service_receives_explicit_kst_clock(self):

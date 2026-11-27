@@ -3,7 +3,7 @@ async function loadCollectionOverview() {
     const message = overview.querySelector('.dx-overview-message');
     const markets = overview.querySelector('.dx-overview-markets');
     const inspectionDate = overview.querySelector('time').dateTime;
-    const countryNames = {SEA: '미국', SEDA: '브라질'};
+    const countryNames = {SEA: '미국', SEDA: '브라질', SEM: '멕시코'};
     const productIcons = {TV: 'tv', REF: 'refrigerator', LDY: 'washer', LDY_DRYER: 'dryer'};
     const productNames = {TV: 'TV', REF: '냉장고', LDY: '세탁기', LDY_DRYER: '건조기'};
     const issueLabels = {
@@ -12,11 +12,22 @@ async function loadCollectionOverview() {
     };
     const routineStates = new Set(['scheduled', 'waiting', 'collecting', 'received']);
 
-    try {
-        const response = await fetch(overview.dataset.statusUrl);
+    async function loadCountries(url, options) {
+        const response = await fetch(url, options);
         if (!response.ok) throw new Error('Collection status unavailable');
         const {countries} = await response.json();
         if (!Array.isArray(countries)) throw new Error('Collection status missing');
+        return countries;
+    }
+
+    try {
+        const results = await Promise.allSettled([
+            loadCountries(overview.dataset.statusUrl),
+            loadCountries(overview.dataset.semTvStatusUrl, {signal: AbortSignal.timeout(8000)}),
+        ]);
+        const countries = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+        const failures = results.filter(result => result.status === 'rejected').length;
+        if (failures === results.length) throw new Error('No collection status available');
 
         for (const {country, source_date, retailers} of countries) {
             const issues = retailers.filter(row => !routineStates.has(row.status));
@@ -78,8 +89,11 @@ async function loadCollectionOverview() {
             markets.append(market);
         }
 
-        message.hidden = markets.childElementCount > 0;
-        if (!message.hidden) {
+        message.hidden = !failures && markets.childElementCount > 0;
+        if (failures) {
+            message.classList.add('is-error');
+            message.textContent = '일부 수집 현황을 조회하지 못했습니다.';
+        } else if (!message.hidden) {
             message.textContent = countries.some(country => country.retailers.length > 0)
                 ? '현재 확인이 필요한 크롤러가 없습니다.' : '조회할 수집 대상이 없습니다.';
         }

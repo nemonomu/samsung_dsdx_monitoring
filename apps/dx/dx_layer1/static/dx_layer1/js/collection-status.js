@@ -2,6 +2,14 @@ var ddayCollectionRequestId = 0;
 var ddayCollectionPending = false;
 var ddayCollectionMarkup = '';
 
+function resetDdayCollection() {
+    ++ddayCollectionRequestId;
+    ddayCollectionPending = false;
+    ddayCollectionMarkup = '';
+    const container = document.getElementById('dday-collection-list');
+    if (container) container.textContent = '수집 현황을 불러오는 중입니다.';
+}
+
 function ddayStatusBadge(status, reason) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
@@ -99,7 +107,8 @@ function renderDdayCollection(data) {
 
 async function loadDdayCollection(selectedDate, {refresh = false, background = false} = {}) {
     const container = document.getElementById('dday-collection-list');
-    if (!container || (background && ddayCollectionPending)) return;
+    if (!container) return false;
+    if (background && ddayCollectionPending) return;
     const requestId = ++ddayCollectionRequestId;
     ddayCollectionPending = true;
     if (!background) {
@@ -119,6 +128,9 @@ async function loadDdayCollection(selectedDate, {refresh = false, background = f
         const markup = renderDdayCollection(data);
         if (markup !== ddayCollectionMarkup) container.innerHTML = markup;
         ddayCollectionMarkup = markup;
+        const panels = data.countries || [data];
+        return !panels.length || panels.some(country => !country.retailers.length
+            || ddaySummary(country.retailers).status !== 'received');
     } catch (error) {
         if (requestId !== ddayCollectionRequestId) return;
         ddayCollectionMarkup = '';
