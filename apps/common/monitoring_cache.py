@@ -195,8 +195,10 @@ old result after a write. Legacy layer URLs use the same invalidation path.
         self.get_response = get_response
 
     def __call__(self, request):
-        # These routes update separate review or document records, not source aggregates.
+        # These routes write separate records or copy originals to backup tables.
         if request.path_info in ('/dx/documents/manual/save/',
+                                 '/dx/layer1/retail/api/backup/',
+                                 '/layer1/retail/api/backup/',
                                  '/dx/layer2/api/admin-review/check/',
                                  '/layer2/api/admin-review/check/',
                                  '/dx/layer1/rank/api/review/',

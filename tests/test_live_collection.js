@@ -15,7 +15,7 @@ function snapshot(main=199, bsr=100, total=204, date=day) {
 function setup(fetch) {
     let now=0, serial=0, modal=false;
     const timers=new Map(), events={}, documentEvents={};
-    class TestDate extends Date { constructor(...args) { super(...(args.length ? args : [day + 'T12:00:00'])); } }
+    class TestDate extends Date { static now() { return now; } constructor(...args) { super(...(args.length ? args : [day + 'T12:00:00'])); } }
     const context={Date:TestDate,L1:{}, URLSearchParams, AbortController, console, fetch,
         document:{hidden:false, querySelector:()=>modal,
             addEventListener:(name,fn)=>{documentEvents[name]=fn;}, removeEventListener:name=>delete documentEvents[name]},
@@ -105,10 +105,25 @@ const response = item => ({ok:true,json:async()=>({inspection_date:item.inspecti
     const explicit=dashboardRequests.filter(request=>request.url.includes('/api/stats/')).at(-1);
     assert.equal(new URL(explicit.url, 'http://test').searchParams.get('refresh'), '1');
     assert.equal(explicit.options.cache, 'no-store');
+    assert.equal(new URL(explicit.url, 'http://test').searchParams.get('dashboard'), '1');
     assert.equal(ddayRequests.at(-1).options.refresh,true);
     resolveSaved(response(oldSnapshot));
     await manual;
     dashboard.context.liveCollectionPoll.stop();
+
+    const grouped = setup(async url => {
+        const country = new URL(url,'http://test').searchParams.get('country');
+        return response({...snapshot(), country});
+    });
+    const sweepEvents = [];
+    const groupedPoll = grouped.context.L1.liveCollection.poll(
+        () => ({date:day,countries:['SEA','SEDA','SIEL']}),
+        item => sweepEvents.push(item.country), () => sweepEvents.push('render'));
+    grouped.events.focus(); await flush();
+    assert.deepEqual(sweepEvents, [], 'initial stats already contain the first collection read');
+    await grouped.tick(60000);
+    assert.deepEqual(sweepEvents, ['SEA','SEDA','SIEL','render']);
+    groupedPoll.stop();
 
     // Bound concurrent country reads and do not duplicate a still-running sweep on focus.
     const pending=[];

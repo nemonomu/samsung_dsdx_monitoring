@@ -118,7 +118,8 @@ assert view(request).status_code == 200
         cache.monitoring_cached_value('admin-review-v1', key, lambda: [1, 2, 3])
         middleware = cache.MonitoringCacheInvalidationMiddleware(lambda request: JsonResponse({'ok': True}))
         for path in ('/dx/layer2/api/admin-review/check/', '/layer2/api/admin-review/check/',
-                     '/dx/documents/manual/save/'):
+                     '/dx/documents/manual/save/', '/dx/layer1/retail/api/backup/',
+                     '/layer1/retail/api/backup/'):
             middleware(self.factory.post(path))
             self.assertEqual([1, 2, 3], cache.monitoring_cached_value('admin-review-v1', key))
         middleware(self.factory.post('/dx/layer2/api/update-cell/'))

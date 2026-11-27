@@ -16,7 +16,12 @@ async function loadStats(refresh = false) {
     liveCollectionPoll?.stop();
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
-    loadDdayCollection(selectedDate, {refresh});
+    const params = ['dashboard=1'];
+    if (selectedDate) params.push('date=' + encodeURIComponent(selectedDate));
+    if (refresh) params.push('refresh=1');
+    const statsRequest = fetch('/dx/layer1/api/stats/?' + params.join('&'),
+        refresh ? {cache:'no-store'} : undefined);
+    const ddayRequest = loadDdayCollection(selectedDate, {refresh});
     let data = null;
     let volume = null;
     const liveSnapshots = new Map();
@@ -43,15 +48,10 @@ async function loadStats(refresh = false) {
         currentCheckStatus = status;
         render();
     }).catch(function() {});
-    const summaryRequest = loadSeaRetailSummaries(selectedDate, refresh).then(render).catch(function() {});
     if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
 
     try {
-        const params = [];
-        if (selectedDate) params.push('date=' + encodeURIComponent(selectedDate));
-        if (refresh) params.push('refresh=1');
-        const url = '/dx/layer1/api/stats/' + (params.length ? '?' + params.join('&') : '');
-        const response = await fetch(url, refresh ? {cache:'no-store'} : undefined);
+        const response = await statsRequest;
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         data = await response.json();
         if (requestId !== layer1StatsRequestId) return;
@@ -62,16 +62,15 @@ async function loadStats(refresh = false) {
                 data.checks.map(check => L1.liveCollection.countries[check.check_type]).filter(Boolean)}), snapshot => {
                 if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
                 liveSnapshots.set(snapshot.country, snapshot);
-                if (!L1.liveCollection.isInspecting()) L1.liveCollection.preserveView(render);
             }, () => {
                 if (requestId === layer1StatsRequestId && getSelectedDate() === selectedDate
                     && !L1.liveCollection.isInspecting()) {
+                    L1.liveCollection.preserveView(render);
                     loadDdayCollection(selectedDate, {background:true});
                 }
             });
             // The initial response already contains current counts; wait for the next sweep.
         }
-        await Promise.allSettled([statusRequest, summaryRequest]);
     } catch (error) {
         if (requestId !== layer1StatsRequestId) return;
         data = null;
@@ -80,6 +79,11 @@ async function loadStats(refresh = false) {
         document.getElementById('daily-checks-list').innerHTML = errorHtml;
         document.getElementById('period-checks-list').innerHTML = errorHtml;
     }
+    if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
+    const summaryRequest = loadSeaRetailSummaries(selectedDate, refresh).then(render).catch(function() {});
+    const columnRequest = typeof ColumnAlertSummary !== 'undefined'
+        ? ColumnAlertSummary.load(selectedDate, true, refresh) : null;
+    await Promise.allSettled([statusRequest, summaryRequest, ddayRequest, columnRequest]);
 }
 
 function renderLayer1Stats(data) {

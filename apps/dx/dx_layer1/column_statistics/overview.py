@@ -120,17 +120,48 @@ def history_reuse_enabled(scope):
     return ':'.join(scope) in getattr(settings, 'DX_COLUMN_HISTORY_REUSE_SCOPES', ())
 
 
+def _prior_key(scope, target, generation):
+    return 'column-prior:' + _key(scope, target, generation)
+
+
+def _matching_window(data, expected):
+    return (data is not None and data['dates'] == expected
+            and [row['date'] for row in data['daily']] == expected)
+
+
 def _prior_window(scope, target):
     generation = prepared_generation() if history_reuse_enabled(scope) else None
     if not generation:
         return None, None
+    expected = [str(target - timedelta(days=offset)) for offset in range(BASELINE_DAYS, 0, -1)]
     selection = (scope, target - timedelta(days=1))
-    history = _prepared_counts([selection], generation=generation).get(selection)
-    if history:
-        expected = [str(target - timedelta(days=offset)) for offset in range(_WINDOW, 0, -1)]
-        if history['dates'] == expected and [row['date'] for row in history['daily']] == expected:
-            return generation, history
-    return None, None
+    recent = _prepared_counts([selection], generation=generation).get(selection)
+    if _matching_window(recent, [str(target - timedelta(days=_WINDOW)), *expected]):
+        recent = {**recent, 'dates': recent['dates'][1:], 'daily': recent['daily'][1:]}
+    else:
+        recent = None
+    try:
+        saved = _prepared_cache().get(_prior_key(scope, target, generation))
+    except (OSError, ValueError):
+        logger.warning('Failed to load previously read column history', exc_info=True)
+        saved = None
+    if _matching_window(saved, expected) and (recent is None or
+            datetime.fromisoformat(saved['updated_at']) >= datetime.fromisoformat(recent['updated_at'])):
+        return generation, saved
+    return generation, recent
+
+
+def _remember_prior(scope, target, window, started, generation):
+    previous = target - timedelta(days=1)
+    if window is None or not collection_complete(*scope, previous, started) or _preview(scope, previous):
+        return
+    try:
+        _prepared_cache().set(_prior_key(scope, target, generation), {
+            'dates': window['dates'][:-1], 'daily': window['daily'][:-1],
+            'columns': window['columns'], 'updated_at': window['updated_at'],
+        })
+    except (OSError, ValueError):
+        logger.warning('Failed to save previously read column history', exc_info=True)
 
 
 def _live_identity(scope, target, history):
@@ -139,7 +170,12 @@ def _live_identity(scope, target, history):
 
 def live_counts(scope, target, *, refresh=False):
     preview = _preview(scope, target)
-    generation, history = (None, None) if refresh or preview else _prior_window(scope, target)
+    if preview:
+        generation, history = None, None
+    elif refresh:
+        generation, history = (prepared_generation() if history_reuse_enabled(scope) else None), None
+    else:
+        generation, history = _prior_window(scope, target)
 
     def read():
         country, product, retailer = scope
@@ -154,17 +190,23 @@ def live_counts(scope, target, *, refresh=False):
             return data, totals, started
 
         data, totals, started = collect(1 if history else _WINDOW)
+        active_generation = generation
         if history:
-            if data['columns'] == history['columns'] and generation == prepared_generation():
-                data['dates'] = history['dates'][1:] + data['dates']
+            active_generation = prepared_generation()
+            if data['columns'] == history['columns'] and generation == active_generation:
+                data['dates'] = history['dates'] + data['dates']
                 prior_rows = [{key: value for key, value in row.items() if key != 'raw_total'}
-                              for row in history['daily'][1:]]
+                              for row in history['daily']]
                 data['daily'] = prior_rows + data['daily']
                 data['read_days'] = 1
             else:
                 data, totals, started = collect(_WINDOW)
         data.setdefault('read_days', _WINDOW)
-        return _window(data, target, totals, started)
+        window = _window(data, target, totals, started)
+        if (data['read_days'] == _WINDOW and generation and generation == active_generation
+                and generation == prepared_generation()):
+            _remember_prior(scope, target, window, started, generation)
+        return window
 
     if refresh or preview:
         return read()

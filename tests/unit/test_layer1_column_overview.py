@@ -2,6 +2,7 @@
 import json
 import unittest
 from datetime import date, datetime, timedelta
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from django.test import RequestFactory, override_settings
@@ -26,6 +27,10 @@ def raw_window(scope=SCOPE, end=DAY, days=29, last_value=20):
 
 
 class ColumnOverviewTests(unittest.TestCase):
+    def setUp(self):
+        directory = self.enterContext(TemporaryDirectory())
+        self.enterContext(override_settings(MONITORING_CACHE_DIR=directory))
+
     def test_country_filter_resolves_all_scopes_and_preserves_source_date(self):
         siel = overview.selected_scopes('SIEL', 'all', 'all', DAY)
         self.assertEqual(len(siel), 9)
@@ -111,6 +116,28 @@ class ColumnOverviewTests(unittest.TestCase):
 
         self.assertEqual([call.args[-1] for call in reads.call_args_list], [29, 1])
         self.assertEqual((full['read_days'], incremental['read_days']), (29, 1))
+        self.assertEqual(full['daily'], incremental['daily'])
+
+    @override_settings(DX_COLUMN_HISTORY_REUSE_SCOPES={'SIEL:TV:Amazon'})
+    def test_full_fallback_seeds_the_next_day_only_read_without_a_background_run(self):
+        target = DAY + timedelta(days=1)
+        saved = {}
+        prior = Mock()
+        prior.get.side_effect = saved.get
+        prior.set.side_effect = saved.__setitem__
+        with patch.object(overview, '_prepared_cache', return_value=prior), \
+                patch.object(overview, '_prepared_counts', return_value={}), \
+                patch.object(overview, 'monitoring_cached_value', side_effect=lambda _ns, _identity, read: read()), \
+                patch.object(overview, 'prepared_generation', return_value='generation'), \
+                patch.object(overview.timezone, 'now', return_value=NOW), \
+                patch.object(overview, 'daily_counts',
+                             side_effect=lambda *args: raw_window(end=target, days=args[-1])) as counts, \
+                patch.object(overview, 'raw_counts', return_value={str(target): 100}):
+            full = overview.live_counts(SCOPE, target)
+            incremental = overview.live_counts(SCOPE, target)
+            forced = overview.live_counts(SCOPE, target, refresh=True)
+        self.assertEqual([call.args[-1] for call in counts.call_args_list], [29, 1, 29])
+        self.assertEqual((full['read_days'], incremental['read_days'], forced['read_days']), (29, 1, 29))
         self.assertEqual(full['daily'], incremental['daily'])
 
     def test_history_reuse_requires_enabled_scope_and_stable_generation(self):

@@ -5,6 +5,16 @@
     const source = document.getElementById('l1-column-alert-catalog');
     if (!source) return;
     const jobs = JSON.parse(source.textContent).flatMap(s => s.retailers.map(retailer => ({country:s.country, product:s.product, retailer})));
+    const countries = new Map();
+    if (window.LAYER1.section === 'dashboard') {
+        for (const job of jobs) {
+            if (!countries.has(job.country)) countries.set(job.country, []);
+            countries.get(job.country).push(job);
+        }
+    }
+    const tasks = countries.size ? [...countries.values()].sort((a, b) => b.length - a.length)
+        : jobs.map(job => [job]);
+    const scopeKey = ({product, retailer}) => JSON.stringify([product, retailer]);
     const menu = document.querySelector('.sidebar-menu a[href^="/dx/layer1/column-alerts/"]');
     const link = document.getElementById('l1-column-alert-link');
     const total = document.getElementById('l1-column-alert-total');
@@ -48,24 +58,51 @@
         spinner.hidden = false;
         let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0, missing = 0;
         const historyFailures = [];
+        function consume(job, data) {
+            if (!data || data.error || !Array.isArray(data.comparisons)) {
+                failures++;
+            } else {
+                if (data.issue_history_error) {
+                    const diagnostic = data.issue_history_diagnostic || {};
+                    historyFailures.push(`${job.country} · ${job.product} · ${job.retailer}: ${diagnostic.error || '이력 저장 오류'} ${diagnostic.action || '다시 조회해 주세요.'}`);
+                }
+                abnormal += data.comparisons.filter(row => row.status === 'abnormal' && !row.review?.active).length;
+                review += data.comparisons.filter(row => row.status === 'review' && !row.review?.active).length;
+                missing += data.comparisons.some(row => row.status === 'uncollected') ? 1 : 0;
+            }
+            completed++;
+        }
+        async function readCountry(country) {
+            const query = new URLSearchParams({country, date, dashboard:'1'});
+            if (refresh) query.set('refresh', '1');
+            const response = await fetch('/dx/layer1/api/column-statistics/overview/?' + query,
+                {signal:current.signal, cache:'no-store'});
+            if (!response.ok) throw new Error('Column overview unavailable');
+            const data = await response.json();
+            if (data.country !== country || data.inspection_date !== date || !Array.isArray(data.rows)) {
+                throw new Error('Unexpected column overview');
+            }
+            return new Map(data.rows.map(row => [scopeKey(row), row]));
+        }
         async function worker() {
-            while (next < jobs.length && !current.signal.aborted) {
-                const job = jobs[next++];
+            while (next < tasks.length && !current.signal.aborted) {
+                const batch = tasks[next++];
+                const job = batch[0];
                 try {
-                    const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force, refresh});
-                    if (current.signal.aborted) return;
-                    if (data.issue_history_error) {
-                        const diagnostic = data.issue_history_diagnostic || {};
-                        historyFailures.push(`${job.country} · ${job.product} · ${job.retailer}: ${diagnostic.error || '이력 저장 오류'} ${diagnostic.action || '다시 조회해 주세요.'}`);
+                    if (countries.size) {
+                        const rows = await readCountry(job.country);
+                        if (current.signal.aborted) return;
+                        batch.forEach(scope => consume(scope, rows.get(scopeKey(scope))));
+                    } else {
+                        const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force, refresh});
+                        if (current.signal.aborted) return;
+                        consume(job, data);
                     }
-                    abnormal += data.comparisons.filter(row => row.status === 'abnormal' && !row.review?.active).length;
-                    review += data.comparisons.filter(row => row.status === 'review' && !row.review?.active).length;
-                    missing += data.comparisons.some(row => row.status === 'uncollected') ? 1 : 0;
                 } catch (_) {
                     if (current.signal.aborted) return;
-                    failures++;
+                    failures += batch.length;
+                    completed += batch.length;
                 }
-                completed++;
                 spinner.title = `${date} · 전체 ${jobs.length}개 대상 중 ${completed}개 조회`;
                 if (breakdown) breakdown.textContent = `전체 ${jobs.length}개 대상 중 ${completed}개 조회 중`;
             }

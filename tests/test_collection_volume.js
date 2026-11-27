@@ -260,8 +260,11 @@ async function verifyIndependentLoading() {
     vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/dashboard.js', 'utf8'), page);
     vm.runInContext('renderLayer1Stats = recordRender;', page);
     const first = page.loadStats();
+    assert(!requests.some(r => r.kind === 'summary'), 'start with primary daily stats');
     requests.find(r => r.kind === 'stats').resolve({ok: true, json: async () => ({date: day})});
     requests.find(r => r.kind === 'status').resolve({});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(rendered.at(-1).date, day, 'daily stats render before supplementary SEA counts');
     requests.find(r => r.kind === 'summary').resolve({});
     await first;
     assert.strictEqual(rendered.at(-1).date, day);
