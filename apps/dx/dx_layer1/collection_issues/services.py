@@ -43,6 +43,8 @@ def coverage_start(country, product, retailer):
     # Once monitoring has started, deleting the earliest day's data must not
     # move its start forward and erase an expected collection day.
     stored = Scan.objects.filter(**scope).values_list('coverage_start', flat=True).first()
+    if stored is not None and stored <= START_DATE:
+        return START_DATE, 'first_observed'
     observed = first_observed(country, product, retailer)
     candidates = [d for d in (stored, observed) if d is not None]
     return (max(START_DATE, min(candidates)) if candidates else None), 'first_observed'

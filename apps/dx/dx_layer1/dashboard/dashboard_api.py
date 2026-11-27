@@ -14,7 +14,10 @@ def layer_stats(request):
     """Layer 1 통계 API"""
     target_date = parse_date(request.GET.get('date'))
     check_type_filter = request.GET.get('check_type')
-    results = get_dashboard_stats(target_date, check_type_filter)
+    if request.GET.get('dashboard') == '1':
+        results = get_dashboard_stats(target_date, check_type_filter, parallel=True)
+    else:
+        results = get_dashboard_stats(target_date, check_type_filter)
     return JsonResponse(results)
 
 

@@ -150,6 +150,36 @@ class ColumnOverviewTests(unittest.TestCase):
         self.assertEqual(row['comparisons'], [{'column': 'sku', 'status': 'abnormal', 'review': {'active': True}}])
         self.assertEqual(error, {'product': 'REF', 'retailer': 'Flipkart', 'comparison_date': str(DAY), 'error': True})
 
+    def test_dashboard_records_observations_and_still_uses_review_fingerprints(self):
+        prepared = overview._window(raw_window(), DAY, {str(DAY): 130}, NOW)
+        prepared['read_days'] = 29
+        compared = overview._compare(prepared, DAY, NOW)
+        fingerprint = reviews.fingerprint(reviews.context_for(compared, compared['comparisons'][0]))
+        with patch.object(overview, '_prepared_counts') as snapshot, \
+                patch.object(overview, 'live_counts', return_value=prepared) as live, \
+                patch.object(overview, '_active_reviews', return_value={fingerprint}), \
+                patch('apps.dx.dx_layer1.column_statistics.observations.remember_comparison') as observe:
+            result = overview.country_overview('SIEL', [(SCOPE, DAY)], include_reviews=True,
+                                               now=NOW, record_issues=True, refresh=True)
+        snapshot.assert_not_called()
+        live.assert_called_once_with(SCOPE, DAY, refresh=True)
+        self.assertEqual(observe.call_args.args[1], DAY)
+        self.assertEqual(result['rows'][0]['read_days'], 29)
+        self.assertEqual(result['rows'][0]['comparisons'], [
+            {'column': 'sku', 'status': 'abnormal', 'review': {'active': True}},
+        ])
+
+    def test_dashboard_manual_live_read_skips_all_caches(self):
+        with patch.object(overview, '_prior_window') as history, \
+                patch.object(overview, 'monitoring_cached_value') as cache, \
+                patch.object(overview, 'daily_counts', return_value=raw_window()) as counts, \
+                patch.object(overview, 'raw_counts', return_value={str(DAY): 100}):
+            result = overview.live_counts(SCOPE, DAY, refresh=True)
+        history.assert_not_called()
+        cache.assert_not_called()
+        counts.assert_called_once_with(*SCOPE, DAY, 29)
+        self.assertEqual(result['read_days'], 29)
+
     def test_country_request_uses_the_new_summary_without_requesting_details(self):
         factory = RequestFactory()
         with patch.object(overview, 'country_overview', return_value={'rows': []}) as summary:
