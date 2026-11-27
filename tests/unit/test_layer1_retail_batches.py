@@ -144,9 +144,15 @@ class RetailBatchTests(unittest.TestCase):
         ]}
         before = deepcopy(check)
         cursor = Mock()
-        with patch.object(batches, 'fetch_batch_counts', side_effect=[{'amazon': 2}, {'amazon': 1}]) as fetch:
-            batches.add_batch_counts(cursor, check, '2026-09-21')
-        self.assertEqual(['2026-09-20', '2026-09-19'], [call.args[3] for call in fetch.call_args_list])
+        cursor.fetchall.return_value = [
+            {'scope_id': 1, 'retailer_key': 'amazon', 'batch_count': 1},
+            (0, 'amazon', 2),
+        ]
+        batches.add_batch_counts(cursor, check, '2026-09-21')
+        self.assertEqual(3, cursor.execute.call_count)
+        sql, params = cursor.execute.call_args_list[1].args
+        self.assertEqual(1, sql.count('UNION ALL'))
+        self.assertEqual((0, '2026-09-20', '2026-09-21', 1, '2026-09-19'), params)
         rows = [row for cat in check['categories'] for slot in cat['time_slots'] for row in slot['retailers']]
         self.assertEqual([2, 0, 1], [row.pop('batch_count') for row in rows])
         contexts = [row.pop('batch_context') for row in rows]
@@ -171,15 +177,17 @@ class RetailBatchTests(unittest.TestCase):
         ]}
         before = deepcopy(check)
         cursor = Mock()
-        with patch.object(batches, 'fetch_batch_counts', side_effect=[{'bestbuy': 2}, RuntimeError('failed')]):
-            with self.assertRaises(RuntimeError):
-                batches.add_batch_counts(cursor, check, '2026-09-21')
+        cursor.execute.side_effect = [None, RuntimeError('failed'), None, None]
+        with self.assertRaises(RuntimeError):
+            batches.add_batch_counts(cursor, check, '2026-09-21')
         self.assertEqual(before, check)
+        commands = [call.args[0] for call in cursor.execute.call_args_list]
+        self.assertIn('UNION ALL', commands[1])
         self.assertEqual([
             'SAVEPOINT layer1_retail_batch_counts',
             'ROLLBACK TO SAVEPOINT layer1_retail_batch_counts',
             'RELEASE SAVEPOINT layer1_retail_batch_counts',
-        ], [call.args[0] for call in cursor.execute.call_args_list])
+        ], commands[:1] + commands[2:])
 
     def test_other_checks_do_not_query_batches(self):
         cursor = Mock()

@@ -8,6 +8,7 @@ HOMEDEPOT_FIRST_INSPECTION_DATE = HOMEDEPOT_FIRST_SOURCE_DATE + timedelta(days=1
 AFTERNOON_FIRST_SOURCE_DATE = date(2026, 10, 26)
 AFTERNOON_RETAILERS = frozenset({'bestbuy', 'lowes'})
 AFTERNOON_COLLECTION_WINDOW = {'start_kst': '13:00', 'end_kst': '18:00'}
+WALMART_TV_START = time(16, 55)
 
 
 def afternoon_schedule_enabled(source_date, retailer):
@@ -41,7 +42,7 @@ def collection_schedule(target_date, retailer):
     day = date.fromisoformat(str(target_date)[:10])
     if retailer == 'HomeDepot':
         day = max(day, HOMEDEPOT_FIRST_SOURCE_DATE)
-    return datetime.combine(day, time(13), KST)
+    return datetime.combine(day, WALMART_TV_START if retailer == 'Walmart' else time(13), KST)
 
 
 def homedepot_launch_scope_sql(date_expression, account_column='account_name'):

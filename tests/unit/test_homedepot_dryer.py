@@ -80,7 +80,8 @@ class HomeDepotDryerTests(unittest.TestCase):
         @contextmanager
         def connection():
             yield Mock(), Mock()
-        with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection', return_value=(268, '2026-10-15 13:00:07', 'h1', 268, 100)):
+        with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'receipt_state', return_value='committed'), \
+                patch.object(dday, 'fetch_collection', return_value=(268, '2026-10-15 13:00:07', 'h1', 268, 100)):
             before = dday.get_collection_status(date(2026, 10, 14))
             current = dday.get_collection_status(date(2026, 10, 15))
         self.assertFalse(any(homedepot_dryer.matches(r['product'], r['retailer']) for r in before['retailers']))

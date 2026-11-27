@@ -2,11 +2,13 @@ import json
 import unittest
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 
+from apps.common.monitoring_cache import invalidate_monitoring_cache
 from apps.dx.dx_layer1.column_statistics import api, services
 from apps.dx.dx_layer1.column_statistics.comparison import (
     KST, compare_columns, collection_complete,
@@ -125,6 +127,11 @@ class ColumnStatisticsTests(unittest.TestCase):
 
 class ColumnStatisticsApiTests(unittest.TestCase):
     def setUp(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        settings = override_settings(MONITORING_CACHE_ENABLED=True, MONITORING_CACHE_DIR=directory.name)
+        settings.enable()
+        self.addCleanup(settings.disable)
         cache.clear()
         self.factory = RequestFactory()
         raw = patch.object(api, 'raw_counts', return_value={})
@@ -172,6 +179,57 @@ class ColumnStatisticsApiTests(unittest.TestCase):
             self.assertEqual(query.call_count, 1)
             api.daily(self.factory.get('/', {'date': '2026-09-20', 'retailer': 'Walmart'}))
             self.assertEqual(query.call_count, 2)
+
+    def test_detail_cache_uses_correction_generation_and_bypasses_on_refresh(self):
+        from apps.dx.dx_layer1.column_statistics import observations, overview
+
+        params = {'country': 'SIEL', 'date': '2026-09-20'}
+
+        def window(price_count):
+            return {'columns': ['sale_price'], 'dates': [params['date']],
+                    'daily': [{'date': params['date'], 'total': 1, 'counts': {'sale_price': price_count}}]}
+
+        def price_count(**extra):
+            response = api.daily(self.factory.get('/', {**params, **extra}))
+            self.assertEqual(response.status_code, 200)
+            return json.loads(response.content)['daily'][-1]['counts']['sale_price']
+
+        with patch.object(observations, 'remember_comparison'), \
+                patch.object(api, 'attach_comparisons', side_effect=lambda data, _: dict(data)), \
+                patch.object(api, 'daily_counts', side_effect=[window(1), window(0), window(1)]) as query:
+            self.assertEqual(price_count(), 1)
+            self.assertEqual(price_count(), 1)
+            invalidate_monitoring_cache()
+            self.assertEqual(price_count(), 0)
+            with override_settings(DX_COLUMN_HISTORY_REUSE_SCOPES={'SIEL:TV:Amazon'}), \
+                    patch.object(overview, 'live_counts') as live, \
+                    patch.object(overview, 'detail_counts') as prepared:
+                self.assertEqual(price_count(refresh='1', prepared='1', reuse_history='1'), 1)
+                live.assert_not_called()
+                prepared.assert_not_called()
+            self.assertEqual(price_count(), 1)
+            self.assertEqual(query.call_count, 3)
+
+            # A result read before a concurrent correction cannot fill the new generation.
+            def in_flight(*args):
+                invalidate_monitoring_cache()
+                query.side_effect = [window(0)]
+                return window(1)
+
+            query.side_effect = in_flight
+            self.assertEqual(price_count(refresh='1'), 1)
+            self.assertEqual(price_count(), 0)
+
+            invalidate_monitoring_cache()
+
+            def older_read(*args):
+                query.side_effect = [window(0)]
+                self.assertEqual(price_count(refresh='1'), 0)
+                return window(1)
+
+            query.side_effect = older_read
+            self.assertEqual(price_count(), 1)
+            self.assertEqual(price_count(), 0)
 
     def test_baseline_window_is_independent_of_display_days_and_cache_is_not_trimmed(self):
         dates = [str(date(2026, 9, 20) - timedelta(days=28-i)) for i in range(29)]

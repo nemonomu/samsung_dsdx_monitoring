@@ -10,28 +10,39 @@
     const isInspecting = () => Boolean(document.querySelector(
         'dialog[open], .modal.show, .modal-overlay.show, .l1-batch-toggle[aria-expanded="true"]'));
 
-    function poll(context, receive) {
-        let generation = 0, timer = null, running = false, stopped = false, signature = '';
+    function poll(context, receive, afterSweep) {
+        let generation = 0, timer = null, running = false, stopped = false;
+        let signature = afterSweep ? JSON.stringify(context()) : '';
+        let startedAt = afterSweep ? Date.now() : -Infinity;
         const controllers = new Set();
-        const schedule = () => {
+        const schedule = (delay = 60000) => {
             clearTimeout(timer);
-            if (!stopped && context()?.date === currentDay()) timer = setTimeout(() => refresh(), 60000);
+            if (!stopped && context()?.date === currentDay()) timer = setTimeout(() => refresh(), delay);
         };
         async function refresh(force = false) {
             if (stopped) return;
             const scope = context();
             const key = JSON.stringify(scope);
-            if (running && key === signature && !force) return;
+            if (key === signature && !force) {
+                if (running) return;
+                const remaining = afterSweep ? 60000 - (Date.now() - startedAt) : 0;
+                if (remaining > 0) {
+                    schedule(remaining);
+                    return;
+                }
+            }
             if (document.hidden || !scope || (!force && scope.date !== currentDay()) || !scope.countries.length || isInspecting()) {
                 schedule(); return;
             }
             clearTimeout(timer);
             const request = ++generation;
             signature = key;
+            startedAt = Date.now();
             controllers.forEach(controller => controller.abort());
             controllers.clear();
             running = true;
             const queue = [...new Set(scope.countries)];
+            const updates = [];
             async function worker() {
                 while (queue.length && request === generation) {
                     const country = queue.shift(), controller = new AbortController();
@@ -51,12 +62,22 @@
                         clearTimeout(timeout);
                         controllers.delete(controller);
                     }
-                    if (request === generation && !stopped && JSON.stringify(context()) === key) receive(snapshot);
+                    if (request === generation && !stopped && JSON.stringify(context()) === key) {
+                        if (afterSweep) updates.push(snapshot);
+                        else receive(snapshot);
+                    }
                 }
             }
             // Bound DB concurrency even when the page displays every country.
-            await Promise.all([worker(), worker(), worker()]);
-            if (request === generation) { running = false; schedule(); }
+            await Promise.allSettled([worker(), worker(), worker()]);
+            if (request === generation) {
+                running = false;
+                schedule();
+                if (afterSweep && JSON.stringify(context()) === key && !isInspecting()) {
+                    updates.forEach(receive);
+                    afterSweep();
+                }
+            }
         }
         const visible = () => { if (!document.hidden) refresh(); };
         const hide = () => {
@@ -86,7 +107,7 @@
         if (snapshot.available && snapshot.check) {
             const fresh = clone(snapshot.check);
             data.checks[index] = {...old, ...fresh, _volumeBaseStatus:fresh.status, _liveCollection:true};
-            delete data.checks[index].batch_count_error;
+            if (!fresh.batch_count_error) delete data.checks[index].batch_count_error;
         } else {
             for (const cat of old.categories || []) for (const slot of cat.time_slots || [{retailers:cat.retailers}]) {
                 for (const row of slot.retailers || []) {

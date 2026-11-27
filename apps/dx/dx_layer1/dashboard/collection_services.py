@@ -1,15 +1,17 @@
 from datetime import datetime, timedelta
+from time import monotonic
 
 from apps.common.db import dx_connection
 from apps.common.sea_collection import (
     KST, collection_schedule, homedepot_source_enabled,
     AFTERNOON_RETAILERS, afternoon_collection_phase,
 )
-from .collection_repositories import SOURCES, fetch_collection
 from apps.dx.dx_layer1.retail import costco, homedepot_dryer
+from .collection_receipts import receipt_state
+from .collection_repositories import SOURCES, fetch_collection
 
 
-def get_collection_status(target_date, now=None):
+def get_collection_status(target_date, now=None, *, read=None):
     current = now or datetime.now(KST)
     current = current.replace(tzinfo=KST) if current.tzinfo is None else current.astimezone(KST)
     rows = []
@@ -32,32 +34,43 @@ def get_collection_status(target_date, now=None):
                'status': 'scheduled' if scheduled and current < scheduled else 'waiting'}
         if afternoon:
             row['scheduled_end_at'] = (scheduled + timedelta(hours=5)).isoformat()
-            row['collection_phase'] = phase
+            row['schedule_phase'] = phase
+        if retailer == 'Costco':
+            row['scheduled_end_at'] = (scheduled + timedelta(hours=2)).isoformat()
+        elif retailer == 'HomeDepot' and not home_dryer:
+            row['scheduled_end_at'] = (scheduled + timedelta(hours=1)).isoformat()
         enabled = retailer != 'HomeDepot' or homedepot_source_enabled(target_date)
         if enabled:
             try:
-                with dx_connection() as (_conn, cursor):
-                    count, last_at, batch, main_count, bsr_count = fetch_collection(cursor, source, target_date)
+                if read is None:
+                    with dx_connection() as (_conn, cursor):
+                        counts = fetch_collection(cursor, source, target_date)
+                else:
+                    counts = read(fetch_collection, source, target_date)
+                count, last_at, batch, main_count, bsr_count = counts
                 row.update(count=int(count or 0), main_count=int(main_count or 0),
                            bsr_count=int(bsr_count or 0), last_collected_at=last_at, batch_id=batch)
-                if 0 <= row['main_count'] < row['bsr_count']:
+                receipt = receipt_state('SEA', product, retailer, target_date, current, counts)
+                if receipt != 'committed':
+                    end = datetime.fromisoformat(row['scheduled_end_at']) if row.get('scheduled_end_at') else None
+                    if receipt == 'running':
+                        row['status'] = 'collecting'
+                    elif (end and current >= end) or current.date() > target_date:
+                        row['status'] = 'unconfirmed'
+                    elif row['count']:
+                        row['status'] = 'collecting'
+                elif not row['count']:
+                    row['status'] = 'uncollected'
+                elif 0 <= row['main_count'] < row['bsr_count']:
                     row.update(status='rank_mismatch',
                                status_reason=f"MAIN {row['main_count']}건 / BSR {row['bsr_count']}건 / MAIN이 BSR보다 적음")
-                    rows.append(row)
-                    continue
-                if afternoon:
-                    # Receipt is independent of the collection window and volume validation.
-                    row['status'] = ('received' if row['count'] else
-                                     'uncollected' if phase == 'complete' else
-                                     'scheduled' if phase == 'pending' else 'waiting')
-                    rows.append(row)
-                    continue
-                if row['count']:
+                elif retailer == 'Costco' and product.upper() == 'REF' and row['bsr_count'] != 100:
+                    row['status'] = 'abnormal'
+                else:
                     row['status'] = 'received'
-                    if retailer == 'Costco' and product.upper() == 'REF' and row['bsr_count'] != 100:
-                        row['status'] = 'abnormal' if costco.complete(target_date, current) else 'partial'
-                elif retailer == 'Costco' and costco.complete(target_date, current):
-                    row['status'] = 'uncollected'
+                row['collection_phase'] = ('complete' if row['status'] in
+                                           ('received', 'uncollected', 'rank_mismatch', 'abnormal')
+                                           else row['status'])
             except Exception:
                 row.update(status='error', count=None, main_count=None, bsr_count=None)
         else:
@@ -71,8 +84,20 @@ def get_dday_collection_status(target_date, now=None):
     from . import seda_collection
 
     current = now or datetime.now(KST)
-    sea = get_collection_status(target_date, current)
-    return {**sea, 'countries': [
-        dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
-        seda_collection.get_collection_status(target_date, current),
-    ]}
+    deadline = monotonic() + 18
+    with dx_connection(connect_timeout=3) as (connection, cursor):
+        connection.autocommit = True
+        cursor.execute('SET default_transaction_read_only = on')
+        cursor.execute("SET statement_timeout = '1500ms'")
+
+        def read(fetch, source, day):
+            if monotonic() >= deadline:
+                raise TimeoutError('D-DAY query budget exhausted')
+            return fetch(cursor, source, day)
+
+        seda = seda_collection.get_collection_status(target_date, current, read=read)
+        sea = get_collection_status(target_date, current, read=read)
+        return {**sea, 'countries': [
+            dict(country='SEA', source_date=str(target_date), retailers=sea['retailers']),
+            seda,
+        ]}

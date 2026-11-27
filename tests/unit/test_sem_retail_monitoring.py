@@ -80,10 +80,13 @@ class SemRetailConfigurationTests(unittest.TestCase):
             latest.assert_not_called()
             completed = tv_rows(start, datetime(2026, 11, 27, 14, tzinfo=utc9))
             latest.assert_called_once_with(cursor, start.isoformat())
+            collecting = tv_rows(start, datetime(2026, 11, 27, 10, tzinfo=utc9))
 
         self.assertEqual(['Liverpool'], [row['retailer'] for row in previous])
         self.assertEqual(['Liverpool', 'Walmart', "Sam's Club"], [row['retailer'] for row in upcoming])
         self.assertEqual(['PENDING', 'PENDING'], [row['status'] for row in upcoming[1:]])
+        self.assertEqual(('COLLECTING', 'collecting', 300),
+                         (collecting[1]['status'], collecting[1]['collection_phase'], collecting[1]['main_count']))
         self.assertEqual(start.isoformat(), completed[1]['observation_start'])
         self.assertEqual((350, 300, 100), tuple(completed[1][key] for key in ('raw_count', 'main_count', 'bsr_count')))
         self.assertEqual('CRITICAL', completed[2]['status'])
@@ -342,7 +345,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
         self.assertEqual(1372, result['check']['expected'])
         self.assertEqual(99.7, result['check']['rate'])
 
-    def test_layer1_marks_completed_product_ok_during_collection(self):
+    def test_layer1_keeps_received_product_collecting(self):
         def current_counts(_cursor, product_line, _retailer, _target_date):
             count = 200 if product_line == 'sem_tv' else 0
             return {
@@ -363,7 +366,8 @@ class SemRetailConfigurationTests(unittest.TestCase):
                 object(), date(2026, 9, 7), datetime(2026, 9, 7, 10, 0)
             )['check']
 
-        self.assertEqual('OK', check['categories'][0]['status'])
+        self.assertEqual('COLLECTING', check['categories'][0]['status'])
+        self.assertEqual(200, check['categories'][0]['main_count'])
         self.assertEqual('COLLECTING', check['categories'][1]['status'])
         self.assertEqual('COLLECTING', check['categories'][2]['status'])
         self.assertEqual('COLLECTING', check['status'])
@@ -385,7 +389,7 @@ class SemRetailConfigurationTests(unittest.TestCase):
                 object(), date(2026, 9, 13), datetime(2026, 9, 13, hour, 0),
             )
 
-    def test_received_retailer_is_ready_while_other_retailers_collect(self):
+    def test_received_retailer_waits_for_collection_window(self):
         from apps.dx.dx_layer1.common.retail_verification import apply_verification_status
 
         def counts(_cursor, product, retailer, _day):
@@ -406,9 +410,8 @@ class SemRetailConfigurationTests(unittest.TestCase):
         for category in check['categories']:
             for row in category['retailers']:
                 received = row['retailer'] == 'Coppel'
-                self.assertEqual('complete' if received else 'collecting',
-                                 row['collection_phase'])
-                self.assertEqual('ready' if received else 'collecting',
+                self.assertEqual('collecting', row['collection_phase'])
+                self.assertEqual('waiting' if received else 'collecting',
                                  row['verification_state'])
 
     def test_received_rows_do_not_override_pending_schedule(self):

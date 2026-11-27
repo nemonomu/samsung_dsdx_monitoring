@@ -2,7 +2,11 @@
 import unittest
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
+from django.test import override_settings
 
 from apps.common.sea_collection import KST, afternoon_collection_phase
 from apps.common.source_dates import source_date_sql, source_date_value
@@ -38,10 +42,10 @@ class SeaAfternoonScheduleTests(unittest.TestCase):
             self.assertTrue(module.complete(DAY, datetime(2026, 10, 26, 18, tzinfo=KST)))
 
     def test_dday_all_seven_scopes_and_collection_states(self):
-        for hour, minute, count, status in ((12, 59, 0, 'scheduled'), (12, 59, 1, 'received'),
-                (13, 0, 0, 'waiting'), (13, 0, 1, 'received'),
-                (17, 59, 0, 'waiting'), (17, 59, 50, 'received'),
-                (18, 0, 0, 'uncollected'), (18, 0, 1, 'received'), (18, 0, 300, 'received')):
+        for hour, minute, count, status in ((12, 59, 0, 'scheduled'), (12, 59, 1, 'collecting'),
+                (13, 0, 0, 'waiting'), (13, 0, 1, 'collecting'),
+                (17, 59, 0, 'waiting'), (17, 59, 50, 'collecting'),
+                (18, 0, 0, 'unconfirmed'), (18, 0, 1, 'unconfirmed'), (18, 0, 300, 'unconfirmed')):
             with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection',
                     return_value=(count, None, 'b1', count, 0)) as fetch:
                 data = dday.get_collection_status(DAY, datetime(2026, 10, 26, hour, minute, tzinfo=KST))
@@ -55,6 +59,49 @@ class SeaAfternoonScheduleTests(unittest.TestCase):
         with patch.object(dday, 'dx_connection', connection), patch.object(dday, 'fetch_collection', side_effect=RuntimeError):
             data = dday.get_collection_status(DAY)
         self.assertTrue(all(r['status'] == 'error' and r['count'] is None for r in data['retailers']))
+
+    def test_dday_rank_mismatch_waits_for_window_end(self):
+        source = next(source for source in repo.SOURCES if source[:2] == ('Bestbuy', 'TV'))
+        with TemporaryDirectory() as directory, override_settings(DX_DDAY_RECEIPTS_DIR=directory), \
+                patch.object(dday, 'SOURCES', [source]), patch.object(dday, 'dx_connection', connection), \
+                patch.object(dday, 'fetch_collection', return_value=(110, None, 'b1', 30, 80)) as fetch:
+            folder = Path(directory) / str(DAY)
+            folder.mkdir()
+            receipt_file = folder / 'SEA-TV-bestbuy.json'
+            now = datetime(2026, 10, 26, 18, 5, tzinfo=KST)
+            receipt = dict(country='SEA', product='TV', retailer='Bestbuy', source_date=str(DAY),
+                           state='running', batch_id='b1', count=110, main_count=30, bsr_count=80,
+                           started_at=now.replace(hour=17).isoformat(), expires_at=now.isoformat())
+
+            def status():
+                return dday.get_collection_status(DAY, now)['retailers'][0]['status']
+
+            self.assertEqual('unconfirmed', status())
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('unconfirmed', status())
+            receipt.update(expires_at=now.replace(hour=19).isoformat())
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('collecting', status())
+            receipt.update(state='committed', completed_at=now.isoformat(), batch_id='older', outcome='loaded')
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('unconfirmed', status())
+            receipt.update(batch_id='b1')
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('rank_mismatch', status())
+            fetch.return_value = (0, None, None, 0, 0)
+            receipt.update(count=0, main_count=0, bsr_count=0)
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('unconfirmed', status())
+            receipt.update(outcome='empty')
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('uncollected', status())
+            receipt.update(count=300, main_count=300, bsr_count=100)
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            fetch.return_value = (300, None, 'b1', 300, 100)
+            self.assertEqual('unconfirmed', status())
+            receipt.update(outcome='loaded')
+            receipt_file.write_text(json.dumps(receipt), encoding='utf-8')
+            self.assertEqual('received', status())
 
     def test_daily_remains_d_minus_one_and_uses_own_cutoff(self):
         for product in ('tv', 'ref', 'ldy', 'ldy_dryer'):

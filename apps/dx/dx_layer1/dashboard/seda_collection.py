@@ -5,6 +5,7 @@ from apps.common.db import dx_connection
 from apps.common.seda_retail import SEDA_SOURCE_CONFIG
 from apps.common.sea_collection import KST
 from apps.common.source_dates import source_date_sql
+from .collection_receipts import receipt_state
 
 
 def fetch_collection(cursor, source, target_date):
@@ -26,7 +27,7 @@ def fetch_collection(cursor, source, target_date):
     return cursor.fetchone() or (0, None, None, 0, 0)
 
 
-def get_collection_status(target_date, now):
+def get_collection_status(target_date, now, *, read=None):
     day = date.fromisoformat(str(target_date))
     start = datetime.combine(day, time(9), KST)
     end = datetime.combine(day, time(15), KST)
@@ -36,15 +37,25 @@ def get_collection_status(target_date, now):
     for source in SEDA_SOURCE_CONFIG.values():
         row = dict(country='SEDA', retailer='Casas Bahia', product=source['category'],
                    source_date=str(day), scheduled_at=start.isoformat(), scheduled_end_at=end.isoformat(),
-                   collection_phase=phase, count=0, main_count=0, bsr_count=0,
+                   schedule_phase=phase, count=0, main_count=0, bsr_count=0,
                    last_collected_at=None, last_collected_timezone='DB 원본', batch_id=None)
         try:
-            with dx_connection() as (_, cursor):
-                count, stamp, batch, main, bsr = fetch_collection(cursor, source, day)
+            if read is None:
+                with dx_connection() as (_, cursor):
+                    counts = fetch_collection(cursor, source, day)
+            else:
+                counts = read(fetch_collection, source, day)
+            count, stamp, batch, main, bsr = counts
             row.update(count=int(count or 0), main_count=int(main or 0), bsr_count=int(bsr or 0),
                        last_collected_at=stamp, batch_id=batch)
-            row['status'] = ('received' if row['count'] else 'uncollected' if phase == 'complete'
-                             else 'scheduled' if phase == 'pending' else 'waiting')
+            receipt = receipt_state('SEDA', row['product'], row['retailer'], day, current, counts)
+            if receipt == 'committed':
+                row['status'] = 'received' if row['count'] else 'uncollected'
+                row['collection_phase'] = 'complete'
+            else:
+                row['status'] = ('collecting' if receipt == 'running' else 'unconfirmed' if current >= end else 'collecting' if row['count']
+                                 else 'scheduled' if phase == 'pending' else 'waiting')
+                row['collection_phase'] = row['status']
         except Exception:
             row.update(status='error', count=None, main_count=None, bsr_count=None)
         rows.append(row)

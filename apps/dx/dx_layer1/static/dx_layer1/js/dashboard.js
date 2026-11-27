@@ -12,7 +12,7 @@ var CHECK_TYPE_URL = {
 var layer1StatsRequestId = 0;
 var liveCollectionPoll = null;
 
-async function loadStats() {
+async function loadStats(forceColumns = false) {
     liveCollectionPoll?.stop();
     const requestId = ++layer1StatsRequestId;
     const selectedDate = getSelectedDate();
@@ -43,26 +43,28 @@ async function loadStats() {
         currentCheckStatus = status;
         render();
     }).catch(function() {});
-    const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
     if (L1.retailReview) L1.retailReview.load(selectedDate).then(render);
 
-    try {
-        const url = selectedDate
-            ? `/dx/layer1/api/stats/?date=${selectedDate}`
-            : '/dx/layer1/api/stats/';
-        const response = await fetch(url);
+    const url = selectedDate
+        ? `/dx/layer1/api/stats/?date=${selectedDate}`
+        : '/dx/layer1/api/stats/';
+    const statsRequest = fetch(url).then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        data = await response.json();
+        return response.json();
+    });
+    if (typeof ColumnAlertSummary !== 'undefined') ColumnAlertSummary.load(selectedDate, forceColumns, statsRequest);
+    try {
+        data = await statsRequest;
         if (requestId !== layer1StatsRequestId) return;
         currentStatsData = data;
         render();
+        const summaryRequest = loadSeaRetailSummaries(selectedDate).then(render).catch(function() {});
         if (L1.liveCollection) {
             liveCollectionPoll = L1.liveCollection.poll(() => getSelectedDate() !== selectedDate ? null : ({date:selectedDate, countries:
                 data.checks.map(check => L1.liveCollection.countries[check.check_type]).filter(Boolean)}), snapshot => {
                 if (requestId !== layer1StatsRequestId || getSelectedDate() !== selectedDate) return;
                 liveSnapshots.set(snapshot.country, snapshot);
-                if (!L1.liveCollection.isInspecting()) L1.liveCollection.preserveView(render);
-            });
+            }, () => L1.liveCollection.preserveView(render));
             // The initial response already contains current counts; wait for the next sweep.
         }
         await Promise.allSettled([statusRequest, summaryRequest]);
@@ -148,8 +150,8 @@ function renderLayer1Stats(data) {
 }
 
 
-function loadAllData() {
-    loadStats();
+function loadAllData(forceColumns = false) {
+    loadStats(forceColumns);
 }
 
 // 수요증감율 부족 키워드 모달
@@ -739,6 +741,7 @@ L1.initLayer1Page({
         { name: 'columns', style: 'wide' }
     ],
     filterBarOptions: {
+        deferColumnSummary: true,
         right: [{ type: 'button', label: '백업 실행', style: 'save', onClick: function() { runBackup(); }, id: 'btn-backup' }]
     }
 });

@@ -27,7 +27,7 @@
         if (historyNotice) historyNotice.hidden = true;
         if (historyDetail) historyDetail.textContent = '';
     }
-    function load(date, force = false) {
+    function load(date, force = false, ready) {
         if (window.CollectionIssues) window.CollectionIssues.load({date});
         if (!force && selectedDate === date) return pending;
         if (controller) controller.abort();
@@ -47,6 +47,7 @@
         }
         spinner.hidden = false;
         let next = 0, completed = 0, failures = 0, abnormal = 0, review = 0, missing = 0;
+        let usedNetwork = false;
         const historyFailures = [];
         async function worker() {
             while (next < jobs.length && !current.signal.aborted) {
@@ -54,6 +55,7 @@
                 try {
                     const data = await window.ColumnAlertCache.load(job, date, {signal:current.signal, force});
                     if (current.signal.aborted) return;
+                    if (!data.fromCache) usedNetwork = true;
                     if (data.issue_history_error) {
                         const diagnostic = data.issue_history_diagnostic || {};
                         historyFailures.push(`${job.country} · ${job.product} · ${job.retailer}: ${diagnostic.error || '이력 저장 오류'} ${diagnostic.action || '다시 조회해 주세요.'}`);
@@ -70,10 +72,16 @@
                 if (breakdown) breakdown.textContent = `전체 ${jobs.length}개 대상 중 ${completed}개 조회 중`;
             }
         }
-        pending = Promise.all([worker(), worker()]).then(() => {
+        const sweep = () => Promise.all([worker(), worker()]);
+        const run = ready ? Promise.resolve(ready).catch(() => {}).then(result => result === false ? false : sweep()) : sweep();
+        pending = run.then(result => {
             if (current.signal.aborted) return;
-            if (window.CollectionIssues) window.CollectionIssues.load({date}, true);
             spinner.hidden = true;
+            if (result === false) {
+                selectedDate = undefined;
+                return;
+            }
+            if (usedNetwork && window.CollectionIssues) window.CollectionIssues.load({date}, true);
             if (historyFailures.length && historyNotice && historyDetail) {
                 historyNotice.hidden = false;
                 historyDetail.textContent = `${historyFailures.length}개 대상 · 조회된 통계는 표시됩니다. ${historyFailures.join(' / ')}`;
@@ -96,15 +104,13 @@
         return pending;
     }
     window.ColumnAlertSummary = {load};
-    // Statistics pages have their own date form instead of the common FilterBar.
+    // Column statistics starts the shared summary after rendering its selection.
     document.addEventListener('column-review-saved', () => {if (selectedDate) load(selectedDate, true);});
     document.addEventListener('DOMContentLoaded', () => {
-        for (const prefix of ['cs', 'ccs']) {
-            const form = document.getElementById(prefix + '-filters');
-            const date = document.getElementById(prefix + '-date');
-            if (!form || !date) continue;
-            load(date.value || today());
-            form.addEventListener('submit', () => { if (form.reportValidity()) load(date.value, true); });
-        }
+        const form = document.getElementById('cs-filters');
+        const date = document.getElementById('cs-date');
+        if (!form || !date) return;
+        load(date.value || today());
+        form.addEventListener('submit', () => { if (form.reportValidity()) load(date.value, true); });
     });
 })();

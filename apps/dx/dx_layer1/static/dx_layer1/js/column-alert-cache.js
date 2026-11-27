@@ -32,11 +32,12 @@
     }
     async function load(job, date, {signal, force = false} = {}) {
         const key = keyFor(job, date);
-        if (!force && fresh(entries[key])) return structuredClone(entries[key].data);
+        if (!force && fresh(entries[key])) return {...structuredClone(entries[key].data), fromCache:true};
         // A failed manual refresh must not leave an earlier successful value behind.
         delete entries[key];
         persist();
         const query = new URLSearchParams({...job, date, days: '5'});
+        if (window.LAYER1.section === 'dashboard' && !force) query.set('reuse_history', '1');
         const response = await fetch('/dx/layer1/api/column-statistics/?' + query, {signal});
         if (!response.ok) throw new Error('Query failed');
         const data = await response.json();

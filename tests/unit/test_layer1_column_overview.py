@@ -4,7 +4,7 @@ import unittest
 from datetime import date, datetime, timedelta
 from unittest.mock import Mock, patch
 
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 
 from apps.dx.dx_layer1.column_statistics import api, overview, reviews
 from apps.dx.dx_layer1.column_statistics.comparison import KST
@@ -60,13 +60,57 @@ class ColumnOverviewTests(unittest.TestCase):
         counts.assert_not_called()
         file_cache.set.assert_called_once()
 
+    @override_settings(DX_COLUMN_HISTORY_REUSE_SCOPES={'SIEL:TV:Amazon'})
+    def test_live_read_reuses_prepared_history_and_does_not_finalize_partial_counts(self):
+        target = DAY + timedelta(days=1)
+        before = NOW.replace(hour=1)
+        history = overview._window(raw_window(), DAY, {str(DAY): 117}, NOW)
+        for index, row in enumerate(history['daily']):
+            row.update(total=100 + index, counts={'sku': 80 + index})
+        with patch.object(overview, 'monitoring_cached_value', side_effect=lambda _ns, _key, read: read()), \
+                patch.object(overview, 'prepared_generation', return_value='g1'), \
+                patch.object(overview, '_prepared_counts', return_value={(SCOPE, DAY): history}), \
+                patch.object(overview.timezone, 'now', return_value=before), \
+                patch.object(overview, 'daily_counts', return_value=raw_window(end=target, days=1)) as counts, \
+                patch.object(overview, 'raw_counts', return_value={str(target): 100}):
+            result = overview.live_counts(SCOPE, target)
+        counts.assert_called_once_with(*SCOPE, target, 1)
+        self.assertEqual([*history['dates'][-28:], str(target)], result['dates'])
+        history_rows = [{key: val for key, val in row.items() if key != 'raw_total'} for row in history['daily'][-28:]]
+        self.assertEqual(history_rows, result['daily'][:-1])
+        self.assertEqual(history['daily'][-1]['raw_total'], 117)
+        self.assertEqual({'date': str(target), 'total': 100, 'counts': {'sku': 20}, 'raw_total': 100},
+                         result['daily'][-1])
+        self.assertEqual('pending', overview._compare(result, target, NOW)['comparisons'][0]['status'])
+        refreshed = {**result, 'updated_at': NOW.isoformat()}
+        self.assertEqual('abnormal', overview._compare(refreshed, target, NOW)['comparisons'][0]['status'])
+
+    def test_history_reuse_requires_enabled_scope_and_stable_generation(self):
+        target = DAY + timedelta(days=1)
+        for enabled, generation, expected in [
+            (False, ['g1'], [29]),
+            (True, ['g1', 'g2'], [1, 29]),
+        ]:
+            with self.subTest(enabled=enabled), \
+                    override_settings(DX_COLUMN_HISTORY_REUSE_SCOPES={'SIEL:TV:Amazon'} if enabled else set()), \
+                    patch.object(overview, 'monitoring_cached_value', side_effect=lambda _ns, _key, read: read()), \
+                    patch.object(overview, '_prepared_counts', return_value={(SCOPE, DAY): raw_window()}) as prepared, \
+                    patch.object(overview, 'prepared_generation', side_effect=generation), \
+                    patch.object(overview, 'daily_counts',
+                                 side_effect=lambda *args: raw_window(end=target, days=args[-1])) as counts, \
+                    patch.object(overview, 'raw_counts', return_value={str(target): 100}):
+                result = overview.live_counts(SCOPE, target)
+            self.assertEqual([call.args[-1] for call in counts.call_args_list], expected)
+            self.assertEqual(len(result['dates']), 29)
+            self.assertEqual(prepared.call_count, int(enabled))
+
     def test_overview_shows_confirmed_state_and_identifies_failed_scopes(self):
         prepared = overview._window(raw_window(), DAY, {str(DAY): 100}, NOW)
         comparison = overview._compare(prepared, DAY, NOW)
         fingerprint = reviews.fingerprint(reviews.context_for(comparison, comparison['comparisons'][0]))
         failed = (('SIEL', 'REF', 'Flipkart'), DAY)
         with patch.object(overview, '_prepared_counts', return_value={(SCOPE, DAY): prepared}), \
-                patch.object(overview, '_live_counts', side_effect=RuntimeError('DB unavailable')) as live, \
+                patch.object(overview, 'live_counts', side_effect=RuntimeError('DB unavailable')) as live, \
                 patch.object(overview, '_active_reviews', return_value={fingerprint}) as review_query, \
                 self.assertLogs(overview.logger, level='WARNING'):
             result = overview.country_overview('SIEL', [(SCOPE, DAY), failed], include_reviews=True, now=NOW)

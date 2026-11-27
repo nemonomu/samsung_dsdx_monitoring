@@ -115,23 +115,52 @@ def selected_scopes(country, product, retailer, inspection_date):
     return sorted(selections, key=lambda entry: order[entry[0][1]])
 
 
-def _live_counts(scope, target):
+def history_reuse_enabled(scope):
+    return ':'.join(scope) in getattr(settings, 'DX_COLUMN_HISTORY_REUSE_SCOPES', ())
+
+
+def live_counts(scope, target):
     def read():
         country, product, retailer = scope
-        data = daily_counts(*scope, target, _WINDOW)
-        if country == 'SEIB' and is_eci_appliance_preview(product, retailer, target):
-            totals = {str(target): data['daily'][-1]['total']}
-        else:
-            totals = raw_counts(*scope, target, target)
-        return _window(data, target, totals, timezone.now())
+        prior = target - timedelta(days=1)
+        selection = (scope, prior)
+        generation = prepared_generation() if not preview and history_reuse_enabled(scope) else None
+        history = _prepared_counts([selection], generation=generation).get(selection) if generation else None
+        if history:
+            expected_dates = [str(target - timedelta(days=offset)) for offset in range(_WINDOW, 0, -1)]
+            if history['dates'] != expected_dates or [row['date'] for row in history['daily']] != expected_dates:
+                history = None
 
-    if _preview(scope, target):
+        def collect(days):
+            started = timezone.now()
+            data = daily_counts(*scope, target, days)
+            if country == 'SEIB' and is_eci_appliance_preview(product, retailer, target):
+                totals = {str(target): data['daily'][-1]['total']}
+            else:
+                totals = raw_counts(*scope, target, target)
+            return data, totals, started
+
+        data, totals, started = collect(1 if history else _WINDOW)
+        if history:
+            if data['columns'] == history['columns'] and generation == prepared_generation():
+                data['dates'] = history['dates'][1:] + data['dates']
+                prior_rows = [{key: value for key, value in row.items() if key != 'raw_total'}
+                              for row in history['daily'][1:]]
+                data['daily'] = prior_rows + data['daily']
+            else:
+                data, totals, started = collect(_WINDOW)
+        return _window(data, target, totals, started)
+
+    preview = _preview(scope, target)
+    if preview:
         return read()
-    return monitoring_cached_value('column-overview-live-v1', [*scope, str(target)], read)
+    return monitoring_cached_value('column-overview-live-v2', [*scope, str(target)], read)
 
 
-def _prepared_counts(selections):
-    if (generation := prepared_generation()) is None:
+def _prepared_counts(selections, *, generation=None):
+    if generation is None:
+        generation = prepared_generation()
+    if generation is None:
         return {}
     keys = {_key(scope, day, generation): (scope, day) for scope, day in selections
             if not _preview(scope, day)}
@@ -150,7 +179,7 @@ def detail_counts(scope, target, days):
     result = _prepared_counts([selection]).get(selection)
     if result and datetime.fromisoformat(result['updated_at']) >= timezone.now() - timedelta(minutes=5):
         return result
-    return monitoring_cached_value('column-overview-live-v1', [*scope, str(target)])
+    return monitoring_cached_value('column-overview-live-v2', [*scope, str(target)])
 
 
 def _compare(data, target, now):
@@ -189,7 +218,7 @@ def _summary(data, active_reviews):
 def country_overview(country, selections, *, include_reviews, now=None):
     now = now or timezone.now()
     prepared = _prepared_counts(selections)
-    futures = {selection: _POOL.submit(_live_counts, *selection)
+    futures = {selection: _POOL.submit(live_counts, *selection)
                for selection in selections if selection not in prepared}
     scoped = {}
     for selection in selections:

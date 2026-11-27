@@ -1,9 +1,11 @@
 var ddayCollectionRequestId = 0;
+var ddayCollectionPending = null;
 
 function ddayStatusBadge(status, reason) {
     const styles = {
         scheduled: ['pending', '수집 예정'], waiting: ['collecting', '수집 대기'],
         collecting: ['collecting', '수집 중'],
+        unconfirmed: ['pending', '완료 미확인'],
         received: ['ok', '수집 확인'], partial: ['collecting', '일부 수집'],
         error: ['warning', '조회 실패'], uncollected: ['critical', '미수집'],
         abnormal: ['critical', 'BSR 이상'], rank_mismatch: ['critical', '이상']
@@ -20,10 +22,11 @@ function ddaySummary(rows) {
     const status = rows.some(row => row.status === 'error') ? 'error'
         : rows.some(row => row.status === 'rank_mismatch') ? 'rank_mismatch'
         : rows.some(row => row.status === 'abnormal') ? 'abnormal'
+        : rows.some(row => row.status === 'collecting') ? 'collecting'
+        : rows.some(row => row.status === 'unconfirmed') ? 'unconfirmed'
         : rows.every(row => row.status === 'received') ? 'received'
         : rows.some(row => row.status === 'received' || row.status === 'partial') ? 'partial'
         : rows.some(row => row.status === 'uncollected') ? 'uncollected'
-        : rows.some(row => row.status === 'collecting') ? 'collecting'
         : rows.every(row => row.status === 'scheduled') ? 'scheduled' : 'waiting';
     return { count, mainCount, bsrCount, status };
 }
@@ -95,19 +98,44 @@ function renderDdayCollection(data) {
         '<div class="sentiment-categories">' + categories + '</div></div></details>';
 }
 
-async function loadDdayCollection(selectedDate) {
+function loadDdayCollection(selectedDate, keepVisible = false) {
+    if (ddayCollectionPending?.date === selectedDate) return ddayCollectionPending.request;
+    ddayCollectionPending?.controller.abort();
+    const controller = new AbortController();
+    const request = readDdayCollection(selectedDate, keepVisible,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(30000)])).finally(() => {
+        if (ddayCollectionPending?.request === request) ddayCollectionPending = null;
+    });
+    ddayCollectionPending = {date: selectedDate, request, controller};
+    return request;
+}
+
+async function readDdayCollection(selectedDate, keepVisible, signal) {
     const requestId = ++ddayCollectionRequestId;
     const container = document.getElementById('dday-collection-list');
     if (!container) return;
-    container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황을 불러오는 중...</div></div>';
+    if (!keepVisible) {
+        container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황을 불러오는 중...</div></div>';
+    }
     try {
-        const response = await fetch('/dx/layer1/api/collection-status/?date=' + encodeURIComponent(selectedDate));
+        const response = await fetch('/dx/layer1/api/collection-status/?date=' + encodeURIComponent(selectedDate),
+            {signal});
         if (!response.ok) throw new Error('collection status unavailable');
         const data = await response.json();
         if (requestId !== ddayCollectionRequestId) return;
+        const open = keepVisible ? Array.from(container.querySelectorAll('details'), detail => detail.open) : [];
         container.innerHTML = renderDdayCollection(data);
+        if (open.length) container.querySelectorAll('details').forEach((detail, index) => {
+            if (index < open.length) detail.open = open[index];
+        });
     } catch (error) {
         if (requestId !== ddayCollectionRequestId) return;
+        if (keepVisible && container.querySelector('details')) {
+            if (!container.querySelector('.dday-refresh-error')) {
+                container.insertAdjacentHTML('afterbegin', '<p class="dday-refresh-error" role="status">자동 갱신에 실패했습니다. 이전 조회 결과입니다.</p>');
+            }
+            return;
+        }
         container.innerHTML = '<div class="check-item"><div class="check-main">수집 현황 조회 실패 · 다시 조회해 주세요.</div></div>';
     }
 }

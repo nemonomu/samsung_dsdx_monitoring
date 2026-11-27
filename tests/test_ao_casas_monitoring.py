@@ -1,11 +1,14 @@
 """AO launch/preview isolation and Casas-only D-DAY, without production writes."""
 import sys
+import json
 import unittest
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
+from django.test import override_settings
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tests import test_collection_statistics_backend  # isolated Django settings
@@ -155,13 +158,14 @@ class CasasDdayTests(unittest.TestCase):
             return casas.get_collection_status(PREVIEW,now),cursor
 
     def test_time_boundaries_receipt_and_failure(self):
-        for hour,minute,status in ((8,59,'scheduled'),(9,0,'waiting'),(14,59,'waiting'),(15,0,'uncollected')):
+        for hour,minute,status in ((8,59,'scheduled'),(9,0,'waiting'),(14,59,'waiting'),(15,0,'unconfirmed')):
             now = datetime(2026,10,30,hour,minute,tzinfo=uk.KST)
             result,_ = self.status(now.astimezone(timezone.utc))
             self.assertEqual({'TV','REF','LDY'},{r['product'] for r in result['retailers']})
             self.assertTrue(all(r['retailer']=='Casas Bahia' and r['status']==status for r in result['retailers']))
             received,_ = self.status(now,(300,'2026-10-30 09:28:13','latest',300,100))
-            self.assertTrue(all(r['status']=='received' for r in received['retailers']))
+            self.assertTrue(all(r['status']==('unconfirmed' if hour == 15 else 'collecting')
+                                for r in received['retailers']))
         failed,_ = self.status(now,error=True)
         self.assertTrue(all(r['status']=='error' and r['count'] is None for r in failed['retailers']))
 
@@ -177,12 +181,32 @@ class CasasDdayTests(unittest.TestCase):
             self.assertIn('IS NOT DISTINCT FROM latest.batch_id',sql)
         self.assertEqual('2026-10-29',resolve_monitoring_date(PREVIEW,'SEDA','seda_tv')['source_date'])
 
+    def test_committed_receipt_applies_only_to_the_matching_product(self):
+        now = datetime(2026, 10, 30, 16, tzinfo=uk.KST)
+        with TemporaryDirectory() as directory, override_settings(DX_DDAY_RECEIPTS_DIR=directory):
+            folder = Path(directory) / str(PREVIEW)
+            folder.mkdir()
+            (folder / 'SEDA-TV-casasbahia.json').write_text(json.dumps(dict(
+                country='SEDA', product='TV', retailer='Casas Bahia', source_date=str(PREVIEW),
+                state='committed', batch_id='tv-final', completed_at=now.isoformat(), outcome='loaded',
+                count=400, main_count=300, bsr_count=100,
+            )), encoding='utf-8')
+            result, _ = self.status(now, (400, None, 'tv-final', 300, 100))
+        self.assertEqual({'TV': 'received', 'REF': 'unconfirmed', 'LDY': 'unconfirmed'},
+                         {row['product']: row['status'] for row in result['retailers']})
+
     def test_api_combines_separate_country_cards(self):
         sea = dict(source_date=str(PREVIEW),retailers=[dict(retailer='Walmart')])
         seda = dict(country='SEDA',retailers=[dict(retailer='Casas Bahia')])
-        with patch.object(dday,'get_collection_status',return_value=sea), \
-             patch.object(casas,'get_collection_status',return_value=seda):
+        @contextmanager
+        def connection(**_options):
+            yield Mock(), Mock()
+        with patch.object(dday,'dx_connection',side_effect=connection) as db, \
+             patch.object(dday,'get_collection_status',return_value=sea) as read_sea, \
+             patch.object(casas,'get_collection_status',return_value=seda) as read_seda:
             result = dday.get_dday_collection_status(PREVIEW)
+        db.assert_called_once_with(connect_timeout=3)
+        self.assertIs(read_sea.call_args.kwargs['read'], read_seda.call_args.kwargs['read'])
         self.assertEqual(['SEA','SEDA'],[r['country'] for r in result['countries']])
         self.assertEqual(sea['retailers'],result['retailers'])
 

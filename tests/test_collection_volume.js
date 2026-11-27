@@ -60,19 +60,22 @@ for (const base of ['ERROR','PENDING','COLLECTING']) {
 const noBsr = fixture(); noBsr.row.main_count = 99; noBsr.row.bsr_applicable = false; noBsr.payload = null;
 assert.equal(apply(noBsr), 'VERIFYING');
 
-// SEM received batches are assessed without waiting for the other retailers.
+// SEM may display partial counts before the window ends.
 for (const product of ['REF', 'LDY']) {
     const f = fixture('SEM', product);
     f.check.phase = 'collecting';
-    f.row.collection_phase = 'complete';
+    f.row.collection_phase = 'collecting';
     f.row.main_count = 300;
     f.cat.retailers.push({retailer:'Still collecting', main_count:0, bsr_count:0,
         actual:0, raw_count:0, status:'COLLECTING', collection_phase:'collecting'});
-    assert.equal(apply(f), 'OK');
+    assert.equal(apply(f), 'COLLECTING');
     assert.equal(f.cat.retailers[1].status, 'COLLECTING');
     assert.equal(f.cat.status, 'COLLECTING');
     assert.equal(f.check.status, 'COLLECTING');
     f.row.bsr_count = 99;
+    assert.equal(apply(f), 'COLLECTING');
+    assert.equal(f.row.volume_alerts.length, 0);
+    f.check.phase = f.row.collection_phase = 'complete';
     assert.equal(apply(f), 'VOLUME_LOW', 'SEM must still pass BSR validation');
     f.payload.snapshots = [];
     assert.equal(apply(f), 'VERIFYING', 'missing statistics cannot imply normal');
@@ -215,21 +218,31 @@ sea.summaries.ref.summary[0].rows[0].main=300;
 assert.equal(apply(sea),'OK');
 sea.summaries.ref.date='2026-09-30';assert.equal(apply(sea),'VERIFYING');
 
-// An incomplete sibling cannot hide a verified failure or make a parent normal.
-// SEG assesses received retailers before noon while Amazon REF remains collecting.
+// SEG withholds the BSR verdict until its collection window ends.
 const seg=fixture('SEG');
-seg.check.phase='collecting';seg.row.collection_phase='complete';seg.row.main_count=300;
+seg.check.phase='collecting';seg.row.collection_phase='collecting';seg.row.main_count=300;
 const segRef={...seg.cat,name:'REF',retailers:[{retailer:'Amazon',main_count:0,bsr_count:0,
     raw_count:0,status:'COLLECTING',collection_phase:'collecting'}]};
 seg.check.categories.push(segRef);
-assert.equal(apply(seg),'OK');
-assert.equal(seg.cat.status,'OK');assert.equal(segRef.status,'COLLECTING');
+assert.equal(apply(seg),'COLLECTING');
+assert.equal(seg.cat.status,'COLLECTING');assert.equal(segRef.status,'COLLECTING');
 assert.equal(seg.check.status,'COLLECTING');
 seg.row.bsr_count=99;
-assert.equal(apply(seg),'VOLUME_LOW','received SEG rows still require BSR verification');
+assert.equal(apply(seg),'COLLECTING');
+assert.equal(seg.row.volume_alerts.length,0);
+seg.check.phase=seg.row.collection_phase='complete';
+assert.equal(apply(seg),'VOLUME_LOW');
+assert(context.L1.retailStatus.rowBadge(seg.row).includes('<status>VOLUME_LOW</status>'));
+seg.row.main_count=seg.row.bsr_count=seg.row.actual=seg.row.raw_count=0;
+assert.equal(apply(seg),'CRITICAL');
+assert(context.L1.retailStatus.rowBadge(seg.row).includes('미수집'));
+Object.assign(seg.row,{main_count:300,bsr_count:100,actual:300,raw_count:300});
+assert.equal(apply(seg),'OK');
+assert(context.L1.retailStatus.rowBadge(seg.row).includes('<status>OK</status>'));
 seg.row.bsr_count=100;seg.payload=null;
 assert.equal(apply(seg),'VERIFYING','receipt alone does not prove normal');
 
+// An incomplete sibling cannot hide a verified failure or make a parent normal.
 const siblings=fixture(); siblings.row.main_count=300;
 siblings.cat.retailers.push({...siblings.row,retailer:'Other',collection_phase:'collecting'});
 apply(siblings);assert.equal(siblings.check.status,'COLLECTING');
@@ -260,8 +273,11 @@ async function verifyIndependentLoading() {
     vm.runInContext(fs.readFileSync('apps/dx/dx_layer1/static/dx_layer1/js/dashboard.js', 'utf8'), page);
     vm.runInContext('renderLayer1Stats = recordRender;', page);
     const first = page.loadStats();
+    assert.ok(!requests.some(r => r.kind === 'summary'), 'optional summaries wait for the first daily render');
     requests.find(r => r.kind === 'stats').resolve({ok: true, json: async () => ({date: day})});
     requests.find(r => r.kind === 'status').resolve({});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(rendered.at(-1).date, day, 'first daily render does not wait for optional summaries');
     requests.find(r => r.kind === 'summary').resolve({});
     await first;
     assert.strictEqual(rendered.at(-1).date, day);

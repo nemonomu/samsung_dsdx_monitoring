@@ -160,8 +160,9 @@ class SeukLayer1Tests(TestCase):
         start = layer1_sources.TV_START
         now = datetime(2026, 11, 22, 6, tzinfo=policy.KST)
         check = self.check(start, now=now)
-        with patch.object(retail_batches, 'fetch_batch_counts', return_value={'amazon': 2, 'argos': 1}):
-            retail_batches.add_batch_counts(Mock(), check, start)
+        cursor = Mock()
+        cursor.fetchall.return_value = [(0, 'amazon', 2), (0, 'argos', 1)]
+        retail_batches.add_batch_counts(cursor, check, start)
         new_rows = {r['retailer']: r for r in check['categories'][0]['retailers']}
         self.assertEqual(2, new_rows['Amazon']['batch_count'])
         self.assertEqual(1, new_rows['Argos']['batch_count'])

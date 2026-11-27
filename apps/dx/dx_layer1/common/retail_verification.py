@@ -2,7 +2,7 @@
 
 The current sources expose counts and batch IDs, not final load acknowledgments.
 Until such a source is connected, only the retailer's scheduled window can
-release verification, except SEG, SEM and TSE which explicitly assess received rows
+release verification, except TSE which explicitly assesses received rows
 immediately through its per-retailer collection phase.
 """
 

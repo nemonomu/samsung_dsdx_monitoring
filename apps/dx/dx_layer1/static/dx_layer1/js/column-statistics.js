@@ -283,7 +283,7 @@
         overviewFilters.querySelector('.ccs-filter.active')?.focus();
     });
 
-    async function load() {
+    function load(forceColumns = false) {
         if (!form.reportValidity()) return;
         if (controller) controller.abort();
         const current = new AbortController();
@@ -300,10 +300,10 @@
         message.className = 'cs-message';
         message.textContent = '컬럼별 수집 건수를 불러오는 중입니다.';
         form.querySelector('button').disabled = true;
-        try {
-            const wide = controls.product.value === 'all' || controls.retailer.value === 'all';
-            const endpoint = '/dx/layer1/api/column-statistics/' + (wide ? 'overview/' : '');
-            const data = await getJSON(endpoint + '?' + query, current.signal);
+        const wide = controls.product.value === 'all' || controls.retailer.value === 'all';
+        const endpoint = '/dx/layer1/api/column-statistics/' + (wide ? 'overview/' : '');
+        if (forceColumns && !wide) query.set('refresh', '1');
+        const ready = getJSON(endpoint + '?' + query, current.signal).then(data => {
             if (!current.signal.aborted) {
                 if (wide) renderOverview(data, current.signal);
                 else {
@@ -311,15 +311,16 @@
                     render(data);
                 }
             }
-        } catch (error) {
+        }).catch(error => {
             if (current.signal.aborted) return;
             message.className = 'cs-message error';
             message.textContent = error.message || '조회에 실패했습니다.';
-        } finally {
+        }).finally(() => {
             if (controller === current) form.querySelector('button').disabled = false;
-        }
+        });
+        window.ColumnAlertSummary?.load(query.get('date'), forceColumns, ready.then(() => !current.signal.aborted));
     }
-    form.addEventListener('submit', event => {event.preventDefault(); load();});
+    form.addEventListener('submit', event => {event.preventDefault(); load(true);});
     document.addEventListener('column-review-saved', event => {
         const {target, comparison: reviewed} = event.detail;
         if (loadedData && ['country','product','retailer'].every(k => loadedData[k] === target[k])

@@ -2,13 +2,15 @@ async function loadCollectionOverview() {
     const overview = document.querySelector('.dx-overview');
     const message = overview.querySelector('.dx-overview-message');
     const markets = overview.querySelector('.dx-overview-markets');
-    const formatter = new Intl.NumberFormat('ko-KR');
-    const statusLabels = {
-        scheduled: '수집 예정', waiting: '수집 대기', collecting: '수집 중',
-        received: '수집 확인', partial: '일부 수집', error: '조회 실패',
-        uncollected: '미수집', abnormal: 'BSR 이상', rank_mismatch: '순위 이상'
+    const inspectionDate = overview.querySelector('time').dateTime;
+    const countryNames = {SEA: '미국', SEDA: '브라질'};
+    const productIcons = {TV: 'tv', REF: 'refrigerator', LDY: 'washer', LDY_DRYER: 'dryer'};
+    const productNames = {TV: 'TV', REF: '냉장고', LDY: '세탁기', LDY_DRYER: '건조기'};
+    const issueLabels = {
+        error: '조회 실패', uncollected: '미수집', abnormal: 'BSR 이상',
+        rank_mismatch: '순위 이상', partial: '일부 수집'
     };
-    const attention = new Set(['error', 'uncollected', 'abnormal', 'rank_mismatch', 'partial']);
+    const routineStates = new Set(['scheduled', 'waiting', 'collecting', 'received']);
 
     try {
         const response = await fetch(overview.dataset.statusUrl);
@@ -17,49 +19,74 @@ async function loadCollectionOverview() {
         if (!Array.isArray(countries)) throw new Error('Collection status missing');
 
         for (const {country, source_date, retailers} of countries) {
+            const issues = retailers.filter(row => !routineStates.has(row.status));
+            if (!issues.length) continue;
+
             const market = document.createElement('section');
             const name = document.createElement('h3');
-            name.textContent = country + ' Retail';
+            name.innerHTML = window.renderCountryFlagLabel(country + ' Retail');
+            if (Object.hasOwn(countryNames, country)) {
+                name.querySelector('.country-flag-label > span').textContent = countryNames[country];
+            }
             market.append(name);
 
-            const date = document.createElement('p');
-            date.className = 'dx-overview-date';
-            date.textContent = '수집 대상일 ' + source_date;
-            market.append(date);
-
-            const counts = new Map();
-            let storedRows = 0;
-            let countAvailable = false;
-            for (const {status, count} of retailers) {
-                const key = Object.hasOwn(statusLabels, status) ? status : 'error';
-                counts.set(key, (counts.get(key) || 0) + 1);
-                if (typeof count === 'number' && Number.isFinite(count) && key !== 'error') {
-                    storedRows += count;
-                    countAvailable = true;
-                }
+            if (source_date && source_date !== inspectionDate) {
+                const date = document.createElement('p');
+                date.className = 'dx-overview-date';
+                date.textContent = '수집 대상일 ' + source_date;
+                market.append(date);
             }
 
-            const status = document.createElement('p');
-            status.className = 'dx-overview-status';
-            status.textContent = counts.size ? [...counts]
-                .sort(([left], [right]) => Number(attention.has(right)) - Number(attention.has(left)))
-                .map(([key, count]) => statusLabels[key] + ' ' + formatter.format(count) + '개')
-                .join(' · ') : '수집 대상 없음';
-            market.append(status);
+            const list = document.createElement('ul');
+            list.className = 'dx-overview-issues';
+            list.setAttribute('role', 'list');
 
-            const stored = document.createElement('p');
-            stored.className = 'dx-overview-stored';
-            stored.textContent = countAvailable
-                ? 'DB 적재 확인 ' + formatter.format(storedRows) + '건'
-                : 'DB 적재 건수 확인 불가';
-            if (countAvailable && counts.has('error')) stored.textContent += ' (조회 성공 범위)';
-            market.append(stored);
+            for (const {status, retailer, product, status_reason} of issues) {
+                const row = document.createElement('li');
+                const seller = document.createElement('strong');
+                seller.textContent = retailer || '리테일러 정보 없음';
+
+                const category = document.createElement('span');
+                category.className = 'dx-overview-category';
+                category.textContent = Object.hasOwn(productNames, product)
+                    ? productNames[product] : product || '제품군 정보 없음';
+                if (Object.hasOwn(productIcons, product)) {
+                    const icon = document.createElement('img');
+                    icon.src = overview.dataset.productIconUrl + productIcons[product] + '.svg';
+                    icon.alt = '';
+                    icon.width = 24;
+                    icon.height = 24;
+                    category.prepend(icon);
+                }
+
+                const state = document.createElement('span');
+                state.className = 'dx-overview-issue-state';
+                const key = Object.hasOwn(issueLabels, status) ? status : 'unknown';
+                state.dataset.status = key;
+                state.textContent = key === 'unknown' ? '상태 확인 필요' : issueLabels[key];
+                row.append(seller, category, state);
+
+                if (typeof status_reason === 'string' && status_reason.trim()) {
+                    const note = document.createElement('p');
+                    note.textContent = status_reason;
+                    row.append(note);
+                }
+                list.append(row);
+            }
+
+            market.append(list);
             markets.append(market);
         }
-        message.textContent = countries.length ? '당일 조회 지원 범위 · SEA 및 SEDA(Casas Bahia)' : '표시할 수집 현황이 없습니다.';
+
+        message.hidden = markets.childElementCount > 0;
+        if (!message.hidden) {
+            message.textContent = countries.some(country => country.retailers.length > 0)
+                ? '현재 확인이 필요한 크롤러가 없습니다.' : '조회할 수집 대상이 없습니다.';
+        }
     } catch {
         markets.replaceChildren();
-        message.textContent = '당일 수집 현황 조회에 실패했습니다. 상세 화면에서 다시 조회해 주세요.';
+        message.classList.add('is-error');
+        message.textContent = '수집 현황을 조회하지 못했습니다. 리테일러별 상세에서 다시 확인해 주세요.';
     }
 }
 

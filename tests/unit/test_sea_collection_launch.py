@@ -46,7 +46,7 @@ class CollectionCardTests(unittest.TestCase):
         self.results[('HomeDepot', 'REF')] = (300, '2026-09-20 13:23:00', 'h20', 300, 100)
         result = self.service.get_collection_status(date(2026, 9, 20), datetime(2026, 9, 20, 14, tzinfo=KST))
         self.assertEqual('2026-09-20', result['source_date'])
-        self.assertEqual(['waiting', 'received', 'waiting'],
+        self.assertEqual(['scheduled', 'unconfirmed', 'unconfirmed'],
                          [r['status'] for r in result['retailers']])
         self.assertEqual(300, result['retailers'][1]['count'])
         self.assertEqual(300, result['retailers'][1]['main_count'])
@@ -56,19 +56,21 @@ class CollectionCardTests(unittest.TestCase):
         self.assertTrue(all(day == '2026-09-20' for _, day in self.calls))
         self.assertNotIn('failed', result)
 
-    def test_13_kst_boundary_and_prelaunch_homedepot_never_queries_old_data(self):
-        for hour, minute, status in ((12, 59, 'scheduled'), (13, 0, 'waiting'), (14, 0, 'waiting')):
+    def test_walmart_start_boundary_and_prelaunch_homedepot(self):
+        for hour, minute, status in ((16, 54, 'scheduled'), (16, 55, 'waiting'), (18, 30, 'waiting')):
             self.calls.clear()
             result = self.service.get_collection_status(date(2026, 9, 18), datetime(2026, 9, 18, hour, minute, tzinfo=KST))
             self.assertEqual([status, 'scheduled', 'scheduled'],
                              [r['status'] for r in result['retailers']])
             self.assertEqual(1, len(self.calls))
+            self.assertEqual('2026-09-18T16:55:00+09:00', result['retailers'][0]['scheduled_at'])
+            self.assertNotIn('scheduled_end_at', result['retailers'][0])
             self.assertEqual('2026-09-20T13:00:00+09:00', result['retailers'][2]['scheduled_at'])
 
     def test_query_failure_is_separate_from_no_collection(self):
         self.results[('Walmart', 'TV')] = ValueError('unavailable')
         result = self.service.get_collection_status(date(2026, 9, 21), datetime(2026, 9, 21, 14, tzinfo=KST))
-        self.assertEqual(['error', 'waiting', 'waiting'],
+        self.assertEqual(['error', 'unconfirmed', 'unconfirmed'],
                          [r['status'] for r in result['retailers']])
         self.assertIsNone(result['retailers'][0]['count'])
         self.assertIsNone(result['retailers'][0]['main_count'])
